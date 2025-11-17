@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,62 +21,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Plus, Search, Edit, Power, PowerOff, Building2 } from "lucide-react"
-
-interface Store {
-  id: string
-  name: string
-  code: string
-  address: string
-  phone: string
-  email: string
-  rif: string
-  status: "active" | "inactive"
-  createdAt: string
-  updatedAt: string
-}
-
-// Mock data
-const mockStores: Store[] = [
-  {
-    id: "1",
-    name: "Tienda Centro",
-    code: "TC001",
-    address: "Av. Principal, Centro Comercial Plaza",
-    phone: "+58 212-555-0101",
-    email: "centro@camihogar.com",
-    rif: "J-12345678-9",
-    status: "active",
-    createdAt: "2024-01-15",
-    updatedAt: "2024-01-15",
-  },
-  {
-    id: "2",
-    name: "Tienda Este",
-    code: "TE002",
-    address: "Av. Francisco de Miranda, C.C. Lider",
-    phone: "+58 212-555-0102",
-    email: "este@camihogar.com",
-    rif: "J-87654321-0",
-    status: "active",
-    createdAt: "2024-01-20",
-    updatedAt: "2024-02-10",
-  },
-  {
-    id: "3",
-    name: "Tienda Oeste",
-    code: "TO003",
-    address: "Av. Libertador, Las Mercedes",
-    phone: "+58 212-555-0103",
-    email: "oeste@camihogar.com",
-    rif: "J-11223344-5",
-    status: "inactive",
-    createdAt: "2024-02-01",
-    updatedAt: "2024-02-15",
-  },
-]
+import { getStores, addStore, updateStore, deleteStore, type Store } from "@/lib/storage"
 
 export function StoresPage() {
-  const [stores, setStores] = useState<Store[]>(mockStores)
+  const [stores, setStores] = useState<Store[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -92,6 +41,21 @@ export function StoresPage() {
     status: "active" as "active" | "inactive",
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    const loadStores = async () => {
+      try {
+        setIsLoading(true)
+        const loadedStores = await getStores()
+        setStores(loadedStores)
+      } catch (error) {
+        console.error("Error loading stores:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadStores()
+  }, [])
 
   // Filter stores based on search and status
   const filteredStores = stores.filter((store) => {
@@ -159,55 +123,53 @@ export function StoresPage() {
   }
 
   // Handle create store
-  const handleCreateStore = () => {
+  const handleCreateStore = async () => {
     if (!validateForm()) return
 
-    const newStore: Store = {
-      id: Date.now().toString(),
-      ...formData,
-      createdAt: new Date().toISOString().split("T")[0],
-      updatedAt: new Date().toISOString().split("T")[0],
+    try {
+      const newStore = await addStore(formData)
+      setStores([...stores, newStore])
+      setIsCreateDialogOpen(false)
+      resetForm()
+    } catch (error) {
+      console.error("Error creating store:", error)
+      alert("Error al crear la tienda")
     }
-
-    setStores([...stores, newStore])
-    setIsCreateDialogOpen(false)
-    resetForm()
   }
 
   // Handle edit store
-  const handleEditStore = () => {
+  const handleEditStore = async () => {
     if (!validateForm() || !editingStore) return
 
-    const updatedStores = stores.map((store) =>
-      store.id === editingStore.id
-        ? { ...store, ...formData, updatedAt: new Date().toISOString().split("T")[0] }
-        : store,
-    )
-
-    setStores(updatedStores)
-    setIsEditDialogOpen(false)
-    setEditingStore(null)
-    resetForm()
+    try {
+      const updatedStore = await updateStore(editingStore.id, formData)
+      setStores(stores.map((store) => (store.id === editingStore.id ? updatedStore : store)))
+      setIsEditDialogOpen(false)
+      setEditingStore(null)
+      resetForm()
+    } catch (error) {
+      console.error("Error updating store:", error)
+      alert("Error al actualizar la tienda")
+    }
   }
 
   // Handle toggle status
-  const handleToggleStatus = (store: Store) => {
+  const handleToggleStatus = async (store: Store) => {
     // Check if store has active operations (mock validation)
     if (store.status === "active" && Math.random() > 0.7) {
       alert("No se puede desactivar la tienda porque tiene operaciones activas en curso")
       return
     }
 
-    const updatedStores = stores.map((s) =>
-      s.id === store.id
-        ? {
-            ...s,
-            status: s.status === "active" ? "inactive" : "active",
-            updatedAt: new Date().toISOString().split("T")[0],
-          }
-        : s,
-    )
-    setStores(updatedStores)
+    try {
+      const updatedStore = await updateStore(store.id, {
+        status: store.status === "active" ? "inactive" : "active",
+      })
+      setStores(stores.map((s) => (s.id === store.id ? updatedStore : s)))
+    } catch (error) {
+      console.error("Error updating store status:", error)
+      alert("Error al actualizar el estado de la tienda")
+    }
   }
 
   // Reset form
@@ -383,6 +345,9 @@ export function StoresPage() {
           <CardTitle className="text-lg">Tiendas ({filteredStores.length})</CardTitle>
         </CardHeader>
         <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Cargando tiendas...</div>
+          ) : (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -464,6 +429,7 @@ export function StoresPage() {
               </TableBody>
             </Table>
           </div>
+          )}
         </CardContent>
       </Card>
 

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChevronLeft, ChevronRight, Package, StoreIcon, Tag } from "lucide-react"
-import { getCategories, addProduct, type Category, type AttributeValue } from "@/lib/storage"
+import { getCategories, addProduct, getProducts, type Category, type AttributeValue } from "@/lib/storage"
 
 interface ProductWizardDialogProps {
   open: boolean
@@ -73,6 +73,24 @@ export function ProductWizardDialog({ open, onOpenChange, onProductCreated }: Pr
     loadCategories()
   }, [])
 
+  // Generar SKU automático cuando se abre el diálogo
+  useEffect(() => {
+    const generateSKU = async () => {
+      try {
+        const products = await getProducts()
+        const nextNumber = products.length + 1
+        const sku = `PROD-${String(nextNumber).padStart(4, "0")}`
+        setFormData((prev) => ({ ...prev, sku }))
+      } catch (error) {
+        console.error("Error generating SKU:", error)
+      }
+    }
+
+    if (open) {
+      generateSKU()
+    }
+  }, [open])
+
   const stores = [
     { id: "1", name: "Tienda Principal" },
     { id: "2", name: "Sucursal Norte" },
@@ -116,9 +134,17 @@ export function ProductWizardDialog({ open, onOpenChange, onProductCreated }: Pr
       const totalStock = Object.values(formData.stockByStore).reduce((sum, stock) => sum + stock, 0)
       const categoryName = categories.find((cat) => cat.id.toString() === formData.category)?.name || ""
 
+      // Si el SKU está vacío, generarlo automáticamente
+      let skuToUse = formData.sku
+      if (!skuToUse || skuToUse.trim() === "") {
+        const products = await getProducts()
+        const nextNumber = products.length + 1
+        skuToUse = `PROD-${String(nextNumber).padStart(4, "0")}`
+      }
+
       await addProduct({
         name: formData.name,
-        sku: formData.sku,
+        sku: skuToUse,
         category: categoryName,
         price: Number.parseFloat(formData.price) || 0,
         stock: totalStock,
@@ -134,16 +160,37 @@ export function ProductWizardDialog({ open, onOpenChange, onProductCreated }: Pr
 
     onOpenChange(false)
     setCurrentStep(1)
-    setFormData({
-      name: "",
-      sku: "",
-      description: "",
-      price: "",
-      category: "",
-      status: "Disponible",
-      stockByStore: {},
-      attributes: {},
-    })
+    // Al resetear, generar nuevo SKU para el siguiente producto
+    const generateNewSKU = async () => {
+      try {
+        const products = await getProducts()
+        const nextNumber = products.length + 1
+        const sku = `PROD-${String(nextNumber).padStart(4, "0")}`
+        setFormData({
+          name: "",
+          sku,
+          description: "",
+          price: "",
+          category: "",
+          status: "Disponible",
+          stockByStore: {},
+          attributes: {},
+        })
+      } catch (error) {
+        console.error("Error generating SKU:", error)
+        setFormData({
+          name: "",
+          sku: "",
+          description: "",
+          price: "",
+          category: "",
+          status: "Disponible",
+          stockByStore: {},
+          attributes: {},
+        })
+      }
+    }
+    generateNewSKU()
   }
 
   const renderAttributeInput = (attribute: CategoryAttribute) => {
@@ -302,8 +349,13 @@ export function ProductWizardDialog({ open, onOpenChange, onProductCreated }: Pr
                     id="sku"
                     value={formData.sku}
                     onChange={(e) => handleInputChange("sku", e.target.value)}
-                    placeholder="Ej: CAM001"
+                    placeholder="Se generará automáticamente"
+                    readOnly
+                    className="bg-muted cursor-not-allowed"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    El código del producto se genera automáticamente
+                  </p>
                 </div>
               </div>
 
@@ -445,7 +497,7 @@ export function ProductWizardDialog({ open, onOpenChange, onProductCreated }: Pr
             {currentStep < 2 ? (
               <Button
                 onClick={handleNext}
-                disabled={!formData.name || !formData.sku || !formData.price || !formData.category}
+                disabled={!formData.name || !formData.price || !formData.category}
               >
                 Siguiente
                 <ChevronRight className="w-4 h-4 ml-2" />

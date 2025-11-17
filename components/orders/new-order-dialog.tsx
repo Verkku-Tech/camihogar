@@ -45,28 +45,17 @@ import {
 } from "lucide-react";
 import {
   addOrder,
+  getVendors,
   type Order,
   type OrderProduct,
   type PartialPayment,
+  type Vendor,
 } from "@/lib/storage";
 
 interface NewOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-// Mock data
-const mockVendors = [
-  { id: "1", name: "Juan Pérez", role: "Vendedor de tienda" },
-  { id: "2", name: "Ana López", role: "Vendedor de tienda" },
-  { id: "3", name: "Carlos Silva", role: "Vendedor de tienda" },
-];
-
-const mockReferrers = [
-  { id: "1", name: "María González", role: "Vendedor Online" },
-  { id: "2", name: "Pedro Martínez", role: "Vendedor Online" },
-  { id: "3", name: "Laura Rodríguez", role: "Vendedor Online" },
-];
 
 const paymentMethods = [
   "Pago Móvil",
@@ -82,6 +71,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [selectedClient, setSelectedClient] = useState<{
     id: string;
     name: string;
+    address?: string;
   } | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<OrderProduct[]>([]);
   const [isClientLookupOpen, setIsClientLookupOpen] = useState(false);
@@ -94,12 +84,32 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(
     null
   ); // Added product to remove state
-  const [paymentType, setPaymentType] = useState<"directo" | "apartado">(
-    "directo"
-  );
+  const [paymentType, setPaymentType] = useState<
+    "directo" | "apartado" | "mixto"
+  >("directo");
   const [partialPayments, setPartialPayments] = useState<PartialPayment[]>([]);
+  const [mixedPayments, setMixedPayments] = useState<PartialPayment[]>([]);
   const [deliveryExpenses, setDeliveryExpenses] = useState(0);
   const [createSupplierOrder, setCreateSupplierOrder] = useState(false); // Added supplier order flag
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+
+  useEffect(() => {
+    const loadVendors = async () => {
+      try {
+        const loadedVendors = await getVendors();
+        setVendors(loadedVendors);
+      } catch (error) {
+        console.error("Error loading vendors:", error);
+      }
+    };
+    if (open) {
+      loadVendors();
+    }
+  }, [open]);
+
+  const mockVendors = vendors.filter((v) => v.type === "vendor");
+  const mockReferrers = vendors.filter((v) => v.type === "referrer");
+
   const [formData, setFormData] = useState({
     vendor: "",
     referrer: "",
@@ -126,6 +136,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     {}
   ); // Sobreprecio por producto
   const [generalDiscount, setGeneralDiscount] = useState(0);
+  const [generalDiscountType, setGeneralDiscountType] = useState<
+    "monto" | "porcentaje"
+  >("monto");
+  const [productDiscountTypes, setProductDiscountTypes] = useState<
+    Record<string, "monto" | "porcentaje">
+  >({});
+  const [generalObservations, setGeneralObservations] = useState("");
 
   const getProductBaseTotal = (product: OrderProduct) => {
     const markup = productMarkups[product.id] || 0;
@@ -165,11 +182,29 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     );
   }, [subtotalAfterProductDiscounts]);
 
+  // Cargar dirección del cliente cuando se activa delivery y hay un cliente seleccionado
+  useEffect(() => {
+    if (hasDelivery && selectedClient?.address && !formData.deliveryAddress) {
+      setFormData((prev) => ({
+        ...prev,
+        deliveryAddress: selectedClient.address || "",
+      }));
+    }
+  }, [hasDelivery, selectedClient]);
+
   const firstPaymentRequired = total * 0.3;
   const totalPaid =
     partialPayments.reduce((sum, payment) => sum + payment.amount, 0) +
     formData.firstPaymentAmount;
   const remainingAmount = total - totalPaid;
+
+  // Calcular total de pagos mixtos
+  const mixedPaymentsTotal = mixedPayments.reduce(
+    (sum, payment) => sum + payment.amount,
+    0
+  );
+  const mixedPaymentsRemaining = total - mixedPaymentsTotal;
+  const isMixedPaymentsValid = Math.abs(mixedPaymentsRemaining) < 0.01; // Tolerancia para decimales
 
   const handleProductsSelect = (products: OrderProduct[]) => {
     setSelectedProducts(
@@ -178,6 +213,16 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         discount: product.discount ?? 0,
       }))
     );
+    // Inicializar tipos de descuento como "monto" por defecto
+    const newTypes: Record<string, "monto" | "porcentaje"> = {};
+    products.forEach((product) => {
+      if (!productDiscountTypes[product.id]) {
+        newTypes[product.id] = "monto";
+      }
+    });
+    if (Object.keys(newTypes).length > 0) {
+      setProductDiscountTypes((prev) => ({ ...prev, ...newTypes }));
+    }
   };
 
   const handleProductDiscountChange = (productId: string, value: number) => {
@@ -187,18 +232,88 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           return product;
         }
         const baseTotal = getProductBaseTotal(product);
-        const safeDiscount = Math.max(0, Math.min(value, baseTotal));
+        const discountType = productDiscountTypes[productId] || "monto";
+
+        let discountAmount: number;
+        if (discountType === "porcentaje") {
+          // Convertir porcentaje a monto y limitarlo al baseTotal
+          const percentage = Math.max(0, Math.min(value, 100));
+          discountAmount = (baseTotal * percentage) / 100;
+        } else {
+          // Monto directo
+          discountAmount = Math.max(0, Math.min(value, baseTotal));
+        }
+
         return {
           ...product,
-          discount: safeDiscount,
+          discount: discountAmount,
         };
       })
     );
   };
 
+  const handleProductDiscountTypeChange = (
+    productId: string,
+    type: "monto" | "porcentaje"
+  ) => {
+    setProductDiscountTypes((prev) => ({ ...prev, [productId]: type }));
+
+    // Convertir el descuento actual al nuevo tipo
+    setSelectedProducts((products) =>
+      products.map((product) => {
+        if (product.id !== productId) {
+          return product;
+        }
+        const baseTotal = getProductBaseTotal(product);
+        const currentDiscount = product.discount || 0;
+
+        if (type === "porcentaje") {
+          // Si estaba en monto, convertir a porcentaje
+          const percentage =
+            baseTotal > 0 ? (currentDiscount / baseTotal) * 100 : 0;
+          // El discount se mantiene como monto, solo cambia la UI
+          return product;
+        } else {
+          // Si estaba en porcentaje, el monto ya está correcto
+          return product;
+        }
+      })
+    );
+  };
+
   const handleGeneralDiscountChange = (value: number) => {
-    const safeValue = Math.max(0, value);
-    setGeneralDiscount(Math.min(safeValue, subtotalAfterProductDiscounts));
+    let discountAmount: number;
+
+    if (generalDiscountType === "porcentaje") {
+      // Convertir porcentaje a monto
+      const percentage = Math.max(0, Math.min(value, 100));
+      discountAmount = (subtotalAfterProductDiscounts * percentage) / 100;
+    } else {
+      // Monto directo
+      discountAmount = Math.max(
+        0,
+        Math.min(value, subtotalAfterProductDiscounts)
+      );
+    }
+
+    setGeneralDiscount(discountAmount);
+  };
+
+  const handleGeneralDiscountTypeChange = (type: "monto" | "porcentaje") => {
+    const currentDiscount = generalDiscount;
+
+    if (type === "porcentaje") {
+      // Convertir monto actual a porcentaje para mostrar en el input
+      const percentage =
+        subtotalAfterProductDiscounts > 0
+          ? (currentDiscount / subtotalAfterProductDiscounts) * 100
+          : 0;
+      setGeneralDiscountType(type);
+      // El discount se mantiene como monto, solo cambia cómo se muestra
+    } else {
+      // Ya estaba en porcentaje, el monto se mantiene
+      setGeneralDiscountType(type);
+    }
   };
 
   const handleNext = () => {
@@ -232,6 +347,22 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
+      // Validar pagos mixtos
+      if (paymentType === "mixto") {
+        if (mixedPayments.length === 0) {
+          alert("Por favor agrega al menos un método de pago mixto");
+          return;
+        }
+        if (!isMixedPaymentsValid) {
+          alert(
+            `El total de los pagos mixtos ($${mixedPaymentsTotal.toFixed(
+              2
+            )}) debe ser igual al total del pedido ($${total.toFixed(2)})`
+          );
+          return;
+        }
+      }
+
       // Preparar el pedido
       const orderData: Omit<
         Order,
@@ -255,30 +386,36 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         deliveryCost,
         total,
         paymentType,
-        paymentMethod: formData.paymentMethod,
-        paymentDetails: {
-          ...(formData.paymentMethod === "Pago Móvil" && {
-            pagomovilReference: formData.pagomovilReference,
-            pagomovilBank: formData.pagomovilBank,
-            pagomovilPhone: formData.pagomovilPhone,
-            pagomovilDate: formData.pagomovilDate,
-          }),
-          ...(formData.paymentMethod === "Transferencia" && {
-            transferenciaBank: formData.transferenciaBank,
-            transferenciaReference: formData.transferenciaReference,
-            transferenciaDate: formData.transferenciaDate,
-          }),
-          ...(formData.paymentMethod === "Efectivo" && {
-            cashAmount: formData.cashAmount,
-          }),
-        },
+        paymentMethod:
+          paymentType === "mixto" ? "Mixto" : formData.paymentMethod,
+        paymentDetails:
+          paymentType === "mixto"
+            ? undefined
+            : {
+                ...(formData.paymentMethod === "Pago Móvil" && {
+                  pagomovilReference: formData.pagomovilReference,
+                  pagomovilBank: formData.pagomovilBank,
+                  pagomovilPhone: formData.pagomovilPhone,
+                  pagomovilDate: formData.pagomovilDate,
+                }),
+                ...(formData.paymentMethod === "Transferencia" && {
+                  transferenciaBank: formData.transferenciaBank,
+                  transferenciaReference: formData.transferenciaReference,
+                  transferenciaDate: formData.transferenciaDate,
+                }),
+                ...(formData.paymentMethod === "Efectivo" && {
+                  cashAmount: formData.cashAmount,
+                }),
+              },
         partialPayments:
           paymentType === "apartado" ? partialPayments : undefined,
+        mixedPayments: paymentType === "mixto" ? mixedPayments : undefined,
         deliveryAddress: hasDelivery ? formData.deliveryAddress : undefined,
         hasDelivery,
         status: paymentType === "apartado" ? "Apartado" : "Pendiente",
         productMarkups,
         createSupplierOrder,
+        observations: generalObservations.trim() || undefined,
       };
 
       await addOrder(orderData);
@@ -292,11 +429,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       setSelectedClient(null);
       setSelectedProducts([]);
       setPartialPayments([]);
+      setMixedPayments([]);
       setDeliveryExpenses(0);
       setHasDelivery(false);
       setProductMarkups({});
       setGeneralDiscount(0);
+      setGeneralDiscountType("monto");
+      setProductDiscountTypes({});
       setCreateSupplierOrder(false);
+      setGeneralObservations("");
       setFormData({
         vendor: "",
         referrer: "",
@@ -324,6 +465,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       amount: 0,
       method: "",
       date: new Date().toISOString().split("T")[0],
+      paymentDetails: {},
     };
     setPartialPayments([...partialPayments, newPayment]);
   };
@@ -340,8 +482,80 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     );
   };
 
+  const updatePartialPaymentDetails = (
+    id: string,
+    field: string,
+    value: string
+  ) => {
+    setPartialPayments((payments) =>
+      payments.map((payment) => {
+        if (payment.id === id) {
+          return {
+            ...payment,
+            paymentDetails: {
+              ...payment.paymentDetails,
+              [field]: value,
+            },
+          };
+        }
+        return payment;
+      })
+    );
+  };
+
   const removePartialPayment = (id: string) => {
     setPartialPayments((payments) =>
+      payments.filter((payment) => payment.id !== id)
+    );
+  };
+
+  // Funciones para manejar pagos mixtos
+  const addMixedPayment = () => {
+    const newPayment: PartialPayment = {
+      id: Date.now().toString(),
+      amount: 0,
+      method: "",
+      date: new Date().toISOString().split("T")[0],
+      paymentDetails: {},
+    };
+    setMixedPayments([...mixedPayments, newPayment]);
+  };
+
+  const updateMixedPayment = (
+    id: string,
+    field: keyof PartialPayment,
+    value: string | number
+  ) => {
+    setMixedPayments((payments) =>
+      payments.map((payment) =>
+        payment.id === id ? { ...payment, [field]: value } : payment
+      )
+    );
+  };
+
+  const updateMixedPaymentDetails = (
+    id: string,
+    field: string,
+    value: string
+  ) => {
+    setMixedPayments((payments) =>
+      payments.map((payment) => {
+        if (payment.id === id) {
+          return {
+            ...payment,
+            paymentDetails: {
+              ...payment.paymentDetails,
+              [field]: value,
+            },
+          };
+        }
+        return payment;
+      })
+    );
+  };
+
+  const removeMixedPayment = (id: string) => {
+    setMixedPayments((payments) =>
       payments.filter((payment) => payment.id !== id)
     );
   };
@@ -578,20 +792,78 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                   </TableCell>
                                   <TableCell>${baseTotal.toFixed(2)}</TableCell>
                                   <TableCell>
-                                    <Input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      max={baseTotal}
-                                      value={discount}
-                                      onChange={(e) =>
-                                        handleProductDiscountChange(
-                                          product.id,
-                                          Number.parseFloat(e.target.value) || 0
-                                        )
-                                      }
-                                      className="w-28"
-                                    />
+                                    <div className="flex gap-2 items-center">
+                                      <Select
+                                        value={
+                                          productDiscountTypes[product.id] ||
+                                          "monto"
+                                        }
+                                        onValueChange={(
+                                          value: "monto" | "porcentaje"
+                                        ) =>
+                                          handleProductDiscountTypeChange(
+                                            product.id,
+                                            value
+                                          )
+                                        }
+                                      >
+                                        <SelectTrigger className="w-24 h-9">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="monto">
+                                            $
+                                          </SelectItem>
+                                          <SelectItem value="porcentaje">
+                                            %
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step={
+                                          productDiscountTypes[product.id] ===
+                                          "porcentaje"
+                                            ? "0.1"
+                                            : "0.01"
+                                        }
+                                        max={
+                                          productDiscountTypes[product.id] ===
+                                          "porcentaje"
+                                            ? 100
+                                            : baseTotal
+                                        }
+                                        value={(() => {
+                                          const discountType =
+                                            productDiscountTypes[product.id] ||
+                                            "monto";
+                                          if (discount === 0) return "";
+                                          if (discountType === "porcentaje") {
+                                            const percentage =
+                                              baseTotal > 0
+                                                ? (discount / baseTotal) * 100
+                                                : 0;
+                                            return percentage;
+                                          }
+                                          return discount;
+                                        })()}
+                                        onChange={(e) =>
+                                          handleProductDiscountChange(
+                                            product.id,
+                                            Number.parseFloat(e.target.value) ||
+                                              0
+                                          )
+                                        }
+                                        className="w-28"
+                                        placeholder={
+                                          productDiscountTypes[product.id] ===
+                                          "porcentaje"
+                                            ? "0%"
+                                            : "0.00"
+                                        }
+                                      />
+                                    </div>
                                   </TableCell>
                                   <TableCell className="font-semibold">
                                     ${finalTotal.toFixed(2)}
@@ -631,6 +903,23 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                     )}
                   </div>
 
+                  {/* Observaciones Generales */}
+                  <div className="space-y-2">
+                    <Label htmlFor="generalObservations">
+                      Observaciones Generales
+                    </Label>
+                    <Textarea
+                      id="generalObservations"
+                      value={generalObservations}
+                      onChange={(e) => setGeneralObservations(e.target.value)}
+                      placeholder="Agregar observaciones generales para el pedido (opcional)"
+                      rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Notas generales sobre el pedido
+                    </p>
+                  </div>
+
                   {/* Subtotal */}
                   <div className="flex justify-end">
                     <div className="text-right">
@@ -656,9 +945,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                     <Label>Método de Pago</Label>
                     <RadioGroup
                       value={paymentType}
-                      onValueChange={(value: "directo" | "apartado") =>
-                        setPaymentType(value)
-                      }
+                      onValueChange={(
+                        value: "directo" | "apartado" | "mixto"
+                      ) => setPaymentType(value)}
                     >
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="directo" id="directo" />
@@ -667,6 +956,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="apartado" id="apartado" />
                         <Label htmlFor="apartado">Apartado</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="mixto" id="mixto" />
+                        <Label htmlFor="mixto">Pago Mixto</Label>
                       </div>
                     </RadioGroup>
 
@@ -842,7 +1135,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                value={formData.cashAmount}
+                                value={
+                                  formData.cashAmount === "0" ||
+                                  formData.cashAmount === ""
+                                    ? ""
+                                    : formData.cashAmount
+                                }
                                 onChange={(e) =>
                                   setFormData((prev) => ({
                                     ...prev,
@@ -885,69 +1183,251 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           {partialPayments.map((payment) => (
                             <div
                               key={payment.id}
-                              className="flex gap-2 items-end"
+                              className="space-y-4 p-4 border rounded-lg"
                             >
-                              <div className="flex-1">
-                                <Label className="text-xs">Monto</Label>
-                                <Input
-                                  type="number"
-                                  value={payment.amount}
-                                  onChange={(e) =>
-                                    updatePartialPayment(
-                                      payment.id,
-                                      "amount",
-                                      Number.parseFloat(e.target.value) || 0
-                                    )
-                                  }
-                                  placeholder="0.00"
-                                />
-                              </div>
-                              <div className="flex-1">
-                                <Label className="text-xs">Método</Label>
-                                <Select
-                                  value={payment.method}
-                                  onValueChange={(value) =>
-                                    updatePartialPayment(
-                                      payment.id,
-                                      "method",
-                                      value
-                                    )
+                              <div className="flex gap-2 items-end">
+                                <div className="flex-1">
+                                  <Label className="text-xs">Monto</Label>
+                                  <Input
+                                    type="number"
+                                    value={
+                                      payment.amount === 0 ? "" : payment.amount
+                                    }
+                                    onChange={(e) =>
+                                      updatePartialPayment(
+                                        payment.id,
+                                        "amount",
+                                        Number.parseFloat(e.target.value) || 0
+                                      )
+                                    }
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                                <div className="flex-1">
+                                  <Label className="text-xs">Método</Label>
+                                  <Select
+                                    value={payment.method}
+                                    onValueChange={(value) =>
+                                      updatePartialPayment(
+                                        payment.id,
+                                        "method",
+                                        value
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Método" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {paymentMethods.map((method) => (
+                                        <SelectItem key={method} value={method}>
+                                          {method}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="flex-1">
+                                  <Label className="text-xs">Fecha</Label>
+                                  <Input
+                                    type="date"
+                                    value={payment.date}
+                                    onChange={(e) =>
+                                      updatePartialPayment(
+                                        payment.id,
+                                        "date",
+                                        e.target.value
+                                      )
+                                    }
+                                  />
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    removePartialPayment(payment.id)
                                   }
                                 >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Método" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {paymentMethods.map((method) => (
-                                      <SelectItem key={method} value={method}>
-                                        {method}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
                               </div>
-                              <div className="flex-1">
-                                <Label className="text-xs">Fecha</Label>
-                                <Input
-                                  type="date"
-                                  value={payment.date}
-                                  onChange={(e) =>
-                                    updatePartialPayment(
-                                      payment.id,
-                                      "date",
-                                      e.target.value
-                                    )
-                                  }
-                                />
-                              </div>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removePartialPayment(payment.id)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
+
+                              {/* Campos condicionales según método de pago */}
+                              {payment.method === "Pago Móvil" && (
+                                <div className="space-y-3 pt-2 border-t">
+                                  <Label className="text-sm font-medium">
+                                    Información de Pago Móvil
+                                  </Label>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`pagomovil-reference-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        N° Referencia *
+                                      </Label>
+                                      <Input
+                                        id={`pagomovil-reference-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.pagomovilReference || ""
+                                        }
+                                        onChange={(e) =>
+                                          updatePartialPaymentDetails(
+                                            payment.id,
+                                            "pagomovilReference",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ingrese el número de referencia"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`pagomovil-bank-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Banco Emisor *
+                                      </Label>
+                                      <Input
+                                        id={`pagomovil-bank-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.pagomovilBank || ""
+                                        }
+                                        onChange={(e) =>
+                                          updatePartialPaymentDetails(
+                                            payment.id,
+                                            "pagomovilBank",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ej: Banco de Venezuela"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`pagomovil-phone-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Teléfono *
+                                      </Label>
+                                      <Input
+                                        id={`pagomovil-phone-${payment.id}`}
+                                        type="tel"
+                                        value={
+                                          payment.paymentDetails
+                                            ?.pagomovilPhone || ""
+                                        }
+                                        onChange={(e) =>
+                                          updatePartialPaymentDetails(
+                                            payment.id,
+                                            "pagomovilPhone",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="0412-1234567"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {payment.method === "Transferencia" && (
+                                <div className="space-y-3 pt-2 border-t">
+                                  <Label className="text-sm font-medium">
+                                    Información de Transferencia
+                                  </Label>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`transferencia-bank-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Banco *
+                                      </Label>
+                                      <Input
+                                        id={`transferencia-bank-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.transferenciaBank || ""
+                                        }
+                                        onChange={(e) =>
+                                          updatePartialPaymentDetails(
+                                            payment.id,
+                                            "transferenciaBank",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ej: Banco de Venezuela"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`transferencia-reference-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        N° de Referencia *
+                                      </Label>
+                                      <Input
+                                        id={`transferencia-reference-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.transferenciaReference || ""
+                                        }
+                                        onChange={(e) =>
+                                          updatePartialPaymentDetails(
+                                            payment.id,
+                                            "transferenciaReference",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ingrese el número de referencia"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {payment.method === "Efectivo" && (
+                                <div className="space-y-3 pt-2 border-t">
+                                  <Label className="text-sm font-medium">
+                                    Información de Pago en Efectivo
+                                  </Label>
+                                  <div className="space-y-2">
+                                    <Label
+                                      htmlFor={`cash-amount-${payment.id}`}
+                                      className="text-xs"
+                                    >
+                                      Cantidad en efectivo *
+                                    </Label>
+                                    <Input
+                                      id={`cash-amount-${payment.id}`}
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={
+                                        payment.paymentDetails?.cashAmount ===
+                                          "0" ||
+                                        payment.paymentDetails?.cashAmount ===
+                                          "" ||
+                                        !payment.paymentDetails?.cashAmount
+                                          ? ""
+                                          : payment.paymentDetails.cashAmount
+                                      }
+                                      onChange={(e) =>
+                                        updatePartialPaymentDetails(
+                                          payment.id,
+                                          "cashAmount",
+                                          e.target.value
+                                        )
+                                      }
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ))}
 
@@ -967,6 +1447,290 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                   {((totalPaid / total) * 100).toFixed(1)}%
                                 </span>
                               </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {paymentType === "mixto" && (
+                      <div className="space-y-4">
+                        <div className="p-4 bg-muted rounded-lg">
+                          <div className="text-sm text-muted-foreground mb-2">
+                            Total del pedido
+                          </div>
+                          <div className="text-lg font-semibold">
+                            ${total.toFixed(2)}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <Label>Métodos de Pago</Label>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={addMixedPayment}
+                            >
+                              <Plus className="w-4 h-4 mr-2" />
+                              Agregar Método
+                            </Button>
+                          </div>
+
+                          {mixedPayments.map((payment) => (
+                            <div
+                              key={payment.id}
+                              className="space-y-4 p-4 border rounded-lg"
+                            >
+                              <div className="flex gap-2 items-end">
+                                <div className="flex-1">
+                                  <Label className="text-xs">Monto</Label>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    max={total}
+                                    value={
+                                      payment.amount === 0 ? "" : payment.amount
+                                    }
+                                    onChange={(e) =>
+                                      updateMixedPayment(
+                                        payment.id,
+                                        "amount",
+                                        Number.parseFloat(e.target.value) || 0
+                                      )
+                                    }
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                                <div className="flex-1">
+                                  <Label className="text-xs">Método</Label>
+                                  <Select
+                                    value={payment.method}
+                                    onValueChange={(value) =>
+                                      updateMixedPayment(
+                                        payment.id,
+                                        "method",
+                                        value
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Método" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {paymentMethods.map((method) => (
+                                        <SelectItem key={method} value={method}>
+                                          {method}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="flex-1">
+                                  <Label className="text-xs">Fecha</Label>
+                                  <Input
+                                    type="date"
+                                    value={payment.date}
+                                    onChange={(e) =>
+                                      updateMixedPayment(
+                                        payment.id,
+                                        "date",
+                                        e.target.value
+                                      )
+                                    }
+                                  />
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeMixedPayment(payment.id)}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+
+                              {/* Campos condicionales según método de pago */}
+                              {payment.method === "Pago Móvil" && (
+                                <div className="space-y-3 pt-2 border-t">
+                                  <Label className="text-sm font-medium">
+                                    Información de Pago Móvil
+                                  </Label>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`mixed-pagomovil-reference-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        N° Referencia *
+                                      </Label>
+                                      <Input
+                                        id={`mixed-pagomovil-reference-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.pagomovilReference || ""
+                                        }
+                                        onChange={(e) =>
+                                          updateMixedPaymentDetails(
+                                            payment.id,
+                                            "pagomovilReference",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ingrese el número de referencia"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`mixed-pagomovil-bank-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Banco Emisor *
+                                      </Label>
+                                      <Input
+                                        id={`mixed-pagomovil-bank-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.pagomovilBank || ""
+                                        }
+                                        onChange={(e) =>
+                                          updateMixedPaymentDetails(
+                                            payment.id,
+                                            "pagomovilBank",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ej: Banco de Venezuela"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`mixed-pagomovil-phone-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Teléfono *
+                                      </Label>
+                                      <Input
+                                        id={`mixed-pagomovil-phone-${payment.id}`}
+                                        type="tel"
+                                        value={
+                                          payment.paymentDetails
+                                            ?.pagomovilPhone || ""
+                                        }
+                                        onChange={(e) =>
+                                          updateMixedPaymentDetails(
+                                            payment.id,
+                                            "pagomovilPhone",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="0412-1234567"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {payment.method === "Transferencia" && (
+                                <div className="space-y-3 pt-2 border-t">
+                                  <Label className="text-sm font-medium">
+                                    Información de Transferencia
+                                  </Label>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`mixed-transferencia-bank-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Banco *
+                                      </Label>
+                                      <Input
+                                        id={`mixed-transferencia-bank-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.transferenciaBank || ""
+                                        }
+                                        onChange={(e) =>
+                                          updateMixedPaymentDetails(
+                                            payment.id,
+                                            "transferenciaBank",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ej: Banco de Venezuela"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`mixed-transferencia-reference-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        N° de Referencia *
+                                      </Label>
+                                      <Input
+                                        id={`mixed-transferencia-reference-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.transferenciaReference || ""
+                                        }
+                                        onChange={(e) =>
+                                          updateMixedPaymentDetails(
+                                            payment.id,
+                                            "transferenciaReference",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ingrese el número de referencia"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+
+                          {paymentType === "mixto" && (
+                            <div className="p-4 bg-muted rounded-lg space-y-2">
+                              <div className="flex justify-between text-sm">
+                                <span>Total pagado:</span>
+                                <span
+                                  className={
+                                    isMixedPaymentsValid
+                                      ? "text-green-600 font-semibold"
+                                      : "text-red-600 font-semibold"
+                                  }
+                                >
+                                  ${mixedPaymentsTotal.toFixed(2)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span>Total del pedido:</span>
+                                <span>${total.toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between font-semibold">
+                                <span>Restante:</span>
+                                <span
+                                  className={
+                                    isMixedPaymentsValid
+                                      ? "text-green-600"
+                                      : "text-red-600"
+                                  }
+                                >
+                                  ${Math.abs(mixedPaymentsRemaining).toFixed(2)}
+                                  {!isMixedPaymentsValid && (
+                                    <span className="text-xs ml-2">
+                                      {mixedPaymentsRemaining > 0
+                                        ? "(falta)"
+                                        : "(sobra)"}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                              {isMixedPaymentsValid && (
+                                <div className="pt-2 border-t text-green-600 font-medium text-sm"></div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1016,7 +1780,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           id="deliveryExpenses"
                           type="number"
                           step="0.01"
-                          value={deliveryExpenses}
+                          value={deliveryExpenses === 0 ? "" : deliveryExpenses}
                           onChange={(e) =>
                             setDeliveryExpenses(
                               Number.parseFloat(e.target.value) || 0
@@ -1030,24 +1794,60 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
                   {/* Descuento general */}
                   <div className="space-y-2">
-                    <Label htmlFor="generalDiscount">
-                      Descuento general ($)
-                    </Label>
-                    <Input
-                      id="generalDiscount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={generalDiscount}
-                      onChange={(e) =>
-                        handleGeneralDiscountChange(
-                          Number.parseFloat(e.target.value) || 0
-                        )
-                      }
-                      placeholder="0.00"
-                      disabled={selectedProducts.length === 0}
-                      className="w-full sm:w-48"
-                    />
+                    <Label htmlFor="generalDiscount">Descuento general</Label>
+                    <div className="flex gap-2 items-center">
+                      <Select
+                        value={generalDiscountType}
+                        onValueChange={(value: "monto" | "porcentaje") =>
+                          handleGeneralDiscountTypeChange(value)
+                        }
+                        disabled={selectedProducts.length === 0}
+                      >
+                        <SelectTrigger className="w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="monto">Monto ($)</SelectItem>
+                          <SelectItem value="porcentaje">
+                            Porcentaje (%)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        id="generalDiscount"
+                        type="number"
+                        min="0"
+                        step={
+                          generalDiscountType === "porcentaje" ? "0.1" : "0.01"
+                        }
+                        max={
+                          generalDiscountType === "porcentaje"
+                            ? 100
+                            : subtotalAfterProductDiscounts
+                        }
+                        value={
+                          generalDiscount === 0
+                            ? ""
+                            : generalDiscountType === "porcentaje"
+                            ? subtotalAfterProductDiscounts > 0
+                              ? (generalDiscount /
+                                  subtotalAfterProductDiscounts) *
+                                100
+                              : 0
+                            : generalDiscount
+                        }
+                        onChange={(e) =>
+                          handleGeneralDiscountChange(
+                            Number.parseFloat(e.target.value) || 0
+                          )
+                        }
+                        placeholder={
+                          generalDiscountType === "porcentaje" ? "0%" : "0.00"
+                        }
+                        disabled={selectedProducts.length === 0}
+                        className="w-full sm:w-48"
+                      />
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       Este descuento se aplica después de los descuentos
                       individuales por producto.
@@ -1128,7 +1928,16 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       <ClientLookupDialog
         open={isClientLookupOpen}
         onOpenChange={setIsClientLookupOpen}
-        onClientSelect={setSelectedClient}
+        onClientSelect={(client) => {
+          setSelectedClient(client);
+          // Si hay delivery activo y el cliente tiene dirección, cargarla por defecto
+          if (hasDelivery && client.address) {
+            setFormData((prev) => ({
+              ...prev,
+              deliveryAddress: client.address || prev.deliveryAddress,
+            }));
+          }
+        }}
       />
 
       <ProductSelectionDialog

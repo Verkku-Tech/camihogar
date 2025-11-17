@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,58 +21,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, Search, Edit, Power, PowerOff, Filter } from "lucide-react"
-
-interface Client {
-  id: string
-  nombreRazonSocial: string
-  rutId: string
-  direccion: string
-  telefono: string
-  email?: string
-  tipoCliente: "empresa" | "particular"
-  estado: "activo" | "inactivo"
-  fechaCreacion: string
-  tieneNotasDespacho: boolean
-}
-
-const mockClients: Client[] = [
-  {
-    id: "1",
-    nombreRazonSocial: "María González",
-    rutId: "V-12345678",
-    direccion: "Av. Libertador, Caracas",
-    telefono: "+58 412 555-0123",
-    email: "maria.gonzalez@email.com",
-    tipoCliente: "particular",
-    estado: "activo",
-    fechaCreacion: "2024-01-15",
-    tieneNotasDespacho: true,
-  },
-  {
-    id: "2",
-    nombreRazonSocial: "Constructora Los Andes C.A.",
-    rutId: "J-98765432-1",
-    direccion: "Zona Industrial, Valencia",
-    telefono: "+58 241 555-0456",
-    email: "ventas@constructoraandes.com",
-    tipoCliente: "empresa",
-    estado: "activo",
-    fechaCreacion: "2024-02-20",
-    tieneNotasDespacho: false,
-  },
-  {
-    id: "3",
-    nombreRazonSocial: "Carlos Rodríguez",
-    rutId: "V-87654321",
-    direccion: "Centro, Maracay",
-    telefono: "+58 243 555-0789",
-    email: "carlos.rodriguez@email.com",
-    tipoCliente: "particular",
-    estado: "inactivo",
-    fechaCreacion: "2023-12-10",
-    tieneNotasDespacho: false,
-  },
-]
+import { getClients, addClient, updateClient, type Client } from "@/lib/storage"
 
 const tipoClienteOptions = [
   { value: "particular", label: "Particular" },
@@ -80,7 +29,8 @@ const tipoClienteOptions = [
 ]
 
 export function ClientsPage() {
-  const [clients, setClients] = useState<Client[]>(mockClients)
+  const [clients, setClients] = useState<Client[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterTipoCliente, setFilterTipoCliente] = useState<string>("all")
   const [filterEstado, setFilterEstado] = useState<string>("all")
@@ -97,6 +47,21 @@ export function ClientsPage() {
     tipoCliente: "particular" as Client["tipoCliente"],
   })
 
+  useEffect(() => {
+    const loadClients = async () => {
+      try {
+        setIsLoading(true)
+        const loadedClients = await getClients()
+        setClients(loadedClients)
+      } catch (error) {
+        console.error("Error loading clients:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadClients()
+  }, [])
+
   const filteredClients = clients.filter((client) => {
     const matchesSearch =
       client.nombreRazonSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -110,28 +75,26 @@ export function ClientsPage() {
     return matchesSearch && matchesTipoCliente && matchesEstado
   })
 
-  const handleCreateClient = () => {
+  const handleCreateClient = async () => {
     const documentExists = clients.some((c) => c.rutId === formData.rutId)
     if (documentExists) {
       alert("El RUT/ID ya existe en el sistema")
       return
     }
 
-    const newClient: Client = {
-      id: Date.now().toString(),
-      ...formData,
-      estado: "activo",
-      fechaCreacion: new Date().toISOString().split("T")[0],
-      tieneNotasDespacho: false,
+    try {
+      const newClient = await addClient(formData)
+      setClients([...clients, newClient])
+      setIsCreateDialogOpen(false)
+      resetForm()
+      alert("Cliente creado exitosamente")
+    } catch (error) {
+      console.error("Error creating client:", error)
+      alert("Error al crear el cliente")
     }
-
-    setClients([...clients, newClient])
-    setIsCreateDialogOpen(false)
-    resetForm()
-    alert("Cliente creado exitosamente")
   }
 
-  const handleEditClient = () => {
+  const handleEditClient = async () => {
     if (!selectedClient) return
 
     const documentExists = clients.some((c) => c.rutId === formData.rutId && c.id !== selectedClient.id)
@@ -140,28 +103,40 @@ export function ClientsPage() {
       return
     }
 
-    console.log(
-      `[AUDIT LOG] Cliente ${selectedClient.nombreRazonSocial} modificado por usuario en ${new Date().toISOString()}`,
-    )
+    try {
+      console.log(
+        `[AUDIT LOG] Cliente ${selectedClient.nombreRazonSocial} modificado por usuario en ${new Date().toISOString()}`,
+      )
 
-    setClients(clients.map((c) => (c.id === selectedClient.id ? { ...c, ...formData } : c)))
-    setIsEditDialogOpen(false)
-    setSelectedClient(null)
-    resetForm()
-    alert("Cliente actualizado exitosamente")
+      const updatedClient = await updateClient(selectedClient.id, formData)
+      setClients(clients.map((c) => (c.id === selectedClient.id ? updatedClient : c)))
+      setIsEditDialogOpen(false)
+      setSelectedClient(null)
+      resetForm()
+      alert("Cliente actualizado exitosamente")
+    } catch (error) {
+      console.error("Error updating client:", error)
+      alert("Error al actualizar el cliente")
+    }
   }
 
-  const handleToggleStatus = (client: Client) => {
+  const handleToggleStatus = async (client: Client) => {
     if (client.estado === "activo" && client.tieneNotasDespacho) {
       alert("No se puede desactivar este cliente porque tiene Notas de Despacho asociadas")
       setDeactivateClient(null)
       return
     }
 
-    setClients(
-      clients.map((c) => (c.id === client.id ? { ...c, estado: c.estado === "activo" ? "inactivo" : "activo" } : c)),
-    )
-    setDeactivateClient(null)
+    try {
+      const updatedClient = await updateClient(client.id, {
+        estado: client.estado === "activo" ? "inactivo" : "activo",
+      })
+      setClients(clients.map((c) => (c.id === client.id ? updatedClient : c)))
+      setDeactivateClient(null)
+    } catch (error) {
+      console.error("Error updating client status:", error)
+      alert("Error al actualizar el estado del cliente")
+    }
   }
 
   const resetForm = () => {
@@ -350,81 +325,83 @@ export function ClientsPage() {
           <CardTitle>Lista de Clientes ({filteredClients.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>RUT/ID</TableHead>
-                  <TableHead>Teléfono</TableHead>
-                  <TableHead>Tipo de Cliente</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredClients.map((client) => (
-                  <TableRow key={client.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{client.nombreRazonSocial}</div>
-                        {client.email && <div className="text-sm text-muted-foreground">{client.email}</div>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{client.rutId}</TableCell>
-                    <TableCell>{client.telefono}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {tipoClienteOptions.find((t) => t.value === client.tipoCliente)?.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={client.estado === "activo" ? "default" : "secondary"}
-                        className={client.estado === "activo" ? "bg-green-100 text-green-800" : ""}
-                      >
-                        {client.estado === "activo" ? "Activo" : "Inactivo"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => openEditDialog(client)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeactivateClient(client)}
-                          className={
-                            client.estado === "activo"
-                              ? "text-red-600 hover:text-red-700"
-                              : "text-green-600 hover:text-green-700"
-                          }
-                          title={
-                            client.tieneNotasDespacho && client.estado === "activo"
-                              ? "Cliente con Notas de Despacho asociadas"
-                              : ""
-                          }
-                        >
-                          {client.estado === "activo" ? (
-                            <PowerOff className="w-4 h-4" />
-                          ) : (
-                            <Power className="w-4 h-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </TableCell>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Cargando clientes...</div>
+          ) : filteredClients.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No se encontraron clientes que coincidan con los filtros aplicados.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>RUT/ID</TableHead>
+                    <TableHead>Teléfono</TableHead>
+                    <TableHead>Tipo de Cliente</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            {filteredClients.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                No se encontraron clientes que coincidan con los filtros aplicados.
-              </div>
-            )}
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {filteredClients.map((client) => (
+                    <TableRow key={client.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{client.nombreRazonSocial}</div>
+                          {client.email && <div className="text-sm text-muted-foreground">{client.email}</div>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{client.rutId}</TableCell>
+                      <TableCell>{client.telefono}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {tipoClienteOptions.find((t) => t.value === client.tipoCliente)?.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={client.estado === "activo" ? "default" : "secondary"}
+                          className={client.estado === "activo" ? "bg-green-100 text-green-800" : ""}
+                        >
+                          {client.estado === "activo" ? "Activo" : "Inactivo"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => openEditDialog(client)}>
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeactivateClient(client)}
+                            className={
+                              client.estado === "activo"
+                                ? "text-red-600 hover:text-red-700"
+                                : "text-green-600 hover:text-green-700"
+                            }
+                            title={
+                              client.tieneNotasDespacho && client.estado === "activo"
+                                ? "Cliente con Notas de Despacho asociadas"
+                                : ""
+                            }
+                          >
+                            {client.estado === "activo" ? (
+                              <PowerOff className="w-4 h-4" />
+                            ) : (
+                              <Power className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 

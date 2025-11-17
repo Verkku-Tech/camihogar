@@ -259,14 +259,6 @@ export const deleteProduct = async (id: number): Promise<void> => {
   }
 };
 
-// Agregar nuevas constantes de claves
-const ORDERS_KEY = "camihogar_orders";
-const CLIENTS_KEY = "camihogar_clients";
-const PROVIDERS_KEY = "camihogar_providers";
-const STORES_KEY = "camihogar_stores";
-const USERS_KEY = "camihogar_users";
-const VENDORS_KEY = "camihogar_vendors";
-
 // ===== INTERFACES =====
 
 // Agregar estas interfaces ANTES de Order
@@ -280,6 +272,7 @@ export interface OrderProduct {
   stock: number; // Stock disponible
   attributes?: Record<string, string | number>;
   discount?: number; // Descuento aplicado al producto (monto)
+  observations?: string; // Observaciones específicas del producto
 }
 
 export interface PartialPayment {
@@ -287,6 +280,17 @@ export interface PartialPayment {
   amount: number;
   method: string;
   date: string;
+  paymentDetails?: {
+    // Pago Móvil
+    pagomovilReference?: string;
+    pagomovilBank?: string;
+    pagomovilPhone?: string;
+    // Transferencia
+    transferenciaBank?: string;
+    transferenciaReference?: string;
+    // Efectivo
+    cashAmount?: string;
+  };
 }
 
 export interface Order {
@@ -306,7 +310,7 @@ export interface Order {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
-  paymentType: "directo" | "apartado";
+  paymentType: "directo" | "apartado" | "mixto";
   paymentMethod: string;
   paymentDetails?: {
     // Pago Móvil
@@ -322,6 +326,7 @@ export interface Order {
     cashAmount?: string;
   };
   partialPayments?: PartialPayment[]; // Ahora usa la interfaz exportada
+  mixedPayments?: PartialPayment[]; // Para pagos mixtos
   deliveryAddress?: string;
   hasDelivery: boolean;
   status: "Pendiente" | "Apartado" | "Completado" | "Cancelado";
@@ -329,6 +334,7 @@ export interface Order {
   updatedAt: string;
   productMarkups?: Record<string, number>;
   createSupplierOrder?: boolean;
+  observations?: string; // Observaciones generales del pedido
 }
 
 export interface Client {
@@ -488,273 +494,403 @@ export const deleteOrder = async (id: string): Promise<void> => {
   }
 };
 
-// ===== CLIENTS STORAGE =====
+// ===== CLIENTS STORAGE (IndexedDB) =====
 
-export const getClients = (): Client[] => {
-  if (typeof window === "undefined") return [];
+export const getClients = async (): Promise<Client[]> => {
   try {
-    const stored = localStorage.getItem(CLIENTS_KEY);
-    if (stored) return JSON.parse(stored);
+    return await db.getAll<Client>("clients");
   } catch (error) {
-    console.error("Error loading clients from localStorage:", error);
-  }
-  return [];
-};
-
-export const saveClients = (clients: Client[]): void => {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients));
-  } catch (error) {
-    console.error("Error saving clients to localStorage:", error);
+    console.error("Error loading clients from IndexedDB:", error);
+    return [];
   }
 };
 
-export const addClient = (
+export const getClient = async (id: string): Promise<Client | undefined> => {
+  try {
+    return await db.get<Client>("clients", id);
+  } catch (error) {
+    console.error("Error loading client from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const addClient = async (
   client: Omit<Client, "id" | "fechaCreacion" | "tieneNotasDespacho">
-): Client => {
-  const clients = getClients();
-  const newClient: Client = {
-    ...client,
-    id: Date.now().toString(),
-    fechaCreacion: new Date().toISOString().split("T")[0],
-    tieneNotasDespacho: false,
-  };
-  saveClients([...clients, newClient]);
-  return newClient;
-};
-
-export const updateClient = (id: string, updates: Partial<Client>): void => {
-  const clients = getClients();
-  const updatedClients = clients.map((client) =>
-    client.id === id ? { ...client, ...updates } : client
-  );
-  saveClients(updatedClients);
-};
-
-export const deleteClient = (id: string): void => {
-  const clients = getClients();
-  saveClients(clients.filter((client) => client.id !== id));
-};
-
-// ===== PROVIDERS STORAGE =====
-
-export const getProviders = (): Provider[] => {
-  if (typeof window === "undefined") return [];
+): Promise<Client> => {
   try {
-    const stored = localStorage.getItem(PROVIDERS_KEY);
-    if (stored) return JSON.parse(stored);
-  } catch (error) {
-    console.error("Error loading providers from localStorage:", error);
-  }
-  return [];
-};
+    const newClient: Client = {
+      ...client,
+      id: Date.now().toString(),
+      fechaCreacion: new Date().toISOString().split("T")[0],
+      tieneNotasDespacho: false,
+    };
 
-export const saveProviders = (providers: Provider[]): void => {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(PROVIDERS_KEY, JSON.stringify(providers));
+    await db.add("clients", newClient);
+    console.log("✅ Cliente guardado en IndexedDB:", newClient.nombreRazonSocial);
+    return newClient;
   } catch (error) {
-    console.error("Error saving providers to localStorage:", error);
+    console.error("Error adding client to IndexedDB:", error);
+    throw error;
   }
 };
 
-export const addProvider = (
+export const updateClient = async (
+  id: string,
+  updates: Partial<Client>
+): Promise<Client> => {
+  try {
+    const existingClient = await getClient(id);
+    if (!existingClient) {
+      throw new Error(`Client with id ${id} not found`);
+    }
+
+    const updatedClient: Client = {
+      ...existingClient,
+      ...updates,
+    };
+
+    await db.update("clients", updatedClient);
+    return updatedClient;
+  } catch (error) {
+    console.error("Error updating client in IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const deleteClient = async (id: string): Promise<void> => {
+  try {
+    await db.remove("clients", id);
+  } catch (error) {
+    console.error("Error deleting client from IndexedDB:", error);
+    throw error;
+  }
+};
+
+// ===== PROVIDERS STORAGE (IndexedDB) =====
+
+export const getProviders = async (): Promise<Provider[]> => {
+  try {
+    return await db.getAll<Provider>("providers");
+  } catch (error) {
+    console.error("Error loading providers from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const getProvider = async (id: string): Promise<Provider | undefined> => {
+  try {
+    return await db.get<Provider>("providers", id);
+  } catch (error) {
+    console.error("Error loading provider from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const addProvider = async (
   provider: Omit<Provider, "id" | "fechaCreacion">
-): Provider => {
-  const providers = getProviders();
-  const newProvider: Provider = {
-    ...provider,
-    id: Date.now().toString(),
-    fechaCreacion: new Date().toISOString().split("T")[0],
-  };
-  saveProviders([...providers, newProvider]);
-  return newProvider;
+): Promise<Provider> => {
+  try {
+    const newProvider: Provider = {
+      ...provider,
+      id: Date.now().toString(),
+      fechaCreacion: new Date().toISOString().split("T")[0],
+    };
+
+    await db.add("providers", newProvider);
+    console.log("✅ Proveedor guardado en IndexedDB:", newProvider.razonSocial);
+    return newProvider;
+  } catch (error) {
+    console.error("Error adding provider to IndexedDB:", error);
+    throw error;
+  }
 };
 
-export const updateProvider = (
+export const updateProvider = async (
   id: string,
   updates: Partial<Provider>
-): void => {
-  const providers = getProviders();
-  const updatedProviders = providers.map((provider) =>
-    provider.id === id ? { ...provider, ...updates } : provider
-  );
-  saveProviders(updatedProviders);
-};
-
-export const deleteProvider = (id: string): void => {
-  const providers = getProviders();
-  saveProviders(providers.filter((provider) => provider.id !== id));
-};
-
-// ===== STORES STORAGE =====
-
-export const getStores = (): Store[] => {
-  if (typeof window === "undefined") return [];
+): Promise<Provider> => {
   try {
-    const stored = localStorage.getItem(STORES_KEY);
-    if (stored) return JSON.parse(stored);
-  } catch (error) {
-    console.error("Error loading stores from localStorage:", error);
-  }
-  return [];
-};
+    const existingProvider = await getProvider(id);
+    if (!existingProvider) {
+      throw new Error(`Provider with id ${id} not found`);
+    }
 
-export const saveStores = (stores: Store[]): void => {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORES_KEY, JSON.stringify(stores));
+    const updatedProvider: Provider = {
+      ...existingProvider,
+      ...updates,
+    };
+
+    await db.update("providers", updatedProvider);
+    return updatedProvider;
   } catch (error) {
-    console.error("Error saving stores to localStorage:", error);
+    console.error("Error updating provider in IndexedDB:", error);
+    throw error;
   }
 };
 
-export const addStore = (
+export const deleteProvider = async (id: string): Promise<void> => {
+  try {
+    await db.remove("providers", id);
+  } catch (error) {
+    console.error("Error deleting provider from IndexedDB:", error);
+    throw error;
+  }
+};
+
+// ===== STORES STORAGE (IndexedDB) =====
+
+export const getStores = async (): Promise<Store[]> => {
+  try {
+    return await db.getAll<Store>("stores");
+  } catch (error) {
+    console.error("Error loading stores from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const getStore = async (id: string): Promise<Store | undefined> => {
+  try {
+    return await db.get<Store>("stores", id);
+  } catch (error) {
+    console.error("Error loading store from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const addStore = async (
   store: Omit<Store, "id" | "createdAt" | "updatedAt">
-): Store => {
-  const stores = getStores();
-  const now = new Date().toISOString();
-  const newStore: Store = {
-    ...store,
-    id: Date.now().toString(),
-    createdAt: now,
-    updatedAt: now,
-  };
-  saveStores([...stores, newStore]);
-  return newStore;
-};
-
-export const updateStore = (id: string, updates: Partial<Store>): void => {
-  const stores = getStores();
-  const updatedStores = stores.map((store) =>
-    store.id === id
-      ? { ...store, ...updates, updatedAt: new Date().toISOString() }
-      : store
-  );
-  saveStores(updatedStores);
-};
-
-export const deleteStore = (id: string): void => {
-  const stores = getStores();
-  saveStores(stores.filter((store) => store.id !== id));
-};
-
-// ===== USERS STORAGE =====
-
-export const getUsers = (): User[] => {
-  if (typeof window === "undefined") return [];
+): Promise<Store> => {
   try {
-    const stored = localStorage.getItem(USERS_KEY);
-    if (stored) return JSON.parse(stored);
-  } catch (error) {
-    console.error("Error loading users from localStorage:", error);
-  }
-  return [];
-};
+    const now = new Date().toISOString();
+    const newStore: Store = {
+      ...store,
+      id: Date.now().toString(),
+      createdAt: now,
+      updatedAt: now,
+    };
 
-export const saveUsers = (users: User[]): void => {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    await db.add("stores", newStore);
+    console.log("✅ Tienda guardada en IndexedDB:", newStore.name);
+    return newStore;
   } catch (error) {
-    console.error("Error saving users to localStorage:", error);
+    console.error("Error adding store to IndexedDB:", error);
+    throw error;
   }
 };
 
-export const addUser = (user: Omit<User, "id" | "createdAt">): User => {
-  const users = getUsers();
-  const newUser: User = {
-    ...user,
-    id: Date.now().toString(),
-    createdAt: new Date().toISOString(),
-  };
-  saveUsers([...users, newUser]);
-  return newUser;
-};
-
-export const updateUser = (id: string, updates: Partial<User>): void => {
-  const users = getUsers();
-  const updatedUsers = users.map((user) =>
-    user.id === id ? { ...user, ...updates } : user
-  );
-  saveUsers(updatedUsers);
-};
-
-export const deleteUser = (id: string): void => {
-  const users = getUsers();
-  saveUsers(users.filter((user) => user.id !== id));
-};
-
-// ===== VENDORS STORAGE =====
-
-export const getVendors = (): Vendor[] => {
-  if (typeof window === "undefined") return [];
+export const updateStore = async (
+  id: string,
+  updates: Partial<Store>
+): Promise<Store> => {
   try {
-    const stored = localStorage.getItem(VENDORS_KEY);
-    if (stored) return JSON.parse(stored);
-  } catch (error) {
-    console.error("Error loading vendors from localStorage:", error);
-  }
-  // Si no hay datos, retornar datos iniciales
-  return [
-    { id: "1", name: "Juan Pérez", role: "Vendedor de tienda", type: "vendor" },
-    { id: "2", name: "Ana López", role: "Vendedor de tienda", type: "vendor" },
-    {
-      id: "3",
-      name: "Carlos Silva",
-      role: "Vendedor de tienda",
-      type: "vendor",
-    },
-    {
-      id: "4",
-      name: "María González",
-      role: "Vendedor Online",
-      type: "referrer",
-    },
-    {
-      id: "5",
-      name: "Pedro Martínez",
-      role: "Vendedor Online",
-      type: "referrer",
-    },
-    {
-      id: "6",
-      name: "Laura Rodríguez",
-      role: "Vendedor Online",
-      type: "referrer",
-    },
-  ];
-};
+    const existingStore = await getStore(id);
+    if (!existingStore) {
+      throw new Error(`Store with id ${id} not found`);
+    }
 
-export const saveVendors = (vendors: Vendor[]): void => {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(VENDORS_KEY, JSON.stringify(vendors));
+    const updatedStore: Store = {
+      ...existingStore,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await db.update("stores", updatedStore);
+    return updatedStore;
   } catch (error) {
-    console.error("Error saving vendors to localStorage:", error);
+    console.error("Error updating store in IndexedDB:", error);
+    throw error;
   }
 };
 
-export const addVendor = (vendor: Omit<Vendor, "id">): Vendor => {
-  const vendors = getVendors();
-  const newVendor: Vendor = {
-    ...vendor,
-    id: Date.now().toString(),
-  };
-  saveVendors([...vendors, newVendor]);
-  return newVendor;
+export const deleteStore = async (id: string): Promise<void> => {
+  try {
+    await db.remove("stores", id);
+  } catch (error) {
+    console.error("Error deleting store from IndexedDB:", error);
+    throw error;
+  }
 };
 
-export const updateVendor = (id: string, updates: Partial<Vendor>): void => {
-  const vendors = getVendors();
-  const updatedVendors = vendors.map((vendor) =>
-    vendor.id === id ? { ...vendor, ...updates } : vendor
-  );
-  saveVendors(updatedVendors);
+// ===== USERS STORAGE (IndexedDB) =====
+
+export const getUsers = async (): Promise<User[]> => {
+  try {
+    return await db.getAll<User>("users");
+  } catch (error) {
+    console.error("Error loading users from IndexedDB:", error);
+    return [];
+  }
 };
 
-export const deleteVendor = (id: string): void => {
-  const vendors = getVendors();
-  saveVendors(vendors.filter((vendor) => vendor.id !== id));
+export const getUser = async (id: string): Promise<User | undefined> => {
+  try {
+    return await db.get<User>("users", id);
+  } catch (error) {
+    console.error("Error loading user from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const addUser = async (
+  user: Omit<User, "id" | "createdAt">
+): Promise<User> => {
+  try {
+    const newUser: User = {
+      ...user,
+      id: Date.now().toString(),
+      createdAt: new Date().toISOString(),
+    };
+
+    await db.add("users", newUser);
+    console.log("✅ Usuario guardado en IndexedDB:", newUser.username);
+    return newUser;
+  } catch (error) {
+    console.error("Error adding user to IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const updateUser = async (
+  id: string,
+  updates: Partial<User>
+): Promise<User> => {
+  try {
+    const existingUser = await getUser(id);
+    if (!existingUser) {
+      throw new Error(`User with id ${id} not found`);
+    }
+
+    const updatedUser: User = {
+      ...existingUser,
+      ...updates,
+    };
+
+    await db.update("users", updatedUser);
+    return updatedUser;
+  } catch (error) {
+    console.error("Error updating user in IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const deleteUser = async (id: string): Promise<void> => {
+  try {
+    await db.remove("users", id);
+  } catch (error) {
+    console.error("Error deleting user from IndexedDB:", error);
+    throw error;
+  }
+};
+
+// ===== VENDORS STORAGE (IndexedDB) =====
+
+const DEFAULT_VENDORS: Vendor[] = [
+  { id: "1", name: "Juan Pérez", role: "Vendedor de tienda", type: "vendor" },
+  { id: "2", name: "Ana López", role: "Vendedor de tienda", type: "vendor" },
+  {
+    id: "3",
+    name: "Carlos Silva",
+    role: "Vendedor de tienda",
+    type: "vendor",
+  },
+  {
+    id: "4",
+    name: "María González",
+    role: "Vendedor Online",
+    type: "referrer",
+  },
+  {
+    id: "5",
+    name: "Pedro Martínez",
+    role: "Vendedor Online",
+    type: "referrer",
+  },
+  {
+    id: "6",
+    name: "Laura Rodríguez",
+    role: "Vendedor Online",
+    type: "referrer",
+  },
+];
+
+export const getVendors = async (): Promise<Vendor[]> => {
+  try {
+    const vendors = await db.getAll<Vendor>("vendors");
+    // Si no hay datos, inicializar con datos por defecto
+    if (vendors.length === 0) {
+      // Inicializar con datos por defecto
+      for (const vendor of DEFAULT_VENDORS) {
+        try {
+          await db.add("vendors", vendor);
+        } catch (error) {
+          // Ignorar errores de duplicados si ya existen
+          console.warn("Vendor already exists:", vendor.id);
+        }
+      }
+      return DEFAULT_VENDORS;
+    }
+    return vendors;
+  } catch (error) {
+    console.error("Error loading vendors from IndexedDB:", error);
+    return DEFAULT_VENDORS;
+  }
+};
+
+export const getVendor = async (id: string): Promise<Vendor | undefined> => {
+  try {
+    return await db.get<Vendor>("vendors", id);
+  } catch (error) {
+    console.error("Error loading vendor from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const addVendor = async (
+  vendor: Omit<Vendor, "id">
+): Promise<Vendor> => {
+  try {
+    const newVendor: Vendor = {
+      ...vendor,
+      id: Date.now().toString(),
+    };
+
+    await db.add("vendors", newVendor);
+    console.log("✅ Vendedor guardado en IndexedDB:", newVendor.name);
+    return newVendor;
+  } catch (error) {
+    console.error("Error adding vendor to IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const updateVendor = async (
+  id: string,
+  updates: Partial<Vendor>
+): Promise<Vendor> => {
+  try {
+    const existingVendor = await getVendor(id);
+    if (!existingVendor) {
+      throw new Error(`Vendor with id ${id} not found`);
+    }
+
+    const updatedVendor: Vendor = {
+      ...existingVendor,
+      ...updates,
+    };
+
+    await db.update("vendors", updatedVendor);
+    return updatedVendor;
+  } catch (error) {
+    console.error("Error updating vendor in IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const deleteVendor = async (id: string): Promise<void> => {
+  try {
+    await db.remove("vendors", id);
+  } catch (error) {
+    console.error("Error deleting vendor from IndexedDB:", error);
+    throw error;
+  }
 };
