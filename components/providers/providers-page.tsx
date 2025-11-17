@@ -332,77 +332,74 @@ export function ProvidersPage() {
         <CardContent>
           {isLoading ? (
             <div className="text-center py-8 text-muted-foreground">Cargando proveedores...</div>
+          ) : filteredProviders.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No se encontraron proveedores que coincidan con los filtros aplicados.
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Razón Social</TableHead>
-                  <TableHead>RIF</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Teléfono</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredProviders.map((provider) => (
-                  <TableRow key={provider.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{provider.razonSocial}</div>
-                        <div className="text-sm text-muted-foreground">{provider.contacto}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{provider.rif}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{tipoOptions.find((t) => t.value === provider.tipo)?.label}</Badge>
-                    </TableCell>
-                    <TableCell>{provider.telefono}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={provider.estado === "activo" ? "default" : "secondary"}
-                        className={provider.estado === "activo" ? "bg-green-100 text-green-800" : ""}
-                      >
-                        {provider.estado === "activo" ? "Activo" : "Inactivo"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => openEditDialog(provider)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeactivateProvider(provider)}
-                          className={
-                            provider.estado === "activo"
-                              ? "text-red-600 hover:text-red-700"
-                              : "text-green-600 hover:text-green-700"
-                          }
-                        >
-                          {provider.estado === "activo" ? (
-                            <PowerOff className="w-4 h-4" />
-                          ) : (
-                            <Power className="w-4 h-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </TableCell>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Razón Social</TableHead>
+                    <TableHead>RIF</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Teléfono</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-                {filteredProviders.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No se encontraron proveedores que coincidan con los filtros aplicados.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {filteredProviders.map((provider) => (
+                    <TableRow key={provider.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{provider.razonSocial}</div>
+                          <div className="text-sm text-muted-foreground">{provider.contacto}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{provider.rif}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{tipoOptions.find((t) => t.value === provider.tipo)?.label}</Badge>
+                      </TableCell>
+                      <TableCell>{provider.telefono}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={provider.estado === "activo" ? "default" : "secondary"}
+                          className={provider.estado === "activo" ? "bg-green-100 text-green-800" : ""}
+                        >
+                          {provider.estado === "activo" ? "Activo" : "Inactivo"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => openEditDialog(provider)}>
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeactivateProvider(provider)}
+                            className={
+                              provider.estado === "activo"
+                                ? "text-red-600 hover:text-red-700"
+                                : "text-green-600 hover:text-green-700"
+                            }
+                          >
+                            {provider.estado === "activo" ? (
+                              <PowerOff className="w-4 h-4" />
+                            ) : (
+                              <Power className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
