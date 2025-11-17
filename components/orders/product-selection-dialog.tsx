@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Search, Plus } from "lucide-react"
 import { getProducts, type OrderProduct, type Product } from "@/lib/storage"
+import { ProductEditDialog } from "@/components/orders/product-edit-dialog"
 
 interface ProductSelectionDialogProps {
   open: boolean
@@ -25,6 +26,8 @@ export function ProductSelectionDialog({
   const [searchTerm, setSearchTerm] = useState("")
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [products, setProducts] = useState<Product[]>([])
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [productToEdit, setProductToEdit] = useState<OrderProduct | null>(null)
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -61,6 +64,26 @@ export function ProductSelectionDialog({
     const productKey = product.id.toString()
     const quantity = quantities[productKey] || 1
     const existingProduct = selectedProducts.find((p) => p.id === productKey)
+    const cloneAttributes = (attrs?: Record<string, any>) => {
+      if (!attrs) return {}
+      const cloned: Record<string, any> = {}
+      Object.entries(attrs).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+          cloned[key] = [...value]
+        } else if (value && typeof value === "object") {
+          cloned[key] = { ...value }
+        } else {
+          cloned[key] = value
+        }
+      })
+      return cloned
+    }
+    const mergedAttributes =
+      existingProduct?.attributes !== undefined
+        ? cloneAttributes(existingProduct.attributes)
+        : cloneAttributes(product.attributes)
+    
+    // Preparar producto y abrir modal de edición
     const newProduct: OrderProduct = {
       id: productKey,
       name: product.name,
@@ -68,24 +91,31 @@ export function ProductSelectionDialog({
       quantity,
       total: product.price * quantity,
       category: product.category,
-      stock: product.stock, // Added stock field to order product
-      attributes: existingProduct?.attributes || {},
+      stock: product.stock,
+      attributes: mergedAttributes,
       discount: existingProduct?.discount ?? 0,
     }
+    
+    setProductToEdit(newProduct)
+    setIsEditDialogOpen(true)
+  }
 
-    const existingProductIndex = selectedProducts.findIndex((p) => p.id === productKey)
+  const handleConfirmAdd = (product: OrderProduct) => {
+    const existingProductIndex = selectedProducts.findIndex((p) => p.id === product.id)
     let updatedProducts: OrderProduct[]
 
     if (existingProductIndex >= 0) {
       updatedProducts = selectedProducts.map((p, index) =>
-        index === existingProductIndex ? { ...newProduct } : p,
+        index === existingProductIndex ? product : p,
       )
     } else {
-      updatedProducts = [...selectedProducts, newProduct]
+      updatedProducts = [...selectedProducts, product]
     }
 
     onProductsSelect(updatedProducts)
-    setQuantities((prev) => ({ ...prev, [productKey]: 1 }))
+    setIsEditDialogOpen(false)
+    setProductToEdit(null)
+    setQuantities((prev) => ({ ...prev, [product.id]: 1 }))
   }
 
   const isProductSelected = (productId: string) => {
@@ -98,11 +128,12 @@ export function ProductSelectionDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Seleccionar Productos</DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Seleccionar Productos</DialogTitle>
+          </DialogHeader>
 
         <div className="space-y-4">
           <div className="relative">
@@ -192,10 +223,19 @@ export function ProductSelectionDialog({
           )}
         </div>
 
-        <div className="flex justify-end">
-          <Button onClick={() => onOpenChange(false)}>Cerrar</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+          <div className="flex justify-end">
+            <Button onClick={() => onOpenChange(false)}>Cerrar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ProductEditDialog
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        product={productToEdit}
+        onProductUpdate={handleConfirmAdd}
+        mode="add"
+      />
+    </>
   )
 }

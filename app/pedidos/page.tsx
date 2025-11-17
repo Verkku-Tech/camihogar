@@ -10,8 +10,18 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { NewOrderDialog } from "@/components/orders/new-order-dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Search, Plus, Eye, Edit, Trash2 } from "lucide-react"
-import { getOrders, type Order } from "@/lib/storage"
+import { getOrders, deleteOrder, type Order } from "@/lib/storage"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -32,6 +42,8 @@ export default function PedidosPage() {
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -62,6 +74,39 @@ export default function PedidosPage() {
       order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.vendorName.toLowerCase().includes(searchTerm.toLowerCase()),
   )
+
+  const handleDelete = async () => {
+    if (!orderToDelete) return
+
+    try {
+      await deleteOrder(orderToDelete.id)
+      // Refrescar la lista de pedidos
+      const loadedOrders = await getOrders()
+      setOrders(loadedOrders)
+      setIsDeleteDialogOpen(false)
+      setOrderToDelete(null)
+    } catch (error) {
+      console.error("Error deleting order:", error)
+      alert("Error al eliminar el pedido. Por favor intenta nuevamente.")
+    }
+  }
+
+  const handleView = (order: Order) => {
+    // TODO: Implementar vista de detalles del pedido
+    console.log("Ver pedido:", order)
+    alert(`Ver detalles del pedido ${order.orderNumber}\nCliente: ${order.clientName}\nTotal: $${order.total.toFixed(2)}`)
+  }
+
+  const handleEdit = (order: Order) => {
+    // TODO: Implementar edición del pedido
+    console.log("Editar pedido:", order)
+    alert(`Editar pedido ${order.orderNumber}\nEsta funcionalidad será implementada próximamente.`)
+  }
+
+  const handleDeleteClick = (order: Order) => {
+    setOrderToDelete(order)
+    setIsDeleteDialogOpen(true)
+  }
 
   return (
     <ProtectedRoute>
@@ -137,13 +182,29 @@ export default function PedidosPage() {
                             <TableCell>{order.products.length}</TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
-                                <Button variant="ghost" size="sm">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleView(order)}
+                                  title="Ver detalles"
+                                >
                                   <Eye className="w-4 h-4" />
                                 </Button>
-                                <Button variant="ghost" size="sm">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEdit(order)}
+                                  title="Editar pedido"
+                                >
                                   <Edit className="w-4 h-4" />
                                 </Button>
-                                <Button variant="ghost" size="sm">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteClick(order)}
+                                  title="Eliminar pedido"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                                >
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
                               </div>
@@ -170,6 +231,37 @@ export default function PedidosPage() {
           }
         }}
       />
+
+      {/* Dialog de confirmación de eliminación */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar pedido?</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas eliminar el pedido "{orderToDelete?.orderNumber}"?
+              <br />
+              <span className="text-sm text-muted-foreground mt-2 block">
+                Cliente: {orderToDelete?.clientName} - Total: ${orderToDelete?.total.toFixed(2)}
+              </span>
+              <br />
+              <span className="text-sm font-medium text-red-600 mt-2 block">
+                Esta acción no se puede deshacer.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setOrderToDelete(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDelete}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ProtectedRoute>
   )
 }

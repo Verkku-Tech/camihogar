@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -29,8 +29,40 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Search, Plus, Edit, Trash2, Eye, EyeOff } from "lucide-react"
+import { getUsers, addUser, updateUser, deleteUser, type User } from "@/lib/storage"
 
-interface User {
+// Helper para mapear roles entre el formato del componente y el formato de storage
+const mapRoleToStorage = (role: string): User["role"] => {
+  const roleMap: Record<string, User["role"]> = {
+    "Super Administrador": "Super Administrator",
+    "Administrador": "Administrator",
+    "Supervisor": "Supervisor",
+    "Vendedor de tienda": "Store Seller",
+    "Vendedor Online": "Online Seller",
+  }
+  return roleMap[role] || "Store Seller"
+}
+
+const mapRoleFromStorage = (role: User["role"]): string => {
+  const roleMap: Record<User["role"], string> = {
+    "Super Administrator": "Super Administrador",
+    "Administrator": "Administrador",
+    "Supervisor": "Supervisor",
+    "Store Seller": "Vendedor de tienda",
+    "Online Seller": "Vendedor Online",
+  }
+  return roleMap[role] || "Vendedor de tienda"
+}
+
+const mapStatusToStorage = (status: string): User["status"] => {
+  return status === "Activo" ? "active" : "inactive"
+}
+
+const mapStatusFromStorage = (status: User["status"]): string => {
+  return status === "active" ? "Activo" : "Inactivo"
+}
+
+interface UserDisplay {
   id: string
   fullName: string
   username: string
@@ -40,44 +72,15 @@ interface User {
   createdAt: string
 }
 
-const mockUsers: User[] = [
-  {
-    id: "1",
-    fullName: "Juan Pérez",
-    username: "jperez",
-    email: "juan.perez@camihogar.com",
-    role: "Super Administrador",
-    status: "Activo",
-    createdAt: "2024-01-15",
-  },
-  {
-    id: "2",
-    fullName: "María González",
-    username: "mgonzalez",
-    email: "maria.gonzalez@camihogar.com",
-    role: "Administrador",
-    status: "Activo",
-    createdAt: "2024-02-10",
-  },
-  {
-    id: "3",
-    fullName: "Carlos Rodríguez",
-    username: "crodriguez",
-    email: "carlos.rodriguez@camihogar.com",
-    role: "Supervisor",
-    status: "Inactivo",
-    createdAt: "2024-03-05",
-  },
-]
-
 export function UsersPage() {
-  const [users, setUsers] = useState<User[]>(mockUsers)
+  const [users, setUsers] = useState<UserDisplay[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [roleFilter, setRoleFilter] = useState<string>("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [editingUser, setEditingUser] = useState<UserDisplay | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({
     fullName: "",
@@ -89,6 +92,31 @@ export function UsersPage() {
     status: "Activo" as const,
   })
 
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        setIsLoading(true)
+        const loadedUsers = await getUsers()
+        // Convertir de formato storage a formato display
+        const displayUsers: UserDisplay[] = loadedUsers.map((u) => ({
+          id: u.id,
+          fullName: u.name,
+          username: u.username,
+          email: u.email,
+          role: mapRoleFromStorage(u.role) as UserDisplay["role"],
+          status: mapStatusFromStorage(u.status) as UserDisplay["status"],
+          createdAt: u.createdAt || new Date().toISOString(),
+        }))
+        setUsers(displayUsers)
+      } catch (error) {
+        console.error("Error loading users:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadUsers()
+  }, [])
+
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -99,7 +127,7 @@ export function UsersPage() {
     return matchesSearch && matchesStatus && matchesRole
   })
 
-  const handleCreateUser = () => {
+  const handleCreateUser = async () => {
     if (formData.password !== formData.confirmPassword) {
       alert("Las contraseñas no coinciden")
       return
@@ -111,22 +139,34 @@ export function UsersPage() {
       return
     }
 
-    const newUser: User = {
-      id: Date.now().toString(),
-      fullName: formData.fullName,
-      username: formData.username,
-      email: formData.email,
-      role: formData.role as User["role"],
-      status: formData.status,
-      createdAt: new Date().toISOString().split("T")[0],
+    try {
+      const newUser = await addUser({
+        name: formData.fullName,
+        username: formData.username,
+        email: formData.email,
+        role: mapRoleToStorage(formData.role),
+        status: mapStatusToStorage(formData.status),
+      })
+      // Convertir a formato display y agregar
+      const displayUser: UserDisplay = {
+        id: newUser.id,
+        fullName: newUser.name,
+        username: newUser.username,
+        email: newUser.email,
+        role: mapRoleFromStorage(newUser.role) as UserDisplay["role"],
+        status: mapStatusFromStorage(newUser.status) as UserDisplay["status"],
+        createdAt: newUser.createdAt || new Date().toISOString(),
+      }
+      setUsers([...users, displayUser])
+      setIsCreateDialogOpen(false)
+      resetForm()
+    } catch (error) {
+      console.error("Error creating user:", error)
+      alert("Error al crear el usuario")
     }
-
-    setUsers([...users, newUser])
-    setIsCreateDialogOpen(false)
-    resetForm()
   }
 
-  const handleEditUser = () => {
+  const handleEditUser = async () => {
     if (!editingUser) return
 
     const existingUser = users.find(
@@ -137,37 +177,69 @@ export function UsersPage() {
       return
     }
 
-    const updatedUsers = users.map((user) =>
-      user.id === editingUser.id
-        ? {
-            ...user,
-            fullName: formData.fullName,
-            username: formData.username,
-            email: formData.email,
-            role: formData.role as User["role"],
-            status: formData.status,
-          }
-        : user,
-    )
-
-    setUsers(updatedUsers)
-    setIsEditDialogOpen(false)
-    setEditingUser(null)
-    resetForm()
+    try {
+      const updatedUser = await updateUser(editingUser.id, {
+        name: formData.fullName,
+        username: formData.username,
+        email: formData.email,
+        role: mapRoleToStorage(formData.role),
+        status: mapStatusToStorage(formData.status),
+      })
+      // Convertir a formato display
+      const displayUser: UserDisplay = {
+        id: updatedUser.id,
+        fullName: updatedUser.name,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        role: mapRoleFromStorage(updatedUser.role) as UserDisplay["role"],
+        status: mapStatusFromStorage(updatedUser.status) as UserDisplay["status"],
+        createdAt: updatedUser.createdAt || new Date().toISOString(),
+      }
+      setUsers(users.map((user) => (user.id === editingUser.id ? displayUser : user)))
+      setIsEditDialogOpen(false)
+      setEditingUser(null)
+      resetForm()
+    } catch (error) {
+      console.error("Error updating user:", error)
+      alert("Error al actualizar el usuario")
+    }
   }
 
-  const handleToggleStatus = (userId: string) => {
-    const updatedUsers = users.map((user) =>
-      user.id === userId ? { ...user, status: user.status === "Activo" ? "Inactivo" : ("Activo" as const) } : user,
-    )
-    setUsers(updatedUsers)
+  const handleToggleStatus = async (userId: string) => {
+    try {
+      const user = users.find((u) => u.id === userId)
+      if (!user) return
+
+      const updatedUser = await updateUser(userId, {
+        status: mapStatusToStorage(user.status) === "active" ? "inactive" : "active",
+      })
+      const displayUser: UserDisplay = {
+        id: updatedUser.id,
+        fullName: updatedUser.name,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        role: mapRoleFromStorage(updatedUser.role) as UserDisplay["role"],
+        status: mapStatusFromStorage(updatedUser.status) as UserDisplay["status"],
+        createdAt: updatedUser.createdAt || new Date().toISOString(),
+      }
+      setUsers(users.map((u) => (u.id === userId ? displayUser : u)))
+    } catch (error) {
+      console.error("Error updating user status:", error)
+      alert("Error al actualizar el estado del usuario")
+    }
   }
 
-  const handleDeleteUser = (userId: string) => {
-    setUsers(users.filter((user) => user.id !== userId))
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      await deleteUser(userId)
+      setUsers(users.filter((user) => user.id !== userId))
+    } catch (error) {
+      console.error("Error deleting user:", error)
+      alert("Error al eliminar el usuario")
+    }
   }
 
-  const openEditDialog = (user: User) => {
+  const openEditDialog = (user: UserDisplay) => {
     setEditingUser(user)
     setFormData({
       fullName: user.fullName,
@@ -369,8 +441,11 @@ export function UsersPage() {
           <CardDescription>Lista de todos los usuarios del sistema</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Cargando usuarios...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Nombre Completo</TableHead>
@@ -450,7 +525,8 @@ export function UsersPage() {
                 ))}
               </TableBody>
             </Table>
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

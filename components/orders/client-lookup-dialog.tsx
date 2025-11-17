@@ -1,39 +1,57 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Search } from "lucide-react"
+import { getClients, type Client } from "@/lib/storage"
 
 interface ClientLookupDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onClientSelect: (client: { id: string; name: string }) => void
+  onClientSelect: (client: { id: string; name: string; address?: string }) => void
 }
-
-// Mock clients data
-const mockClients = [
-  { id: "1", name: "María González", email: "maria@email.com", phone: "0414-1234567" },
-  { id: "2", name: "Carlos Rodríguez", email: "carlos@email.com", phone: "0424-2345678" },
-  { id: "3", name: "Laura Martínez", email: "laura@email.com", phone: "0412-3456789" },
-  { id: "4", name: "Pedro Silva", email: "pedro@email.com", phone: "0416-4567890" },
-  { id: "5", name: "Ana López", email: "ana@email.com", phone: "0426-5678901" },
-]
 
 export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: ClientLookupDialogProps) {
   const [searchTerm, setSearchTerm] = useState("")
+  const [clients, setClients] = useState<Client[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const filteredClients = mockClients.filter(
+  useEffect(() => {
+    const loadClients = async () => {
+      try {
+        setIsLoading(true)
+        const loadedClients = await getClients()
+        // Filtrar solo clientes activos
+        setClients(loadedClients.filter((client) => client.estado === "activo"))
+      } catch (error) {
+        console.error("Error loading clients:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    if (open) {
+      loadClients()
+    }
+  }, [open])
+
+  const filteredClients = clients.filter(
     (client) =>
-      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.phone.includes(searchTerm),
+      client.nombreRazonSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (client.email && client.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      client.telefono.includes(searchTerm) ||
+      client.rutId.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  const handleClientSelect = (client: { id: string; name: string }) => {
-    onClientSelect(client)
+  const handleClientSelect = (client: Client) => {
+    onClientSelect({
+      id: client.id,
+      name: client.nombreRazonSocial,
+      address: client.direccion || undefined,
+    })
     onOpenChange(false)
     setSearchTerm("")
   }
@@ -56,33 +74,37 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
             />
           </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Teléfono</TableHead>
-                <TableHead className="text-right">Acción</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredClients.map((client) => (
-                <TableRow key={client.id}>
-                  <TableCell className="font-medium">{client.name}</TableCell>
-                  <TableCell>{client.email}</TableCell>
-                  <TableCell>{client.phone}</TableCell>
-                  <TableCell className="text-right">
-                    <Button size="sm" onClick={() => handleClientSelect({ id: client.id, name: client.name })}>
-                      Seleccionar
-                    </Button>
-                  </TableCell>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Cargando clientes...</div>
+          ) : filteredClients.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {searchTerm ? "No se encontraron clientes" : "No hay clientes activos"}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Teléfono</TableHead>
+                  <TableHead className="text-right">Acción</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-
-          {filteredClients.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">No se encontraron clientes</div>
+              </TableHeader>
+              <TableBody>
+                {filteredClients.map((client) => (
+                  <TableRow key={client.id}>
+                    <TableCell className="font-medium">{client.nombreRazonSocial}</TableCell>
+                    <TableCell>{client.email || "-"}</TableCell>
+                    <TableCell>{client.telefono}</TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" onClick={() => handleClientSelect(client)}>
+                        Seleccionar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </div>
       </DialogContent>

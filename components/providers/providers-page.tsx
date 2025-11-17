@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,58 +21,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, Search, Edit, Power, PowerOff, Filter } from "lucide-react"
-
-interface Provider {
-  id: string
-  razonSocial: string
-  rif: string
-  direccion: string
-  telefono: string
-  email: string
-  contacto: string
-  tipo: "materia-prima" | "servicios" | "productos-terminados"
-  estado: "activo" | "inactivo"
-  fechaCreacion: string
-}
-
-const mockProviders: Provider[] = [
-  {
-    id: "1",
-    razonSocial: "Maderas del Norte C.A.",
-    rif: "J-12345678-9",
-    direccion: "Av. Principal, Caracas",
-    telefono: "+58 212 555-0123",
-    email: "ventas@maderasnorte.com",
-    contacto: "Carlos Rodríguez",
-    tipo: "materia-prima",
-    estado: "activo",
-    fechaCreacion: "2024-01-15",
-  },
-  {
-    id: "2",
-    razonSocial: "Servicios Logísticos Express",
-    rif: "J-98765432-1",
-    direccion: "Zona Industrial, Valencia",
-    telefono: "+58 241 555-0456",
-    email: "info@logisticaexpress.com",
-    contacto: "María González",
-    tipo: "servicios",
-    estado: "activo",
-    fechaCreacion: "2024-02-20",
-  },
-  {
-    id: "3",
-    razonSocial: "Herrajes y Accesorios S.A.",
-    rif: "J-11223344-5",
-    direccion: "Centro Comercial, Maracay",
-    telefono: "+58 243 555-0789",
-    email: "pedidos@herrajes.com",
-    contacto: "Luis Martínez",
-    tipo: "productos-terminados",
-    estado: "inactivo",
-    fechaCreacion: "2023-12-10",
-  },
-]
+import { getProviders, addProvider, updateProvider, type Provider } from "@/lib/storage"
 
 const tipoOptions = [
   { value: "materia-prima", label: "Materia Prima" },
@@ -81,7 +30,8 @@ const tipoOptions = [
 ]
 
 export function ProvidersPage() {
-  const [providers, setProviders] = useState<Provider[]>(mockProviders)
+  const [providers, setProviders] = useState<Provider[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterTipo, setFilterTipo] = useState<string>("all")
   const [filterEstado, setFilterEstado] = useState<string>("all")
@@ -99,6 +49,21 @@ export function ProvidersPage() {
     tipo: "materia-prima" as Provider["tipo"],
   })
 
+  useEffect(() => {
+    const loadProviders = async () => {
+      try {
+        setIsLoading(true)
+        const loadedProviders = await getProviders()
+        setProviders(loadedProviders)
+      } catch (error) {
+        console.error("Error loading providers:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadProviders()
+  }, [])
+
   const filteredProviders = providers.filter((provider) => {
     const matchesSearch =
       provider.razonSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -111,7 +76,7 @@ export function ProvidersPage() {
     return matchesSearch && matchesTipo && matchesEstado
   })
 
-  const handleCreateProvider = () => {
+  const handleCreateProvider = async () => {
     // Validate RIF is not duplicated
     const rifExists = providers.some((p) => p.rif === formData.rif)
     if (rifExists) {
@@ -119,19 +84,18 @@ export function ProvidersPage() {
       return
     }
 
-    const newProvider: Provider = {
-      id: Date.now().toString(),
-      ...formData,
-      estado: "activo",
-      fechaCreacion: new Date().toISOString().split("T")[0],
+    try {
+      const newProvider = await addProvider(formData)
+      setProviders([...providers, newProvider])
+      setIsCreateDialogOpen(false)
+      resetForm()
+    } catch (error) {
+      console.error("Error creating provider:", error)
+      alert("Error al crear el proveedor")
     }
-
-    setProviders([...providers, newProvider])
-    setIsCreateDialogOpen(false)
-    resetForm()
   }
 
-  const handleEditProvider = () => {
+  const handleEditProvider = async () => {
     if (!selectedProvider) return
 
     // Validate RIF is not duplicated (excluding current provider)
@@ -141,19 +105,29 @@ export function ProvidersPage() {
       return
     }
 
-    setProviders(providers.map((p) => (p.id === selectedProvider.id ? { ...p, ...formData } : p)))
-    setIsEditDialogOpen(false)
-    setSelectedProvider(null)
-    resetForm()
+    try {
+      const updatedProvider = await updateProvider(selectedProvider.id, formData)
+      setProviders(providers.map((p) => (p.id === selectedProvider.id ? updatedProvider : p)))
+      setIsEditDialogOpen(false)
+      setSelectedProvider(null)
+      resetForm()
+    } catch (error) {
+      console.error("Error updating provider:", error)
+      alert("Error al actualizar el proveedor")
+    }
   }
 
-  const handleToggleStatus = (provider: Provider) => {
-    setProviders(
-      providers.map((p) =>
-        p.id === provider.id ? { ...p, estado: p.estado === "activo" ? "inactivo" : "activo" } : p,
-      ),
-    )
-    setDeactivateProvider(null)
+  const handleToggleStatus = async (provider: Provider) => {
+    try {
+      const updatedProvider = await updateProvider(provider.id, {
+        estado: provider.estado === "activo" ? "inactivo" : "activo",
+      })
+      setProviders(providers.map((p) => (p.id === provider.id ? updatedProvider : p)))
+      setDeactivateProvider(null)
+    } catch (error) {
+      console.error("Error updating provider status:", error)
+      alert("Error al actualizar el estado del proveedor")
+    }
   }
 
   const resetForm = () => {
@@ -356,8 +330,11 @@ export function ProvidersPage() {
           <CardTitle>Lista de Proveedores ({filteredProviders.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Cargando proveedores...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Razón Social</TableHead>
@@ -418,9 +395,11 @@ export function ProvidersPage() {
               </TableBody>
             </Table>
 
-            {filteredProviders.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                No se encontraron proveedores que coincidan con los filtros aplicados.
+                {filteredProviders.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No se encontraron proveedores que coincidan con los filtros aplicados.
+                  </div>
+                )}
               </div>
             )}
           </div>
