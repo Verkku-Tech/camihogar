@@ -34,11 +34,11 @@ interface AttributeValuesDialogProps {
 
 export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }: AttributeValuesDialogProps) {
   const [values, setValues] = useState<AttributeValue[]>([])
-  const [maxSelections, setMaxSelections] = useState<number>(1)
+  const [maxSelections, setMaxSelections] = useState<string>("1")
   const [newValue, setNewValue] = useState({
     label: "",
     isDefault: false,
-    priceAdjustment: 0,
+    priceAdjustment: "",
   })
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -50,7 +50,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
       return val
     })
     setValues(convertedValues)
-    setMaxSelections(attribute.maxSelections || 1)
+    setMaxSelections(attribute.maxSelections ? attribute.maxSelections.toString() : "1")
   }, [attribute])
 
   const handleAddValue = () => {
@@ -60,11 +60,11 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
       id: Date.now().toString() + Math.random(),
       label: newValue.label.trim(),
       isDefault: newValue.isDefault,
-      priceAdjustment: newValue.priceAdjustment,
+      priceAdjustment: newValue.priceAdjustment === "" ? 0 : parseFloat(newValue.priceAdjustment),
     }
 
     setValues([...values, value])
-    setNewValue({ label: "", isDefault: false, priceAdjustment: 0 })
+    setNewValue({ label: "", isDefault: false, priceAdjustment: "" })
   }
 
   const handleRemoveValue = (id: string) => {
@@ -90,7 +90,10 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
   }
 
   const handleSave = () => {
-    onSave(values, attribute.valueType === "Multiple select" ? maxSelections : undefined)
+    onSave(
+      values,
+      attribute.valueType === "Multiple select" ? parseInt(maxSelections) : undefined
+    )
   }
 
   const getPlaceholder = () => {
@@ -140,7 +143,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
                 type="number"
                 min="1"
                 value={maxSelections}
-                onChange={(e) => setMaxSelections(Number(e.target.value))}
+                onChange={(e) => setMaxSelections(e.target.value)}
                 className="mt-2 max-w-[200px]"
               />
               <p className="text-xs text-muted-foreground mt-1">
@@ -167,7 +170,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
                 type="number"
                 step="0.01"
                 value={newValue.priceAdjustment}
-                onChange={(e) => setNewValue({ ...newValue, priceAdjustment: Number(e.target.value) })}
+                onChange={(e) => setNewValue({ ...newValue, priceAdjustment: e.target.value })}
                 placeholder="0.00"
               />
               <p className="text-xs text-muted-foreground">Positivo aumenta, negativo disminuye</p>
@@ -223,10 +226,11 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
                               <Input
                                 type="number"
                                 step="0.01"
-                                defaultValue={value.priceAdjustment || 0}
+                                defaultValue={value.priceAdjustment && value.priceAdjustment !== 0 ? value.priceAdjustment.toString() : ""}
                                 className="w-24"
+                                placeholder="0.00"
                                 onBlur={(e) => {
-                                  handleUpdatePriceAdjustment(value.id, Number(e.target.value))
+                                  handleUpdatePriceAdjustment(value.id, e.target.value === "" ? 0 : parseFloat(e.target.value))
                                   setEditingId(null)
                                 }}
                                 onKeyPress={(e) => {

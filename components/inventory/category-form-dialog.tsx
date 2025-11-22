@@ -37,7 +37,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    maxDiscount: 0,
+    maxDiscount: "",
   })
   const [attributes, setAttributes] = useState<Attribute[]>([])
   const [newAttribute, setNewAttribute] = useState({
@@ -52,11 +52,11 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
       setFormData({
         name: category.name || "",
         description: category.description || "",
-        maxDiscount: category.maxDiscount || 0,
+        maxDiscount: category.maxDiscount && category.maxDiscount !== 0 ? category.maxDiscount.toString() : "",
       })
       setAttributes(category.attributes || [])
     } else {
-      setFormData({ name: "", description: "", maxDiscount: 0 })
+      setFormData({ name: "", description: "", maxDiscount: "" })
       setAttributes([])
     }
   }, [category])
@@ -87,6 +87,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
   const handleSave = () => {
     const categoryData = {
       ...formData,
+      maxDiscount: formData.maxDiscount === "" ? 0 : parseFloat(formData.maxDiscount),
       attributes,
     }
     onSave(categoryData)
@@ -140,7 +141,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
                       min="0"
                       step="0.01"
                       value={formData.maxDiscount}
-                      onChange={(e) => setFormData({ ...formData, maxDiscount: Number(e.target.value) })}
+                      onChange={(e) => setFormData({ ...formData, maxDiscount: e.target.value })}
                       placeholder="0.00"
                     />
                   </div>

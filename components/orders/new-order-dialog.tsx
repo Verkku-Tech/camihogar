@@ -46,10 +46,13 @@ import {
 import {
   addOrder,
   getVendors,
+  getCategories,
+  calculateProductTotalWithAttributes,
   type Order,
   type OrderProduct,
   type PartialPayment,
   type Vendor,
+  type Category,
 } from "@/lib/storage";
 
 interface NewOrderDialogProps {
@@ -84,14 +87,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(
     null
   ); // Added product to remove state
-  const [paymentType, setPaymentType] = useState<
-    "directo" | "apartado" | "mixto"
-  >("directo");
-  const [partialPayments, setPartialPayments] = useState<PartialPayment[]>([]);
-  const [mixedPayments, setMixedPayments] = useState<PartialPayment[]>([]);
+  const [saleType, setSaleType] = useState<"apartado" | "entrega" | "contado">(
+    "apartado"
+  );
+  const [payments, setPayments] = useState<PartialPayment[]>([]);
   const [deliveryExpenses, setDeliveryExpenses] = useState(0);
   const [createSupplierOrder, setCreateSupplierOrder] = useState(false); // Added supplier order flag
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   useEffect(() => {
     const loadVendors = async () => {
@@ -102,8 +105,17 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         console.error("Error loading vendors:", error);
       }
     };
+    const loadCategories = async () => {
+      try {
+        const loadedCategories = await getCategories();
+        setCategories(loadedCategories);
+      } catch (error) {
+        console.error("Error loading categories:", error);
+      }
+    };
     if (open) {
       loadVendors();
+      loadCategories();
     }
   }, [open]);
 
@@ -146,7 +158,19 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
   const getProductBaseTotal = (product: OrderProduct) => {
     const markup = productMarkups[product.id] || 0;
-    return product.total + markup;
+    // El product.total ya debería incluir los ajustes de atributos
+    // pero lo recalculamos para asegurarnos de que esté correcto
+    const category = categories.find((cat) => cat.name === product.category);
+    const recalculatedTotal = calculateProductTotalWithAttributes(
+      product.price,
+      product.quantity,
+      product.attributes,
+      category
+    );
+    // Usar el total recalculado si es diferente (puede haber cambios en atributos)
+    // o usar el total guardado si no hay categoría disponible
+    const baseTotal = category ? recalculatedTotal : product.total;
+    return baseTotal + markup;
   };
 
   const productSubtotal = selectedProducts.reduce((sum, product) => {
@@ -192,19 +216,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     }
   }, [hasDelivery, selectedClient]);
 
-  const firstPaymentRequired = total * 0.3;
-  const totalPaid =
-    partialPayments.reduce((sum, payment) => sum + payment.amount, 0) +
-    formData.firstPaymentAmount;
+  // Calcular total de pagos
+  const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
   const remainingAmount = total - totalPaid;
-
-  // Calcular total de pagos mixtos
-  const mixedPaymentsTotal = mixedPayments.reduce(
-    (sum, payment) => sum + payment.amount,
-    0
-  );
-  const mixedPaymentsRemaining = total - mixedPaymentsTotal;
-  const isMixedPaymentsValid = Math.abs(mixedPaymentsRemaining) < 0.01; // Tolerancia para decimales
+  const isPaymentsValid = Math.abs(remainingAmount) < 0.01; // Tolerancia para decimales
 
   const handleProductsSelect = (products: OrderProduct[]) => {
     setSelectedProducts(
@@ -318,15 +333,32 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
   const handleNext = () => {
     if (currentStep < 2) {
-      setCurrentStep(currentStep + 1);
-      if (paymentType === "apartado") {
-        setFormData((prev) => ({
-          ...prev,
-          firstPaymentAmount: firstPaymentRequired,
-        }));
+      // Validar que tenga vendedor, cliente y al menos un producto
+      if (!formData.vendor) {
+        alert("Por favor selecciona un vendedor");
+        return;
       }
+
+      if (!selectedClient) {
+        alert("Por favor selecciona un cliente");
+        return;
+      }
+
+      if (selectedProducts.length === 0) {
+        alert("Por favor agrega al menos un producto");
+        return;
+      }
+
+      setCurrentStep(currentStep + 1);
     }
   };
+
+  // Validación para habilitar botón de agregar producto
+  const canAddProduct = formData.vendor && selectedClient;
+
+  // Validación para habilitar botón siguiente
+  const canGoToNextStep =
+    formData.vendor && selectedClient && selectedProducts.length > 0;
 
   const handleBack = () => {
     if (currentStep > 1) {
@@ -347,20 +379,20 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
-      // Validar pagos mixtos
-      if (paymentType === "mixto") {
-        if (mixedPayments.length === 0) {
-          alert("Por favor agrega al menos un método de pago mixto");
-          return;
-        }
-        if (!isMixedPaymentsValid) {
-          alert(
-            `El total de los pagos mixtos ($${mixedPaymentsTotal.toFixed(
-              2
-            )}) debe ser igual al total del pedido ($${total.toFixed(2)})`
-          );
-          return;
-        }
+      // Validar pagos
+      if (payments.length === 0) {
+        alert("Por favor agrega al menos un pago");
+        return;
+      }
+
+      if (!isPaymentsValid && saleType === "contado") {
+        // Para contado, el total debe ser igual al pedido
+        alert(
+          `El total de los pagos ($${totalPaid.toFixed(
+            2
+          )}) debe ser igual al total del pedido ($${total.toFixed(2)})`
+        );
+        return;
       }
 
       // Preparar el pedido
@@ -385,34 +417,27 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         taxAmount,
         deliveryCost,
         total,
-        paymentType,
+        paymentType:
+          saleType === "apartado"
+            ? "apartado"
+            : saleType === "entrega"
+            ? "apartado"
+            : "directo", // Mantener compatibilidad
+        saleType, // Nuevo campo
         paymentMethod:
-          paymentType === "mixto" ? "Mixto" : formData.paymentMethod,
+          payments.length > 1 ? "Mixto" : payments[0]?.method || "",
         paymentDetails:
-          paymentType === "mixto"
-            ? undefined
-            : {
-                ...(formData.paymentMethod === "Pago Móvil" && {
-                  pagomovilReference: formData.pagomovilReference,
-                  pagomovilBank: formData.pagomovilBank,
-                  pagomovilPhone: formData.pagomovilPhone,
-                  pagomovilDate: formData.pagomovilDate,
-                }),
-                ...(formData.paymentMethod === "Transferencia" && {
-                  transferenciaBank: formData.transferenciaBank,
-                  transferenciaReference: formData.transferenciaReference,
-                  transferenciaDate: formData.transferenciaDate,
-                }),
-                ...(formData.paymentMethod === "Efectivo" && {
-                  cashAmount: formData.cashAmount,
-                }),
-              },
-        partialPayments:
-          paymentType === "apartado" ? partialPayments : undefined,
-        mixedPayments: paymentType === "mixto" ? mixedPayments : undefined,
+          payments.length === 1 ? payments[0]?.paymentDetails : undefined,
+        partialPayments: payments, // Usar payments unificado
+        mixedPayments: payments.length > 1 ? payments : undefined,
         deliveryAddress: hasDelivery ? formData.deliveryAddress : undefined,
         hasDelivery,
-        status: paymentType === "apartado" ? "Apartado" : "Pendiente",
+        status:
+          saleType === "apartado" || saleType === "entrega"
+            ? "Apartado"
+            : saleType === "contado"
+            ? "Pendiente"
+            : "Pendiente",
         productMarkups,
         createSupplierOrder,
         observations: generalObservations.trim() || undefined,
@@ -428,8 +453,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       setCurrentStep(1);
       setSelectedClient(null);
       setSelectedProducts([]);
-      setPartialPayments([]);
-      setMixedPayments([]);
+      setPayments([]);
       setDeliveryExpenses(0);
       setHasDelivery(false);
       setProductMarkups({});
@@ -438,6 +462,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       setProductDiscountTypes({});
       setCreateSupplierOrder(false);
       setGeneralObservations("");
+      setSaleType("apartado"); // Reset tipo de venta
       setFormData({
         vendor: "",
         referrer: "",
@@ -459,7 +484,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     }
   };
 
-  const addPartialPayment = () => {
+  // Funciones unificadas para manejar pagos (funciona para todos los tipos de venta)
+  const addPayment = () => {
     const newPayment: PartialPayment = {
       id: Date.now().toString(),
       amount: 0,
@@ -467,28 +493,24 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       date: new Date().toISOString().split("T")[0],
       paymentDetails: {},
     };
-    setPartialPayments([...partialPayments, newPayment]);
+    setPayments([...payments, newPayment]);
   };
 
-  const updatePartialPayment = (
+  const updatePayment = (
     id: string,
     field: keyof PartialPayment,
     value: string | number
   ) => {
-    setPartialPayments((payments) =>
-      payments.map((payment) =>
+    setPayments((paymentsList) =>
+      paymentsList.map((payment) =>
         payment.id === id ? { ...payment, [field]: value } : payment
       )
     );
   };
 
-  const updatePartialPaymentDetails = (
-    id: string,
-    field: string,
-    value: string
-  ) => {
-    setPartialPayments((payments) =>
-      payments.map((payment) => {
+  const updatePaymentDetails = (id: string, field: string, value: string) => {
+    setPayments((paymentsList) =>
+      paymentsList.map((payment) => {
         if (payment.id === id) {
           return {
             ...payment,
@@ -503,60 +525,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     );
   };
 
-  const removePartialPayment = (id: string) => {
-    setPartialPayments((payments) =>
-      payments.filter((payment) => payment.id !== id)
-    );
-  };
-
-  // Funciones para manejar pagos mixtos
-  const addMixedPayment = () => {
-    const newPayment: PartialPayment = {
-      id: Date.now().toString(),
-      amount: 0,
-      method: "",
-      date: new Date().toISOString().split("T")[0],
-      paymentDetails: {},
-    };
-    setMixedPayments([...mixedPayments, newPayment]);
-  };
-
-  const updateMixedPayment = (
-    id: string,
-    field: keyof PartialPayment,
-    value: string | number
-  ) => {
-    setMixedPayments((payments) =>
-      payments.map((payment) =>
-        payment.id === id ? { ...payment, [field]: value } : payment
-      )
-    );
-  };
-
-  const updateMixedPaymentDetails = (
-    id: string,
-    field: string,
-    value: string
-  ) => {
-    setMixedPayments((payments) =>
-      payments.map((payment) => {
-        if (payment.id === id) {
-          return {
-            ...payment,
-            paymentDetails: {
-              ...payment.paymentDetails,
-              [field]: value,
-            },
-          };
-        }
-        return payment;
-      })
-    );
-  };
-
-  const removeMixedPayment = (id: string) => {
-    setMixedPayments((payments) =>
-      payments.filter((payment) => payment.id !== id)
+  const removePayment = (id: string) => {
+    setPayments((paymentsList) =>
+      paymentsList.filter((payment) => payment.id !== id)
     );
   };
 
@@ -603,20 +574,24 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-full max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
-          <DialogHeader>
-            <DialogTitle>Nuevo Pedido - Paso {currentStep} de 2</DialogTitle>
+        <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-4xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4">
+          <DialogHeader className="pb-2 sm:pb-4">
+            <DialogTitle className="text-lg sm:text-xl">
+              Nuevo Pedido - Paso {currentStep} de 2
+            </DialogTitle>
           </DialogHeader>
 
           {currentStep === 1 && (
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               <Card>
-                <CardHeader>
-                  <CardTitle>Presupuesto</CardTitle>
+                <CardHeader className="p-3 sm:p-6 pb-3 sm:pb-6">
+                  <CardTitle className="text-base sm:text-lg">
+                    Presupuesto
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 p-3 sm:p-6">
                   {/* Vendor Selection */}
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="vendor">Vendedor</Label>
                       <Select
@@ -690,11 +665,30 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                         size="sm"
                         className="w-full sm:w-auto"
                         onClick={() => setIsProductSelectionOpen(true)}
+                        disabled={!canAddProduct}
+                        title={
+                          !formData.vendor && !selectedClient
+                            ? "Selecciona un vendedor y un cliente para agregar productos"
+                            : !formData.vendor
+                            ? "Selecciona un vendedor para agregar productos"
+                            : !selectedClient
+                            ? "Selecciona un cliente para agregar productos"
+                            : ""
+                        }
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         Agregar Producto
                       </Button>
                     </div>
+                    {!canAddProduct && (
+                      <p className="text-xs text-muted-foreground">
+                        {!formData.vendor && !selectedClient
+                          ? "⚠️ Debes seleccionar un vendedor y un cliente para agregar productos"
+                          : !formData.vendor
+                          ? "⚠️ Debes seleccionar un vendedor para agregar productos"
+                          : "⚠️ Debes seleccionar un cliente para agregar productos"}
+                      </p>
+                    )}
 
                     {hasOutOfStockProducts() && (
                       <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -735,64 +729,88 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                     )}
 
                     {selectedProducts.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <Table className="min-w-[780px]">
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Producto</TableHead>
-                              <TableHead>Precio</TableHead>
-                              <TableHead>Cantidad</TableHead>
-                              <TableHead>Stock</TableHead>
-                              <TableHead>Subtotal</TableHead>
-                              <TableHead>Descuento</TableHead>
-                              <TableHead>Total final</TableHead>
-                              <TableHead className="text-right">
-                                Acciones
-                              </TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {selectedProducts.map((product) => {
-                              const baseTotal = getProductBaseTotal(product);
-                              const discount = product.discount || 0;
-                              const finalTotal = Math.max(
-                                baseTotal - discount,
-                                0
-                              );
+                      <>
+                        {/* Vista de tarjetas para móvil */}
+                        <div className="space-y-3 sm:hidden">
+                          {selectedProducts.map((product) => {
+                            const baseTotal = getProductBaseTotal(product);
+                            const discount = product.discount || 0;
+                            const finalTotal = Math.max(
+                              baseTotal - discount,
+                              0
+                            );
 
-                              return (
-                                <TableRow key={product.id}>
-                                  <TableCell>
-                                    <div className="flex items-center gap-2">
-                                      {product.name}
+                            return (
+                              <Card key={product.id} className="p-4">
+                                <div className="space-y-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1">
+                                      <div className="font-medium text-base mb-1">
+                                        {product.name}
+                                      </div>
                                       {product.quantity > product.stock && (
                                         <Badge
                                           variant="destructive"
-                                          className="text-xs"
+                                          className="text-xs mt-1"
                                         >
                                           Sin stock
                                         </Badge>
                                       )}
                                     </div>
-                                  </TableCell>
-                                  <TableCell>
-                                    ${product.price.toFixed(2)}
-                                  </TableCell>
-                                  <TableCell>{product.quantity}</TableCell>
-                                  <TableCell>
-                                    <span
-                                      className={
-                                        product.quantity > product.stock
-                                          ? "text-red-600 font-medium"
-                                          : ""
-                                      }
-                                    >
-                                      {product.stock}
-                                    </span>
-                                  </TableCell>
-                                  <TableCell>${baseTotal.toFixed(2)}</TableCell>
-                                  <TableCell>
-                                    <div className="flex gap-2 items-center">
+                                    <div className="text-right">
+                                      <div className="text-lg font-semibold">
+                                        ${finalTotal.toFixed(2)}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        Total final
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3 text-sm">
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Precio:
+                                      </span>
+                                      <span className="ml-2 font-medium">
+                                        ${product.price.toFixed(2)}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Cantidad:
+                                      </span>
+                                      <span className="ml-2 font-medium">
+                                        {product.quantity}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Stock:
+                                      </span>
+                                      <span
+                                        className={`ml-2 font-medium ${
+                                          product.quantity > product.stock
+                                            ? "text-red-600"
+                                            : ""
+                                        }`}
+                                      >
+                                        {product.stock}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Subtotal:
+                                      </span>
+                                      <span className="ml-2 font-medium">
+                                        ${baseTotal.toFixed(2)}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-2 pt-2 border-t">
+                                    <Label className="text-sm">Descuento</Label>
+                                    <div className="flex gap-2">
                                       <Select
                                         value={
                                           productDiscountTypes[product.id] ||
@@ -807,7 +825,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                           )
                                         }
                                       >
-                                        <SelectTrigger className="w-24 h-9">
+                                        <SelectTrigger className="w-20">
                                           <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -855,7 +873,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                               0
                                           )
                                         }
-                                        className="w-28"
+                                        className="flex-1"
                                         placeholder={
                                           productDiscountTypes[product.id] ===
                                           "porcentaje"
@@ -864,67 +882,250 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         }
                                       />
                                     </div>
-                                  </TableCell>
-                                  <TableCell className="font-semibold">
-                                    ${finalTotal.toFixed(2)}
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    <div className="flex justify-end gap-2">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() =>
-                                          handleEditProduct(product)
-                                        }
-                                      >
-                                        <Edit className="w-4 h-4" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() =>
-                                          handleRemoveProduct(product)
-                                        }
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </Button>
-                                    </div>
-                                  </TableCell>
+                                  </div>
+
+                                  <div className="flex gap-2 pt-2 border-t">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleEditProduct(product)}
+                                      className="flex-1"
+                                    >
+                                      <Edit className="w-4 h-4 mr-2" />
+                                      Editar
+                                    </Button>
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleRemoveProduct(product)
+                                      }
+                                      className="flex-1"
+                                    >
+                                      <Trash2 className="w-4 h-4 mr-2" />
+                                      Eliminar
+                                    </Button>
+                                  </div>
+                                </div>
+                              </Card>
+                            );
+                          })}
+                        </div>
+
+                        {/* Vista de tabla responsive para tablet/desktop/pantallas grandes */}
+                        <div className="hidden sm:block overflow-hidden">
+                          <div className="w-full overflow-x-hidden">
+                            <Table className="w-full table-fixed">
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="w-[20%]">
+                                    Producto
+                                  </TableHead>
+                                  <TableHead className="w-[10%]">
+                                    Precio
+                                  </TableHead>
+                                  <TableHead className="w-[8%]">
+                                    Cantidad
+                                  </TableHead>
+                                  <TableHead className="w-[8%]">
+                                    Stock
+                                  </TableHead>
+                                  <TableHead className="w-[10%]">
+                                    Subtotal
+                                  </TableHead>
+                                  <TableHead className="w-[18%]">
+                                    Descuento
+                                  </TableHead>
+                                  <TableHead className="w-[10%]">
+                                    Total final
+                                  </TableHead>
+                                  <TableHead className="w-[16%] text-right">
+                                    Acciones
+                                  </TableHead>
                                 </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                      </div>
+                              </TableHeader>
+                              <TableBody>
+                                {selectedProducts.map((product) => {
+                                  const baseTotal =
+                                    getProductBaseTotal(product);
+                                  const discount = product.discount || 0;
+                                  const finalTotal = Math.max(
+                                    baseTotal - discount,
+                                    0
+                                  );
+
+                                  return (
+                                    <TableRow key={product.id}>
+                                      <TableCell className="w-[20%]">
+                                        <div className="flex items-center gap-1">
+                                          <span className="truncate text-sm">
+                                            {product.name}
+                                          </span>
+                                          {product.quantity > product.stock && (
+                                            <Badge
+                                              variant="destructive"
+                                              className="text-xs shrink-0"
+                                            >
+                                              Sin stock
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </TableCell>
+                                      <TableCell className="w-[10%] text-right text-sm">
+                                        ${product.price.toFixed(2)}
+                                      </TableCell>
+                                      <TableCell className="w-[8%] text-center text-sm">
+                                        {product.quantity}
+                                      </TableCell>
+                                      <TableCell className="w-[8%] text-center text-sm">
+                                        <span
+                                          className={
+                                            product.quantity > product.stock
+                                              ? "text-red-600 font-medium"
+                                              : ""
+                                          }
+                                        >
+                                          {product.stock}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell className="w-[10%] text-right text-sm">
+                                        ${baseTotal.toFixed(2)}
+                                      </TableCell>
+                                      <TableCell className="w-[18%]">
+                                        <div className="flex gap-1 items-center">
+                                          <Select
+                                            value={
+                                              productDiscountTypes[
+                                                product.id
+                                              ] || "monto"
+                                            }
+                                            onValueChange={(
+                                              value: "monto" | "porcentaje"
+                                            ) =>
+                                              handleProductDiscountTypeChange(
+                                                product.id,
+                                                value
+                                              )
+                                            }
+                                          >
+                                            <SelectTrigger className="w-14 h-7 text-xs px-1">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="monto">
+                                                $
+                                              </SelectItem>
+                                              <SelectItem value="porcentaje">
+                                                %
+                                              </SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                          <Input
+                                            type="number"
+                                            min="0"
+                                            step={
+                                              productDiscountTypes[
+                                                product.id
+                                              ] === "porcentaje"
+                                                ? "0.1"
+                                                : "0.01"
+                                            }
+                                            max={
+                                              productDiscountTypes[
+                                                product.id
+                                              ] === "porcentaje"
+                                                ? 100
+                                                : baseTotal
+                                            }
+                                            value={(() => {
+                                              const discountType =
+                                                productDiscountTypes[
+                                                  product.id
+                                                ] || "monto";
+                                              if (discount === 0) return "";
+                                              if (
+                                                discountType === "porcentaje"
+                                              ) {
+                                                const percentage =
+                                                  baseTotal > 0
+                                                    ? (discount / baseTotal) *
+                                                      100
+                                                    : 0;
+                                                return percentage;
+                                              }
+                                              return discount;
+                                            })()}
+                                            onChange={(e) =>
+                                              handleProductDiscountChange(
+                                                product.id,
+                                                Number.parseFloat(
+                                                  e.target.value
+                                                ) || 0
+                                              )
+                                            }
+                                            className="w-full h-7 text-xs flex-1"
+                                            placeholder={
+                                              productDiscountTypes[
+                                                product.id
+                                              ] === "porcentaje"
+                                                ? "0%"
+                                                : "0.00"
+                                            }
+                                          />
+                                        </div>
+                                      </TableCell>
+                                      <TableCell className="w-[10%] font-semibold text-right text-sm">
+                                        ${finalTotal.toFixed(2)}
+                                      </TableCell>
+                                      <TableCell className="w-[16%] text-right">
+                                        <div className="flex justify-end gap-1">
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                              handleEditProduct(product)
+                                            }
+                                            className="h-7 w-7 p-0"
+                                          >
+                                            <Edit className="w-3.5 h-3.5" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                              handleRemoveProduct(product)
+                                            }
+                                            className="h-7 w-7 p-0"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </Button>
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </div>
+                      </>
                     ) : (
-                      <div className="text-center py-8 text-muted-foreground">
+                      <div className="text-center py-8 text-sm sm:text-base text-muted-foreground">
                         No hay productos seleccionados
                       </div>
                     )}
                   </div>
 
-                  {/* Observaciones Generales */}
-                  <div className="space-y-2">
-                    <Label htmlFor="generalObservations">
-                      Observaciones Generales
-                    </Label>
-                    <Textarea
-                      id="generalObservations"
-                      value={generalObservations}
-                      onChange={(e) => setGeneralObservations(e.target.value)}
-                      placeholder="Agregar observaciones generales para el pedido (opcional)"
-                      rows={3}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Notas generales sobre el pedido
-                    </p>
-                  </div>
-
                   {/* Subtotal */}
                   <div className="flex justify-end">
                     <div className="text-right">
-                      <div className="text-lg font-semibold">
-                        Subtotal (después de descuentos): ${subtotal.toFixed(2)}
+                      <div className="text-sm sm:text-lg font-semibold">
+                        <span className="block sm:inline">
+                          Subtotal (después de descuentos):
+                        </span>
+                        <span className="block sm:inline sm:ml-1">
+                          ${subtotal.toFixed(2)}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -934,811 +1135,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           )}
 
           {currentStep === 2 && (
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               <Card>
-                <CardHeader>
-                  <CardTitle>Realizar Pedido</CardTitle>
+                <CardHeader className="p-3 sm:p-6 pb-3 sm:pb-6">
+                  <CardTitle className="text-base sm:text-lg">
+                    Realizar Pedido
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Payment Method */}
-                  <div className="space-y-4">
-                    <Label>Método de Pago</Label>
-                    <RadioGroup
-                      value={paymentType}
-                      onValueChange={(
-                        value: "directo" | "apartado" | "mixto"
-                      ) => setPaymentType(value)}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="directo" id="directo" />
-                        <Label htmlFor="directo">Pago Directo</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="apartado" id="apartado" />
-                        <Label htmlFor="apartado">Apartado</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="mixto" id="mixto" />
-                        <Label htmlFor="mixto">Pago Mixto</Label>
-                      </div>
-                    </RadioGroup>
-
-                    {paymentType === "directo" && (
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label>Seleccionar método de pago</Label>
-                          <Select
-                            value={formData.paymentMethod}
-                            onValueChange={(value) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                paymentMethod: value,
-                              }))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar método" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {paymentMethods.map((method) => (
-                                <SelectItem key={method} value={method}>
-                                  {method}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* Campos condicionales según método de pago */}
-                        {formData.paymentMethod === "Pago Móvil" && (
-                          <div className="space-y-4 p-4 border rounded-lg">
-                            <Label className="text-base font-medium">
-                              Información de Pago Móvil
-                            </Label>
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              <div className="space-y-2">
-                                <Label htmlFor="pagomovilReference">
-                                  N° Referencia *
-                                </Label>
-                                <Input
-                                  id="pagomovilReference"
-                                  value={formData.pagomovilReference}
-                                  onChange={(e) =>
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      pagomovilReference: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Ingrese el número de referencia"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="pagomovilBank">
-                                  Banco Emisor *
-                                </Label>
-                                <Input
-                                  id="pagomovilBank"
-                                  value={formData.pagomovilBank}
-                                  onChange={(e) =>
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      pagomovilBank: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Ej: Banco de Venezuela"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="pagomovilPhone">
-                                  Teléfono *
-                                </Label>
-                                <Input
-                                  id="pagomovilPhone"
-                                  type="tel"
-                                  value={formData.pagomovilPhone}
-                                  onChange={(e) =>
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      pagomovilPhone: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="0412-1234567"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="pagomovilDate">Fecha *</Label>
-                                <Input
-                                  id="pagomovilDate"
-                                  type="date"
-                                  value={formData.pagomovilDate}
-                                  onChange={(e) =>
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      pagomovilDate: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {formData.paymentMethod === "Transferencia" && (
-                          <div className="space-y-4 p-4 border rounded-lg">
-                            <Label className="text-base font-medium">
-                              Información de Transferencia
-                            </Label>
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              <div className="space-y-2">
-                                <Label htmlFor="transferenciaBank">
-                                  Banco *
-                                </Label>
-                                <Input
-                                  id="transferenciaBank"
-                                  value={formData.transferenciaBank}
-                                  onChange={(e) =>
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      transferenciaBank: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Ej: Banco de Venezuela"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="transferenciaReference">
-                                  N° de Referencia *
-                                </Label>
-                                <Input
-                                  id="transferenciaReference"
-                                  value={formData.transferenciaReference}
-                                  onChange={(e) =>
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      transferenciaReference: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Ingrese el número de referencia"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="transferenciaDate">
-                                  Fecha *
-                                </Label>
-                                <Input
-                                  id="transferenciaDate"
-                                  type="date"
-                                  value={formData.transferenciaDate}
-                                  onChange={(e) =>
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      transferenciaDate: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {formData.paymentMethod === "Efectivo" && (
-                          <div className="space-y-4 p-4 border rounded-lg">
-                            <Label className="text-base font-medium">
-                              Información de Pago en Efectivo
-                            </Label>
-                            <div className="space-y-2">
-                              <Label htmlFor="cashAmount">
-                                Cantidad en efectivo *
-                              </Label>
-                              <Input
-                                id="cashAmount"
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={
-                                  formData.cashAmount === "0" ||
-                                  formData.cashAmount === ""
-                                    ? ""
-                                    : formData.cashAmount
-                                }
-                                onChange={(e) =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    cashAmount: e.target.value,
-                                  }))
-                                }
-                                placeholder="0.00"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {paymentType === "apartado" && (
-                      <div className="space-y-4">
-                        <div className="p-4 bg-muted rounded-lg">
-                          <div className="text-sm text-muted-foreground mb-2">
-                            Pago inicial requerido (30%)
-                          </div>
-                          <div className="text-lg font-semibold">
-                            ${firstPaymentRequired.toFixed(2)}
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <Label>Pagos Parciales</Label>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={addPartialPayment}
-                            >
-                              <Plus className="w-4 h-4 mr-2" />
-                              Agregar Pago
-                            </Button>
-                          </div>
-
-                          {partialPayments.map((payment) => (
-                            <div
-                              key={payment.id}
-                              className="space-y-4 p-4 border rounded-lg"
-                            >
-                              <div className="flex gap-2 items-end">
-                                <div className="flex-1">
-                                  <Label className="text-xs">Monto</Label>
-                                  <Input
-                                    type="number"
-                                    value={
-                                      payment.amount === 0 ? "" : payment.amount
-                                    }
-                                    onChange={(e) =>
-                                      updatePartialPayment(
-                                        payment.id,
-                                        "amount",
-                                        Number.parseFloat(e.target.value) || 0
-                                      )
-                                    }
-                                    placeholder="0.00"
-                                  />
-                                </div>
-                                <div className="flex-1">
-                                  <Label className="text-xs">Método</Label>
-                                  <Select
-                                    value={payment.method}
-                                    onValueChange={(value) =>
-                                      updatePartialPayment(
-                                        payment.id,
-                                        "method",
-                                        value
-                                      )
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Método" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {paymentMethods.map((method) => (
-                                        <SelectItem key={method} value={method}>
-                                          {method}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="flex-1">
-                                  <Label className="text-xs">Fecha</Label>
-                                  <Input
-                                    type="date"
-                                    value={payment.date}
-                                    onChange={(e) =>
-                                      updatePartialPayment(
-                                        payment.id,
-                                        "date",
-                                        e.target.value
-                                      )
-                                    }
-                                  />
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() =>
-                                    removePartialPayment(payment.id)
-                                  }
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-
-                              {/* Campos condicionales según método de pago */}
-                              {payment.method === "Pago Móvil" && (
-                                <div className="space-y-3 pt-2 border-t">
-                                  <Label className="text-sm font-medium">
-                                    Información de Pago Móvil
-                                  </Label>
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`pagomovil-reference-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        N° Referencia *
-                                      </Label>
-                                      <Input
-                                        id={`pagomovil-reference-${payment.id}`}
-                                        value={
-                                          payment.paymentDetails
-                                            ?.pagomovilReference || ""
-                                        }
-                                        onChange={(e) =>
-                                          updatePartialPaymentDetails(
-                                            payment.id,
-                                            "pagomovilReference",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="Ingrese el número de referencia"
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`pagomovil-bank-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        Banco Emisor *
-                                      </Label>
-                                      <Input
-                                        id={`pagomovil-bank-${payment.id}`}
-                                        value={
-                                          payment.paymentDetails
-                                            ?.pagomovilBank || ""
-                                        }
-                                        onChange={(e) =>
-                                          updatePartialPaymentDetails(
-                                            payment.id,
-                                            "pagomovilBank",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="Ej: Banco de Venezuela"
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`pagomovil-phone-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        Teléfono *
-                                      </Label>
-                                      <Input
-                                        id={`pagomovil-phone-${payment.id}`}
-                                        type="tel"
-                                        value={
-                                          payment.paymentDetails
-                                            ?.pagomovilPhone || ""
-                                        }
-                                        onChange={(e) =>
-                                          updatePartialPaymentDetails(
-                                            payment.id,
-                                            "pagomovilPhone",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="0412-1234567"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {payment.method === "Transferencia" && (
-                                <div className="space-y-3 pt-2 border-t">
-                                  <Label className="text-sm font-medium">
-                                    Información de Transferencia
-                                  </Label>
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`transferencia-bank-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        Banco *
-                                      </Label>
-                                      <Input
-                                        id={`transferencia-bank-${payment.id}`}
-                                        value={
-                                          payment.paymentDetails
-                                            ?.transferenciaBank || ""
-                                        }
-                                        onChange={(e) =>
-                                          updatePartialPaymentDetails(
-                                            payment.id,
-                                            "transferenciaBank",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="Ej: Banco de Venezuela"
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`transferencia-reference-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        N° de Referencia *
-                                      </Label>
-                                      <Input
-                                        id={`transferencia-reference-${payment.id}`}
-                                        value={
-                                          payment.paymentDetails
-                                            ?.transferenciaReference || ""
-                                        }
-                                        onChange={(e) =>
-                                          updatePartialPaymentDetails(
-                                            payment.id,
-                                            "transferenciaReference",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="Ingrese el número de referencia"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {payment.method === "Efectivo" && (
-                                <div className="space-y-3 pt-2 border-t">
-                                  <Label className="text-sm font-medium">
-                                    Información de Pago en Efectivo
-                                  </Label>
-                                  <div className="space-y-2">
-                                    <Label
-                                      htmlFor={`cash-amount-${payment.id}`}
-                                      className="text-xs"
-                                    >
-                                      Cantidad en efectivo *
-                                    </Label>
-                                    <Input
-                                      id={`cash-amount-${payment.id}`}
-                                      type="number"
-                                      step="0.01"
-                                      min="0"
-                                      value={
-                                        payment.paymentDetails?.cashAmount ===
-                                          "0" ||
-                                        payment.paymentDetails?.cashAmount ===
-                                          "" ||
-                                        !payment.paymentDetails?.cashAmount
-                                          ? ""
-                                          : payment.paymentDetails.cashAmount
-                                      }
-                                      onChange={(e) =>
-                                        updatePartialPaymentDetails(
-                                          payment.id,
-                                          "cashAmount",
-                                          e.target.value
-                                        )
-                                      }
-                                      placeholder="0.00"
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-
-                          {paymentType === "apartado" && (
-                            <div className="p-4 bg-muted rounded-lg">
-                              <div className="flex justify-between text-sm">
-                                <span>Total pagado:</span>
-                                <span>${totalPaid.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between text-sm">
-                                <span>Restante:</span>
-                                <span>${remainingAmount.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between font-semibold">
-                                <span>Progreso:</span>
-                                <span>
-                                  {((totalPaid / total) * 100).toFixed(1)}%
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {paymentType === "mixto" && (
-                      <div className="space-y-4">
-                        <div className="p-4 bg-muted rounded-lg">
-                          <div className="text-sm text-muted-foreground mb-2">
-                            Total del pedido
-                          </div>
-                          <div className="text-lg font-semibold">
-                            ${total.toFixed(2)}
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <Label>Métodos de Pago</Label>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={addMixedPayment}
-                            >
-                              <Plus className="w-4 h-4 mr-2" />
-                              Agregar Método
-                            </Button>
-                          </div>
-
-                          {mixedPayments.map((payment) => (
-                            <div
-                              key={payment.id}
-                              className="space-y-4 p-4 border rounded-lg"
-                            >
-                              <div className="flex gap-2 items-end">
-                                <div className="flex-1">
-                                  <Label className="text-xs">Monto</Label>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    max={total}
-                                    value={
-                                      payment.amount === 0 ? "" : payment.amount
-                                    }
-                                    onChange={(e) =>
-                                      updateMixedPayment(
-                                        payment.id,
-                                        "amount",
-                                        Number.parseFloat(e.target.value) || 0
-                                      )
-                                    }
-                                    placeholder="0.00"
-                                  />
-                                </div>
-                                <div className="flex-1">
-                                  <Label className="text-xs">Método</Label>
-                                  <Select
-                                    value={payment.method}
-                                    onValueChange={(value) =>
-                                      updateMixedPayment(
-                                        payment.id,
-                                        "method",
-                                        value
-                                      )
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Método" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {paymentMethods.map((method) => (
-                                        <SelectItem key={method} value={method}>
-                                          {method}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="flex-1">
-                                  <Label className="text-xs">Fecha</Label>
-                                  <Input
-                                    type="date"
-                                    value={payment.date}
-                                    onChange={(e) =>
-                                      updateMixedPayment(
-                                        payment.id,
-                                        "date",
-                                        e.target.value
-                                      )
-                                    }
-                                  />
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => removeMixedPayment(payment.id)}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-
-                              {/* Campos condicionales según método de pago */}
-                              {payment.method === "Pago Móvil" && (
-                                <div className="space-y-3 pt-2 border-t">
-                                  <Label className="text-sm font-medium">
-                                    Información de Pago Móvil
-                                  </Label>
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`mixed-pagomovil-reference-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        N° Referencia *
-                                      </Label>
-                                      <Input
-                                        id={`mixed-pagomovil-reference-${payment.id}`}
-                                        value={
-                                          payment.paymentDetails
-                                            ?.pagomovilReference || ""
-                                        }
-                                        onChange={(e) =>
-                                          updateMixedPaymentDetails(
-                                            payment.id,
-                                            "pagomovilReference",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="Ingrese el número de referencia"
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`mixed-pagomovil-bank-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        Banco Emisor *
-                                      </Label>
-                                      <Input
-                                        id={`mixed-pagomovil-bank-${payment.id}`}
-                                        value={
-                                          payment.paymentDetails
-                                            ?.pagomovilBank || ""
-                                        }
-                                        onChange={(e) =>
-                                          updateMixedPaymentDetails(
-                                            payment.id,
-                                            "pagomovilBank",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="Ej: Banco de Venezuela"
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`mixed-pagomovil-phone-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        Teléfono *
-                                      </Label>
-                                      <Input
-                                        id={`mixed-pagomovil-phone-${payment.id}`}
-                                        type="tel"
-                                        value={
-                                          payment.paymentDetails
-                                            ?.pagomovilPhone || ""
-                                        }
-                                        onChange={(e) =>
-                                          updateMixedPaymentDetails(
-                                            payment.id,
-                                            "pagomovilPhone",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="0412-1234567"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {payment.method === "Transferencia" && (
-                                <div className="space-y-3 pt-2 border-t">
-                                  <Label className="text-sm font-medium">
-                                    Información de Transferencia
-                                  </Label>
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`mixed-transferencia-bank-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        Banco *
-                                      </Label>
-                                      <Input
-                                        id={`mixed-transferencia-bank-${payment.id}`}
-                                        value={
-                                          payment.paymentDetails
-                                            ?.transferenciaBank || ""
-                                        }
-                                        onChange={(e) =>
-                                          updateMixedPaymentDetails(
-                                            payment.id,
-                                            "transferenciaBank",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="Ej: Banco de Venezuela"
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`mixed-transferencia-reference-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        N° de Referencia *
-                                      </Label>
-                                      <Input
-                                        id={`mixed-transferencia-reference-${payment.id}`}
-                                        value={
-                                          payment.paymentDetails
-                                            ?.transferenciaReference || ""
-                                        }
-                                        onChange={(e) =>
-                                          updateMixedPaymentDetails(
-                                            payment.id,
-                                            "transferenciaReference",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="Ingrese el número de referencia"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-
-                          {paymentType === "mixto" && (
-                            <div className="p-4 bg-muted rounded-lg space-y-2">
-                              <div className="flex justify-between text-sm">
-                                <span>Total pagado:</span>
-                                <span
-                                  className={
-                                    isMixedPaymentsValid
-                                      ? "text-green-600 font-semibold"
-                                      : "text-red-600 font-semibold"
-                                  }
-                                >
-                                  ${mixedPaymentsTotal.toFixed(2)}
-                                </span>
-                              </div>
-                              <div className="flex justify-between text-sm">
-                                <span>Total del pedido:</span>
-                                <span>${total.toFixed(2)}</span>
-                              </div>
-                              <div className="flex justify-between font-semibold">
-                                <span>Restante:</span>
-                                <span
-                                  className={
-                                    isMixedPaymentsValid
-                                      ? "text-green-600"
-                                      : "text-red-600"
-                                  }
-                                >
-                                  ${Math.abs(mixedPaymentsRemaining).toFixed(2)}
-                                  {!isMixedPaymentsValid && (
-                                    <span className="text-xs ml-2">
-                                      {mixedPaymentsRemaining > 0
-                                        ? "(falta)"
-                                        : "(sobra)"}
-                                    </span>
-                                  )}
-                                </span>
-                              </div>
-                              {isMixedPaymentsValid && (
-                                <div className="pt-2 border-t text-green-600 font-medium text-sm"></div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* NUEVA SECCIÓN: Delivery */}
+                <CardContent className="space-y-4 sm:space-y-6 p-3 sm:p-6">
+                  {/* 1. DELIVERY */}
                   <div className="space-y-4">
                     <div className="flex items-center space-x-2">
                       <Checkbox
@@ -1757,8 +1162,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                     </div>
 
                     {hasDelivery && (
-                      <div className="space-y-2 pl-6">
-                        <Label htmlFor="deliveryAddress">
+                      <div className="space-y-2 pl-4 sm:pl-6">
+                        <Label
+                          htmlFor="deliveryAddress"
+                          className="text-sm sm:text-base"
+                        >
                           Dirección de Entrega
                         </Label>
                         <Textarea
@@ -1772,8 +1180,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           }
                           placeholder="Ingrese la dirección de entrega"
                           rows={3}
+                          className="w-full"
                         />
-                        <Label htmlFor="deliveryExpenses">
+                        <Label
+                          htmlFor="deliveryExpenses"
+                          className="text-sm sm:text-base"
+                        >
                           Gastos de Entrega ($)
                         </Label>
                         <Input
@@ -1787,15 +1199,89 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                             )
                           }
                           placeholder="0.00"
+                          className="w-full"
                         />
                       </div>
                     )}
                   </div>
 
-                  {/* Descuento general */}
+                  {/* 2. TOTALIZACIÓN */}
+                  <div className="p-3 sm:p-4 bg-muted rounded-lg space-y-2">
+                    <div className="flex justify-between text-xs sm:text-sm">
+                      <span className="break-words pr-2">
+                        Subtotal productos:
+                      </span>
+                      <span className="text-right whitespace-nowrap">
+                        ${productSubtotal.toFixed(2)}
+                      </span>
+                    </div>
+
+                    {productDiscountTotal > 0 && (
+                      <div className="flex justify-between text-red-600 text-xs sm:text-sm">
+                        <span className="break-words pr-2">
+                          Descuentos individuales:
+                        </span>
+                        <span className="text-right whitespace-nowrap">
+                          - ${productDiscountTotal.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+
+                    {generalDiscountAmount > 0 && (
+                      <div className="flex justify-between text-red-600 text-xs sm:text-sm">
+                        <span className="break-words pr-2">
+                          Descuento general:
+                        </span>
+                        <span className="text-right whitespace-nowrap">
+                          - ${generalDiscountAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between font-medium border-t pt-2 text-xs sm:text-sm">
+                      <span className="break-words pr-2">
+                        Subtotal después de descuentos:
+                      </span>
+                      <span className="text-right whitespace-nowrap">
+                        ${subtotal.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between text-xs sm:text-sm">
+                      <span className="break-words pr-2">Impuesto (16%):</span>
+                      <span className="text-right whitespace-nowrap">
+                        ${taxAmount.toFixed(2)}
+                      </span>
+                    </div>
+
+                    {hasDelivery && (
+                      <div className="flex justify-between text-xs sm:text-sm">
+                        <span className="break-words pr-2">
+                          Gastos de entrega:
+                        </span>
+                        <span className="text-right whitespace-nowrap">
+                          ${deliveryCost.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between text-base sm:text-lg font-semibold border-t pt-2">
+                      <span>Total:</span>
+                      <span className="text-right whitespace-nowrap">
+                        ${total.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 3. DESCUENTO */}
                   <div className="space-y-2">
-                    <Label htmlFor="generalDiscount">Descuento general</Label>
-                    <div className="flex gap-2 items-center">
+                    <Label
+                      htmlFor="generalDiscount"
+                      className="text-sm sm:text-base"
+                    >
+                      Descuento general
+                    </Label>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                       <Select
                         value={generalDiscountType}
                         onValueChange={(value: "monto" | "porcentaje") =>
@@ -1803,7 +1289,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                         }
                         disabled={selectedProducts.length === 0}
                       >
-                        <SelectTrigger className="w-24">
+                        <SelectTrigger className="w-full sm:w-24">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1848,54 +1334,352 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                         className="w-full sm:w-48"
                       />
                     </div>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs sm:text-sm text-muted-foreground">
                       Este descuento se aplica después de los descuentos
                       individuales por producto.
                     </p>
                   </div>
 
-                  {/* TOTALIZACIÓN - Modificada */}
-                  <div className="p-4 bg-muted rounded-lg space-y-2">
-                    <div className="flex justify-between">
-                      <span>Subtotal productos:</span>
-                      <span>${productSubtotal.toFixed(2)}</span>
-                    </div>
-
-                    {productDiscountTotal > 0 && (
-                      <div className="flex justify-between text-red-600">
-                        <span>Descuentos individuales:</span>
-                        <span>- ${productDiscountTotal.toFixed(2)}</span>
+                  {/* 4. TIPO DE VENTA Y MÉTODO DE PAGO */}
+                  <div className="space-y-4">
+                    <Label className="text-sm sm:text-base">
+                      Tipo de Venta
+                    </Label>
+                    <RadioGroup
+                      value={saleType}
+                      onValueChange={(
+                        value: "apartado" | "entrega" | "contado"
+                      ) => setSaleType(value)}
+                      className="flex flex-col sm:flex-row sm:gap-4 gap-2"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="apartado" id="apartado" />
+                        <Label
+                          htmlFor="apartado"
+                          className="text-sm sm:text-base cursor-pointer"
+                        >
+                          Apartado
+                        </Label>
                       </div>
-                    )}
-
-                    {generalDiscountAmount > 0 && (
-                      <div className="flex justify-between text-red-600">
-                        <span>Descuento general:</span>
-                        <span>- ${generalDiscountAmount.toFixed(2)}</span>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="entrega" id="entrega" />
+                        <Label
+                          htmlFor="entrega"
+                          className="text-sm sm:text-base cursor-pointer"
+                        >
+                          Entrega
+                        </Label>
                       </div>
-                    )}
-
-                    <div className="flex justify-between font-medium border-t pt-2">
-                      <span>Subtotal después de descuentos:</span>
-                      <span>${subtotal.toFixed(2)}</span>
-                    </div>
-
-                    <div className="flex justify-between">
-                      <span>Impuesto (16%):</span>
-                      <span>${taxAmount.toFixed(2)}</span>
-                    </div>
-
-                    {hasDelivery && (
-                      <div className="flex justify-between">
-                        <span>Gastos de entrega:</span>
-                        <span>${deliveryCost.toFixed(2)}</span>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="contado" id="contado" />
+                        <Label
+                          htmlFor="contado"
+                          className="text-sm sm:text-base cursor-pointer"
+                        >
+                          De Contado
+                        </Label>
                       </div>
-                    )}
+                    </RadioGroup>
 
-                    <div className="flex justify-between text-lg font-semibold border-t pt-2">
-                      <span>Total:</span>
-                      <span>${total.toFixed(2)}</span>
+                    {/* Sección unificada de Pagos - funciona para todos los tipos de venta */}
+                    <div className="space-y-4 pt-4">
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                            <Label className="text-sm sm:text-base">
+                              Pagos
+                            </Label>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={addPayment}
+                              className="w-full sm:w-auto"
+                            >
+                              <Plus className="w-4 h-4 mr-2" />
+                              Agregar Pago
+                            </Button>
+                          </div>
+
+                          {payments.map((payment) => (
+                            <div
+                              key={payment.id}
+                              className="space-y-3 sm:space-y-4 p-3 sm:p-4 border rounded-lg"
+                            >
+                              <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:items-end">
+                                <div className="flex-1 w-full">
+                                  <Label className="text-xs">Monto</Label>
+                                  <Input
+                                    type="number"
+                                    value={
+                                      payment.amount === 0 ? "" : payment.amount
+                                    }
+                                    onChange={(e) =>
+                                      updatePayment(
+                                        payment.id,
+                                        "amount",
+                                        Number.parseFloat(e.target.value) || 0
+                                      )
+                                    }
+                                    placeholder="0.00"
+                                    className="w-full"
+                                  />
+                                </div>
+                                <div className="flex-1 w-full">
+                                  <Label className="text-xs">Método</Label>
+                                  <Select
+                                    value={payment.method}
+                                    onValueChange={(value) =>
+                                      updatePayment(payment.id, "method", value)
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Método" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {paymentMethods.map((method) => (
+                                        <SelectItem key={method} value={method}>
+                                          {method}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="flex-1 w-full">
+                                  <Label className="text-xs">Fecha</Label>
+                                  <Input
+                                    type="date"
+                                    value={payment.date}
+                                    onChange={(e) =>
+                                      updatePayment(
+                                        payment.id,
+                                        "date",
+                                        e.target.value
+                                      )
+                                    }
+                                    className="w-full"
+                                  />
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removePayment(payment.id)}
+                                  className="w-full sm:w-auto self-end sm:self-auto"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  <span className="ml-2 sm:hidden">
+                                    Eliminar
+                                  </span>
+                                </Button>
+                              </div>
+
+                              {/* Campos condicionales según método de pago */}
+                              {payment.method === "Pago Móvil" && (
+                                <div className="space-y-3 pt-2 border-t">
+                                  <Label className="text-sm font-medium">
+                                    Información de Pago Móvil
+                                  </Label>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`pagomovil-reference-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        N° Referencia *
+                                      </Label>
+                                      <Input
+                                        id={`pagomovil-reference-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.pagomovilReference || ""
+                                        }
+                                        onChange={(e) =>
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "pagomovilReference",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ingrese el número de referencia"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`pagomovil-bank-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Banco Emisor *
+                                      </Label>
+                                      <Input
+                                        id={`pagomovil-bank-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.pagomovilBank || ""
+                                        }
+                                        onChange={(e) =>
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "pagomovilBank",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ej: Banco de Venezuela"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`pagomovil-phone-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Teléfono *
+                                      </Label>
+                                      <Input
+                                        id={`pagomovil-phone-${payment.id}`}
+                                        type="tel"
+                                        value={
+                                          payment.paymentDetails
+                                            ?.pagomovilPhone || ""
+                                        }
+                                        onChange={(e) =>
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "pagomovilPhone",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="0412-1234567"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {payment.method === "Transferencia" && (
+                                <div className="space-y-3 pt-2 border-t">
+                                  <Label className="text-sm font-medium">
+                                    Información de Transferencia
+                                  </Label>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`transferencia-bank-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Banco *
+                                      </Label>
+                                      <Input
+                                        id={`transferencia-bank-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.transferenciaBank || ""
+                                        }
+                                        onChange={(e) =>
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "transferenciaBank",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ej: Banco de Venezuela"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`transferencia-reference-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        N° de Referencia *
+                                      </Label>
+                                      <Input
+                                        id={`transferencia-reference-${payment.id}`}
+                                        value={
+                                          payment.paymentDetails
+                                            ?.transferenciaReference || ""
+                                        }
+                                        onChange={(e) =>
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "transferenciaReference",
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="Ingrese el número de referencia"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+
+                          <div className="p-3 sm:p-4 bg-muted rounded-lg space-y-2 mt-4">
+                            <div className="flex justify-between text-xs sm:text-sm">
+                              <span>Total pagado:</span>
+                              <span
+                                className={
+                                  isPaymentsValid
+                                    ? "text-green-600 font-semibold"
+                                    : "text-orange-600 font-semibold"
+                                }
+                              >
+                                ${totalPaid.toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between text-xs sm:text-sm">
+                              <span>Total del pedido:</span>
+                              <span>${total.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm sm:text-base font-semibold">
+                              <span className="break-words">
+                                {remainingAmount === 0
+                                  ? "Estado:"
+                                  : remainingAmount > 0
+                                  ? "Falta:"
+                                  : "Cambio/Vuelto:"}
+                              </span>
+                              <span
+                                className={`${
+                                  isPaymentsValid
+                                    ? "text-green-600"
+                                    : remainingAmount > 0
+                                    ? "text-orange-600"
+                                    : "text-blue-600"
+                                } text-right ml-2`}
+                              >
+                                ${Math.abs(remainingAmount).toFixed(2)}
+                                {isPaymentsValid && (
+                                  <span className="text-xs ml-2 block sm:inline">
+                                    (Pagado completo)
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
+                  </div>
+
+                  {/* 5. OBSERVACIONES */}
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="generalObservations"
+                      className="text-sm sm:text-base"
+                    >
+                      Observaciones Generales
+                    </Label>
+                    <Textarea
+                      id="generalObservations"
+                      value={generalObservations}
+                      onChange={(e) => setGeneralObservations(e.target.value)}
+                      placeholder="Agregar observaciones generales para el pedido (opcional)"
+                      rows={3}
+                      className="w-full"
+                    />
+                    <p className="text-xs sm:text-sm text-muted-foreground">
+                      Notas generales sobre el pedido
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -1903,23 +1687,49 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           )}
 
           {/* Navigation Buttons */}
-          <div className="flex justify-between">
+          <div className="flex flex-col-reverse sm:flex-row justify-between gap-2 pt-2 sm:pt-0">
             <Button
               variant="outline"
               onClick={handleBack}
               disabled={currentStep === 1}
+              className="w-full sm:w-auto"
             >
               <ChevronLeft className="w-4 h-4 mr-2" />
               Anterior
             </Button>
 
             {currentStep < 2 ? (
-              <Button onClick={handleNext}>
+              <Button
+                onClick={handleNext}
+                className="w-full sm:w-auto"
+                disabled={!canGoToNextStep}
+                title={
+                  !formData.vendor &&
+                  !selectedClient &&
+                  selectedProducts.length === 0
+                    ? "Selecciona vendedor, cliente y al menos un producto para continuar"
+                    : !formData.vendor && !selectedClient
+                    ? "Selecciona vendedor y cliente para continuar"
+                    : !formData.vendor && selectedProducts.length === 0
+                    ? "Selecciona vendedor y al menos un producto para continuar"
+                    : !selectedClient && selectedProducts.length === 0
+                    ? "Selecciona cliente y al menos un producto para continuar"
+                    : !formData.vendor
+                    ? "Selecciona un vendedor para continuar"
+                    : !selectedClient
+                    ? "Selecciona un cliente para continuar"
+                    : selectedProducts.length === 0
+                    ? "Agrega al menos un producto para continuar"
+                    : ""
+                }
+              >
                 Siguiente
                 <ChevronRight className="w-4 h-4 ml-2" />
               </Button>
             ) : (
-              <Button onClick={handleSubmit}>Crear Pedido</Button>
+              <Button onClick={handleSubmit} className="w-full sm:w-auto">
+                Crear Pedido
+              </Button>
             )}
           </div>
         </DialogContent>

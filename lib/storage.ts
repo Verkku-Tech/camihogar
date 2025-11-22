@@ -310,7 +310,9 @@ export interface Order {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
-  paymentType: "directo" | "apartado" | "mixto";
+  paymentType: "directo" | "apartado" | "mixto"; // Mantener para compatibilidad
+  saleType?: "apartado" | "entrega" | "contado"; // Nuevo campo
+  paymentMode?: "simple" | "mixto"; // Nuevo campo
   paymentMethod: string;
   paymentDetails?: {
     // Pago Móvil
@@ -709,6 +711,105 @@ export const deleteStore = async (id: string): Promise<void> => {
     console.error("Error deleting store from IndexedDB:", error);
     throw error;
   }
+};
+
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Calcula el precio total de un producto considerando los ajustes de precio de los atributos seleccionados
+ * @param basePrice - Precio base del producto
+ * @param quantity - Cantidad del producto
+ * @param productAttributes - Atributos seleccionados del producto (ej: { "attrId": "valueId" })
+ * @param category - Categoría del producto que contiene la definición de atributos
+ * @returns Precio total calculado (precio base + ajustes de atributos) * cantidad
+ */
+export const calculateProductTotalWithAttributes = (
+  basePrice: number,
+  quantity: number,
+  productAttributes: Record<string, string | number> | undefined,
+  category: Category | undefined
+): number => {
+  if (!productAttributes || !category || !category.attributes) {
+    return basePrice * quantity;
+  }
+
+  let totalAdjustment = 0;
+
+  // Iterar sobre los atributos del producto
+  Object.entries(productAttributes).forEach(([attrKey, selectedValue]) => {
+    // Buscar el atributo en la categoría
+    const categoryAttribute = category.attributes.find(
+      (attr) => attr.id.toString() === attrKey || attr.title === attrKey
+    );
+
+    if (!categoryAttribute || !categoryAttribute.values) {
+      return;
+    }
+
+    // Buscar el valor seleccionado en los valores del atributo
+    const selectedValueStr = selectedValue.toString();
+    const attributeValue = categoryAttribute.values.find((val) => {
+      if (typeof val === "string") {
+        return val === selectedValueStr;
+      }
+      // Si es AttributeValue, comparar por id o label
+      return val.id === selectedValueStr || val.label === selectedValueStr;
+    });
+
+    // Si encontramos el valor y tiene un ajuste de precio, sumarlo
+    if (attributeValue && typeof attributeValue === "object" && "priceAdjustment" in attributeValue) {
+      const adjustment = attributeValue.priceAdjustment || 0;
+      totalAdjustment += adjustment;
+    }
+  });
+
+  // Calcular: (precio base + ajustes totales) * cantidad
+  const pricePerUnit = basePrice + totalAdjustment;
+  return pricePerUnit * quantity;
+};
+
+/**
+ * Calcula el precio unitario de un producto considerando los ajustes de precio de los atributos
+ * @param basePrice - Precio base del producto
+ * @param productAttributes - Atributos seleccionados del producto
+ * @param category - Categoría del producto que contiene la definición de atributos
+ * @returns Precio unitario calculado (precio base + ajustes de atributos)
+ */
+export const calculateProductUnitPriceWithAttributes = (
+  basePrice: number,
+  productAttributes: Record<string, string | number> | undefined,
+  category: Category | undefined
+): number => {
+  if (!productAttributes || !category || !category.attributes) {
+    return basePrice;
+  }
+
+  let totalAdjustment = 0;
+
+  Object.entries(productAttributes).forEach(([attrKey, selectedValue]) => {
+    const categoryAttribute = category.attributes.find(
+      (attr) => attr.id.toString() === attrKey || attr.title === attrKey
+    );
+
+    if (!categoryAttribute || !categoryAttribute.values) {
+      return;
+    }
+
+    const selectedValueStr = selectedValue.toString();
+    const attributeValue = categoryAttribute.values.find((val) => {
+      if (typeof val === "string") {
+        return val === selectedValueStr;
+      }
+      return val.id === selectedValueStr || val.label === selectedValueStr;
+    });
+
+    if (attributeValue && typeof attributeValue === "object" && "priceAdjustment" in attributeValue) {
+      const adjustment = attributeValue.priceAdjustment || 0;
+      totalAdjustment += adjustment;
+    }
+  });
+
+  return basePrice + totalAdjustment;
 };
 
 // ===== USERS STORAGE (IndexedDB) =====

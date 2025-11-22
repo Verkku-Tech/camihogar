@@ -3,6 +3,7 @@
 import type React from "react"
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
+import { apiClient, type UserDto } from "@/lib/api-client"
 
 interface User {
   id: string
@@ -17,6 +18,7 @@ interface AuthContextType {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
+  isOffline: boolean
   login: (username: string, password: string, rememberMe?: boolean) => Promise<void>
   logout: () => void
   refreshToken: () => Promise<void>
@@ -24,143 +26,207 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Mock users for demonstration
-const mockUsers: User[] = [
-  {
-    id: "1",
-    username: "admin",
-    email: "admin@camihogar.com",
-    role: "Super Administrator",
-    name: "Administrador Principal",
-    status: "active",
-  },
-  {
-    id: "2",
-    username: "supervisor",
-    email: "supervisor@camihogar.com",
-    role: "Supervisor",
-    name: "Juan Supervisor",
-    status: "active",
-  },
-]
+function mapUserDtoToUser(dto: UserDto): User {
+  return {
+    id: dto.id,
+    username: dto.username,
+    email: dto.email,
+    role: dto.role as User["role"],
+    name: dto.name,
+    status: dto.status as "active" | "inactive",
+  }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const sessionTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const inactivityTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const [isOffline, setIsOffline] = useState(false)
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const router = useRouter()
 
-  const clearTimeouts = useCallback(() => {
-    if (sessionTimeoutRef.current) clearTimeout(sessionTimeoutRef.current)
-    if (inactivityTimeoutRef.current) clearTimeout(inactivityTimeoutRef.current)
+  // Detectar conexión
+  useEffect(() => {
+    const updateOnlineStatus = () => {
+      const online = navigator.onLine
+      setIsOffline(!online)
+
+      // Si volvió la conexión, intentar refresh si es necesario
+      if (online && user) {
+        const tokenExpiresAt = parseInt(localStorage.getItem("token_expires_at") || "0")
+        const now = Date.now()
+
+        // Si el token expira en menos de 2 horas, intentar refresh
+        if (tokenExpiresAt - now < 2 * 60 * 60 * 1000) {
+          attemptRefreshToken()
+        }
+      }
+    }
+
+    // Verificar estado inicial
+    updateOnlineStatus()
+
+    window.addEventListener("online", updateOnlineStatus)
+    window.addEventListener("offline", updateOnlineStatus)
+
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus)
+      window.removeEventListener("offline", updateOnlineStatus)
+    }
+  }, [user])
+
+  const attemptRefreshToken = useCallback(async () => {
+    const refreshToken = localStorage.getItem("refresh_token")
+    if (!refreshToken) {
+      return false
+    }
+
+    // Verificar si el refresh token expiró
+    const refreshExpiresAt = parseInt(localStorage.getItem("refresh_token_expires_at") || "0")
+    if (Date.now() > refreshExpiresAt) {
+      // Refresh token expirado, forzar login
+      logout()
+      return false
+    }
+
+    // Si no hay conexión, no intentar refresh
+    if (!navigator.onLine) {
+      console.log("⚠️ Sin conexión, no se puede refrescar el token")
+      return false
+    }
+
+    try {
+      const success = await apiClient.refreshToken()
+      if (success) {
+        console.log("✅ Token refreshed successfully")
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error("❌ Token refresh failed:", error)
+      return false
+    }
   }, [])
 
   const logout = useCallback(() => {
     localStorage.removeItem("auth_token")
     localStorage.removeItem("refresh_token")
+    localStorage.removeItem("token_expires_at")
+    localStorage.removeItem("refresh_token_expires_at")
     localStorage.removeItem("user_data")
-    setUser(null)
-    clearTimeouts()
-    router.push("/login")
-  }, [router, clearTimeouts])
+    localStorage.removeItem("remember_me")
 
-  const refreshToken = useCallback(async () => {
-    try {
-      const refreshToken = localStorage.getItem("refresh_token")
-      if (!refreshToken) {
-        throw new Error("No refresh token available")
-      }
-
-      // Mock API call - replace with actual API
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      // Generate new tokens
-      const newToken = `mock_token_${Date.now()}`
-      const newRefreshToken = `mock_refresh_${Date.now()}`
-
-      localStorage.setItem("auth_token", newToken)
-      localStorage.setItem("refresh_token", newRefreshToken)
-
-      console.log("[v0] Token refreshed successfully")
-    } catch (error) {
-      console.error("[v0] Token refresh failed:", error)
-      logout()
+    if (refreshIntervalRef.current) {
+      clearInterval(refreshIntervalRef.current)
+      refreshIntervalRef.current = null
     }
-  }, [logout])
 
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimeoutRef.current) clearTimeout(inactivityTimeoutRef.current)
+    setUser(null)
+    router.push("/login")
+  }, [router])
 
-    inactivityTimeoutRef.current = setTimeout(
-      () => {
-        alert("Tu sesión ha expirado por inactividad")
-        logout()
-      },
-      30 * 60 * 1000,
-    ) // 30 minutes
-  }, [logout])
+  // Verificar y refrescar token periódicamente (cada hora)
+  useEffect(() => {
+    if (!user) return
 
-  const setupSessionManagement = useCallback(() => {
-    // Auto refresh token every 14 minutes (assuming 15 min expiry)
-    const refreshInterval = setInterval(refreshToken, 14 * 60 * 1000)
+    const checkAndRefresh = async () => {
+      const now = Date.now()
+      const expiresAt = parseInt(localStorage.getItem("token_expires_at") || "0")
 
-    // Setup inactivity timer
-    resetInactivityTimer()
+      // Si el token expira en menos de 2 horas, intentar refresh
+      if (expiresAt - now < 2 * 60 * 60 * 1000) {
+        await attemptRefreshToken()
+      }
+    }
 
-    // Listen for user activity
-    const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart", "click"]
-    const resetTimer = () => resetInactivityTimer()
+    // Verificar cada hora
+    refreshIntervalRef.current = setInterval(checkAndRefresh, 60 * 60 * 1000)
 
-    events.forEach((event) => {
-      document.addEventListener(event, resetTimer, true)
-    })
+    // Verificar inmediatamente al montar
+    checkAndRefresh()
 
     return () => {
-      clearInterval(refreshInterval)
-      events.forEach((event) => {
-        document.removeEventListener(event, resetTimer, true)
-      })
-      clearTimeouts()
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current)
+        refreshIntervalRef.current = null
+      }
     }
-  }, [refreshToken, resetInactivityTimer, clearTimeouts])
+  }, [user, attemptRefreshToken])
+
+  // Al iniciar, verificar tokens y hacer refresh si es necesario
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const token = localStorage.getItem("auth_token")
+        const refreshToken = localStorage.getItem("refresh_token")
+        const tokenExpiresAt = parseInt(localStorage.getItem("token_expires_at") || "0")
+        const refreshExpiresAt = parseInt(localStorage.getItem("refresh_token_expires_at") || "0")
+        const userData = localStorage.getItem("user_data")
+
+        if (!token || !refreshToken) {
+          setIsLoading(false)
+          return
+        }
+
+        // Verificar si el refresh token expiró
+        if (Date.now() > refreshExpiresAt) {
+          // Refresh token expirado, limpiar y forzar login
+          logout()
+          return
+        }
+
+        // Si el token expiró pero el refresh token sigue válido
+        if (Date.now() > tokenExpiresAt) {
+          // Intentar refresh inmediatamente
+          const refreshed = await attemptRefreshToken()
+          if (!refreshed) {
+            // Si no se pudo refrescar, permitir modo offline temporal
+            console.log("⚠️ Token expirado pero sin conexión, modo offline")
+          }
+        }
+
+        // Cargar usuario
+        if (userData) {
+          try {
+            const userDto = JSON.parse(userData) as UserDto
+            setUser(mapUserDtoToUser(userDto))
+          } catch (error) {
+            console.error("Error parsing user data:", error)
+            localStorage.removeItem("user_data")
+          }
+        }
+      } catch (error) {
+        console.error("Auth initialization error:", error)
+        logout()
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    initAuth()
+  }, [logout, attemptRefreshToken])
 
   const login = async (username: string, password: string, rememberMe = false) => {
     setIsLoading(true)
 
     try {
-      // Mock API call - replace with actual authentication
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const response = await apiClient.login(username, password, rememberMe)
 
-      const mockUser = mockUsers.find(
-        (u) => (u.username === username || u.email === username) && password === "password123",
+      // Guardar tokens con fechas de expiración
+      localStorage.setItem("auth_token", response.token)
+      localStorage.setItem("refresh_token", response.refreshToken)
+      localStorage.setItem("token_expires_at", new Date(response.expiresAt).getTime().toString())
+      localStorage.setItem(
+        "refresh_token_expires_at",
+        new Date(response.refreshTokenExpiresAt).getTime().toString()
       )
-
-      if (!mockUser) {
-        throw new Error("Usuario o contraseña incorrectos")
-      }
-
-      if (mockUser.status === "inactive") {
-        throw new Error("Tu cuenta está desactivada. Contacta al administrador.")
-      }
-
-      // Generate mock tokens
-      const token = `mock_token_${Date.now()}`
-      const refreshTokenValue = `mock_refresh_${Date.now()}`
-
-      // Store tokens
-      localStorage.setItem("auth_token", token)
-      localStorage.setItem("refresh_token", refreshTokenValue)
-      localStorage.setItem("user_data", JSON.stringify(mockUser))
+      localStorage.setItem("user_data", JSON.stringify(response.user))
 
       if (rememberMe) {
         localStorage.setItem("remember_me", "true")
       }
 
-      setUser(mockUser)
-
-      // Log access
-      console.log(`[v0] User ${mockUser.username} logged in at ${new Date().toISOString()}`)
+      setUser(mapUserDtoToUser(response.user))
+      router.push("/")
     } catch (error: any) {
       throw error
     } finally {
@@ -168,40 +234,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Initialize auth state
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        const token = localStorage.getItem("auth_token")
-        const userData = localStorage.getItem("user_data")
-
-        if (token && userData) {
-          const user = JSON.parse(userData)
-          setUser(user)
-        }
-      } catch (error) {
-        console.error("[v0] Auth initialization error:", error)
-        localStorage.clear()
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    initAuth()
-  }, [])
-
-  // Setup session management when user logs in
-  useEffect(() => {
-    if (user) {
-      const cleanup = setupSessionManagement()
-      return cleanup
-    }
-  }, [user, setupSessionManagement])
+  const refreshToken = useCallback(async () => {
+    await attemptRefreshToken()
+  }, [attemptRefreshToken])
 
   const value: AuthContextType = {
     user,
     isLoading,
     isAuthenticated: !!user,
+    isOffline,
     login,
     logout,
     refreshToken,
