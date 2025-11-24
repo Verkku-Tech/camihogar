@@ -1,0 +1,75 @@
+# ================================================================
+# ORDINA - Environment Variables Template
+# ================================================================
+# Copiar este archivo como .env y ajustar los valores según necesidad
+# El archivo .env NO debe ir en control de versiones
+
+# ================================================================
+# DATABASE CONFIGURATION
+# ================================================================
+# PostgreSQL Database (Single database with schemas)
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=ordina_main
+DB_USER=postgres
+DB_PASSWORD=OrdinaPassword123!
+DB_CONNECTION_STRING=Host=${DB_HOST};Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD};Port=${DB_PORT}
+
+# ================================================================
+# CACHE CONFIGURATION  
+# ================================================================
+# Redis Cache
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_CONNECTION_STRING=${REDIS_HOST}:${REDIS_PORT}
+
+# ================================================================
+# APPLICATION CONFIGURATION
+# ================================================================
+# Environment
+ASPNETCORE_ENVIRONMENT=Development
+DOTNET_ENVIRONMENT=Development
+
+# API Ports (for local development)
+API_GATEWAY_PORT=8080
+SECURITY_API_PORT=8082
+USERS_API_PORT=8083
+PROVIDERS_API_PORT=8084
+ORDERS_API_PORT=8085
+PAYMENTS_API_PORT=8086
+
+# ================================================================
+# SUPABASE LOCAL CONFIGURATION
+# ================================================================
+# Supabase Studio
+SUPABASE_STUDIO_PORT=3000
+SUPABASE_URL=http://localhost:8000
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOuoJl0MXLA1JIuOdLGJdNcT1ZcHYNHGdR6w
+SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+
+# ================================================================
+# DEVELOPMENT TOOLS
+# ================================================================
+# Swagger/OpenAPI
+SWAGGER_ENABLED=true
+
+# Logging Level
+LOGGING_LEVEL=Information
+
+# ================================================================
+# SECURITY CONFIGURATION
+# ================================================================
+# JWT Configuration (for future implementation)
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+JWT_ISSUER=https://localhost:8080
+JWT_AUDIENCE=ordina-apis
+JWT_EXPIRY_MINUTES=60
+
+# ================================================================
+# FEATURE FLAGS
+# ================================================================
+# Enable/Disable features during development
+ENABLE_SWAGGER=true
+ENABLE_HEALTH_CHECKS=true
+ENABLE_RATE_LIMITING=false
+ENABLE_CORS=true 

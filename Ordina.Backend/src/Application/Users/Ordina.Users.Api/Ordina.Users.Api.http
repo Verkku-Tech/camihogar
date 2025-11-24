@@ -1,0 +1,55 @@
+@Ordina.Users.Api_HostAddress = http://localhost:5222
+@ContentType = application/json
+
+### Obtener todos los usuarios
+GET {{Ordina.Users.Api_HostAddress}}/api/users
+Accept: {{ContentType}}
+
+### Obtener todos los usuarios activos
+GET {{Ordina.Users.Api_HostAddress}}/api/users?status=active
+Accept: {{ContentType}}
+
+### Obtener usuario por ID
+GET {{Ordina.Users.Api_HostAddress}}/api/users/{id}
+Accept: {{ContentType}}
+
+### Obtener usuario por username
+GET {{Ordina.Users.Api_HostAddress}}/api/users/username/{username}
+Accept: {{ContentType}}
+
+### Obtener usuario por email
+GET {{Ordina.Users.Api_HostAddress}}/api/users/email/{email}
+Accept: {{ContentType}}
+
+### Verificar si un usuario existe
+GET {{Ordina.Users.Api_HostAddress}}/api/users/{id}/exists
+Accept: {{ContentType}}
+
+### Crear un nuevo usuario
+POST {{Ordina.Users.Api_HostAddress}}/api/users
+Content-Type: {{ContentType}}
+
+{
+  "username": "juan.perez",
+  "email": "juan.perez@example.com",
+  "name": "Juan Pérez",
+  "role": "Store Seller",
+  "status": "active",
+  "password": "password123"
+}
+
+### Actualizar un usuario
+PUT {{Ordina.Users.Api_HostAddress}}/api/users/{id}
+Content-Type: {{ContentType}}
+
+{
+  "name": "Juan Pérez Actualizado",
+  "role": "Supervisor",
+  "status": "active"
+}
+
+### Eliminar un usuario
+DELETE {{Ordina.Users.Api_HostAddress}}/api/users/{id}
+Accept: {{ContentType}}
+
+###
