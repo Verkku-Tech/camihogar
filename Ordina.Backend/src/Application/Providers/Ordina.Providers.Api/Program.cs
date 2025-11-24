@@ -11,6 +11,22 @@ builder.Services.AddProblemDetails();
 // Configure MongoDB
 builder.Services.AddMongoDb(builder.Configuration);
 
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins(
+                "http://localhost:3000", 
+                "https://localhost:3000",
+                "https://camihogar.verkku.com"
+            )
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
 // Add controllers
 builder.Services.AddControllers();
 
@@ -37,6 +53,9 @@ await using (var scope = app.Services.CreateAsyncScope())
 
 // Configure the HTTP request pipeline.
 app.UseExceptionHandler();
+
+// Enable CORS - DEBE estar antes de UseAuthorization
+app.UseCors("AllowFrontend");
 
 // Enable Swagger in all environments
 app.UseSwagger();
