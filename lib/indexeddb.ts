@@ -1,6 +1,6 @@
 // Wrapper genérico para IndexedDB
 const DB_NAME = "camihogar_db";
-const DB_VERSION = 2; // Cambiar de 1 a 2
+const DB_VERSION = 3; // Incrementar para agregar sync_queue
 
 interface StoreConfig {
   name: string;
@@ -60,6 +60,15 @@ const STORES: StoreConfig[] = [
   {
     name: "vendors",
     keyPath: "id",
+  },
+  {
+    name: "sync_queue",
+    keyPath: "id",
+    indexes: [
+      { name: "status", keyPath: "status" },
+      { name: "entity", keyPath: "entity" },
+      { name: "timestamp", keyPath: "timestamp" },
+    ],
   },
 ];
 
