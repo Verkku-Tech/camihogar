@@ -1,9 +1,10 @@
 // API Client para comunicación con el backend
 // URLs base para cada microservicio
 const SECURITY_API_URL =
-  process.env.NEXT_PUBLIC_SECURITY_API_URL || "https://localhost:8082";
+  process.env.NEXT_PUBLIC_SECURITY_API_URL ||
+  "https://camihogar-security.verkku.com";
 const USERS_API_URL =
-  process.env.NEXT_PUBLIC_USERS_API_URL || "https://localhost:8083";
+  process.env.NEXT_PUBLIC_USERS_API_URL || "https://camihogar-users.verkku.com";
 
 export interface ApiError {
   message: string;
