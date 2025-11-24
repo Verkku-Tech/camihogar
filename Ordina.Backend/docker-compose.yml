@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   # Supabase Local Stack
   supabase-studio:
-    image: supabase/studio:20241216-df24b25
+    image: supabase/studio:latest
     container_name: ordina-supabase-studio
     restart: unless-stopped
     ports:

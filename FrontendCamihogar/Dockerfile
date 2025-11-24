@@ -4,10 +4,12 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
 # Copiar archivos de dependencias
-COPY package.json pnpm-lock.yaml ./
+COPY package.json ./
 
 # Instalar dependencias
-RUN pnpm install --frozen-lockfile
+# Nota: Si pnpm-lock.yaml existe en el contexto, debería copiarse antes de este paso
+# Por ahora, instalamos sin --frozen-lockfile para que funcione sin el lockfile
+RUN pnpm install
 
 # Stage 2: Builder
 FROM node:20-alpine AS builder
