@@ -72,7 +72,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/db-init:/docker-entrypoint-initdb.d
-      - ./supabase/init.sql:/docker-entrypoint-initdb.d/01-init-supabase.sql
     networks:
       - ordina-network
 
