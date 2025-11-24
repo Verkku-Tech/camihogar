@@ -1,27 +1,113 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Dependencies
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
 
-# dependencies
-/node_modules
+# Build outputs
+.next/
+out/
+dist/
+build/
 
-# next.js
-/.next/
-/out/
+# Production
+*.tsbuildinfo
+next-env.d.ts
 
-# production
-/build
-
-# debug
+# Debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+pnpm-debug.log*
 
-# env files
-.env*
+# Environment files
+.env
+.env.local
+.env*.local
+.env.development
+.env.test
+.env.production
 
-# vercel
+# Vercel
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Turbo
+.turbo/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# .NET (Backend)
+*.user
+*.suo
+*.cache
+*.rsuser
+*.userosscache
+*.sln.docstates
+*.userprefs
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+.vs/
+*.VisualState.xml
+TestResult.xml
+nunit-*.xml
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+*.pfx
+*.publishsettings
+*.pubxml
+*.azurePubxml
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+*.cache
+*.dbmdl
+*.dbproj.schemaview
+*.jfm
+*.GhostDoc.xml
+*.plg
+*.opt
+*.vbw
+*.binlog
+*.nvuser
+.mfractor/
+.localhistory/
+healthchecksdb
+MigrationBackup/
+.ionide/
+*.AppHost/logs/
+.aspire/
+*.sln.iml
+
+# Docker (keep docker-compose.yml and Dockerfile)
+docker-compose*.override.yml
+
+# Logs
+logs/
+*.log

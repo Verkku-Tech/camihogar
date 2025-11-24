@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Sdk Name="Aspire.AppHost.Sdk" Version="9.3.1" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>ce97208f-ae6f-4aa4-90e9-eef24b40c064</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" Version="9.3.1" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="9.3.1" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="9.3.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.6">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Ordina.ApiGateway/Ordina.ApiGateway.csproj" />
+    <ProjectReference Include="../../Application/Security/Ordina.Security.Api/Ordina.Security.Api.csproj" />
+    <ProjectReference Include="../../Application/Users/Ordina.Users.Api/Ordina.Users.Api.csproj" />
+    <ProjectReference Include="../../Application/Providers/Ordina.Providers.Api/Ordina.Providers.Api.csproj" />
+    <ProjectReference Include="../../Application/Orders/Ordina.Orders.Api/Ordina.Orders.Api.csproj" />
+    <ProjectReference Include="../../Application/Payments/Ordina.Payments.Api/Ordina.Payments.Api.csproj" />
+    <ProjectReference Include="../../Infrastructure/Ordina.ServiceDefaults/Ordina.ServiceDefaults.csproj" IsAspireProjectResource="false" />
+  </ItemGroup>
+
+</Project>
