@@ -13,10 +13,13 @@ export interface SyncOperation {
 }
 
 class SyncManager {
-  private isOnline = navigator.onLine
+  private isOnline: boolean
   private syncInterval: NodeJS.Timeout | null = null
 
   constructor() {
+    // Inicializar con valor seguro para SSR
+    this.isOnline = typeof window !== 'undefined' ? navigator.onLine : true
+    
     // Detectar cambios de conexión
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
