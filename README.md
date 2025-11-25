@@ -150,11 +150,49 @@ docker-compose up --build -d
 - Frontend: `FrontendCamihogar/Dockerfile`
 - Backend: Cada microservicio tiene su `Dockerfile` en `Ordina.Backend/src/Application/[Service]/Ordina.[Service].Api/`
 
+## 🚀 CI/CD y Despliegue
+
+Este proyecto incluye CI/CD automatizado con GitHub Actions y Docker Hub.
+
+### Flujo de CI/CD
+
+1. **Push a GitHub** → Se activa el workflow de GitHub Actions
+2. **Build** → Se compilan todas las imágenes Docker
+3. **Push a Docker Hub** → Las imágenes se suben automáticamente
+4. **Despliegue** → Watchtower en la Raspberry Pi actualiza automáticamente
+
+### Configuración
+
+1. **GitHub Secrets** (Settings → Secrets and variables → Actions):
+   - `DOCKER_USERNAME`: Tu usuario de Docker Hub
+   - `DOCKER_PASSWORD`: Token de acceso de Docker Hub
+
+2. **Raspberry Pi**:
+   ```bash
+   git clone https://github.com/tu-usuario/camihogar.git
+   cd camihogar
+   cp env.example .env
+   # Editar .env con tu DOCKER_USERNAME
+   chmod +x deploy.sh
+   ./deploy.sh
+   ```
+
+### Archivos de CI/CD
+
+- `.github/workflows/build-and-push.yml` - Workflow de GitHub Actions
+- `docker-compose.prod.yml` - Configuración para producción (usa imágenes de Docker Hub)
+- `deploy.sh` - Script de despliegue para la Raspberry Pi
+- `DEPLOYMENT.md` - Guía completa de despliegue
+
+Ver [DEPLOYMENT.md](./DEPLOYMENT.md) para más detalles sobre el despliegue.
+
 ## 📝 Notas
 
 - El `pnpm-lock.yaml` se encuentra en cada workspace individual
 - Los builds se pueden optimizar usando Turbo (ver `turbo.json`)
 - El backend usa .NET Solution para gestionar múltiples proyectos
+- Para desarrollo local, usa `docker-compose.yml`
+- Para producción en Raspberry Pi, usa `docker-compose.prod.yml`
 
 ## 🤝 Contribución
 
