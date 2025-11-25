@@ -188,6 +188,14 @@ docker-compose down -v
 docker-compose up --build -d
 ```
 
+### 📦 Dockerfile Unificado
+
+Este proyecto utiliza un **Dockerfile unificado** para construir todos los microservicios. Ver [DOCKERFILE.md](./DOCKERFILE.md) para más detalles.
+
+- ✅ Un solo Dockerfile en `Ordina.Backend/Dockerfile`
+- ✅ Se usa con argumentos `PROJECT_PATH` para cada servicio
+- ✅ Configurado automáticamente en el `docker-compose.yml` de la raíz
+
 ## 🧪 Desarrollo y Testing
 
 ### Estructura de Cada Microservicio

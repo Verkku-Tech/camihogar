@@ -1,0 +1,283 @@
+services:
+  # ================================================================
+  # FRONTEND - Next.js Application
+  # ================================================================
+  frontend:
+    build:
+      context: ./FrontendCamihogar
+      dockerfile: Dockerfile
+    container_name: camihogar-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - NEXT_PUBLIC_SECURITY_API_URL=http://localhost:8082
+      - NEXT_PUBLIC_USERS_API_URL=http://localhost:8083
+    depends_on:
+      - security-api
+      - users-api
+      - providers-api
+      - orders-api
+      - payments-api
+    networks:
+      - ordina-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ================================================================
+  # SUPABASE LOCAL STACK
+  # ================================================================
+  supabase-studio:
+    image: supabase/studio:latest
+    container_name: ordina-supabase-studio
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - SUPABASE_URL=http://kong:8000
+      - SUPABASE_REST_URL=http://localhost:8000/rest/v1/
+      - SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOuoJl0MXLA1JIuOdLGJdNcT1ZcHYNHGdR6w
+      - SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+      - POSTGRES_PASSWORD=OrdinaPassword123!
+    depends_on:
+      - kong
+    networks:
+      - ordina-network
+
+  kong:
+    image: kong:2.8.1
+    container_name: ordina-supabase-kong
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "8443:8443"
+    environment:
+      - KONG_DATABASE=off
+      - KONG_DECLARATIVE_CONFIG=/kong.yml
+      - KONG_DNS_ORDER=LAST,A,CNAME
+      - KONG_PLUGINS=request-transformer,cors,key-auth,acl
+    volumes:
+      - ./Ordina.Backend/supabase/kong.yml:/kong.yml:ro
+    depends_on:
+      - auth
+    networks:
+      - ordina-network
+
+  auth:
+    image: supabase/gotrue:v2.132.3
+    container_name: ordina-supabase-auth
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    environment:
+      - GOTRUE_API_HOST=0.0.0.0
+      - GOTRUE_API_PORT=9999
+      - GOTRUE_DB_DRIVER=postgres
+      - GOTRUE_DB_DATABASE_URL=postgres://supabase_auth_admin:OrdinaPassword123!@postgres:5432/ordina_main
+      - GOTRUE_SITE_URL=http://localhost:3001
+      - GOTRUE_URI_ALLOW_LIST=http://localhost:3001
+      - GOTRUE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
+      - GOTRUE_JWT_EXP=3600
+      - GOTRUE_JWT_AUD=authenticated
+      - GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated
+    networks:
+      - ordina-network
+
+  # ================================================================
+  # DATABASES
+  # ================================================================
+  postgres:
+    image: supabase/postgres:15.1.0.147
+    container_name: ordina-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=OrdinaPassword123!
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=ordina_main
+      - POSTGRES_PORT=5432
+      - POSTGRES_HOST=localhost
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./Ordina.Backend/scripts/db-init:/docker-entrypoint-initdb.d
+    networks:
+      - ordina-network
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: ordina-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ordina-network
+
+  mongodb:
+    image: mongo:7.0
+    container_name: ordina-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=OrdinaPassword123!
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - ordina-network
+
+  # ================================================================
+  # API GATEWAY
+  # ================================================================
+  apigateway:
+    build:
+      context: ./Ordina.Backend
+      dockerfile: Dockerfile
+      args:
+        PROJECT_PATH: "src/Presentation/Ordina.ApiGateway/Ordina.ApiGateway.csproj"
+    container_name: ordina-apigateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=https://+:8081;http://+:8080
+      - ASPNETCORE_Kestrel__Certificates__Default__Password=password
+      - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
+    depends_on:
+      - security-api
+      - users-api
+      - providers-api
+      - orders-api
+      - payments-api
+    networks:
+      - ordina-network
+
+  # ================================================================
+  # MICROSERVICES
+  # ================================================================
+  security-api:
+    build:
+      context: ./Ordina.Backend
+      dockerfile: Dockerfile
+      args:
+        PROJECT_PATH: "src/Application/Security/Ordina.Security.Api/Ordina.Security.Api.csproj"
+    container_name: ordina-security-api
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
+      - MongoDb__DatabaseName=ordina_db
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - ordina-network
+
+  users-api:
+    build:
+      context: ./Ordina.Backend
+      dockerfile: Dockerfile
+      args:
+        PROJECT_PATH: "src/Application/Users/Ordina.Users.Api/Ordina.Users.Api.csproj"
+    container_name: ordina-users-api
+    restart: unless-stopped
+    ports:
+      - "8083:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
+      - MongoDb__DatabaseName=ordina_db
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - ordina-network
+
+  providers-api:
+    build:
+      context: ./Ordina.Backend
+      dockerfile: Dockerfile
+      args:
+        PROJECT_PATH: "src/Application/Providers/Ordina.Providers.Api/Ordina.Providers.Api.csproj"
+    container_name: ordina-providers-api
+    restart: unless-stopped
+    ports:
+      - "8084:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
+      - MongoDb__DatabaseName=ordina_db
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - ordina-network
+
+  orders-api:
+    build:
+      context: ./Ordina.Backend
+      dockerfile: Dockerfile
+      args:
+        PROJECT_PATH: "src/Application/Orders/Ordina.Orders.Api/Ordina.Orders.Api.csproj"
+    container_name: ordina-orders-api
+    restart: unless-stopped
+    ports:
+      - "8085:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
+      - MongoDb__DatabaseName=ordina_db
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - ordina-network
+
+  payments-api:
+    build:
+      context: ./Ordina.Backend
+      dockerfile: Dockerfile
+      args:
+        PROJECT_PATH: "src/Application/Payments/Ordina.Payments.Api/Ordina.Payments.Api.csproj"
+    container_name: ordina-payments-api
+    restart: unless-stopped
+    ports:
+      - "8086:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
+      - MongoDb__DatabaseName=ordina_db
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - ordina-network
+
+# ================================================================
+# VOLUMES
+# ================================================================
+volumes:
+  postgres_data:
+  redis_data:
+  mongodb_data:
+
+# ================================================================
+# NETWORKS
+# ================================================================
+networks:
+  ordina-network:
+    driver: bridge
+

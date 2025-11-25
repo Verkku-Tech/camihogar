@@ -103,10 +103,52 @@ pnpm --filter FrontendCamihogar add <paquete>
 
 ## 🐳 Docker
 
-Ambos proyectos tienen configuración Docker:
+El proyecto tiene un `docker-compose.yml` unificado en la raíz que incluye todos los servicios.
 
-- Frontend: `FrontendCamihogar/Dockerfile` y `docker-compose.yml`
-- Backend: `Ordina.Backend/docker-compose.yml`
+### Servicios Disponibles
+
+| Servicio | Puerto | Descripción | URL |
+|----------|--------|-------------|-----|
+| **Frontend** | 3000 | Aplicación Next.js | http://localhost:3000 |
+| **Supabase Studio** | 3001 | Interfaz de gestión DB | http://localhost:3001 |
+| **Kong Gateway** | 8000, 8443 | API Gateway de Supabase | http://localhost:8000 |
+| **API Gateway** | 8080-8081 | Gateway principal | http://localhost:8080 |
+| **Security API** | 8082 | Autenticación y autorización | http://localhost:8082/swagger |
+| **Users API** | 8083 | Gestión de usuarios | http://localhost:8083/swagger |
+| **Providers API** | 8084 | Proveedores y productos | http://localhost:8084/swagger |
+| **Orders API** | 8085 | Gestión de pedidos | http://localhost:8085/swagger |
+| **Payments API** | 8086 | Procesamiento de pagos | http://localhost:8086/swagger |
+| **PostgreSQL** | 5432 | Base de datos principal | localhost:5432 |
+| **MongoDB** | 27017 | Base de datos NoSQL | localhost:27017 |
+| **Redis** | 6379 | Cache distribuido | localhost:6379 |
+
+### Iniciar todos los servicios
+
+```bash
+# Desde la raíz del proyecto
+docker-compose up -d
+
+# Ver logs de todos los servicios
+docker-compose logs -f
+
+# Ver logs de un servicio específico
+docker-compose logs -f frontend
+docker-compose logs -f security-api
+
+# Detener todos los servicios
+docker-compose down
+
+# Detener y eliminar volúmenes (⚠️ elimina datos)
+docker-compose down -v
+
+# Reconstruir imágenes
+docker-compose up --build -d
+```
+
+### Servicios individuales
+
+- Frontend: `FrontendCamihogar/Dockerfile`
+- Backend: Cada microservicio tiene su `Dockerfile` en `Ordina.Backend/src/Application/[Service]/Ordina.[Service].Api/`
 
 ## 📝 Notas
 

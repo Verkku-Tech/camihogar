@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node
+node_modules/
+.npm
+.pnpm-store/
+.pnpm-debug.log*
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env*.local
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Docker
+docker-compose*.override.yml
+Dockerfile.dev
+
+# Turbo
+.turbo/
+
