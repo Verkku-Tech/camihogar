@@ -1,6 +1,6 @@
 // Wrapper genérico para IndexedDB
 const DB_NAME = "camihogar_db";
-const DB_VERSION = 3; // Incrementar para agregar sync_queue
+const DB_VERSION = 4; // Incrementar para agregar exchange_rates
 
 interface StoreConfig {
   name: string;
@@ -70,6 +70,15 @@ const STORES: StoreConfig[] = [
       { name: "timestamp", keyPath: "timestamp" },
     ],
   },
+  {
+    name: "exchange_rates",
+    keyPath: "id",
+    indexes: [
+      { name: "toCurrency", keyPath: "toCurrency" },
+      { name: "effectiveDate", keyPath: "effectiveDate" },
+      { name: "isActive", keyPath: "isActive" },
+    ],
+  },
 ];
 
 // Inicializar la base de datos
@@ -92,8 +101,9 @@ export const initDB = (): Promise<IDBDatabase> => {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
+      const oldVersion = event.oldVersion || 0;
 
-      // Crear stores si no existen
+      // Crear stores si no existen o actualizar índices
       STORES.forEach((storeConfig) => {
         if (!db.objectStoreNames.contains(storeConfig.name)) {
           const objectStore = db.createObjectStore(storeConfig.name, {
@@ -106,6 +116,19 @@ export const initDB = (): Promise<IDBDatabase> => {
               unique: index.unique || false,
             });
           });
+        } else if (oldVersion < 4 && storeConfig.name === "exchange_rates") {
+          // Agregar índices al store existente si se está actualizando
+          const transaction = (event.target as IDBOpenDBRequest).transaction;
+          if (transaction) {
+            const objectStore = transaction.objectStore(storeConfig.name);
+            storeConfig.indexes?.forEach((index) => {
+              if (!objectStore.indexNames.contains(index.name)) {
+                objectStore.createIndex(index.name, index.keyPath, {
+                  unique: index.unique || false,
+                });
+              }
+            });
+          }
         }
       });
     };

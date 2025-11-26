@@ -290,6 +290,9 @@ export interface PartialPayment {
     transferenciaReference?: string;
     // Efectivo
     cashAmount?: string;
+    cashCurrency?: "Bs" | "USD" | "EUR"; // Moneda del pago en efectivo
+    cashReceived?: number; // Monto recibido del cliente
+    exchangeRate?: number; // Tasa de cambio usada al momento del pago
   };
 }
 
@@ -326,6 +329,9 @@ export interface Order {
     transferenciaDate?: string;
     // Efectivo
     cashAmount?: string;
+    cashCurrency?: "Bs" | "USD" | "EUR"; // Moneda del pago en efectivo
+    cashReceived?: number; // Monto recibido del cliente
+    exchangeRate?: number; // Tasa de cambio usada al momento del pago
   };
   partialPayments?: PartialPayment[]; // Ahora usa la interfaz exportada
   mixedPayments?: PartialPayment[]; // Para pagos mixtos
@@ -337,6 +343,7 @@ export interface Order {
   productMarkups?: Record<string, number>;
   createSupplierOrder?: boolean;
   observations?: string; // Observaciones generales del pedido
+  baseCurrency?: "Bs" | "USD" | "EUR"; // Moneda base para visualización del pedido
 }
 
 export interface Client {
@@ -884,64 +891,97 @@ export const deleteUser = async (id: string): Promise<void> => {
 };
 
 // ===== VENDORS STORAGE (IndexedDB) =====
+// Ahora obtenemos vendedores y referidos desde los usuarios según su rol
 
-const DEFAULT_VENDORS: Vendor[] = [
-  { id: "1", name: "Juan Pérez", role: "Vendedor de tienda", type: "vendor" },
-  { id: "2", name: "Ana López", role: "Vendedor de tienda", type: "vendor" },
-  {
-    id: "3",
-    name: "Carlos Silva",
-    role: "Vendedor de tienda",
-    type: "vendor",
-  },
-  {
-    id: "4",
-    name: "María González",
-    role: "Vendedor Online",
-    type: "referrer",
-  },
-  {
-    id: "5",
-    name: "Pedro Martínez",
-    role: "Vendedor Online",
-    type: "referrer",
-  },
-  {
-    id: "6",
-    name: "Laura Rodríguez",
-    role: "Vendedor Online",
-    type: "referrer",
-  },
-];
-
+/**
+ * Obtiene vendedores desde usuarios con rol "Store Seller" o "Vendedor de tienda"
+ * y los convierte al formato Vendor para mantener compatibilidad
+ */
 export const getVendors = async (): Promise<Vendor[]> => {
   try {
-    const vendors = await db.getAll<Vendor>("vendors");
-    // Si no hay datos, inicializar con datos por defecto
-    if (vendors.length === 0) {
-      // Inicializar con datos por defecto
-      for (const vendor of DEFAULT_VENDORS) {
-        try {
-          await db.add("vendors", vendor);
-        } catch (error) {
-          // Ignorar errores de duplicados si ya existen
-          console.warn("Vendor already exists:", vendor.id);
-        }
-      }
-      return DEFAULT_VENDORS;
-    }
+    // Obtener todos los usuarios
+    const users = await getUsers();
+    
+    // Filtrar usuarios con rol de vendedor de tienda (activos)
+    // Los roles pueden venir en formato API ("Store Seller") o display ("Vendedor de tienda")
+    const vendorUsers = users.filter(
+      (user) =>
+        user.status === "active" &&
+        (user.role === "Store Seller" || user.role === "Vendedor de tienda")
+    );
+
+    // Convertir usuarios a formato Vendor
+    const vendors: Vendor[] = vendorUsers.map((user) => ({
+      id: user.id,
+      name: user.name,
+      role: user.role === "Store Seller" ? "Vendedor de tienda" : user.role,
+      type: "vendor" as const,
+    }));
+
     return vendors;
   } catch (error) {
-    console.error("Error loading vendors from IndexedDB:", error);
-    return DEFAULT_VENDORS;
+    console.error("Error loading vendors from users:", error);
+    return [];
+  }
+};
+
+/**
+ * Obtiene referidos desde usuarios con rol "Online Seller" o "Vendedor Online"
+ * y los convierte al formato Vendor para mantener compatibilidad
+ */
+export const getReferrers = async (): Promise<Vendor[]> => {
+  try {
+    // Obtener todos los usuarios
+    const users = await getUsers();
+    
+    // Filtrar usuarios con rol de vendedor online (activos)
+    // Los roles pueden venir en formato API ("Online Seller") o display ("Vendedor Online")
+    const referrerUsers = users.filter(
+      (user) =>
+        user.status === "active" &&
+        (user.role === "Online Seller" || user.role === "Vendedor Online")
+    );
+
+    // Convertir usuarios a formato Vendor
+    const referrers: Vendor[] = referrerUsers.map((user) => ({
+      id: user.id,
+      name: user.name,
+      role: user.role === "Online Seller" ? "Vendedor Online" : user.role,
+      type: "referrer" as const,
+    }));
+
+    return referrers;
+  } catch (error) {
+    console.error("Error loading referrers from users:", error);
+    return [];
   }
 };
 
 export const getVendor = async (id: string): Promise<Vendor | undefined> => {
   try {
-    return await db.get<Vendor>("vendors", id);
+    // Buscar en usuarios primero
+    const user = await getUser(id);
+    if (user && user.status === "active") {
+      // Verificar si es vendedor o referido
+      const isVendor = user.role === "Store Seller" || user.role === "Vendedor de tienda";
+      const isReferrer = user.role === "Online Seller" || user.role === "Vendedor Online";
+      
+      if (isVendor || isReferrer) {
+        return {
+          id: user.id,
+          name: user.name,
+          role: user.role === "Store Seller" 
+            ? "Vendedor de tienda" 
+            : user.role === "Online Seller"
+            ? "Vendedor Online"
+            : user.role,
+          type: isVendor ? "vendor" : "referrer",
+        };
+      }
+    }
+    return undefined;
   } catch (error) {
-    console.error("Error loading vendor from IndexedDB:", error);
+    console.error("Error loading vendor from users:", error);
     return undefined;
   }
 };
