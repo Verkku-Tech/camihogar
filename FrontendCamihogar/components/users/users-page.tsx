@@ -1,12 +1,25 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -15,8 +28,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,64 +46,96 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import { Search, Plus, Edit, Trash2, Eye, EyeOff, RefreshCw } from "lucide-react"
-import { useUsers } from "@/hooks/use-users"
-import type { CreateUserDto, UpdateUserDto } from "@/lib/api-client"
+} from "@/components/ui/alert-dialog";
+import {
+  Search,
+  Plus,
+  Edit,
+  Trash2,
+  Eye,
+  EyeOff,
+  RefreshCw,
+} from "lucide-react";
+import { useUsers } from "@/hooks/use-users";
+import type { CreateUserDto, UpdateUserDto } from "@/lib/api-client";
 
 // Helper para mapear roles entre el formato del componente y el formato de API
-type ApiRole = "Super Administrator" | "Administrator" | "Supervisor" | "Store Seller" | "Online Seller"
-type DisplayRole = "Super Administrador" | "Administrador" | "Supervisor" | "Vendedor de tienda" | "Vendedor Online"
+type ApiRole =
+  | "Super Administrator"
+  | "Administrator"
+  | "Supervisor"
+  | "Store Seller"
+  | "Online Seller";
+type DisplayRole =
+  | "Super Administrador"
+  | "Administrador"
+  | "Supervisor"
+  | "Vendedor de tienda"
+  | "Vendedor Online";
 
 const mapRoleToApi = (role: string): ApiRole => {
   const roleMap: Record<string, ApiRole> = {
     "Super Administrador": "Super Administrator",
-    "Administrador": "Administrator",
-    "Supervisor": "Supervisor",
+    Administrador: "Administrator",
+    Supervisor: "Supervisor",
     "Vendedor de tienda": "Store Seller",
     "Vendedor Online": "Online Seller",
-  }
-  return roleMap[role] || "Store Seller"
-}
+  };
+  return roleMap[role] || "Store Seller";
+};
 
 const mapRoleFromApi = (role: string): DisplayRole => {
   const roleMap: Record<string, DisplayRole> = {
     "Super Administrator": "Super Administrador",
-    "Administrator": "Administrador",
-    "Supervisor": "Supervisor",
+    Administrator: "Administrador",
+    Supervisor: "Supervisor",
     "Store Seller": "Vendedor de tienda",
     "Online Seller": "Vendedor Online",
-  }
-  return roleMap[role] || "Vendedor de tienda"
-}
+  };
+  return roleMap[role] || "Vendedor de tienda";
+};
 
 const mapStatusToApi = (status: string): "active" | "inactive" => {
-  return status === "Activo" ? "active" : "inactive"
-}
+  return status === "Activo" ? "active" : "inactive";
+};
 
 const mapStatusFromApi = (status: string): "Activo" | "Inactivo" => {
-  return status === "active" ? "Activo" : "Inactivo"
-}
+  return status === "active" ? "Activo" : "Inactivo";
+};
 
 interface UserDisplay {
-  id: string
-  fullName: string
-  username: string
-  email: string
-  role: "Super Administrador" | "Administrador" | "Supervisor" | "Vendedor de tienda" | "Vendedor Online"
-  status: "Activo" | "Inactivo"
-  createdAt: string
+  id: string;
+  fullName: string;
+  username: string;
+  email: string;
+  role:
+    | "Super Administrador"
+    | "Administrador"
+    | "Supervisor"
+    | "Vendedor de tienda"
+    | "Vendedor Online";
+  status: "Activo" | "Inactivo";
+  createdAt: string;
 }
 
 export function UsersPage() {
-  const { users: apiUsers, isLoading, isSyncing, isOnline, createUser, updateUser, deleteUser, refresh } = useUsers()
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [roleFilter, setRoleFilter] = useState<string>("all")
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [editingUser, setEditingUser] = useState<UserDisplay | null>(null)
-  const [showPassword, setShowPassword] = useState(false)
+  const {
+    users: apiUsers,
+    isLoading,
+    isSyncing,
+    isOnline,
+    createUser,
+    updateUser,
+    deleteUser,
+    refresh,
+  } = useUsers();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserDisplay | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     fullName: "",
     username: "",
@@ -93,7 +144,7 @@ export function UsersPage() {
     confirmPassword: "",
     role: "",
     status: "Activo" as const,
-  })
+  });
 
   // Convertir usuarios de API a formato display
   const users: UserDisplay[] = apiUsers.map((u) => ({
@@ -104,28 +155,31 @@ export function UsersPage() {
     role: mapRoleFromApi(u.role) as UserDisplay["role"],
     status: mapStatusFromApi(u.status) as UserDisplay["status"],
     createdAt: u.createdAt || new Date().toISOString(),
-  }))
+  }));
 
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === "all" || user.status === statusFilter
-    const matchesRole = roleFilter === "all" || user.role === roleFilter
-    return matchesSearch && matchesStatus && matchesRole
-  })
+      user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus =
+      statusFilter === "all" || user.status === statusFilter;
+    const matchesRole = roleFilter === "all" || user.role === roleFilter;
+    return matchesSearch && matchesStatus && matchesRole;
+  });
 
   const handleCreateUser = async () => {
     if (formData.password !== formData.confirmPassword) {
-      alert("Las contraseñas no coinciden")
-      return
+      alert("Las contraseñas no coinciden");
+      return;
     }
 
-    const existingUser = users.find((u) => u.email === formData.email || u.username === formData.username)
+    const existingUser = users.find(
+      (u) => u.email === formData.email || u.username === formData.username
+    );
     if (existingUser) {
-      alert("El correo electrónico o nombre de usuario ya existe")
-      return
+      alert("El correo electrónico o nombre de usuario ya existe");
+      return;
     }
 
     try {
@@ -136,28 +190,32 @@ export function UsersPage() {
         role: mapRoleToApi(formData.role),
         status: mapStatusToApi(formData.status),
         password: formData.password,
-      }
-      await createUser(createUserDto)
-      setIsCreateDialogOpen(false)
-      resetForm()
+      };
+      await createUser(createUserDto);
+      setIsCreateDialogOpen(false);
+      resetForm();
       if (!isOnline) {
-        alert("Usuario creado localmente. Se sincronizará cuando vuelva la conexión.")
+        alert(
+          "Usuario creado localmente. Se sincronizará cuando vuelva la conexión."
+        );
       }
     } catch (error: any) {
-      console.error("Error creating user:", error)
-      alert(error.message || "Error al crear el usuario")
+      console.error("Error creating user:", error);
+      alert(error.message || "Error al crear el usuario");
     }
-  }
+  };
 
   const handleEditUser = async () => {
-    if (!editingUser) return
+    if (!editingUser) return;
 
     const existingUser = users.find(
-      (u) => (u.email === formData.email || u.username === formData.username) && u.id !== editingUser.id,
-    )
+      (u) =>
+        (u.email === formData.email || u.username === formData.username) &&
+        u.id !== editingUser.id
+    );
     if (existingUser) {
-      alert("El correo electrónico o nombre de usuario ya existe")
-      return
+      alert("El correo electrónico o nombre de usuario ya existe");
+      return;
     }
 
     try {
@@ -168,49 +226,54 @@ export function UsersPage() {
         role: mapRoleToApi(formData.role),
         status: mapStatusToApi(formData.status),
         ...(formData.password && { password: formData.password }),
-      }
-      await updateUser(editingUser.id, updateUserDto)
-      setIsEditDialogOpen(false)
-      setEditingUser(null)
-      resetForm()
+      };
+      await updateUser(editingUser.id, updateUserDto);
+      setIsEditDialogOpen(false);
+      setEditingUser(null);
+      resetForm();
       if (!isOnline) {
-        alert("Usuario actualizado localmente. Se sincronizará cuando vuelva la conexión.")
+        alert(
+          "Usuario actualizado localmente. Se sincronizará cuando vuelva la conexión."
+        );
       }
     } catch (error: any) {
-      console.error("Error updating user:", error)
-      alert(error.message || "Error al actualizar el usuario")
+      console.error("Error updating user:", error);
+      alert(error.message || "Error al actualizar el usuario");
     }
-  }
+  };
 
   const handleToggleStatus = async (userId: string) => {
     try {
-      const user = users.find((u) => u.id === userId)
-      if (!user) return
+      const user = users.find((u) => u.id === userId);
+      if (!user) return;
 
       const updateUserDto: UpdateUserDto = {
-        status: mapStatusToApi(user.status) === "active" ? "inactive" : "active",
-      }
-      await updateUser(userId, updateUserDto)
+        status:
+          mapStatusToApi(user.status) === "active" ? "inactive" : "active",
+      };
+      await updateUser(userId, updateUserDto);
     } catch (error: any) {
-      console.error("Error updating user status:", error)
-      alert(error.message || "Error al actualizar el estado del usuario")
+      console.error("Error updating user status:", error);
+      alert(error.message || "Error al actualizar el estado del usuario");
     }
-  }
+  };
 
   const handleDeleteUser = async (userId: string) => {
     try {
-      await deleteUser(userId)
+      await deleteUser(userId);
       if (!isOnline) {
-        alert("Usuario eliminado localmente. Se sincronizará cuando vuelva la conexión.")
+        alert(
+          "Usuario eliminado localmente. Se sincronizará cuando vuelva la conexión."
+        );
       }
     } catch (error: any) {
-      console.error("Error deleting user:", error)
-      alert(error.message || "Error al eliminar el usuario")
+      console.error("Error deleting user:", error);
+      alert(error.message || "Error al eliminar el usuario");
     }
-  }
+  };
 
   const openEditDialog = (user: UserDisplay) => {
-    setEditingUser(user)
+    setEditingUser(user);
     setFormData({
       fullName: user.fullName,
       username: user.username,
@@ -219,9 +282,9 @@ export function UsersPage() {
       confirmPassword: "",
       role: user.role,
       status: user.status,
-    })
-    setIsEditDialogOpen(true)
-  }
+    });
+    setIsEditDialogOpen(true);
+  };
 
   const resetForm = () => {
     setFormData({
@@ -232,51 +295,67 @@ export function UsersPage() {
       confirmPassword: "",
       role: "",
       status: "Activo",
-    })
-    setShowPassword(false)
-  }
+    });
+    setShowPassword(false);
+  };
 
   const getRoleColor = (role: string) => {
     switch (role) {
       case "Super Administrador":
-        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300";
       case "Administrador":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300"
+        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
       case "Supervisor":
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
       case "Vendedor de tienda":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
       case "Vendedor Online":
-        return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
+        return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
       default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
     }
-  }
+  };
 
   return (
     <div className="space-y-6">
       {/* Header y Filtros en la misma fila */}
-      <div className="flex flex-col lg:flex-row gap-6">
+      <div className="flex flex-col  gap-6">
         {/* Gestión de Usuarios - Izquierda */}
-        <div className="flex-1">
+        <div className="flex-1 px-[50px]">
           <div className="flex items-center gap-2 mb-2">
-            <h1 className="text-2xl font-bold text-foreground">Gestión de Usuarios</h1>
+            <h1 className="text-2xl font-bold text-foreground">
+              Gestión de Usuarios
+            </h1>
             {isSyncing && (
               <RefreshCw className="w-5 h-5 text-blue-500 animate-spin" />
             )}
             {!isOnline && (
-              <Badge variant="outline" className="text-orange-600 border-orange-600">
+              <Badge
+                variant="outline"
+                className="text-orange-600 border-orange-600"
+              >
                 Modo Offline
               </Badge>
             )}
           </div>
-          <p className="text-muted-foreground mb-4">Administra los usuarios del sistema</p>
+          <p className="text-muted-foreground mb-4">
+            Administra los usuarios del sistema
+          </p>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => refresh()} disabled={isLoading || isSyncing}>
-              <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+            <Button
+              variant="outline"
+              onClick={() => refresh()}
+              disabled={isLoading || isSyncing}
+            >
+              <RefreshCw
+                className={`w-4 h-4 mr-2 ${isSyncing ? "animate-spin" : ""}`}
+              />
               Actualizar
             </Button>
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <Dialog
+              open={isCreateDialogOpen}
+              onOpenChange={setIsCreateDialogOpen}
+            >
               <DialogTrigger asChild>
                 <Button onClick={resetForm}>
                   <Plus className="w-4 h-4 mr-2" />
@@ -286,7 +365,9 @@ export function UsersPage() {
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle>Crear Usuario</DialogTitle>
-                  <DialogDescription>Completa los datos para crear un nuevo usuario</DialogDescription>
+                  <DialogDescription>
+                    Completa los datos para crear un nuevo usuario
+                  </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div>
@@ -294,7 +375,9 @@ export function UsersPage() {
                     <Input
                       id="fullName"
                       value={formData.fullName}
-                      onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, fullName: e.target.value })
+                      }
                       placeholder="Ingresa el nombre completo"
                     />
                   </div>
@@ -303,7 +386,9 @@ export function UsersPage() {
                     <Input
                       id="username"
                       value={formData.username}
-                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, username: e.target.value })
+                      }
                       placeholder="Ingresa el nombre de usuario"
                     />
                   </div>
@@ -313,22 +398,37 @@ export function UsersPage() {
                       id="email"
                       type="email"
                       value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, email: e.target.value })
+                      }
                       placeholder="Ingresa el correo electrónico"
                     />
                   </div>
                   <div>
                     <Label htmlFor="role">Rol *</Label>
-                    <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
+                    <Select
+                      value={formData.role}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, role: value })
+                      }
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecciona un rol" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Super Administrador">Super Administrador</SelectItem>
-                        <SelectItem value="Administrador">Administrador</SelectItem>
+                        <SelectItem value="Super Administrador">
+                          Super Administrador
+                        </SelectItem>
+                        <SelectItem value="Administrador">
+                          Administrador
+                        </SelectItem>
                         <SelectItem value="Supervisor">Supervisor</SelectItem>
-                        <SelectItem value="Vendedor de tienda">Vendedor de tienda</SelectItem>
-                        <SelectItem value="Vendedor Online">Vendedor Online</SelectItem>
+                        <SelectItem value="Vendedor de tienda">
+                          Vendedor de tienda
+                        </SelectItem>
+                        <SelectItem value="Vendedor Online">
+                          Vendedor Online
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -339,7 +439,9 @@ export function UsersPage() {
                         id="password"
                         type={showPassword ? "text" : "password"}
                         value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, password: e.target.value })
+                        }
                         placeholder="Ingresa la contraseña"
                       />
                       <Button
@@ -349,23 +451,37 @@ export function UsersPage() {
                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => setShowPassword(!showPassword)}
                       >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
                       </Button>
                     </div>
                   </div>
                   <div>
-                    <Label htmlFor="confirmPassword">Confirmar Contraseña *</Label>
+                    <Label htmlFor="confirmPassword">
+                      Confirmar Contraseña *
+                    </Label>
                     <Input
                       id="confirmPassword"
                       type={showPassword ? "text" : "password"}
                       value={formData.confirmPassword}
-                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          confirmPassword: e.target.value,
+                        })
+                      }
                       placeholder="Confirma la contraseña"
                     />
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsCreateDialogOpen(false)}
+                  >
                     Cancelar
                   </Button>
                   <Button onClick={handleCreateUser}>Crear Usuario</Button>
@@ -376,7 +492,7 @@ export function UsersPage() {
         </div>
 
         {/* Filtros - Derecha */}
-        <div className="lg:w-96">
+        <div className="w-full">
           <Card>
             <CardHeader>
               <CardTitle>Filtros</CardTitle>
@@ -392,29 +508,39 @@ export function UsersPage() {
                     className="pl-10"
                   />
                 </div>
-                <Select value={roleFilter} onValueChange={setRoleFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Filtrar por rol" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los roles</SelectItem>
-                    <SelectItem value="Super Administrador">Super Administrador</SelectItem>
-                    <SelectItem value="Administrador">Administrador</SelectItem>
-                    <SelectItem value="Supervisor">Supervisor</SelectItem>
-                    <SelectItem value="Vendedor de tienda">Vendedor de tienda</SelectItem>
-                    <SelectItem value="Vendedor Online">Vendedor Online</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Filtrar por estado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los estados</SelectItem>
-                    <SelectItem value="Activo">Activo</SelectItem>
-                    <SelectItem value="Inactivo">Inactivo</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex flex-col flex-row gap-6">
+                  <Select value={roleFilter} onValueChange={setRoleFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Filtrar por rol" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los roles</SelectItem>
+                      <SelectItem value="Super Administrador">
+                        Super Administrador
+                      </SelectItem>
+                      <SelectItem value="Administrador">
+                        Administrador
+                      </SelectItem>
+                      <SelectItem value="Supervisor">Supervisor</SelectItem>
+                      <SelectItem value="Vendedor de tienda">
+                        Vendedor de tienda
+                      </SelectItem>
+                      <SelectItem value="Vendedor Online">
+                        Vendedor Online
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Filtrar por estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los estados</SelectItem>
+                      <SelectItem value="Activo">Activo</SelectItem>
+                      <SelectItem value="Inactivo">Inactivo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -425,93 +551,132 @@ export function UsersPage() {
       <Card>
         <CardHeader>
           <CardTitle>Usuarios ({filteredUsers.length})</CardTitle>
-          <CardDescription>Lista de todos los usuarios del sistema</CardDescription>
+          <CardDescription>
+            Lista de todos los usuarios del sistema
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Cargando usuarios...</div>
+            <div className="text-center py-8 text-muted-foreground">
+              Cargando usuarios...
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nombre Completo</TableHead>
-                  <TableHead>Usuario</TableHead>
-                  <TableHead>Correo</TableHead>
-                  <TableHead>Rol</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Fecha Creación</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.fullName}</TableCell>
-                    <TableCell>{user.username}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>
-                      <Badge className={getRoleColor(user.role)}>{user.role}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={user.status === "Activo" ? "default" : "secondary"}>{user.status}</Badge>
-                    </TableCell>
-                    <TableCell>{user.createdAt}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => openEditDialog(user)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              {user.status === "Activo" ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>
-                                {user.status === "Activo" ? "Desactivar" : "Activar"} Usuario
-                              </AlertDialogTitle>
-                              <AlertDialogDescription>
-                                ¿Estás seguro de que deseas {user.status === "Activo" ? "desactivar" : "activar"} al
-                                usuario {user.fullName}?
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleToggleStatus(user.id)}>
-                                {user.status === "Activo" ? "Desactivar" : "Activar"}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Eliminar Usuario</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                ¿Estás seguro de que deseas eliminar al usuario {user.fullName}? Esta acción no se puede
-                                deshacer.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteUser(user.id)}>Eliminar</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </TableCell>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre Completo</TableHead>
+                    <TableHead>Usuario</TableHead>
+                    <TableHead>Correo</TableHead>
+                    <TableHead>Rol</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Fecha Creación</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredUsers.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell className="font-medium">
+                        {user.fullName}
+                      </TableCell>
+                      <TableCell>{user.username}</TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>
+                        <Badge className={getRoleColor(user.role)}>
+                          {user.role}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            user.status === "Activo" ? "default" : "secondary"
+                          }
+                        >
+                          {user.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{user.createdAt}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditDialog(user)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                {user.status === "Activo" ? (
+                                  <EyeOff className="w-4 h-4" />
+                                ) : (
+                                  <Eye className="w-4 h-4" />
+                                )}
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                  {user.status === "Activo"
+                                    ? "Desactivar"
+                                    : "Activar"}{" "}
+                                  Usuario
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  ¿Estás seguro de que deseas{" "}
+                                  {user.status === "Activo"
+                                    ? "desactivar"
+                                    : "activar"}{" "}
+                                  al usuario {user.fullName}?
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleToggleStatus(user.id)}
+                                >
+                                  {user.status === "Activo"
+                                    ? "Desactivar"
+                                    : "Activar"}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                  Eliminar Usuario
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  ¿Estás seguro de que deseas eliminar al
+                                  usuario {user.fullName}? Esta acción no se
+                                  puede deshacer.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDeleteUser(user.id)}
+                                >
+                                  Eliminar
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
@@ -522,7 +687,9 @@ export function UsersPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Editar Usuario</DialogTitle>
-            <DialogDescription>Modifica los datos del usuario</DialogDescription>
+            <DialogDescription>
+              Modifica los datos del usuario
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -530,7 +697,9 @@ export function UsersPage() {
               <Input
                 id="editFullName"
                 value={formData.fullName}
-                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, fullName: e.target.value })
+                }
                 placeholder="Ingresa el nombre completo"
               />
             </div>
@@ -539,7 +708,9 @@ export function UsersPage() {
               <Input
                 id="editUsername"
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, username: e.target.value })
+                }
                 placeholder="Ingresa el nombre de usuario"
               />
             </div>
@@ -549,22 +720,35 @@ export function UsersPage() {
                 id="editEmail"
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
                 placeholder="Ingresa el correo electrónico"
               />
             </div>
             <div>
               <Label htmlFor="editRole">Rol *</Label>
-              <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
+              <Select
+                value={formData.role}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, role: value })
+                }
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona un rol" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Super Administrador">Super Administrador</SelectItem>
+                  <SelectItem value="Super Administrador">
+                    Super Administrador
+                  </SelectItem>
                   <SelectItem value="Administrador">Administrador</SelectItem>
                   <SelectItem value="Supervisor">Supervisor</SelectItem>
-                  <SelectItem value="Vendedor de tienda">Vendedor de tienda</SelectItem>
-                  <SelectItem value="Vendedor Online">Vendedor Online</SelectItem>
+                  <SelectItem value="Vendedor de tienda">
+                    Vendedor de tienda
+                  </SelectItem>
+                  <SelectItem value="Vendedor Online">
+                    Vendedor Online
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -572,7 +756,12 @@ export function UsersPage() {
               <Label htmlFor="editStatus">Estado *</Label>
               <Select
                 value={formData.status}
-                onValueChange={(value) => setFormData({ ...formData, status: value as "Activo" | "Inactivo" })}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    status: value as "Activo" | "Inactivo",
+                  })
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona un estado" />
@@ -590,7 +779,9 @@ export function UsersPage() {
                   id="editPassword"
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
                   placeholder="Dejar vacío para mantener la actual"
                 />
                 <Button
@@ -600,13 +791,20 @@ export function UsersPage() {
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsEditDialogOpen(false)}
+            >
               Cancelar
             </Button>
             <Button onClick={handleEditUser}>Guardar Cambios</Button>
@@ -614,5 +812,5 @@ export function UsersPage() {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

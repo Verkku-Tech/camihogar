@@ -46,6 +46,7 @@ import {
 import {
   addOrder,
   getVendors,
+  getReferrers,
   getCategories,
   calculateProductTotalWithAttributes,
   type Order,
@@ -54,6 +55,13 @@ import {
   type Vendor,
   type Category,
 } from "@/lib/storage";
+import {
+  Currency,
+  getActiveExchangeRates,
+  convertCurrency,
+  formatCurrency,
+  type ExchangeRate,
+} from "@/lib/currency-utils";
 
 interface NewOrderDialogProps {
   open: boolean;
@@ -94,15 +102,25 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [deliveryExpenses, setDeliveryExpenses] = useState(0);
   const [createSupplierOrder, setCreateSupplierOrder] = useState(false); // Added supplier order flag
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [referrers, setReferrers] = useState<Vendor[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [exchangeRates, setExchangeRates] = useState<{
+    USD?: ExchangeRate;
+    EUR?: ExchangeRate;
+  }>({});
 
   useEffect(() => {
-    const loadVendors = async () => {
+    const loadVendorsAndReferrers = async () => {
       try {
+        // Cargar vendedores desde usuarios con rol "Store Seller" o "Vendedor de tienda"
         const loadedVendors = await getVendors();
         setVendors(loadedVendors);
+
+        // Cargar referidos desde usuarios con rol "Online Seller" o "Vendedor Online"
+        const loadedReferrers = await getReferrers();
+        setReferrers(loadedReferrers);
       } catch (error) {
-        console.error("Error loading vendors:", error);
+        console.error("Error loading vendors and referrers:", error);
       }
     };
     const loadCategories = async () => {
@@ -113,14 +131,24 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         console.error("Error loading categories:", error);
       }
     };
+    const loadExchangeRates = async () => {
+      try {
+        const rates = await getActiveExchangeRates();
+        setExchangeRates(rates);
+      } catch (error) {
+        console.error("Error loading exchange rates:", error);
+      }
+    };
     if (open) {
-      loadVendors();
+      loadVendorsAndReferrers();
       loadCategories();
+      loadExchangeRates();
     }
   }, [open]);
 
-  const mockVendors = vendors.filter((v) => v.type === "vendor");
-  const mockReferrers = vendors.filter((v) => v.type === "referrer");
+  // Mantener compatibilidad con código existente usando vendors y referrers separados
+  const mockVendors = vendors;
+  const mockReferrers = referrers;
 
   const [formData, setFormData] = useState({
     vendor: "",
@@ -216,9 +244,45 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     }
   }, [hasDelivery, selectedClient]);
 
-  // Calcular total de pagos
-  const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
-  const remainingAmount = total - totalPaid;
+  // Calcular total de pagos en Bs (para validación)
+  const calculateTotalPaidInBs = async (): Promise<number> => {
+    let totalInBs = 0;
+
+    for (const payment of payments) {
+      if (
+        payment.paymentDetails?.cashCurrency &&
+        payment.paymentDetails.cashCurrency !== "Bs"
+      ) {
+        // Convertir pago en moneda extranjera a Bs
+        const rate =
+          payment.paymentDetails.exchangeRate ||
+          exchangeRates[payment.paymentDetails.cashCurrency]?.rate;
+        if (rate && rate > 0) {
+          totalInBs += payment.amount * rate;
+        } else {
+          totalInBs += payment.amount;
+        }
+      } else {
+        totalInBs += payment.amount;
+      }
+    }
+
+    return totalInBs;
+  };
+
+  const [totalPaidInBs, setTotalPaidInBs] = useState(0);
+
+  useEffect(() => {
+    const updateTotal = async () => {
+      const total = await calculateTotalPaidInBs();
+      setTotalPaidInBs(total);
+    };
+    updateTotal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payments, exchangeRates]);
+
+  // Remaining amount - siempre trabajamos en Bs
+  const remainingAmount = total - totalPaidInBs;
   const isPaymentsValid = Math.abs(remainingAmount) < 0.01; // Tolerancia para decimales
 
   const handleProductsSelect = (products: OrderProduct[]) => {
@@ -388,9 +452,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       if (!isPaymentsValid && saleType === "contado") {
         // Para contado, el total debe ser igual al pedido
         alert(
-          `El total de los pagos ($${totalPaid.toFixed(
-            2
-          )}) debe ser igual al total del pedido ($${total.toFixed(2)})`
+          `El total de los pagos (${formatCurrency(
+            totalPaidInBs,
+            "Bs"
+          )}) debe ser igual al total del pedido (${formatCurrency(
+            total,
+            "Bs"
+          )})`
         );
         return;
       }
@@ -441,6 +509,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         productMarkups,
         createSupplierOrder,
         observations: generalObservations.trim() || undefined,
+        baseCurrency: "Bs", // Moneda principal siempre es Bs
       };
 
       await addOrder(orderData);
@@ -508,7 +577,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     );
   };
 
-  const updatePaymentDetails = (id: string, field: string, value: string) => {
+  const updatePaymentDetails = (
+    id: string,
+    field: string,
+    value: string | number
+  ) => {
     setPayments((paymentsList) =>
       paymentsList.map((payment) => {
         if (payment.id === id) {
@@ -1206,70 +1279,213 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                   </div>
 
                   {/* 2. TOTALIZACIÓN */}
-                  <div className="p-3 sm:p-4 bg-muted rounded-lg space-y-2">
-                    <div className="flex justify-between text-xs sm:text-sm">
-                      <span className="break-words pr-2">
-                        Subtotal productos:
-                      </span>
-                      <span className="text-right whitespace-nowrap">
-                        ${productSubtotal.toFixed(2)}
-                      </span>
-                    </div>
+                  <div className="p-3 sm:p-4 bg-muted rounded-lg">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-[200px]">
+                              Concepto
+                            </TableHead>
+                            <TableHead className="text-right">Bs</TableHead>
+                            <TableHead className="text-right">USD</TableHead>
+                            <TableHead className="text-right">EUR</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {/* Subtotal productos */}
+                          <TableRow>
+                            <TableCell className="text-xs sm:text-sm">
+                              Subtotal productos:
+                            </TableCell>
+                            <TableCell className="text-right text-xs sm:text-sm">
+                              {formatCurrency(productSubtotal, "Bs")}
+                            </TableCell>
+                            <TableCell className="text-right text-xs sm:text-sm">
+                              {exchangeRates.USD?.rate
+                                ? formatCurrency(
+                                    productSubtotal / exchangeRates.USD.rate,
+                                    "USD"
+                                  )
+                                : "-"}
+                            </TableCell>
+                            <TableCell className="text-right text-xs sm:text-sm">
+                              {exchangeRates.EUR?.rate
+                                ? formatCurrency(
+                                    productSubtotal / exchangeRates.EUR.rate,
+                                    "EUR"
+                                  )
+                                : "-"}
+                            </TableCell>
+                          </TableRow>
 
-                    {productDiscountTotal > 0 && (
-                      <div className="flex justify-between text-red-600 text-xs sm:text-sm">
-                        <span className="break-words pr-2">
-                          Descuentos individuales:
-                        </span>
-                        <span className="text-right whitespace-nowrap">
-                          - ${productDiscountTotal.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
+                          {/* Descuentos individuales */}
+                          {productDiscountTotal > 0 && (
+                            <TableRow>
+                              <TableCell className="text-xs sm:text-sm text-red-600">
+                                Descuentos individuales:
+                              </TableCell>
+                              <TableCell className="text-right text-xs sm:text-sm text-red-600">
+                                - {formatCurrency(productDiscountTotal, "Bs")}
+                              </TableCell>
+                              <TableCell className="text-right text-xs sm:text-sm text-red-600">
+                                {exchangeRates.USD?.rate
+                                  ? `- ${formatCurrency(
+                                      productDiscountTotal /
+                                        exchangeRates.USD.rate,
+                                      "USD"
+                                    )}`
+                                  : "-"}
+                              </TableCell>
+                              <TableCell className="text-right text-xs sm:text-sm text-red-600">
+                                {exchangeRates.EUR?.rate
+                                  ? `- ${formatCurrency(
+                                      productDiscountTotal /
+                                        exchangeRates.EUR.rate,
+                                      "EUR"
+                                    )}`
+                                  : "-"}
+                              </TableCell>
+                            </TableRow>
+                          )}
 
-                    {generalDiscountAmount > 0 && (
-                      <div className="flex justify-between text-red-600 text-xs sm:text-sm">
-                        <span className="break-words pr-2">
-                          Descuento general:
-                        </span>
-                        <span className="text-right whitespace-nowrap">
-                          - ${generalDiscountAmount.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
+                          {/* Descuento general */}
+                          {generalDiscountAmount > 0 && (
+                            <TableRow>
+                              <TableCell className="text-xs sm:text-sm text-red-600">
+                                Descuento general:
+                              </TableCell>
+                              <TableCell className="text-right text-xs sm:text-sm text-red-600">
+                                - {formatCurrency(generalDiscountAmount, "Bs")}
+                              </TableCell>
+                              <TableCell className="text-right text-xs sm:text-sm text-red-600">
+                                {exchangeRates.USD?.rate
+                                  ? `- ${formatCurrency(
+                                      generalDiscountAmount /
+                                        exchangeRates.USD.rate,
+                                      "USD"
+                                    )}`
+                                  : "-"}
+                              </TableCell>
+                              <TableCell className="text-right text-xs sm:text-sm text-red-600">
+                                {exchangeRates.EUR?.rate
+                                  ? `- ${formatCurrency(
+                                      generalDiscountAmount /
+                                        exchangeRates.EUR.rate,
+                                      "EUR"
+                                    )}`
+                                  : "-"}
+                              </TableCell>
+                            </TableRow>
+                          )}
 
-                    <div className="flex justify-between font-medium border-t pt-2 text-xs sm:text-sm">
-                      <span className="break-words pr-2">
-                        Subtotal después de descuentos:
-                      </span>
-                      <span className="text-right whitespace-nowrap">
-                        ${subtotal.toFixed(2)}
-                      </span>
-                    </div>
+                          {/* Subtotal después de descuentos */}
+                          <TableRow className="font-medium border-t">
+                            <TableCell className="text-xs sm:text-sm">
+                              Subtotal después de descuentos:
+                            </TableCell>
+                            <TableCell className="text-right text-xs sm:text-sm">
+                              {formatCurrency(subtotal, "Bs")}
+                            </TableCell>
+                            <TableCell className="text-right text-xs sm:text-sm">
+                              {exchangeRates.USD?.rate
+                                ? formatCurrency(
+                                    subtotal / exchangeRates.USD.rate,
+                                    "USD"
+                                  )
+                                : "-"}
+                            </TableCell>
+                            <TableCell className="text-right text-xs sm:text-sm">
+                              {exchangeRates.EUR?.rate
+                                ? formatCurrency(
+                                    subtotal / exchangeRates.EUR.rate,
+                                    "EUR"
+                                  )
+                                : "-"}
+                            </TableCell>
+                          </TableRow>
 
-                    <div className="flex justify-between text-xs sm:text-sm">
-                      <span className="break-words pr-2">Impuesto (16%):</span>
-                      <span className="text-right whitespace-nowrap">
-                        ${taxAmount.toFixed(2)}
-                      </span>
-                    </div>
+                          {/* Impuesto */}
+                          <TableRow>
+                            <TableCell className="text-xs sm:text-sm">
+                              Impuesto (16%):
+                            </TableCell>
+                            <TableCell className="text-right text-xs sm:text-sm">
+                              {formatCurrency(taxAmount, "Bs")}
+                            </TableCell>
+                            <TableCell className="text-right text-xs sm:text-sm">
+                              {exchangeRates.USD?.rate
+                                ? formatCurrency(
+                                    taxAmount / exchangeRates.USD.rate,
+                                    "USD"
+                                  )
+                                : "-"}
+                            </TableCell>
+                            <TableCell className="text-right text-xs sm:text-sm">
+                              {exchangeRates.EUR?.rate
+                                ? formatCurrency(
+                                    taxAmount / exchangeRates.EUR.rate,
+                                    "EUR"
+                                  )
+                                : "-"}
+                            </TableCell>
+                          </TableRow>
 
-                    {hasDelivery && (
-                      <div className="flex justify-between text-xs sm:text-sm">
-                        <span className="break-words pr-2">
-                          Gastos de entrega:
-                        </span>
-                        <span className="text-right whitespace-nowrap">
-                          ${deliveryCost.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
+                          {/* Gastos de entrega */}
+                          {hasDelivery && (
+                            <TableRow>
+                              <TableCell className="text-xs sm:text-sm">
+                                Gastos de entrega:
+                              </TableCell>
+                              <TableCell className="text-right text-xs sm:text-sm">
+                                {formatCurrency(deliveryCost, "Bs")}
+                              </TableCell>
+                              <TableCell className="text-right text-xs sm:text-sm">
+                                {exchangeRates.USD?.rate
+                                  ? formatCurrency(
+                                      deliveryCost / exchangeRates.USD.rate,
+                                      "USD"
+                                    )
+                                  : "-"}
+                              </TableCell>
+                              <TableCell className="text-right text-xs sm:text-sm">
+                                {exchangeRates.EUR?.rate
+                                  ? formatCurrency(
+                                      deliveryCost / exchangeRates.EUR.rate,
+                                      "EUR"
+                                    )
+                                  : "-"}
+                              </TableCell>
+                            </TableRow>
+                          )}
 
-                    <div className="flex justify-between text-base sm:text-lg font-semibold border-t pt-2">
-                      <span>Total:</span>
-                      <span className="text-right whitespace-nowrap">
-                        ${total.toFixed(2)}
-                      </span>
+                          {/* Total */}
+                          <TableRow className="font-semibold border-t-2">
+                            <TableCell className="text-base sm:text-lg">
+                              Total:
+                            </TableCell>
+                            <TableCell className="text-right text-base sm:text-lg">
+                              {formatCurrency(total, "Bs")}
+                            </TableCell>
+                            <TableCell className="text-right text-base sm:text-lg">
+                              {exchangeRates.USD?.rate
+                                ? formatCurrency(
+                                    total / exchangeRates.USD.rate,
+                                    "USD"
+                                  )
+                                : "-"}
+                            </TableCell>
+                            <TableCell className="text-right text-base sm:text-lg">
+                              {exchangeRates.EUR?.rate
+                                ? formatCurrency(
+                                    total / exchangeRates.EUR.rate,
+                                    "EUR"
+                                  )
+                                : "-"}
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
                     </div>
                   </div>
 
@@ -1407,31 +1623,53 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               className="space-y-3 sm:space-y-4 p-3 sm:p-4 border rounded-lg"
                             >
                               <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:items-end">
-                                <div className="flex-1 w-full">
-                                  <Label className="text-xs">Monto</Label>
-                                  <Input
-                                    type="number"
-                                    value={
-                                      payment.amount === 0 ? "" : payment.amount
-                                    }
-                                    onChange={(e) =>
-                                      updatePayment(
-                                        payment.id,
-                                        "amount",
-                                        Number.parseFloat(e.target.value) || 0
-                                      )
-                                    }
-                                    placeholder="0.00"
-                                    className="w-full"
-                                  />
-                                </div>
+                                {/* Solo mostrar campo Monto si NO es Efectivo */}
+                                {payment.method !== "Efectivo" && (
+                                  <div className="flex-1 w-full">
+                                    <Label className="text-xs">Monto</Label>
+                                    <Input
+                                      type="number"
+                                      value={
+                                        payment.amount === 0
+                                          ? ""
+                                          : payment.amount
+                                      }
+                                      onChange={(e) =>
+                                        updatePayment(
+                                          payment.id,
+                                          "amount",
+                                          Number.parseFloat(e.target.value) || 0
+                                        )
+                                      }
+                                      placeholder="0.00"
+                                      className="w-full"
+                                    />
+                                  </div>
+                                )}
                                 <div className="flex-1 w-full">
                                   <Label className="text-xs">Método</Label>
                                   <Select
                                     value={payment.method}
-                                    onValueChange={(value) =>
-                                      updatePayment(payment.id, "method", value)
-                                    }
+                                    onValueChange={(value) => {
+                                      updatePayment(
+                                        payment.id,
+                                        "method",
+                                        value
+                                      );
+                                      // Si se cambia a un método diferente a Efectivo y había cashReceived, limpiarlo
+                                      if (value !== "Efectivo") {
+                                        updatePaymentDetails(
+                                          payment.id,
+                                          "cashReceived",
+                                          0
+                                        );
+                                        updatePaymentDetails(
+                                          payment.id,
+                                          "cashCurrency",
+                                          "Bs"
+                                        );
+                                      }
+                                    }}
                                   >
                                     <SelectTrigger className="w-full">
                                       <SelectValue placeholder="Método" />
@@ -1610,6 +1848,226 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                   </div>
                                 </div>
                               )}
+
+                              {payment.method === "Efectivo" && (
+                                <div className="space-y-3 pt-2 border-t">
+                                  <Label className="text-sm font-medium">
+                                    Información de Pago en Efectivo
+                                  </Label>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`cash-currency-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Moneda *
+                                      </Label>
+                                      <Select
+                                        value={
+                                          payment.paymentDetails
+                                            ?.cashCurrency || "Bs"
+                                        }
+                                        onValueChange={(value: Currency) => {
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "cashCurrency",
+                                            value
+                                          );
+                                          // Actualizar la tasa de cambio si es necesario
+                                          const rate =
+                                            value !== "Bs" &&
+                                            exchangeRates[value]
+                                              ? exchangeRates[value]?.rate || 1
+                                              : 1;
+
+                                          if (value !== "Bs") {
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "exchangeRate",
+                                              rate
+                                            );
+                                          }
+
+                                          // Recalcular el amount en Bs basado en cashReceived
+                                          const cashReceived =
+                                            payment.paymentDetails
+                                              ?.cashReceived || 0;
+                                          if (cashReceived > 0) {
+                                            const amountInBs =
+                                              value === "Bs"
+                                                ? cashReceived
+                                                : cashReceived * rate;
+                                            updatePayment(
+                                              payment.id,
+                                              "amount",
+                                              amountInBs
+                                            );
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="Bs">
+                                            Bolívares (Bs)
+                                          </SelectItem>
+                                          <SelectItem value="USD">
+                                            Dólares (USD)
+                                          </SelectItem>
+                                          <SelectItem value="EUR">
+                                            Euros (EUR)
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`cash-received-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Monto recibido del cliente *
+                                      </Label>
+                                      <Input
+                                        id={`cash-received-${payment.id}`}
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={
+                                          payment.paymentDetails
+                                            ?.cashReceived || ""
+                                        }
+                                        onChange={(e) => {
+                                          const received =
+                                            parseFloat(e.target.value) || 0;
+
+                                          // Guardar el monto recibido
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "cashReceived",
+                                            received
+                                          );
+
+                                          // Calcular y actualizar el amount en Bs automáticamente
+                                          const currency =
+                                            payment.paymentDetails
+                                              ?.cashCurrency || "Bs";
+                                          const rate =
+                                            currency !== "Bs"
+                                              ? payment.paymentDetails
+                                                  ?.exchangeRate ||
+                                                exchangeRates[currency]?.rate ||
+                                                1
+                                              : 1;
+
+                                          // El amount siempre se guarda en Bs
+                                          const amountInBs =
+                                            currency === "Bs"
+                                              ? received
+                                              : received * rate;
+
+                                          updatePayment(
+                                            payment.id,
+                                            "amount",
+                                            amountInBs
+                                          );
+
+                                          // Guardar/actualizar la tasa si no está guardada
+                                          if (
+                                            currency !== "Bs" &&
+                                            !payment.paymentDetails
+                                              ?.exchangeRate
+                                          ) {
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "exchangeRate",
+                                              exchangeRates[currency]?.rate || 1
+                                            );
+                                          }
+                                        }}
+                                        placeholder="0.00"
+                                      />
+                                    </div>
+                                  </div>
+                                  {payment.paymentDetails?.cashReceived &&
+                                    payment.paymentDetails.cashReceived > 0 && (
+                                      <>
+                                        {/* Mostrar el monto del pago calculado */}
+                                        <div className="p-2 bg-green-50 dark:bg-green-950 rounded text-sm">
+                                          <span className="font-medium">
+                                            Monto del pago:{" "}
+                                          </span>
+                                          {formatCurrency(payment.amount, "Bs")}{" "}
+                                          {(() => {
+                                            const currency =
+                                              payment.paymentDetails
+                                                ?.cashCurrency;
+                                            if (currency && currency !== "Bs") {
+                                              return (
+                                                <span className="text-xs text-muted-foreground">
+                                                  (
+                                                  {formatCurrency(
+                                                    payment.amount /
+                                                      (payment.paymentDetails
+                                                        ?.exchangeRate || 1),
+                                                    currency
+                                                  )}
+                                                  )
+                                                </span>
+                                              );
+                                            }
+                                            return null;
+                                          })()}
+                                        </div>
+
+                                        {/* Mostrar cambio si el cliente pagó más */}
+                                        {(() => {
+                                          const paymentAmountInCurrency =
+                                            payment.paymentDetails
+                                              .cashCurrency === "Bs"
+                                              ? payment.amount
+                                              : payment.amount /
+                                                (payment.paymentDetails
+                                                  .exchangeRate || 1);
+
+                                          if (
+                                            payment.paymentDetails
+                                              .cashReceived >
+                                            paymentAmountInCurrency
+                                          ) {
+                                            return (
+                                              <div className="p-2 bg-blue-50 dark:bg-blue-950 rounded text-sm">
+                                                <span className="font-medium">
+                                                  Cambio/Vuelto:{" "}
+                                                </span>
+                                                {formatCurrency(
+                                                  payment.paymentDetails
+                                                    .cashReceived -
+                                                    paymentAmountInCurrency,
+                                                  payment.paymentDetails
+                                                    .cashCurrency as Currency
+                                                )}
+                                              </div>
+                                            );
+                                          }
+                                          return null;
+                                        })()}
+                                      </>
+                                    )}
+                                  {payment.paymentDetails?.cashCurrency &&
+                                    payment.paymentDetails.cashCurrency !==
+                                      "Bs" && (
+                                      <p className="text-xs text-muted-foreground">
+                                        Tasa usada: 1{" "}
+                                        {payment.paymentDetails.cashCurrency} ={" "}
+                                        {payment.paymentDetails.exchangeRate?.toFixed(
+                                          2
+                                        ) || "N/A"}{" "}
+                                        Bs
+                                      </p>
+                                    )}
+                                </div>
+                              )}
                             </div>
                           ))}
 
@@ -1623,12 +2081,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                     : "text-orange-600 font-semibold"
                                 }
                               >
-                                ${totalPaid.toFixed(2)}
+                                {formatCurrency(totalPaidInBs, "Bs")}
                               </span>
                             </div>
                             <div className="flex justify-between text-xs sm:text-sm">
                               <span>Total del pedido:</span>
-                              <span>${total.toFixed(2)}</span>
+                              <span>{formatCurrency(total, "Bs")}</span>
                             </div>
                             <div className="flex justify-between text-sm sm:text-base font-semibold">
                               <span className="break-words">
@@ -1647,7 +2105,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                     : "text-blue-600"
                                 } text-right ml-2`}
                               >
-                                ${Math.abs(remainingAmount).toFixed(2)}
+                                {formatCurrency(
+                                  Math.abs(remainingAmount),
+                                  "Bs"
+                                )}
                                 {isPaymentsValid && (
                                   <span className="text-xs ml-2 block sm:inline">
                                     (Pagado completo)

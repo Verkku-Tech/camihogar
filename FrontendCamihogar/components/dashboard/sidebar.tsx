@@ -17,6 +17,7 @@ import {
   Navigation,
   Tags,
   Box,
+  DollarSign,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -45,6 +46,7 @@ const inventorySubmenu = [
 const configurationSubmenu = [
   { id: "usuarios", name: "Usuarios", href: "/configuracion/usuarios", icon: Users },
   { id: "navegacion", name: "Navegación", href: "/configuracion/navegacion", icon: Navigation },
+  { id: "tasas", name: "Tasas de Cambio", href: "/configuracion/tasas", icon: DollarSign },
 ]
 
 export function Sidebar({ open, onOpenChange }: SidebarProps) {

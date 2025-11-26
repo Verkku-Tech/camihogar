@@ -100,6 +100,14 @@ const defaultNavigationItems: NavigationItem[] = [
     active: true,
     description: "Configuración de menús de navegación",
   },
+  {
+    id: "tasas",
+    name: "Tasas de Cambio",
+    href: "/configuracion/tasas",
+    category: "configuration",
+    active: true,
+    description: "Gestión de tasas de cambio para monedas (USD, EUR)",
+  },
 ]
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
