@@ -1,10 +1,13 @@
 import * as db from "./indexeddb";
+import type { Currency } from "./currency-utils";
 
 export interface AttributeValue {
   id: string;
   label: string;
   isDefault?: boolean;
   priceAdjustment?: number; // positive for increase, negative for decrease
+  priceAdjustmentCurrency?: Currency; // Moneda del ajuste de precio
+  productId?: number; // ID del producto cuando valueType es "Product"
 }
 
 export interface Category {
@@ -13,6 +16,7 @@ export interface Category {
   description: string;
   products: number;
   maxDiscount: number;
+  maxDiscountCurrency?: Currency; // Moneda del descuento máximo
   attributes: {
     id: number;
     title: string;
@@ -28,6 +32,7 @@ export interface Product {
   name: string;
   category: string;
   price: number;
+  priceCurrency?: Currency; // Moneda del precio
   stock: number;
   status: string;
   sku: string;
@@ -43,6 +48,7 @@ interface CategoryDB {
   description: string;
   products: number;
   maxDiscount: number;
+  maxDiscountCurrency?: Currency;
   attributes: {
     id: number;
     title: string;
@@ -142,6 +148,7 @@ interface ProductDB {
   name: string;
   category: string;
   price: number;
+  priceCurrency?: Currency;
   stock: number;
   status: string;
   sku: string;
@@ -270,7 +277,7 @@ export interface OrderProduct {
   total: number;
   category: string;
   stock: number; // Stock disponible
-  attributes?: Record<string, string | number>;
+  attributes?: Record<string, string | number | string[]>; // Permite arrays para selección múltiple
   discount?: number; // Descuento aplicado al producto (monto)
   observations?: string; // Observaciones específicas del producto
 }
@@ -529,13 +536,17 @@ export const addClient = async (
   try {
     const newClient: Client = {
       ...client,
+      estado: "activo", // Siempre activo al crear un cliente
       id: Date.now().toString(),
       fechaCreacion: new Date().toISOString().split("T")[0],
       tieneNotasDespacho: false,
     };
 
     await db.add("clients", newClient);
-    console.log("✅ Cliente guardado en IndexedDB:", newClient.nombreRazonSocial);
+    console.log(
+      "✅ Cliente guardado en IndexedDB:",
+      newClient.nombreRazonSocial
+    );
     return newClient;
   } catch (error) {
     console.error("Error adding client to IndexedDB:", error);
@@ -586,7 +597,9 @@ export const getProviders = async (): Promise<Provider[]> => {
   }
 };
 
-export const getProvider = async (id: string): Promise<Provider | undefined> => {
+export const getProvider = async (
+  id: string
+): Promise<Provider | undefined> => {
   try {
     return await db.get<Provider>("providers", id);
   } catch (error) {
@@ -724,17 +737,19 @@ export const deleteStore = async (id: string): Promise<void> => {
 
 /**
  * Calcula el precio total de un producto considerando los ajustes de precio de los atributos seleccionados
- * @param basePrice - Precio base del producto
+ * @param basePrice - Precio base del producto (ya convertido a Bs)
  * @param quantity - Cantidad del producto
  * @param productAttributes - Atributos seleccionados del producto (ej: { "attrId": "valueId" })
  * @param category - Categoría del producto que contiene la definición de atributos
- * @returns Precio total calculado (precio base + ajustes de atributos) * cantidad
+ * @param exchangeRates - Tasas de cambio para convertir ajustes de atributos (opcional)
+ * @returns Precio total calculado (precio base + ajustes de atributos convertidos) * cantidad
  */
 export const calculateProductTotalWithAttributes = (
   basePrice: number,
   quantity: number,
-  productAttributes: Record<string, string | number> | undefined,
-  category: Category | undefined
+  productAttributes: Record<string, string | number | string[]> | undefined,
+  category: Category | undefined,
+  exchangeRates?: { USD?: any; EUR?: any }
 ): number => {
   if (!productAttributes || !category || !category.attributes) {
     return basePrice * quantity;
@@ -753,20 +768,62 @@ export const calculateProductTotalWithAttributes = (
       return;
     }
 
-    // Buscar el valor seleccionado en los valores del atributo
-    const selectedValueStr = selectedValue.toString();
-    const attributeValue = categoryAttribute.values.find((val) => {
-      if (typeof val === "string") {
-        return val === selectedValueStr;
-      }
-      // Si es AttributeValue, comparar por id o label
-      return val.id === selectedValueStr || val.label === selectedValueStr;
-    });
+    // Omitir atributos de tipo "Product" - estos se calculan por separado con el precio completo
+    if (categoryAttribute.valueType === "Product") {
+      return;
+    }
 
-    // Si encontramos el valor y tiene un ajuste de precio, sumarlo
-    if (attributeValue && typeof attributeValue === "object" && "priceAdjustment" in attributeValue) {
-      const adjustment = attributeValue.priceAdjustment || 0;
-      totalAdjustment += adjustment;
+    // Función helper para convertir ajuste a Bs
+    const convertAdjustment = (adjustment: number, currency?: string): number => {
+      if (!currency || currency === "Bs") return adjustment;
+      if (currency === "USD" && exchangeRates?.USD?.rate) {
+        return adjustment * exchangeRates.USD.rate;
+      }
+      if (currency === "EUR" && exchangeRates?.EUR?.rate) {
+        return adjustment * exchangeRates.EUR.rate;
+      }
+      return adjustment; // Si no hay tasa, usar valor original
+    };
+
+    // Manejar arrays para selección múltiple
+    if (Array.isArray(selectedValue)) {
+      selectedValue.forEach((valStr) => {
+        const attributeValue = categoryAttribute.values.find((val) => {
+          if (typeof val === "string") {
+            return val === valStr;
+          }
+          return val.id === valStr || val.label === valStr;
+        });
+
+        if (
+          attributeValue &&
+          typeof attributeValue === "object" &&
+          "priceAdjustment" in attributeValue
+        ) {
+          const adjustment = attributeValue.priceAdjustment || 0;
+          const currency = attributeValue.priceAdjustmentCurrency || "Bs";
+          totalAdjustment += convertAdjustment(adjustment, currency);
+        }
+      });
+    } else {
+      // Manejar valores simples (selección única)
+      const selectedValueStr = selectedValue.toString();
+      const attributeValue = categoryAttribute.values.find((val) => {
+        if (typeof val === "string") {
+          return val === selectedValueStr;
+        }
+        return val.id === selectedValueStr || val.label === selectedValueStr;
+      });
+
+      if (
+        attributeValue &&
+        typeof attributeValue === "object" &&
+        "priceAdjustment" in attributeValue
+      ) {
+        const adjustment = attributeValue.priceAdjustment || 0;
+        const currency = attributeValue.priceAdjustmentCurrency || "Bs";
+        totalAdjustment += convertAdjustment(adjustment, currency);
+      }
     }
   });
 
@@ -777,21 +834,35 @@ export const calculateProductTotalWithAttributes = (
 
 /**
  * Calcula el precio unitario de un producto considerando los ajustes de precio de los atributos
- * @param basePrice - Precio base del producto
+ * @param basePrice - Precio base del producto (ya convertido a Bs)
  * @param productAttributes - Atributos seleccionados del producto
  * @param category - Categoría del producto que contiene la definición de atributos
- * @returns Precio unitario calculado (precio base + ajustes de atributos)
+ * @param exchangeRates - Tasas de cambio para convertir ajustes de atributos (opcional)
+ * @returns Precio unitario calculado (precio base + ajustes de atributos convertidos)
  */
 export const calculateProductUnitPriceWithAttributes = (
   basePrice: number,
-  productAttributes: Record<string, string | number> | undefined,
-  category: Category | undefined
+  productAttributes: Record<string, string | number | string[]> | undefined,
+  category: Category | undefined,
+  exchangeRates?: { USD?: any; EUR?: any }
 ): number => {
   if (!productAttributes || !category || !category.attributes) {
     return basePrice;
   }
 
   let totalAdjustment = 0;
+
+  // Función helper para convertir ajuste a Bs
+  const convertAdjustment = (adjustment: number, currency?: string): number => {
+    if (!currency || currency === "Bs") return adjustment;
+    if (currency === "USD" && exchangeRates?.USD?.rate) {
+      return adjustment * exchangeRates.USD.rate;
+    }
+    if (currency === "EUR" && exchangeRates?.EUR?.rate) {
+      return adjustment * exchangeRates.EUR.rate;
+    }
+    return adjustment; // Si no hay tasa, usar valor original
+  };
 
   Object.entries(productAttributes).forEach(([attrKey, selectedValue]) => {
     const categoryAttribute = category.attributes.find(
@@ -802,17 +873,50 @@ export const calculateProductUnitPriceWithAttributes = (
       return;
     }
 
-    const selectedValueStr = selectedValue.toString();
-    const attributeValue = categoryAttribute.values.find((val) => {
-      if (typeof val === "string") {
-        return val === selectedValueStr;
-      }
-      return val.id === selectedValueStr || val.label === selectedValueStr;
-    });
+    // Omitir atributos de tipo "Product" - estos se calculan por separado con el precio completo
+    if (categoryAttribute.valueType === "Product") {
+      return;
+    }
 
-    if (attributeValue && typeof attributeValue === "object" && "priceAdjustment" in attributeValue) {
-      const adjustment = attributeValue.priceAdjustment || 0;
-      totalAdjustment += adjustment;
+    // Manejar arrays para selección múltiple
+    if (Array.isArray(selectedValue)) {
+      selectedValue.forEach((valStr) => {
+        const attributeValue = categoryAttribute.values.find((val) => {
+          if (typeof val === "string") {
+            return val === valStr;
+          }
+          return val.id === valStr || val.label === valStr;
+        });
+
+        if (
+          attributeValue &&
+          typeof attributeValue === "object" &&
+          "priceAdjustment" in attributeValue
+        ) {
+          const adjustment = attributeValue.priceAdjustment || 0;
+          const currency = attributeValue.priceAdjustmentCurrency || "Bs";
+          totalAdjustment += convertAdjustment(adjustment, currency);
+        }
+      });
+    } else {
+      // Manejar valores simples (selección única)
+      const selectedValueStr = selectedValue.toString();
+      const attributeValue = categoryAttribute.values.find((val) => {
+        if (typeof val === "string") {
+          return val === selectedValueStr;
+        }
+        return val.id === selectedValueStr || val.label === selectedValueStr;
+      });
+
+      if (
+        attributeValue &&
+        typeof attributeValue === "object" &&
+        "priceAdjustment" in attributeValue
+      ) {
+        const adjustment = attributeValue.priceAdjustment || 0;
+        const currency = attributeValue.priceAdjustmentCurrency || "Bs";
+        totalAdjustment += convertAdjustment(adjustment, currency);
+      }
     }
   });
 
@@ -901,7 +1005,7 @@ export const getVendors = async (): Promise<Vendor[]> => {
   try {
     // Obtener todos los usuarios
     const users = await getUsers();
-    
+
     // Filtrar usuarios con rol de vendedor de tienda (activos)
     // Los roles pueden venir en formato API ("Store Seller") o display ("Vendedor de tienda")
     const vendorUsers = users.filter(
@@ -933,7 +1037,7 @@ export const getReferrers = async (): Promise<Vendor[]> => {
   try {
     // Obtener todos los usuarios
     const users = await getUsers();
-    
+
     // Filtrar usuarios con rol de vendedor online (activos)
     // Los roles pueden venir en formato API ("Online Seller") o display ("Vendedor Online")
     const referrerUsers = users.filter(
@@ -963,18 +1067,21 @@ export const getVendor = async (id: string): Promise<Vendor | undefined> => {
     const user = await getUser(id);
     if (user && user.status === "active") {
       // Verificar si es vendedor o referido
-      const isVendor = user.role === "Store Seller" || user.role === "Vendedor de tienda";
-      const isReferrer = user.role === "Online Seller" || user.role === "Vendedor Online";
-      
+      const isVendor =
+        user.role === "Store Seller" || user.role === "Vendedor de tienda";
+      const isReferrer =
+        user.role === "Online Seller" || user.role === "Vendedor Online";
+
       if (isVendor || isReferrer) {
         return {
           id: user.id,
           name: user.name,
-          role: user.role === "Store Seller" 
-            ? "Vendedor de tienda" 
-            : user.role === "Online Seller"
-            ? "Vendedor Online"
-            : user.role,
+          role:
+            user.role === "Store Seller"
+              ? "Vendedor de tienda"
+              : user.role === "Online Seller"
+              ? "Vendedor Online"
+              : user.role,
           type: isVendor ? "vendor" : "referrer",
         };
       }

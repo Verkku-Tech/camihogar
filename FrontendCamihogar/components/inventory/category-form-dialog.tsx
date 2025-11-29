@@ -38,6 +38,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
     name: "",
     description: "",
     maxDiscount: "",
+    maxDiscountCurrency: "Bs" as "Bs" | "USD" | "EUR",
   })
   const [attributes, setAttributes] = useState<Attribute[]>([])
   const [newAttribute, setNewAttribute] = useState({
@@ -53,10 +54,16 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
         name: category.name || "",
         description: category.description || "",
         maxDiscount: category.maxDiscount && category.maxDiscount !== 0 ? category.maxDiscount.toString() : "",
+        maxDiscountCurrency: category.maxDiscountCurrency || "Bs",
       })
-      setAttributes(category.attributes || [])
+      // Asegurar que los atributos se carguen con todos sus campos, incluyendo maxSelections
+      const loadedAttributes = (category.attributes || []).map(attr => ({
+        ...attr,
+        maxSelections: attr.maxSelections !== undefined ? attr.maxSelections : undefined
+      }))
+      setAttributes(loadedAttributes)
     } else {
-      setFormData({ name: "", description: "", maxDiscount: "" })
+      setFormData({ name: "", description: "", maxDiscount: "", maxDiscountCurrency: "Bs" })
       setAttributes([])
     }
   }, [category])
@@ -88,6 +95,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
     const categoryData = {
       ...formData,
       maxDiscount: formData.maxDiscount === "" ? 0 : parseFloat(formData.maxDiscount),
+      maxDiscountCurrency: formData.maxDiscountCurrency || "Bs",
       attributes,
     }
     onSave(categoryData)
@@ -134,16 +142,34 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="maxDiscount">Descuento Máximo Neto ($)</Label>
-                    <Input
-                      id="maxDiscount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={formData.maxDiscount}
-                      onChange={(e) => setFormData({ ...formData, maxDiscount: e.target.value })}
-                      placeholder="0.00"
-                    />
+                    <Label htmlFor="maxDiscount">Descuento Máximo Neto *</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="maxDiscount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.maxDiscount}
+                        onChange={(e) => setFormData({ ...formData, maxDiscount: e.target.value })}
+                        placeholder="0.00"
+                        className="flex-1"
+                      />
+                      <Select
+                        value={formData.maxDiscountCurrency || "Bs"}
+                        onValueChange={(value: "Bs" | "USD" | "EUR") =>
+                          setFormData({ ...formData, maxDiscountCurrency: value })
+                        }
+                      >
+                        <SelectTrigger className="w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Bs">Bs.</SelectItem>
+                          <SelectItem value="USD">$</SelectItem>
+                          <SelectItem value="EUR">€</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -268,8 +294,8 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
           open={!!showAttributeValues}
           onOpenChange={() => setShowAttributeValues(null)}
           attribute={attributes.find((attr) => attr.id === showAttributeValues)!}
-          onSave={(values) => {
-            handleUpdateAttributeValues(showAttributeValues, values)
+          onSave={(values, maxSelections) => {
+            handleUpdateAttributeValues(showAttributeValues, values, maxSelections)
             setShowAttributeValues(null)
           }}
         />

@@ -1,6 +1,6 @@
 // Wrapper genérico para IndexedDB
 const DB_NAME = "camihogar_db";
-const DB_VERSION = 4; // Incrementar para agregar exchange_rates
+const DB_VERSION = 5; // Incrementar para agregar app_settings
 
 interface StoreConfig {
   name: string;
@@ -79,6 +79,13 @@ const STORES: StoreConfig[] = [
       { name: "isActive", keyPath: "isActive" },
     ],
   },
+  {
+    name: "app_settings",
+    keyPath: "id",
+    indexes: [
+      { name: "key", keyPath: "key", unique: true },
+    ],
+  },
 ];
 
 // Inicializar la base de datos
@@ -116,16 +123,20 @@ export const initDB = (): Promise<IDBDatabase> => {
               unique: index.unique || false,
             });
           });
-        } else if (oldVersion < 4 && storeConfig.name === "exchange_rates") {
+        } else if (oldVersion < 5) {
           // Agregar índices al store existente si se está actualizando
           const transaction = (event.target as IDBOpenDBRequest).transaction;
           if (transaction) {
             const objectStore = transaction.objectStore(storeConfig.name);
             storeConfig.indexes?.forEach((index) => {
               if (!objectStore.indexNames.contains(index.name)) {
-                objectStore.createIndex(index.name, index.keyPath, {
-                  unique: index.unique || false,
-                });
+                try {
+                  objectStore.createIndex(index.name, index.keyPath, {
+                    unique: index.unique || false,
+                  });
+                } catch (e) {
+                  // El índice ya existe, ignorar
+                }
               }
             });
           }

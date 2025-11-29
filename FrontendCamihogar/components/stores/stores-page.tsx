@@ -21,6 +21,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Plus, Search, Edit, Power, PowerOff, Building2 } from "lucide-react"
+import { toast } from "sonner"
 import { getStores, addStore, updateStore, deleteStore, type Store } from "@/lib/storage"
 
 export function StoresPage() {
@@ -131,9 +132,10 @@ export function StoresPage() {
       setStores([...stores, newStore])
       setIsCreateDialogOpen(false)
       resetForm()
+      toast.success("Tienda creada exitosamente")
     } catch (error) {
       console.error("Error creating store:", error)
-      alert("Error al crear la tienda")
+      toast.error("Error al crear la tienda")
     }
   }
 
@@ -147,9 +149,10 @@ export function StoresPage() {
       setIsEditDialogOpen(false)
       setEditingStore(null)
       resetForm()
+      toast.success("Tienda actualizada exitosamente")
     } catch (error) {
       console.error("Error updating store:", error)
-      alert("Error al actualizar la tienda")
+      toast.error("Error al actualizar la tienda")
     }
   }
 
@@ -157,7 +160,8 @@ export function StoresPage() {
   const handleToggleStatus = async (store: Store) => {
     // Check if store has active operations (mock validation)
     if (store.status === "active" && Math.random() > 0.7) {
-      alert("No se puede desactivar la tienda porque tiene operaciones activas en curso")
+      toast.error("No se puede desactivar la tienda porque tiene operaciones activas en curso")
+      setDeactivateStore(null)
       return
     }
 
@@ -166,9 +170,13 @@ export function StoresPage() {
         status: store.status === "active" ? "inactive" : "active",
       })
       setStores(stores.map((s) => (s.id === store.id ? updatedStore : s)))
+      setDeactivateStore(null)
+      toast.success(
+        `Tienda ${store.status === "active" ? "desactivada" : "activada"} exitosamente`
+      )
     } catch (error) {
       console.error("Error updating store status:", error)
-      alert("Error al actualizar el estado de la tienda")
+      toast.error("Error al actualizar el estado de la tienda")
     }
   }
 

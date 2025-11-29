@@ -4,6 +4,8 @@ import { Inter, JetBrains_Mono } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/contexts/auth-context"
 import { NavigationProvider } from "@/contexts/navigation-context"
+import { CurrencyProvider } from "@/contexts/currency-context"
+import { Toaster } from "@/components/ui/sonner"
 import "./globals.css"
 
 const inter = Inter({
@@ -45,9 +47,12 @@ export default function RootLayout({
           disableTransitionOnChange
           storageKey="camihogar-theme"
         >
-          <NavigationProvider>
-            <AuthProvider>{children}</AuthProvider>
-          </NavigationProvider>
+          <CurrencyProvider>
+            <NavigationProvider>
+              <AuthProvider>{children}</AuthProvider>
+            </NavigationProvider>
+          </CurrencyProvider>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

@@ -153,3 +153,47 @@ export const getCurrencySymbol = (currency: Currency): string => {
   return symbols[currency];
 };
 
+// Convertir precio de producto a Bs usando tasas de cambio
+export const convertProductPriceToBs = async (
+  price: number,
+  currency: Currency,
+  rates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
+): Promise<number> => {
+  if (currency === "Bs") return price;
+  
+  // Si no se proporcionan las tasas, obtenerlas
+  if (!rates) {
+    rates = await getActiveExchangeRates();
+  }
+  
+  if (currency === "USD") {
+    const rate = rates.USD?.rate;
+    if (!rate || rate <= 0) {
+      console.warn("No se encontró tasa de cambio para USD, usando precio original");
+      return price;
+    }
+    return price * rate;
+  }
+  
+  if (currency === "EUR") {
+    const rate = rates.EUR?.rate;
+    if (!rate || rate <= 0) {
+      console.warn("No se encontró tasa de cambio para EUR, usando precio original");
+      return price;
+    }
+    return price * rate;
+  }
+  
+  return price;
+};
+
+// Convertir ajuste de precio de atributo a Bs
+export const convertAttributeAdjustmentToBs = async (
+  adjustment: number,
+  currency: Currency,
+  rates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
+): Promise<number> => {
+  if (currency === "Bs" || !currency) return adjustment;
+  return convertProductPriceToBs(adjustment, currency, rates);
+};
+
