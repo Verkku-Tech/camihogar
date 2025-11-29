@@ -1011,7 +1011,7 @@ export const getVendors = async (): Promise<Vendor[]> => {
     const vendorUsers = users.filter(
       (user) =>
         user.status === "active" &&
-        (user.role === "Store Seller" || user.role === "Vendedor de tienda")
+        user.role === "Store Seller"
     );
 
     // Convertir usuarios a formato Vendor
@@ -1043,7 +1043,7 @@ export const getReferrers = async (): Promise<Vendor[]> => {
     const referrerUsers = users.filter(
       (user) =>
         user.status === "active" &&
-        (user.role === "Online Seller" || user.role === "Vendedor Online")
+        user.role === "Online Seller"
     );
 
     // Convertir usuarios a formato Vendor
@@ -1067,10 +1067,8 @@ export const getVendor = async (id: string): Promise<Vendor | undefined> => {
     const user = await getUser(id);
     if (user && user.status === "active") {
       // Verificar si es vendedor o referido
-      const isVendor =
-        user.role === "Store Seller" || user.role === "Vendedor de tienda";
-      const isReferrer =
-        user.role === "Online Seller" || user.role === "Vendedor Online";
+      const isVendor = user.role === "Store Seller";
+      const isReferrer = user.role === "Online Seller";
 
       if (isVendor || isReferrer) {
         return {

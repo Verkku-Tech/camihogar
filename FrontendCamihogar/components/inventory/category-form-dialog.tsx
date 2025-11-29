@@ -22,7 +22,7 @@ interface Attribute {
   title: string
   description: string
   valueType: "Product" | "Number" | "Select" | "Multiple select"
-  values: AttributeValue[]
+  values: string[] | AttributeValue[]
   maxSelections?: number
 }
 
@@ -57,7 +57,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
         maxDiscountCurrency: category.maxDiscountCurrency || "Bs",
       })
       // Asegurar que los atributos se carguen con todos sus campos, incluyendo maxSelections
-      const loadedAttributes = (category.attributes || []).map(attr => ({
+      const loadedAttributes = (category.attributes || []).map((attr: Attribute) => ({
         ...attr,
         maxSelections: attr.maxSelections !== undefined ? attr.maxSelections : undefined
       }))
@@ -293,7 +293,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
         <AttributeValuesDialog
           open={!!showAttributeValues}
           onOpenChange={() => setShowAttributeValues(null)}
-          attribute={attributes.find((attr) => attr.id === showAttributeValues)!}
+          attribute={attributes.find((attr) => attr.id === showAttributeValues)! as any}
           onSave={(values, maxSelections) => {
             handleUpdateAttributeValues(showAttributeValues, values, maxSelections)
             setShowAttributeValues(null)

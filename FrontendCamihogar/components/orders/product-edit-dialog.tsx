@@ -275,7 +275,7 @@ export function ProductEditDialog({
 }: ProductEditDialogProps) {
   const { formatWithPreference, preferredCurrency } = useCurrency();
   const [quantity, setQuantity] = useState(1);
-  const [attributes, setAttributes] = useState<Record<string, string | number | string[]>>(
+  const [attributes, setAttributes] = useState<Record<string, any>>(
     {}
   );
   const [observations, setObservations] = useState("");
@@ -490,7 +490,7 @@ export function ProductEditDialog({
           const attrId = attribute.id?.toString() || attribute.title;
           const existing = updated[attrId];
           
-          if (existing && existing.length > 0) {
+          if (existing && Array.isArray(existing) && existing.length > 0) {
             const updatedEntries = existing.map((entry) => {
               const productAttributeKey = `${attrId}_${entry.productId}`;
               const editedAttributes = attributes[productAttributeKey] || entry.product.attributes || {};
@@ -508,7 +508,11 @@ export function ProductEditDialog({
             });
             
             if (hasChanges) {
-              updated[attrId] = updatedEntries;
+              updated[attrId] = updatedEntries as Array<{ 
+                productId: number;
+                product: Product; 
+                attributes: Record<string, any> 
+              }>;
             }
           }
         }
@@ -885,14 +889,14 @@ export function ProductEditDialog({
                 const calculateTotalAdjustment = (): number => {
                   if (Array.isArray(attrValue)) {
                     return attrValue.reduce((total, valStr) => {
-                      const selectedValue = attr.values?.find((val) => {
+                      const selectedValue = attr.values?.find((val: string | AttributeValue) => {
                         const valStr2 = getValueString(val);
                         return valStr2 === valStr;
                       });
                       return total + (selectedValue ? getPriceAdjustment(selectedValue) : 0);
                     }, 0);
                   } else if (attrValue !== undefined) {
-                    const selectedValue = attr.values?.find((val) => {
+                    const selectedValue = attr.values?.find((val: string | AttributeValue) => {
                       const valStr = getValueString(val);
                       return valStr === attrValue?.toString();
                     });
@@ -988,12 +992,12 @@ export function ProductEditDialog({
                             <SelectContent>
                               {attr.values
                                 ?.map(getValueString)
-                                .filter((optionValue) => {
+                                .filter((optionValue: string) => {
                                   const currentArray = Array.isArray(attrValue) ? attrValue : [];
                                   return !currentArray.includes(optionValue);
                                 })
-                                .map((optionValue) => {
-                                  const option = attr.values?.find(v => getValueString(v) === optionValue);
+                                .map((optionValue: string) => {
+                                  const option = attr.values?.find((v: string | AttributeValue) => getValueString(v) === optionValue);
                                   const optionLabel = option ? getValueLabel(option) : optionValue;
                                   return (
                                     <SelectItem key={optionValue} value={optionValue}>
@@ -1019,7 +1023,7 @@ export function ProductEditDialog({
                         {Array.isArray(attrValue) && attrValue.length > 0 && (
                           <div className="flex flex-wrap gap-2">
                             {attrValue.map((val: string) => {
-                              const option = attr.values?.find(v => getValueString(v) === val);
+                              const option = attr.values?.find((v: string | AttributeValue) => getValueString(v) === val);
                               const displayLabel = option ? getValueLabel(option) : val;
                               return (
                                 <div

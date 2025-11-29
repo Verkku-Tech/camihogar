@@ -161,7 +161,6 @@ export function StoresPage() {
     // Check if store has active operations (mock validation)
     if (store.status === "active" && Math.random() > 0.7) {
       toast.error("No se puede desactivar la tienda porque tiene operaciones activas en curso")
-      setDeactivateStore(null)
       return
     }
 
@@ -170,7 +169,6 @@ export function StoresPage() {
         status: store.status === "active" ? "inactive" : "active",
       })
       setStores(stores.map((s) => (s.id === store.id ? updatedStore : s)))
-      setDeactivateStore(null)
       toast.success(
         `Tienda ${store.status === "active" ? "desactivada" : "activada"} exitosamente`
       )

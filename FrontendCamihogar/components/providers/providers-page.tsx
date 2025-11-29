@@ -86,7 +86,10 @@ export function ProvidersPage() {
     }
 
     try {
-      const newProvider = await addProvider(formData)
+      const newProvider = await addProvider({
+        ...formData,
+        estado: "activo" as const,
+      })
       setProviders([...providers, newProvider])
       setIsCreateDialogOpen(false)
       resetForm()

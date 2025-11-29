@@ -84,7 +84,10 @@ export function ClientsPage() {
     }
 
     try {
-      const newClient = await addClient(formData)
+      const newClient = await addClient({
+        ...formData,
+        estado: "activo" as const,
+      })
       setClients([...clients, newClient])
       setIsCreateDialogOpen(false)
       resetForm()

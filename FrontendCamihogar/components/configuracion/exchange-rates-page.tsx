@@ -208,7 +208,7 @@ export function ExchangeRatesPage() {
                     setFormData({
                       toCurrency: "USD",
                       rate: "",
-                      
+                      effectiveDate: new Date().toISOString().split("T")[0],
                     });
                   }}
                 >

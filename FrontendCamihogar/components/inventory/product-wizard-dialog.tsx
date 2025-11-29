@@ -395,7 +395,7 @@ export function ProductWizardDialog({
                 productEntries.push({
                   productId: foundProduct.id,
                   product: foundProduct,
-                  attributes: { ...foundProduct.attributes } || {},
+                  attributes: foundProduct.attributes || {},
                 });
               }
             }
@@ -551,7 +551,6 @@ export function ProductWizardDialog({
       await addProduct({
         name: formData.name,
         sku: skuToUse,
-        description: formData.description || "",
         category: categoryName,
         price: Number.parseFloat(formData.price) || 0,
         priceCurrency: formData.priceCurrency || "Bs",
