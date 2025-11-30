@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Edit, Trash2, Package, Search, ArrowLeft, Filter } from "lucide-react"
+import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sidebar } from "@/components/dashboard/sidebar"
@@ -14,6 +15,26 @@ import { ProductWizardDialog } from "@/components/inventory/product-wizard-dialo
 import { DeleteProductDialog } from "@/components/inventory/delete-product-dialog"
 import { EditProductDialog } from "@/components/inventory/edit-product-dialog"
 import { getProducts, deleteProduct, type Product } from "@/lib/storage"
+import { useCurrency } from "@/contexts/currency-context"
+import { Currency } from "@/lib/currency-utils"
+
+// Componente para mostrar precio con conversión
+function ProductPrice({ 
+  price, 
+  currency 
+}: { 
+  price: number; 
+  currency?: Currency 
+}) {
+  const { formatWithPreference } = useCurrency()
+  const [displayPrice, setDisplayPrice] = useState("")
+  
+  useEffect(() => {
+    formatWithPreference(price, currency || "Bs").then(setDisplayPrice)
+  }, [price, currency, formatWithPreference])
+  
+  return <p className="font-medium">{displayPrice || "-"}</p>
+}
 
 export default function ProductosPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -53,10 +74,10 @@ export default function ProductosPage() {
     switch (status) {
       case "Disponible":
         return "bg-green-100 text-green-800"
-      case "Stock Bajo":
-        return "bg-yellow-100 text-yellow-800"
       case "Agotado":
         return "bg-red-100 text-red-800"
+      case "Descontinuado":
+        return "bg-gray-100 text-gray-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
@@ -80,7 +101,7 @@ export default function ProductosPage() {
         setProducts(loadedProducts)
       } catch (error) {
         console.error("Error deleting product:", error)
-        alert("Error al eliminar el producto")
+        toast.error("Error al eliminar el producto")
       }
     }
     setShowDeleteDialog(false)
@@ -162,8 +183,8 @@ export default function ProductosPage() {
                   <SelectContent>
                     <SelectItem value="all">Todos los estados</SelectItem>
                     <SelectItem value="Disponible">Disponible</SelectItem>
-                    <SelectItem value="Stock Bajo">Stock Bajo</SelectItem>
                     <SelectItem value="Agotado">Agotado</SelectItem>
+                    <SelectItem value="Descontinuado">Descontinuado</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -230,11 +251,7 @@ export default function ProductosPage() {
                         </div>
                         <div>
                           <span className="text-muted-foreground">Precio:</span>
-                          <p className="font-medium">${product.price}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Stock:</span>
-                          <p className="font-medium">{product.stock} unidades</p>
+                          <ProductPrice price={product.price} currency={product.priceCurrency} />
                         </div>
                         <div>
                           <span className="text-muted-foreground">Estado:</span>

@@ -28,9 +28,12 @@ import {
 } from "@/components/ui/select";
 import { getAll, add, update } from "@/lib/indexeddb";
 import { Plus, Trash2, DollarSign } from "lucide-react";
+import { toast } from "sonner";
 import { ExchangeRate } from "@/lib/currency-utils";
+import { useCurrency } from "@/contexts/currency-context";
 
 export function ExchangeRatesPage() {
+  const { preferredCurrency, setPreferredCurrency } = useCurrency();
   const [rates, setRates] = useState<ExchangeRate[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
@@ -91,9 +94,10 @@ export function ExchangeRatesPage() {
         rate: "",
         effectiveDate: new Date().toISOString().split("T")[0],
       });
+      toast.success("Tasa de cambio creada exitosamente");
     } catch (error) {
       console.error("Error saving exchange rate:", error);
-      alert("Error al guardar la tasa de cambio");
+      toast.error("Error al guardar la tasa de cambio");
     }
   };
 
@@ -101,9 +105,27 @@ export function ExchangeRatesPage() {
     try {
       await update("exchange_rates", { ...rate, isActive: false });
       await loadRates();
+      toast.success("Tasa desactivada exitosamente");
     } catch (error) {
       console.error("Error deactivating rate:", error);
-      alert("Error al desactivar la tasa");
+      toast.error("Error al desactivar la tasa");
+    }
+  };
+
+  const handleCurrencyToggle = async (currency: "USD" | "EUR", checked: boolean) => {
+    try {
+      if (checked) {
+        // Activar esta moneda (desactiva automáticamente Bolívar)
+        await setPreferredCurrency(currency);
+        toast.success(`Moneda de visualización cambiada a ${currency === "USD" ? "Dólares" : "Euros"}`);
+      } else {
+        // Desactivar esta moneda (vuelve a Bolívar por defecto)
+        await setPreferredCurrency("Bs");
+        toast.success("Moneda de visualización cambiada a Bolívares");
+      }
+    } catch (error) {
+      console.error("Error changing currency:", error);
+      toast.error("Error al cambiar la moneda de visualización");
     }
   };
 
@@ -186,7 +208,7 @@ export function ExchangeRatesPage() {
                     setFormData({
                       toCurrency: "USD",
                       rate: "",
-                      
+                      effectiveDate: new Date().toISOString().split("T")[0],
                     });
                   }}
                 >
@@ -219,37 +241,61 @@ export function ExchangeRatesPage() {
                 <TableRow>
                   <TableHead>Moneda</TableHead>
                   <TableHead>Tasa (Bs)</TableHead>
-                 
                   <TableHead>Fecha Creación</TableHead>
+                  <TableHead className="text-center">Moneda de Visualización</TableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {activeRates.map((rate) => (
-                  <TableRow key={rate.id}>
-                    <TableCell className="font-medium">
-                      {rate.toCurrency === "USD" ? "💵 Dólares" : "💶 Euros"}
-                    </TableCell>
-                    <TableCell>{rate.rate.toFixed(2)} Bs</TableCell>
+                {activeRates.map((rate) => {
+                  const isChecked = preferredCurrency === rate.toCurrency;
                   
-                    <TableCell>
-                      {new Date(rate.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeactivate(rate)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                  return (
+                    <TableRow key={rate.id}>
+                      <TableCell className="font-medium">
+                        {rate.toCurrency === "USD" ? "💵 Dólares" : "💶 Euros"}
+                      </TableCell>
+                      <TableCell>{rate.rate.toFixed(2)} Bs</TableCell>
+                      <TableCell>
+                        {new Date(rate.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="checkbox-con" style={{ margin: "0", justifyContent: "center" }}>
+                          <input
+                            id={`currency-checkbox-${rate.id}`}
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) =>
+                              handleCurrencyToggle(rate.toCurrency, e.target.checked)
+                            }
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeactivate(rate)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
         </CardContent>
+        {activeRates.length > 0 && (
+          <CardContent className="pt-0">
+            <p className="text-sm text-muted-foreground text-center">
+              {preferredCurrency === "Bs" 
+                ? "La moneda de visualización actual es Bolívares (por defecto). Activa un checkbox para cambiar."
+                : `La moneda de visualización actual es ${preferredCurrency === "USD" ? "Dólares" : "Euros"}. Desactiva todos los checkboxes para volver a Bolívares.`}
+            </p>
+          </CardContent>
+        )}
       </Card>
     </div>
   );

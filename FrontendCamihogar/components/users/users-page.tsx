@@ -56,6 +56,7 @@ import {
   EyeOff,
   RefreshCw,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useUsers } from "@/hooks/use-users";
 import type { CreateUserDto, UpdateUserDto } from "@/lib/api-client";
 
@@ -143,7 +144,7 @@ export function UsersPage() {
     password: "",
     confirmPassword: "",
     role: "",
-    status: "Activo" as const,
+    status: "Activo" as "Activo" | "Inactivo",
   });
 
   // Convertir usuarios de API a formato display
@@ -170,7 +171,7 @@ export function UsersPage() {
 
   const handleCreateUser = async () => {
     if (formData.password !== formData.confirmPassword) {
-      alert("Las contraseñas no coinciden");
+      toast.error("Las contraseñas no coinciden");
       return;
     }
 
@@ -178,7 +179,7 @@ export function UsersPage() {
       (u) => u.email === formData.email || u.username === formData.username
     );
     if (existingUser) {
-      alert("El correo electrónico o nombre de usuario ya existe");
+      toast.error("El correo electrónico o nombre de usuario ya existe");
       return;
     }
 
@@ -188,20 +189,21 @@ export function UsersPage() {
         username: formData.username,
         email: formData.email,
         role: mapRoleToApi(formData.role),
-        status: mapStatusToApi(formData.status),
+        status: mapStatusToApi(formData.status) || "active", // Por defecto "active" si no se especifica
         password: formData.password,
       };
       await createUser(createUserDto);
       setIsCreateDialogOpen(false);
       resetForm();
+      toast.success("Usuario creado exitosamente");
       if (!isOnline) {
-        alert(
+        toast.info(
           "Usuario creado localmente. Se sincronizará cuando vuelva la conexión."
         );
       }
     } catch (error: any) {
       console.error("Error creating user:", error);
-      alert(error.message || "Error al crear el usuario");
+      toast.error(error.message || "Error al crear el usuario");
     }
   };
 
@@ -214,7 +216,7 @@ export function UsersPage() {
         u.id !== editingUser.id
     );
     if (existingUser) {
-      alert("El correo electrónico o nombre de usuario ya existe");
+      toast.error("El correo electrónico o nombre de usuario ya existe");
       return;
     }
 
@@ -231,14 +233,15 @@ export function UsersPage() {
       setIsEditDialogOpen(false);
       setEditingUser(null);
       resetForm();
+      toast.success("Usuario actualizado exitosamente");
       if (!isOnline) {
-        alert(
+        toast.info(
           "Usuario actualizado localmente. Se sincronizará cuando vuelva la conexión."
         );
       }
     } catch (error: any) {
       console.error("Error updating user:", error);
-      alert(error.message || "Error al actualizar el usuario");
+      toast.error(error.message || "Error al actualizar el usuario");
     }
   };
 
@@ -252,23 +255,29 @@ export function UsersPage() {
           mapStatusToApi(user.status) === "active" ? "inactive" : "active",
       };
       await updateUser(userId, updateUserDto);
+      toast.success(
+        `Usuario ${
+          mapStatusToApi(user.status) === "active" ? "desactivado" : "activado"
+        } exitosamente`
+      );
     } catch (error: any) {
       console.error("Error updating user status:", error);
-      alert(error.message || "Error al actualizar el estado del usuario");
+      toast.error(error.message || "Error al actualizar el estado del usuario");
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
     try {
       await deleteUser(userId);
+      toast.success("Usuario eliminado exitosamente");
       if (!isOnline) {
-        alert(
+        toast.info(
           "Usuario eliminado localmente. Se sincronizará cuando vuelva la conexión."
         );
       }
     } catch (error: any) {
       console.error("Error deleting user:", error);
-      alert(error.message || "Error al eliminar el usuario");
+      toast.error(error.message || "Error al eliminar el usuario");
     }
   };
 
@@ -294,7 +303,7 @@ export function UsersPage() {
       password: "",
       confirmPassword: "",
       role: "",
-      status: "Activo",
+      status: "Activo" as "Activo" | "Inactivo",
     });
     setShowPassword(false);
   };
@@ -354,7 +363,12 @@ export function UsersPage() {
             </Button>
             <Dialog
               open={isCreateDialogOpen}
-              onOpenChange={setIsCreateDialogOpen}
+              onOpenChange={(open) => {
+                setIsCreateDialogOpen(open);
+                if (open) {
+                  resetForm();
+                }
+              }}
             >
               <DialogTrigger asChild>
                 <Button onClick={resetForm}>
@@ -756,10 +770,10 @@ export function UsersPage() {
               <Label htmlFor="editStatus">Estado *</Label>
               <Select
                 value={formData.status}
-                onValueChange={(value) =>
+                onValueChange={(value: "Activo" | "Inactivo") =>
                   setFormData({
                     ...formData,
-                    status: value as "Activo" | "Inactivo",
+                    status: value,
                   })
                 }
               >

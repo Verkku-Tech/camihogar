@@ -21,6 +21,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, Search, Edit, Power, PowerOff, Filter } from "lucide-react"
+import { toast } from "sonner"
 import { getClients, addClient, updateClient, type Client } from "@/lib/storage"
 
 const tipoClienteOptions = [
@@ -78,19 +79,22 @@ export function ClientsPage() {
   const handleCreateClient = async () => {
     const documentExists = clients.some((c) => c.rutId === formData.rutId)
     if (documentExists) {
-      alert("El RUT/ID ya existe en el sistema")
+      toast.error("El RUT/ID ya existe en el sistema")
       return
     }
 
     try {
-      const newClient = await addClient(formData)
+      const newClient = await addClient({
+        ...formData,
+        estado: "activo" as const,
+      })
       setClients([...clients, newClient])
       setIsCreateDialogOpen(false)
       resetForm()
-      alert("Cliente creado exitosamente")
+      toast.success("Cliente creado exitosamente")
     } catch (error) {
       console.error("Error creating client:", error)
-      alert("Error al crear el cliente")
+      toast.error("Error al crear el cliente")
     }
   }
 
@@ -99,7 +103,7 @@ export function ClientsPage() {
 
     const documentExists = clients.some((c) => c.rutId === formData.rutId && c.id !== selectedClient.id)
     if (documentExists) {
-      alert("El RUT/ID ya existe en el sistema")
+      toast.error("El RUT/ID ya existe en el sistema")
       return
     }
 
@@ -113,16 +117,16 @@ export function ClientsPage() {
       setIsEditDialogOpen(false)
       setSelectedClient(null)
       resetForm()
-      alert("Cliente actualizado exitosamente")
+      toast.success("Cliente actualizado exitosamente")
     } catch (error) {
       console.error("Error updating client:", error)
-      alert("Error al actualizar el cliente")
+      toast.error("Error al actualizar el cliente")
     }
   }
 
   const handleToggleStatus = async (client: Client) => {
     if (client.estado === "activo" && client.tieneNotasDespacho) {
-      alert("No se puede desactivar este cliente porque tiene Notas de Despacho asociadas")
+      toast.error("No se puede desactivar este cliente porque tiene Notas de Despacho asociadas")
       setDeactivateClient(null)
       return
     }
@@ -133,9 +137,12 @@ export function ClientsPage() {
       })
       setClients(clients.map((c) => (c.id === client.id ? updatedClient : c)))
       setDeactivateClient(null)
+      toast.success(
+        `Cliente ${client.estado === "activo" ? "desactivado" : "activado"} exitosamente`
+      )
     } catch (error) {
       console.error("Error updating client status:", error)
-      alert("Error al actualizar el estado del cliente")
+      toast.error("Error al actualizar el estado del cliente")
     }
   }
 

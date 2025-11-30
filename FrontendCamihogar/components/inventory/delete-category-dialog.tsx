@@ -10,28 +10,32 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { type OrderProduct } from "@/lib/storage"
+import { type Category } from "@/lib/storage"
 
-interface RemoveProductDialogProps {
+interface DeleteCategoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  product: OrderProduct | null
+  category: Category | null
   onConfirm: () => void
 }
 
-export function RemoveProductDialog({ open, onOpenChange, product, onConfirm }: RemoveProductDialogProps) {
-  if (!product) return null
+export function DeleteCategoryDialog({ open, onOpenChange, category, onConfirm }: DeleteCategoryDialogProps) {
+  if (!category) return null
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Confirmar eliminación</AlertDialogTitle>
+          <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
           <AlertDialogDescription>
-            ¿Estás seguro de que deseas eliminar "{product.name}" del pedido?
+            ¿Estás seguro de que deseas eliminar la categoría "{category.name}"?
             <br />
             <span className="text-sm text-muted-foreground mt-2 block">
-              Cantidad: {product.quantity} unidades - Total: ${product.total.toFixed(2)}
+              Esta categoría tiene {category.products} producto(s) y {category.attributes.length} atributo(s).
+            </span>
+            <br />
+            <span className="text-sm font-medium text-red-600 mt-2 block">
+              Esta acción no se puede deshacer.
             </span>
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -45,3 +49,4 @@ export function RemoveProductDialog({ open, onOpenChange, product, onConfirm }: 
     </AlertDialog>
   )
 }
+

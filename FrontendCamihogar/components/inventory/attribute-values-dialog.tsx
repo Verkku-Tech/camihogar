@@ -6,14 +6,22 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Plus, X, Edit2, Check } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Plus, X, Edit2, Check, Package } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ProductSearchCombobox } from "@/components/inventory/product-search-combobox"
+import { getProducts, type Product } from "@/lib/storage"
+import { toast } from "sonner"
+import type { Currency } from "@/lib/currency-utils"
+import { formatCurrency } from "@/lib/currency-utils"
 
 interface AttributeValue {
   id: string
   label: string
   isDefault?: boolean
   priceAdjustment?: number
+  priceAdjustmentCurrency?: Currency
+  productId?: number
 }
 
 interface Attribute {
@@ -39,8 +47,27 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
     label: "",
     isDefault: false,
     priceAdjustment: "",
+    priceAdjustmentCurrency: "Bs" as Currency,
+    productId: undefined as number | undefined,
+    selectedProduct: null as Product | null,
   })
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [products, setProducts] = useState<Product[]>([])
+
+  // Cargar productos cuando el tipo es "Product"
+  useEffect(() => {
+    if (attribute.valueType === "Product" && open) {
+      const loadProducts = async () => {
+        try {
+          const loadedProducts = await getProducts()
+          setProducts(loadedProducts)
+        } catch (error) {
+          console.error("Error loading products:", error)
+        }
+      }
+      loadProducts()
+    }
+  }, [attribute.valueType, open])
 
   useEffect(() => {
     const convertedValues = attribute.values.map((val) => {
@@ -50,21 +77,90 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
       return val
     })
     setValues(convertedValues)
-    setMaxSelections(attribute.maxSelections ? attribute.maxSelections.toString() : "1")
+    // Solo establecer "1" si maxSelections es undefined y es Multiple select, de lo contrario usar el valor guardado
+    if (attribute.valueType === "Multiple select") {
+      // Preservar el valor de maxSelections si existe, de lo contrario usar "1" como defecto
+      const maxSelectionsValue = attribute.maxSelections !== undefined && attribute.maxSelections !== null
+        ? attribute.maxSelections.toString()
+        : "1"
+      setMaxSelections(maxSelectionsValue)
+    } else {
+      setMaxSelections("1")
+    }
+    // Resetear el formulario cuando cambia el atributo
+    setNewValue({
+      label: "",
+      isDefault: false,
+      priceAdjustment: "",
+      priceAdjustmentCurrency: "Bs",
+      productId: undefined,
+      selectedProduct: null,
+    })
   }, [attribute])
 
+  // Manejar selección de producto
+  const handleProductSelect = (product: Product | null) => {
+    if (product) {
+      setNewValue({
+        ...newValue,
+        label: product.name,
+        productId: product.id,
+        priceAdjustment: product.price.toString(),
+        priceAdjustmentCurrency: product.priceCurrency || "Bs",
+        selectedProduct: product,
+      })
+    } else {
+      setNewValue({
+        ...newValue,
+        label: "",
+        productId: undefined,
+        priceAdjustment: "",
+        priceAdjustmentCurrency: "Bs",
+        selectedProduct: null,
+      })
+    }
+  }
+
   const handleAddValue = () => {
-    if (!newValue.label.trim()) return
+    if (!newValue.label.trim()) {
+      toast.error("Por favor selecciona o ingresa un valor")
+      return
+    }
+
+    // Validar que no se duplique el producto si el tipo es "Product"
+    if (attribute.valueType === "Product" && newValue.productId) {
+      const productExists = values.some((v) => v.productId === newValue.productId)
+      if (productExists) {
+        toast.error("Este producto ya ha sido agregado")
+        return
+      }
+    } else {
+      // Para otros tipos, validar que no se duplique el label
+      const labelExists = values.some((v) => v.label.toLowerCase() === newValue.label.trim().toLowerCase())
+      if (labelExists) {
+        toast.error("Este valor ya ha sido agregado")
+        return
+      }
+    }
 
     const value: AttributeValue = {
       id: Date.now().toString() + Math.random(),
       label: newValue.label.trim(),
       isDefault: newValue.isDefault,
       priceAdjustment: newValue.priceAdjustment === "" ? 0 : parseFloat(newValue.priceAdjustment),
+      priceAdjustmentCurrency: newValue.priceAdjustmentCurrency || "Bs",
+      productId: newValue.productId,
     }
 
     setValues([...values, value])
-    setNewValue({ label: "", isDefault: false, priceAdjustment: "" })
+    setNewValue({
+      label: "",
+      isDefault: false,
+      priceAdjustment: "",
+      priceAdjustmentCurrency: "Bs",
+      productId: undefined,
+      selectedProduct: null,
+    })
   }
 
   const handleRemoveValue = (id: string) => {
@@ -90,10 +186,18 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
   }
 
   const handleSave = () => {
-    onSave(
-      values,
-      attribute.valueType === "Multiple select" ? parseInt(maxSelections) : undefined
-    )
+    // Para Multiple select, siempre pasar maxSelections (incluso si es 1 por defecto)
+    // Para otros tipos, pasar undefined
+    if (attribute.valueType === "Multiple select") {
+      const parsedMax = maxSelections && maxSelections.trim() !== "" 
+        ? parseInt(maxSelections, 10) 
+        : 1
+      // Asegurar que sea un número válido
+      const maxSelectionsValue = isNaN(parsedMax) || parsedMax < 1 ? 1 : parsedMax
+      onSave(values, maxSelectionsValue)
+    } else {
+      onSave(values, undefined)
+    }
   }
 
   const getPlaceholder = () => {
@@ -155,25 +259,58 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/50">
             <div className="space-y-2">
               <Label htmlFor="newValue">Valor</Label>
-              <Input
-                id="newValue"
-                value={newValue.label}
-                onChange={(e) => setNewValue({ ...newValue, label: e.target.value })}
-                placeholder={getPlaceholder()}
-                onKeyPress={(e) => e.key === "Enter" && handleAddValue()}
-              />
+              {attribute.valueType === "Product" ? (
+                <ProductSearchCombobox
+                  value={newValue.selectedProduct}
+                  onSelect={handleProductSelect}
+                  placeholder={getPlaceholder()}
+                  excludedProductIds={values.filter((v) => v.productId).map((v) => v.productId!)}
+                />
+              ) : (
+                <Input
+                  id="newValue"
+                  value={newValue.label}
+                  onChange={(e) => setNewValue({ ...newValue, label: e.target.value })}
+                  placeholder={getPlaceholder()}
+                  onKeyPress={(e) => e.key === "Enter" && handleAddValue()}
+                />
+              )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="priceAdjustment">Ajuste de Precio ($)</Label>
-              <Input
-                id="priceAdjustment"
-                type="number"
-                step="0.01"
-                value={newValue.priceAdjustment}
-                onChange={(e) => setNewValue({ ...newValue, priceAdjustment: e.target.value })}
-                placeholder="0.00"
-              />
-              <p className="text-xs text-muted-foreground">Positivo aumenta, negativo disminuye</p>
+              <Label htmlFor="priceAdjustment">Ajuste de Precio</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="priceAdjustment"
+                  type="number"
+                  step="0.01"
+                  value={newValue.priceAdjustment}
+                  onChange={(e) => setNewValue({ ...newValue, priceAdjustment: e.target.value })}
+                  placeholder="0.00"
+                  className="flex-1"
+                  disabled={attribute.valueType === "Product" && !!newValue.selectedProduct}
+                />
+                <Select
+                  value={newValue.priceAdjustmentCurrency || "Bs"}
+                  onValueChange={(value: Currency) =>
+                    setNewValue({ ...newValue, priceAdjustmentCurrency: value })
+                  }
+                  disabled={attribute.valueType === "Product" && !!newValue.selectedProduct}
+                >
+                  <SelectTrigger className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Bs">Bs.</SelectItem>
+                    <SelectItem value="USD">$</SelectItem>
+                    <SelectItem value="EUR">€</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {attribute.valueType === "Product" && newValue.selectedProduct
+                  ? "Precio del producto (editable después de agregar)"
+                  : "Positivo aumenta, negativo disminuye"}
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Opciones</Label>
@@ -208,18 +345,46 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
                   <TableHeader>
                     <TableRow>
                       <TableHead>Valor</TableHead>
+                      {attribute.valueType === "Product" && <TableHead>Información</TableHead>}
                       <TableHead>Por Defecto</TableHead>
                       <TableHead>Ajuste de Precio</TableHead>
                       <TableHead className="w-[100px]">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {values.map((value) => (
-                      <TableRow key={value.id}>
-                        <TableCell className="font-medium">{value.label}</TableCell>
-                        <TableCell>
-                          <Checkbox checked={value.isDefault} onCheckedChange={() => handleToggleDefault(value.id)} />
-                        </TableCell>
+                    {values.map((value) => {
+                      const product = attribute.valueType === "Product" && value.productId
+                        ? products.find((p) => p.id === value.productId)
+                        : null
+                      
+                      return (
+                        <TableRow key={value.id}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              {attribute.valueType === "Product" && (
+                                <Package className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              {value.label}
+                            </div>
+                          </TableCell>
+                          {attribute.valueType === "Product" && (
+                            <TableCell>
+                              {product ? (
+                                <div className="text-xs text-muted-foreground space-y-0.5">
+                                  <div>SKU: {product.sku}</div>
+                                  <div>Categoría: {product.category}</div>
+                                  {product.stock !== undefined && (
+                                    <div>Stock: {product.stock}</div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                          )}
+                          <TableCell>
+                            <Checkbox checked={value.isDefault} onCheckedChange={() => handleToggleDefault(value.id)} />
+                          </TableCell>
                         <TableCell>
                           {editingId === value.id ? (
                             <div className="flex items-center space-x-2">
@@ -241,20 +406,45 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
                                 }}
                                 autoFocus
                               />
+                              <Select
+                                value={value.priceAdjustmentCurrency || "Bs"}
+                                onValueChange={(currency: Currency) => {
+                                  setValues(values.map(v => 
+                                    v.id === value.id ? { ...v, priceAdjustmentCurrency: currency } : v
+                                  ))
+                                }}
+                              >
+                                <SelectTrigger className="w-20">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Bs">Bs.</SelectItem>
+                                  <SelectItem value="USD">$</SelectItem>
+                                  <SelectItem value="EUR">€</SelectItem>
+                                </SelectContent>
+                              </Select>
                               <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
                                 <Check className="w-4 h-4" />
                               </Button>
                             </div>
                           ) : (
-                            <div className="flex items-center space-x-2">
-                              <span
-                                className={value.priceAdjustment && value.priceAdjustment !== 0 ? "font-medium" : ""}
-                              >
-                                ${(value.priceAdjustment || 0).toFixed(2)}
-                              </span>
-                              <Button size="sm" variant="ghost" onClick={() => setEditingId(value.id)}>
-                                <Edit2 className="w-3 h-3" />
-                              </Button>
+                            <div className="flex flex-col space-y-1">
+                              {attribute.valueType === "Product" && product && (
+                                <div className="text-xs text-muted-foreground">
+                                  Base: {formatCurrency(product.price, product.priceCurrency || "Bs")}
+                                </div>
+                              )}
+                              <div className="flex items-center space-x-2">
+                                <span
+                                  className={value.priceAdjustment && value.priceAdjustment !== 0 ? "font-medium" : ""}
+                                >
+                                  {value.priceAdjustmentCurrency === "Bs" ? "Bs." : value.priceAdjustmentCurrency === "USD" ? "$" : "€"}
+                                  {(value.priceAdjustment || 0).toFixed(2)}
+                                </span>
+                                <Button size="sm" variant="ghost" onClick={() => setEditingId(value.id)}>
+                                  <Edit2 className="w-3 h-3" />
+                                </Button>
+                              </div>
                             </div>
                           )}
                         </TableCell>
@@ -264,7 +454,8 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
                           </Button>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )
+                    })}
                   </TableBody>
                 </Table>
               </div>

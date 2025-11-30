@@ -21,7 +21,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Search, Plus, Eye, Edit, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 import { getOrders, deleteOrder, type Order } from "@/lib/storage"
+import { useCurrency } from "@/contexts/currency-context"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -37,6 +39,7 @@ const getStatusColor = (status: string) => {
 }
 
 export default function PedidosPage() {
+  const { formatWithPreference, preferredCurrency } = useCurrency()
   const [orders, setOrders] = useState<Order[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
@@ -44,6 +47,7 @@ export default function PedidosPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -61,11 +65,33 @@ export default function PedidosPage() {
     loadOrders()
   }, [])
 
+  // Actualizar totales cuando cambien los pedidos o la moneda preferida
+  useEffect(() => {
+    const updateTotals = async () => {
+      const totals: Record<string, string> = {}
+      for (const order of orders) {
+        // Los totales de pedidos se guardan siempre en Bs
+        const formatted = await formatWithPreference(order.total, "Bs")
+        totals[order.id] = formatted
+      }
+      setOrderTotals(totals)
+    }
+    if (orders.length > 0) {
+      updateTotals()
+    }
+  }, [orders, preferredCurrency, formatWithPreference])
+
   // Función para refrescar después de crear un pedido
   const handleOrderCreated = async () => {
     const loadedOrders = await getOrders()
     setOrders(loadedOrders)
     setIsNewOrderOpen(false)
+  }
+
+  // Obtener total formateado para el pedido a eliminar
+  const getDeleteOrderTotal = () => {
+    if (!orderToDelete) return ""
+    return orderTotals[orderToDelete.id] || `Bs.${orderToDelete.total.toFixed(2)}`
   }
 
   const filteredOrders = orders.filter(
@@ -87,20 +113,25 @@ export default function PedidosPage() {
       setOrderToDelete(null)
     } catch (error) {
       console.error("Error deleting order:", error)
-      alert("Error al eliminar el pedido. Por favor intenta nuevamente.")
+      toast.error("Error al eliminar el pedido. Por favor intenta nuevamente.")
     }
   }
 
-  const handleView = (order: Order) => {
+  const handleView = async (order: Order) => {
     // TODO: Implementar vista de detalles del pedido
     console.log("Ver pedido:", order)
-    alert(`Ver detalles del pedido ${order.orderNumber}\nCliente: ${order.clientName}\nTotal: $${order.total.toFixed(2)}`)
+    const formattedTotal = await formatWithPreference(order.total, "Bs")
+    toast.info(`Pedido ${order.orderNumber}`, {
+      description: `Cliente: ${order.clientName}\nTotal: ${formattedTotal}`,
+    })
   }
 
   const handleEdit = (order: Order) => {
     // TODO: Implementar edición del pedido
     console.log("Editar pedido:", order)
-    alert(`Editar pedido ${order.orderNumber}\nEsta funcionalidad será implementada próximamente.`)
+    toast.info(`Editar pedido ${order.orderNumber}`, {
+      description: "Esta funcionalidad será implementada próximamente.",
+    })
   }
 
   const handleDeleteClick = (order: Order) => {
@@ -173,7 +204,9 @@ export default function PedidosPage() {
                             <TableCell className="font-medium">{order.orderNumber}</TableCell>
                             <TableCell>{order.clientName}</TableCell>
                             <TableCell>{order.vendorName}</TableCell>
-                            <TableCell>${order.total.toFixed(2)}</TableCell>
+                            <TableCell>
+                              {orderTotals[order.id] || `Bs.${order.total.toFixed(2)}`}
+                            </TableCell>
                             <TableCell>
                               <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
                             </TableCell>
@@ -241,7 +274,7 @@ export default function PedidosPage() {
               ¿Estás seguro de que deseas eliminar el pedido "{orderToDelete?.orderNumber}"?
               <br />
               <span className="text-sm text-muted-foreground mt-2 block">
-                Cliente: {orderToDelete?.clientName} - Total: ${orderToDelete?.total.toFixed(2)}
+                Cliente: {orderToDelete?.clientName} - Total: {getDeleteOrderTotal()}
               </span>
               <br />
               <span className="text-sm font-medium text-red-600 mt-2 block">

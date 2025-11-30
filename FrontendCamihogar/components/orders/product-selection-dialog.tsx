@@ -12,6 +12,8 @@ import { Search, Plus, Package, DollarSign, Layers, Filter } from "lucide-react"
 import { getProducts, getOrders, getCategories, type OrderProduct, type Product, type Category } from "@/lib/storage"
 import { ProductEditDialog } from "@/components/orders/product-edit-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getActiveExchangeRates, convertProductPriceToBs, formatCurrency, type Currency } from "@/lib/currency-utils"
+import { useCurrency } from "@/contexts/currency-context"
 
 interface ProductSelectionDialogProps {
   open: boolean
@@ -34,20 +36,25 @@ export function ProductSelectionDialog({
   const [productSales, setProductSales] = useState<Record<string, number>>({})
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [productToEdit, setProductToEdit] = useState<OrderProduct | null>(null)
+  const [exchangeRates, setExchangeRates] = useState<{ USD?: any; EUR?: any }>({})
+  const { formatWithPreference, preferredCurrency } = useCurrency()
+  const [productPrices, setProductPrices] = useState<Record<number, string>>({})
 
   // Cargar productos y calcular ventas
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Cargar productos y categorías
-        const [loadedProducts, loadedCategories, loadedOrders] = await Promise.all([
+        // Cargar productos, categorías, órdenes y tasas de cambio
+        const [loadedProducts, loadedCategories, loadedOrders, rates] = await Promise.all([
           getProducts(),
           getCategories(),
           getOrders(),
+          getActiveExchangeRates(),
         ])
         
         setProducts(loadedProducts)
         setCategories(loadedCategories)
+        setExchangeRates(rates)
 
         // Calcular ventas por producto (suma de cantidades vendidas en todas las órdenes)
         const sales: Record<string, number> = {}
@@ -64,6 +71,21 @@ export function ProductSelectionDialog({
     }
     loadData()
   }, [])
+
+  // Actualizar precios cuando cambien los productos o la moneda preferida
+  useEffect(() => {
+    const updatePrices = async () => {
+      const prices: Record<number, string> = {}
+      for (const product of products) {
+        const formatted = await formatWithPreference(product.price, product.priceCurrency || "Bs")
+        prices[product.id] = formatted
+      }
+      setProductPrices(prices)
+    }
+    if (products.length > 0) {
+      updatePrices()
+    }
+  }, [products, preferredCurrency])
 
   // Filtrar y ordenar productos
   const filteredAndSortedProducts = products
@@ -89,17 +111,11 @@ export function ProductSelectionDialog({
   const handleQuantityChange = (productId: string, quantity: number) => {
     setQuantities((prev) => ({
       ...prev,
-      [productId]: Math.max(
-        0,
-        Math.min(
-          quantity,
-          products.find((p) => p.id.toString() === productId)?.stock || 0,
-        ),
-      ),
+      [productId]: Math.max(0, quantity),
     }))
   }
 
-  const handleAddProduct = (product: Product) => {
+  const handleAddProduct = async (product: Product) => {
     const productKey = product.id.toString()
     const quantity = quantities[productKey] || 1
     const existingProduct = selectedProducts.find((p) => p.id === productKey)
@@ -122,15 +138,24 @@ export function ProductSelectionDialog({
         ? cloneAttributes(existingProduct.attributes)
         : cloneAttributes(product.attributes)
     
+    // Convertir precio del producto a Bs si está en otra moneda
+    const productCurrency = product.priceCurrency || "Bs"
+    const priceInBs = await convertProductPriceToBs(
+      product.price,
+      productCurrency,
+      exchangeRates
+    )
+    
     // Preparar producto y abrir modal de edición
+    // IMPORTANTE: Guardamos el precio convertido a Bs para todos los cálculos
     const newProduct: OrderProduct = {
       id: productKey,
       name: product.name,
-      price: product.price,
+      price: priceInBs, // Precio ya convertido a Bs
       quantity,
-      total: product.price * quantity,
+      total: priceInBs * quantity,
       category: product.category,
-      stock: product.stock,
+      stock: 0, // Los productos se crean bajo demanda, no hay stock
       attributes: mergedAttributes,
       discount: existingProduct?.discount ?? 0,
     }
@@ -234,14 +259,17 @@ export function ProductSelectionDialog({
                       )}
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-3 text-sm text-muted-foreground">
+                    <div className="grid grid-cols-1 gap-3 text-sm text-muted-foreground">
                       <div className="flex items-center gap-2">
                         <DollarSign className="w-4 h-4" />
-                        <span>${product.price.toFixed(2)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Package className="w-4 h-4" />
-                        <span>Stock: {product.stock}</span>
+                        <span>
+                          {formatCurrency(product.price, product.priceCurrency || "Bs")}
+                          {product.priceCurrency && product.priceCurrency !== "Bs" && (
+                            <span className="text-xs text-muted-foreground ml-1">
+                              (se convertirá a Bs)
+                            </span>
+                          )}
+                        </span>
                       </div>
                     </div>
 
@@ -253,7 +281,6 @@ export function ProductSelectionDialog({
                         id={`qty-${productId}`}
                         type="number"
                         min="1"
-                        max={product.stock}
                         value={quantity}
                         onChange={(e) =>
                           handleQuantityChange(
@@ -288,7 +315,6 @@ export function ProductSelectionDialog({
                   <TableHead>Producto</TableHead>
                   <TableHead>Categoría</TableHead>
                   <TableHead>Precio</TableHead>
-                  <TableHead>Stock</TableHead>
                   <TableHead>Cantidad</TableHead>
                   <TableHead>Seleccionado</TableHead>
                   <TableHead className="text-right">Acción</TableHead>
@@ -306,13 +332,13 @@ export function ProductSelectionDialog({
                     <TableCell>
                       <Badge variant="outline">{product.category}</Badge>
                     </TableCell>
-                    <TableCell>${product.price.toFixed(2)}</TableCell>
-                    <TableCell>{product.stock}</TableCell>
+                    <TableCell>
+                      {productPrices[product.id] || formatCurrency(product.price, product.priceCurrency || "Bs")}
+                    </TableCell>
                     <TableCell>
                       <Input
                         type="number"
                         min="1"
-                        max={product.stock}
                           value={quantities[productId] || 1}
                         onChange={(e) =>
                           handleQuantityChange(
@@ -355,11 +381,8 @@ export function ProductSelectionDialog({
 
           {selectedProducts.length > 0 && (
             <div className="p-3 sm:p-4 bg-muted rounded-lg">
-              <div className="text-xs sm:text-sm font-medium mb-2">
+              <div className="text-xs sm:text-sm font-medium">
                 Productos seleccionados: {selectedProducts.length}
-              </div>
-              <div className="text-base sm:text-lg font-semibold">
-                Total: ${selectedProducts.reduce((sum, p) => sum + p.total, 0).toFixed(2)}
               </div>
             </div>
           )}

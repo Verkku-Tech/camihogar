@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Lock, User } from "lucide-react"
+import { toast } from "sonner"
 import { useAuth } from "@/contexts/auth-context"
 
 export default function LoginPage() {
@@ -138,7 +139,7 @@ export default function LoginPage() {
                 onClick={(e) => {
                   e.preventDefault()
                   // TODO: Implement password recovery
-                  alert("Funcionalidad de recuperación de contraseña próximamente")
+                  toast.info("Funcionalidad de recuperación de contraseña próximamente")
                 }}
               >
                 ¿Olvidaste tu contraseña?

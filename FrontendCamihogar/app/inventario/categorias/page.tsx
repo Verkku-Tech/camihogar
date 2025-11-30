@@ -6,7 +6,9 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, Edit, Trash2, Tags } from "lucide-react"
+import { toast } from "sonner"
 import { CategoryFormDialog } from "@/components/inventory/category-form-dialog"
+import { DeleteCategoryDialog } from "@/components/inventory/delete-category-dialog"
 import { getCategories, addCategory, updateCategory, deleteCategory, type Category } from "@/lib/storage"
 
 export default function CategoriasPage() {
@@ -14,6 +16,8 @@ export default function CategoriasPage() {
   const [showCategoryForm, setShowCategoryForm] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -52,20 +56,28 @@ export default function CategoriasPage() {
       setEditingCategory(null)
     } catch (error) {
       console.error("Error saving category:", error)
-      alert("Error al guardar la categoría")
+      toast.error("Error al guardar la categoría")
     }
   }
 
-  const handleDeleteCategory = async (categoryId: number) => {
-    if (confirm("¿Estás seguro de que deseas eliminar esta categoría?")) {
-      try {
-        await deleteCategory(categoryId)
-        const loadedCategories = await getCategories()
-        setCategories(loadedCategories)
-      } catch (error) {
-        console.error("Error deleting category:", error)
-        alert("Error al eliminar la categoría")
-      }
+  const handleDeleteClick = (category: Category) => {
+    setCategoryToDelete(category)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const handleDeleteCategory = async () => {
+    if (!categoryToDelete) return
+
+    try {
+      await deleteCategory(categoryToDelete.id)
+      const loadedCategories = await getCategories()
+      setCategories(loadedCategories)
+      toast.success("Categoría eliminada exitosamente")
+      setIsDeleteDialogOpen(false)
+      setCategoryToDelete(null)
+    } catch (error) {
+      console.error("Error deleting category:", error)
+      toast.error("Error al eliminar la categoría")
     }
   }
 
@@ -114,7 +126,7 @@ export default function CategoriasPage() {
                         <Button variant="ghost" size="sm" onClick={() => handleEditCategory(category)}>
                           <Edit className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteCategory(category.id)}>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(category)}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
@@ -144,6 +156,13 @@ export default function CategoriasPage() {
         onOpenChange={setShowCategoryForm}
         category={editingCategory}
         onSave={handleSaveCategory}
+      />
+
+      <DeleteCategoryDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        category={categoryToDelete}
+        onConfirm={handleDeleteCategory}
       />
     </div>
   )

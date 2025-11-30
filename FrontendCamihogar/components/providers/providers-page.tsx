@@ -21,6 +21,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus, Search, Edit, Power, PowerOff, Filter } from "lucide-react"
+import { toast } from "sonner"
 import { getProviders, addProvider, updateProvider, type Provider } from "@/lib/storage"
 
 const tipoOptions = [
@@ -80,18 +81,22 @@ export function ProvidersPage() {
     // Validate RIF is not duplicated
     const rifExists = providers.some((p) => p.rif === formData.rif)
     if (rifExists) {
-      alert("El RIF ya existe en el sistema")
+      toast.error("El RIF ya existe en el sistema")
       return
     }
 
     try {
-      const newProvider = await addProvider(formData)
+      const newProvider = await addProvider({
+        ...formData,
+        estado: "activo" as const,
+      })
       setProviders([...providers, newProvider])
       setIsCreateDialogOpen(false)
       resetForm()
+      toast.success("Proveedor creado exitosamente")
     } catch (error) {
       console.error("Error creating provider:", error)
-      alert("Error al crear el proveedor")
+      toast.error("Error al crear el proveedor")
     }
   }
 
@@ -101,7 +106,7 @@ export function ProvidersPage() {
     // Validate RIF is not duplicated (excluding current provider)
     const rifExists = providers.some((p) => p.rif === formData.rif && p.id !== selectedProvider.id)
     if (rifExists) {
-      alert("El RIF ya existe en el sistema")
+      toast.error("El RIF ya existe en el sistema")
       return
     }
 
@@ -111,9 +116,10 @@ export function ProvidersPage() {
       setIsEditDialogOpen(false)
       setSelectedProvider(null)
       resetForm()
+      toast.success("Proveedor actualizado exitosamente")
     } catch (error) {
       console.error("Error updating provider:", error)
-      alert("Error al actualizar el proveedor")
+      toast.error("Error al actualizar el proveedor")
     }
   }
 
@@ -124,9 +130,12 @@ export function ProvidersPage() {
       })
       setProviders(providers.map((p) => (p.id === provider.id ? updatedProvider : p)))
       setDeactivateProvider(null)
+      toast.success(
+        `Proveedor ${provider.estado === "activo" ? "desactivado" : "activado"} exitosamente`
+      )
     } catch (error) {
       console.error("Error updating provider status:", error)
-      alert("Error al actualizar el estado del proveedor")
+      toast.error("Error al actualizar el estado del proveedor")
     }
   }
 
