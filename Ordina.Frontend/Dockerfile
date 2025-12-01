@@ -3,10 +3,13 @@ FROM node:20-alpine AS deps
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
-# Copiar archivos de dependencias
-COPY package.json pnpm-lock.yaml* ./
+# Copiar archivos de dependencias desde el monorepo
+# Mantener la estructura del workspace para que pnpm funcione correctamente
+COPY pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml* ./
+COPY Ordina.Frontend/package.json ./Ordina.Frontend/package.json
 
-# Instalar dependencias
+# Instalar dependencias (pnpm instalará desde el workspace)
 RUN pnpm install --frozen-lockfile
 
 # Stage 2: Builder
@@ -14,9 +17,14 @@ FROM node:20-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
-# Copiar dependencias instaladas
+# Copiar estructura del workspace y dependencias
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY --from=deps /app/pnpm-workspace.yaml ./
+# Copiar todo el contenido del frontend
+COPY Ordina.Frontend/ ./Ordina.Frontend/
+
+# Cambiar al directorio del frontend para el build
+WORKDIR /app/Ordina.Frontend
 
 # Variables de entorno para el build
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -32,9 +40,10 @@ FROM nginx:alpine AS runner
 RUN apk add --no-cache nodejs npm
 
 # Copiar archivos de Next.js standalone
-COPY --from=builder /app/.next/standalone /app
-COPY --from=builder /app/.next/static /app/.next/static
-COPY --from=builder /app/public /app/public
+# El build está en /app/Ordina.Frontend debido a la estructura del workspace
+COPY --from=builder /app/Ordina.Frontend/.next/standalone /app
+COPY --from=builder /app/Ordina.Frontend/.next/static /app/.next/static
+COPY --from=builder /app/Ordina.Frontend/public /app/public
 
 # Configurar NGINX para hacer proxy a Next.js
 RUN rm /etc/nginx/conf.d/default.conf && \
