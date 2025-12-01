@@ -10,13 +10,23 @@ camihogar/
 │   ├── app/               # Páginas y rutas de Next.js
 │   ├── components/        # Componentes React
 │   ├── lib/               # Utilidades y clientes API
-│   └── ...
+│   └── Dockerfile         # Dockerfile del frontend
 ├── Ordina.Backend/        # Backend .NET
 │   ├── src/
 │   │   ├── Application/   # Módulos de aplicación (Orders, Payments, Providers, Security, Users)
 │   │   ├── Infrastructure/# Infraestructura compartida
 │   │   └── Presentation/  # API Gateway y AppHost
-│   └── ...
+│   └── Dockerfile          # Dockerfile unificado del backend
+├── .github/
+│   └── workflows/
+│       └── deploy.yml     # CI/CD workflow
+├── docs/                  # Documentación
+│   ├── DEPLOYMENT.md      # Guía de despliegue
+│   └── SETUP_GITHUB_SECRETS.md  # Configuración de secrets
+├── scripts/               # Scripts de despliegue
+│   └── deploy.sh          # Script de despliegue para Raspberry Pi
+├── docker-compose.yml     # Configuración Docker para producción
+├── env.example            # Plantilla de variables de entorno
 ├── package.json           # Configuración del monorepo
 ├── pnpm-workspace.yaml    # Configuración de workspaces de pnpm
 └── turbo.json            # Configuración de Turbo para builds
@@ -105,22 +115,15 @@ pnpm --filter FrontendCamihogar add <paquete>
 
 El proyecto tiene un `docker-compose.yml` unificado en la raíz que incluye todos los servicios.
 
-### Servicios Disponibles
+### Servicios Disponibles (Producción)
 
 | Servicio | Puerto | Descripción | URL |
 |----------|--------|-------------|-----|
-| **Frontend** | 3000 | Aplicación Next.js | http://localhost:3000 |
-| **Supabase Studio** | 3001 | Interfaz de gestión DB | http://localhost:3001 |
-| **Kong Gateway** | 8000, 8443 | API Gateway de Supabase | http://localhost:8000 |
-| **API Gateway** | 8080-8081 | Gateway principal | http://localhost:8080 |
-| **Security API** | 8082 | Autenticación y autorización | http://localhost:8082/swagger |
-| **Users API** | 8083 | Gestión de usuarios | http://localhost:8083/swagger |
-| **Providers API** | 8084 | Proveedores y productos | http://localhost:8084/swagger |
-| **Orders API** | 8085 | Gestión de pedidos | http://localhost:8085/swagger |
-| **Payments API** | 8086 | Procesamiento de pagos | http://localhost:8086/swagger |
-| **PostgreSQL** | 5432 | Base de datos principal | localhost:5432 |
+| **Frontend** | 80 | Aplicación Next.js con NGINX | http://localhost |
+| **Backend** | 5000 | API Gateway .NET | http://localhost:5000 |
 | **MongoDB** | 27017 | Base de datos NoSQL | localhost:27017 |
 | **Redis** | 6379 | Cache distribuido | localhost:6379 |
+| **Watchtower** | - | Actualización automática de contenedores | - |
 
 ### Iniciar todos los servicios
 
@@ -145,54 +148,60 @@ docker-compose down -v
 docker-compose up --build -d
 ```
 
-### Servicios individuales
+### Dockerfiles
 
-- Frontend: `FrontendCamihogar/Dockerfile`
-- Backend: Cada microservicio tiene su `Dockerfile` en `Ordina.Backend/src/Application/[Service]/Ordina.[Service].Api/`
+- Frontend: `FrontendCamihogar/Dockerfile` - Next.js con NGINX
+- Backend: `Ordina.Backend/Dockerfile` - Dockerfile unificado para API Gateway
 
 ## 🚀 CI/CD y Despliegue
 
-Este proyecto incluye CI/CD automatizado con GitHub Actions y Docker Hub.
+Este proyecto incluye CI/CD automatizado con GitHub Actions y GitHub Container Registry (GHCR) usando un sistema **pull-based** con Watchtower.
 
 ### Flujo de CI/CD
 
-1. **Push a GitHub** → Se activa el workflow de GitHub Actions
-2. **Build** → Se compilan todas las imágenes Docker
-3. **Push a Docker Hub** → Las imágenes se suben automáticamente
-4. **Despliegue** → Watchtower en la Raspberry Pi actualiza automáticamente
+1. **Push a GitHub** → Se activa el workflow `.github/workflows/deploy.yml`
+2. **Build Multi-Arch** → Se compilan imágenes Docker para amd64, arm64 y arm/v7
+3. **Push a GHCR** → Las imágenes se suben automáticamente a GitHub Container Registry
+4. **Despliegue Automático** → Watchtower en la Raspberry Pi detecta y actualiza automáticamente cada 30 segundos
 
 ### Configuración
 
 1. **GitHub Secrets** (Settings → Secrets and variables → Actions):
-   - `DOCKER_USERNAME`: Tu usuario de Docker Hub
-   - `DOCKER_PASSWORD`: Token de acceso de Docker Hub
+   - `GHCR_TOKEN`: Token de GitHub con permisos `write:packages` (requerido)
+   - `GHCR_USERNAME`: (Opcional) Tu usuario de GitHub
+   - `FRONTEND_IMAGE`: (Opcional) Nombre de la imagen frontend
+   - `BACKEND_IMAGE`: (Opcional) Nombre de la imagen backend
+
+   Ver [docs/SETUP_GITHUB_SECRETS.md](./docs/SETUP_GITHUB_SECRETS.md) para instrucciones detalladas.
 
 2. **Raspberry Pi**:
    ```bash
    git clone https://github.com/tu-usuario/camihogar.git
    cd camihogar
    cp env.example .env
-   # Editar .env con tu DOCKER_USERNAME
-   chmod +x deploy.sh
-   ./deploy.sh
+   # Editar .env con tus valores (USERNAME, etc.)
+   chmod +x scripts/deploy.sh
+   ./scripts/deploy.sh
    ```
 
 ### Archivos de CI/CD
 
-- `.github/workflows/build-and-push.yml` - Workflow de GitHub Actions
-- `docker-compose.prod.yml` - Configuración para producción (usa imágenes de Docker Hub)
-- `deploy.sh` - Script de despliegue para la Raspberry Pi
-- `DEPLOYMENT.md` - Guía completa de despliegue
+- `.github/workflows/deploy.yml` - Workflow de GitHub Actions con multi-arch build
+- `docker-compose.yml` - Configuración para producción (usa imágenes de GHCR)
+- `scripts/deploy.sh` - Script de despliegue para la Raspberry Pi
+- `docs/DEPLOYMENT.md` - Guía completa de despliegue
+- `docs/SETUP_GITHUB_SECRETS.md` - Configuración de GitHub Secrets
 
-Ver [DEPLOYMENT.md](./DEPLOYMENT.md) para más detalles sobre el despliegue.
+Ver [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) para más detalles sobre el despliegue.
 
 ## 📝 Notas
 
 - El `pnpm-lock.yaml` se encuentra en cada workspace individual
 - Los builds se pueden optimizar usando Turbo (ver `turbo.json`)
 - El backend usa .NET Solution para gestionar múltiples proyectos
-- Para desarrollo local, usa `docker-compose.yml`
-- Para producción en Raspberry Pi, usa `docker-compose.prod.yml`
+- Las imágenes Docker son multi-architectura (amd64, arm64, arm/v7) para compatibilidad con Raspberry Pi
+- Watchtower actualiza automáticamente los contenedores cada 30 segundos
+- El sistema usa GitHub Container Registry (GHCR) para almacenar las imágenes
 
 ## 🤝 Contribución
 

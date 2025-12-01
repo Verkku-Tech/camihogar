@@ -1,10 +1,9 @@
-# Dockerfile unificado para todos los microservicios del backend
-# Uso: docker build --build-arg PROJECT_PATH="src/Application/Security/Ordina.Security.Api/Ordina.Security.Api.csproj" -t ordina-security-api .
+# Dockerfile unificado para el backend .NET
+# Uso: docker build --build-arg PROJECT_PATH="src/Presentation/Ordina.ApiGateway/Ordina.ApiGateway.csproj" -t camihogar-backend .
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
 WORKDIR /app
-EXPOSE 8080
-EXPOSE 8081
+EXPOSE 80
 
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
@@ -16,7 +15,6 @@ WORKDIR /src
 COPY ["Ordina.sln", "./"]
 
 # Copiar archivos .csproj de forma estructurada para aprovechar cache de Docker
-# Esto se hace antes de copiar todo el código para optimizar el cache
 COPY ["src/Infrastructure/Ordina.ServiceDefaults/Ordina.ServiceDefaults.csproj", "src/Infrastructure/Ordina.ServiceDefaults/"]
 COPY ["src/Infrastructure/Ordina.Database/Ordina.Database.csproj", "src/Infrastructure/Ordina.Database/"]
 
@@ -64,6 +62,6 @@ RUN dotnet publish "${PROJECT_PATH}" \
 
 FROM base AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "*.dll"]
 
