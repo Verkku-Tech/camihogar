@@ -45,6 +45,7 @@ COPY ["src/Application/Payments/Ordina.Payments.Domain/Ordina.Payments.Domain.cs
 COPY ["src/Application/Payments/Ordina.Payments.Infrastructure/Ordina.Payments.Infrastructure.csproj", "src/Application/Payments/Ordina.Payments.Infrastructure/"]
 
 COPY ["src/Presentation/Ordina.ApiGateway/Ordina.ApiGateway.csproj", "src/Presentation/Ordina.ApiGateway/"]
+COPY ["src/Presentation/Ordina.AppHost/Ordina.AppHost.csproj", "src/Presentation/Ordina.AppHost/"]
 
 # Restaurar dependencias usando la solución
 RUN dotnet restore "Ordina.sln"
