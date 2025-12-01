@@ -64,5 +64,5 @@ RUN dotnet publish "${PROJECT_PATH}" \
 FROM base AS final
 WORKDIR /app
 COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "*.dll"]
+ENTRYPOINT ["dotnet", "Ordina.ApiGateway.dll"]
 
