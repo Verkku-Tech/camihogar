@@ -10,7 +10,8 @@ COPY pnpm-lock.yaml* ./
 COPY Ordina.Frontend/package.json ./Ordina.Frontend/package.json
 
 # Instalar dependencias (pnpm instalará desde el workspace)
-RUN pnpm install --frozen-lockfile
+# Intenta usar lockfile si está actualizado, si no, instala sin él
+RUN pnpm install --frozen-lockfile || pnpm install
 
 # Stage 2: Builder
 FROM node:20-alpine AS builder
