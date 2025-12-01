@@ -18,10 +18,10 @@ FROM node:20-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
-# Copiar estructura del workspace y dependencias
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/pnpm-workspace.yaml ./
-# Copiar todo el contenido del frontend
+# Copiar toda la estructura del workspace desde deps (incluye node_modules y dependencias)
+COPY --from=deps /app ./
+
+# Copiar el código fuente del frontend (sobrescribe lo que ya está instalado)
 COPY Ordina.Frontend/ ./Ordina.Frontend/
 
 # Cambiar al directorio del frontend para el build
