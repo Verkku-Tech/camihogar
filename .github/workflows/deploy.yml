@@ -9,7 +9,12 @@ env:
   REGISTRY: ghcr.io
   USERNAME: ${{ secrets.GHCR_USERNAME || github.repository_owner }}
   FRONTEND_IMAGE: ${{ secrets.FRONTEND_IMAGE || 'camihogar-frontend' }}
-  BACKEND_IMAGE: ${{ secrets.BACKEND_IMAGE || 'camihogar-backend' }}
+  APIGATEWAY_IMAGE: ${{ secrets.APIGATEWAY_IMAGE || 'camihogar-apigateway' }}
+  SECURITY_IMAGE: ${{ secrets.SECURITY_IMAGE || 'camihogar-security-api' }}
+  USERS_IMAGE: ${{ secrets.USERS_IMAGE || 'camihogar-users-api' }}
+  PROVIDERS_IMAGE: ${{ secrets.PROVIDERS_IMAGE || 'camihogar-providers-api' }}
+  ORDERS_IMAGE: ${{ secrets.ORDERS_IMAGE || 'camihogar-orders-api' }}
+  PAYMENTS_IMAGE: ${{ secrets.PAYMENTS_IMAGE || 'camihogar-payments-api' }}
 
 jobs:
   build-and-push:
@@ -72,7 +77,20 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest
 
-      - name: Build and push Backend (Multi-Arch)
+      - name: Extract metadata for API Gateway
+        id: meta-apigateway
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.APIGATEWAY_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest
+
+      - name: Build and push API Gateway (Multi-Arch)
         uses: docker/build-push-action@v5
         with:
           context: ./Ordina.Backend
@@ -81,8 +99,148 @@ jobs:
             PROJECT_PATH=src/Presentation/Ordina.ApiGateway/Ordina.ApiGateway.csproj
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
+          tags: ${{ steps.meta-apigateway.outputs.tags }}
+          labels: ${{ steps.meta-apigateway.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for Security API
+        id: meta-security
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.SECURITY_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest
+
+      - name: Build and push Security API (Multi-Arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/Dockerfile
+          build-args: |
+            PROJECT_PATH=src/Application/Security/Ordina.Security.Api/Ordina.Security.Api.csproj
+            ASSEMBLY_NAME=Ordina.Security.Api
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-security.outputs.tags }}
+          labels: ${{ steps.meta-security.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for Users API
+        id: meta-users
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.USERS_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest
+
+      - name: Build and push Users API (Multi-Arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/Dockerfile
+          build-args: |
+            PROJECT_PATH=src/Application/Users/Ordina.Users.Api/Ordina.Users.Api.csproj
+            ASSEMBLY_NAME=Ordina.Users.Api
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-users.outputs.tags }}
+          labels: ${{ steps.meta-users.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for Providers API
+        id: meta-providers
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.PROVIDERS_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest
+
+      - name: Build and push Providers API (Multi-Arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/Dockerfile
+          build-args: |
+            PROJECT_PATH=src/Application/Providers/Ordina.Providers.Api/Ordina.Providers.Api.csproj
+            ASSEMBLY_NAME=Ordina.Providers.Api
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-providers.outputs.tags }}
+          labels: ${{ steps.meta-providers.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for Orders API
+        id: meta-orders
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.ORDERS_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest
+
+      - name: Build and push Orders API (Multi-Arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/Dockerfile
+          build-args: |
+            PROJECT_PATH=src/Application/Orders/Ordina.Orders.Api/Ordina.Orders.Api.csproj
+            ASSEMBLY_NAME=Ordina.Orders.Api
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-orders.outputs.tags }}
+          labels: ${{ steps.meta-orders.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract metadata for Payments API
+        id: meta-payments
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.PAYMENTS_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest
+
+      - name: Build and push Payments API (Multi-Arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/Dockerfile
+          build-args: |
+            PROJECT_PATH=src/Application/Payments/Ordina.Payments.Api/Ordina.Payments.Api.csproj
+            ASSEMBLY_NAME=Ordina.Payments.Api
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-payments.outputs.tags }}
+          labels: ${{ steps.meta-payments.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -90,5 +248,10 @@ jobs:
         run: |
           echo "✅ All multi-arch images pushed successfully!"
           echo "Frontend: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.FRONTEND_IMAGE }}:latest"
-          echo "Backend: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.BACKEND_IMAGE }}:latest"
+          echo "API Gateway: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.APIGATEWAY_IMAGE }}:latest"
+          echo "Security API: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.SECURITY_IMAGE }}:latest"
+          echo "Users API: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.USERS_IMAGE }}:latest"
+          echo "Providers API: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.PROVIDERS_IMAGE }}:latest"
+          echo "Orders API: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.ORDERS_IMAGE }}:latest"
+          echo "Payments API: ${{ env.REGISTRY }}/${{ env.USERNAME }}/${{ env.PAYMENTS_IMAGE }}:latest"
 

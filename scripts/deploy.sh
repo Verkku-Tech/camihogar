@@ -48,12 +48,22 @@ setup_env() {
     
     local username=""
     local frontend_image=""
-    local backend_image=""
+    local apigateway_image=""
+    local security_image=""
+    local users_image=""
+    local providers_image=""
+    local orders_image=""
+    local payments_image=""
     local ghcr_token=""
     
     read_input "Usuario de GitHub (para GHCR)" "" username
     read_input "Nombre de la imagen frontend" "camihogar-frontend" frontend_image
-    read_input "Nombre de la imagen backend" "camihogar-backend" backend_image
+    read_input "Nombre de la imagen API Gateway" "camihogar-apigateway" apigateway_image
+    read_input "Nombre de la imagen Security API" "camihogar-security-api" security_image
+    read_input "Nombre de la imagen Users API" "camihogar-users-api" users_image
+    read_input "Nombre de la imagen Providers API" "camihogar-providers-api" providers_image
+    read_input "Nombre de la imagen Orders API" "camihogar-orders-api" orders_image
+    read_input "Nombre de la imagen Payments API" "camihogar-payments-api" payments_image
     
     echo ""
     echo -e "${YELLOW}¿Las imágenes son privadas? (s/n)${NC}"
@@ -73,7 +83,12 @@ USERNAME=${username}
 
 # Nombres de las imágenes
 FRONTEND_IMAGE=${frontend_image}
-BACKEND_IMAGE=${backend_image}
+APIGATEWAY_IMAGE=${apigateway_image}
+SECURITY_IMAGE=${security_image}
+USERS_IMAGE=${users_image}
+PROVIDERS_IMAGE=${providers_image}
+ORDERS_IMAGE=${orders_image}
+PAYMENTS_IMAGE=${payments_image}
 
 # Token de GitHub para pull de imágenes privadas (opcional)
 EOF
@@ -142,12 +157,22 @@ fi
 
 # Establecer valores por defecto si no están definidos
 FRONTEND_IMAGE=${FRONTEND_IMAGE:-camihogar-frontend}
-BACKEND_IMAGE=${BACKEND_IMAGE:-camihogar-backend}
+APIGATEWAY_IMAGE=${APIGATEWAY_IMAGE:-camihogar-apigateway}
+SECURITY_IMAGE=${SECURITY_IMAGE:-camihogar-security-api}
+USERS_IMAGE=${USERS_IMAGE:-camihogar-users-api}
+PROVIDERS_IMAGE=${PROVIDERS_IMAGE:-camihogar-providers-api}
+ORDERS_IMAGE=${ORDERS_IMAGE:-camihogar-orders-api}
+PAYMENTS_IMAGE=${PAYMENTS_IMAGE:-camihogar-payments-api}
 
 echo -e "${GREEN}📦 Configuración:${NC}"
 echo -e "   Usuario GHCR: ${USERNAME}"
 echo -e "   Frontend: ${FRONTEND_IMAGE}"
-echo -e "   Backend: ${BACKEND_IMAGE}"
+echo -e "   API Gateway: ${APIGATEWAY_IMAGE}"
+echo -e "   Security API: ${SECURITY_IMAGE}"
+echo -e "   Users API: ${USERS_IMAGE}"
+echo -e "   Providers API: ${PROVIDERS_IMAGE}"
+echo -e "   Orders API: ${ORDERS_IMAGE}"
+echo -e "   Payments API: ${PAYMENTS_IMAGE}"
 
 # Login a GHCR si es necesario
 if [ -n "$GHCR_TOKEN" ]; then

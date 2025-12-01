@@ -4,25 +4,140 @@ services:
     container_name: camihogar-frontend
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "3000:80"
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
-      - NEXT_PUBLIC_SECURITY_API_URL=http://backend:5000
-      - NEXT_PUBLIC_USERS_API_URL=http://backend:5000
+      - NEXT_PUBLIC_SECURITY_API_URL=http://security-api:80
+      - NEXT_PUBLIC_USERS_API_URL=http://users-api:80
+      - NEXT_PUBLIC_PROVIDERS_API_URL=http://providers-api:80
+      - NEXT_PUBLIC_ORDERS_API_URL=http://orders-api:80
+      - NEXT_PUBLIC_PAYMENTS_API_URL=http://payments-api:80
+      - NEXT_PUBLIC_API_GATEWAY_URL=http://apigateway:80
     depends_on:
-      - backend
+      - apigateway
+      - security-api
+      - users-api
+      - providers-api
+      - orders-api
+      - payments-api
     networks:
       - camihogar-network
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 
-  backend:
-    image: ghcr.io/${USERNAME}/${BACKEND_IMAGE}:latest
-    container_name: camihogar-backend
+  # API Gateway
+  apigateway:
+    image: ghcr.io/${USERNAME}/${APIGATEWAY_IMAGE}:latest
+    container_name: camihogar-apigateway
     restart: unless-stopped
     ports:
-      - "5000:80"
+      - "8080:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
+      - MongoDb__DatabaseName=ordina_db
+    depends_on:
+      - security-api
+      - users-api
+      - providers-api
+      - orders-api
+      - payments-api
+      - mongodb
+      - redis
+    networks:
+      - camihogar-network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # Security API
+  security-api:
+    image: ghcr.io/${USERNAME}/${SECURITY_IMAGE}:latest
+    container_name: camihogar-security-api
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
+      - MongoDb__DatabaseName=ordina_db
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - camihogar-network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # Users API
+  users-api:
+    image: ghcr.io/${USERNAME}/${USERS_IMAGE}:latest
+    container_name: camihogar-users-api
+    restart: unless-stopped
+    ports:
+      - "8083:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
+      - MongoDb__DatabaseName=ordina_db
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - camihogar-network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # Providers API
+  providers-api:
+    image: ghcr.io/${USERNAME}/${PROVIDERS_IMAGE}:latest
+    container_name: camihogar-providers-api
+    restart: unless-stopped
+    ports:
+      - "8084:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
+      - MongoDb__DatabaseName=ordina_db
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - camihogar-network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # Orders API
+  orders-api:
+    image: ghcr.io/${USERNAME}/${ORDERS_IMAGE}:latest
+    container_name: camihogar-orders-api
+    restart: unless-stopped
+    ports:
+      - "8085:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
+      - MongoDb__DatabaseName=ordina_db
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - camihogar-network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # Payments API
+  payments-api:
+    image: ghcr.io/${USERNAME}/${PAYMENTS_IMAGE}:latest
+    container_name: camihogar-payments-api
+    restart: unless-stopped
+    ports:
+      - "8086:80"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:80

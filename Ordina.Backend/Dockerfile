@@ -55,6 +55,7 @@ COPY . .
 
 # Publicar el proyecto específico
 ARG PROJECT_PATH
+ARG ASSEMBLY_NAME
 RUN dotnet publish "${PROJECT_PATH}" \
     -c $BUILD_CONFIGURATION \
     -o /app/publish \
@@ -64,5 +65,13 @@ RUN dotnet publish "${PROJECT_PATH}" \
 FROM base AS final
 WORKDIR /app
 COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "Ordina.ApiGateway.dll"]
+# Script que encuentra y ejecuta el DLL automáticamente
+RUN echo '#!/bin/sh' > /entrypoint.sh && \
+    echo 'DLL_FILE=$(ls -1 *.dll | grep -v "Microsoft\|System\|Newtonsoft" | head -1)' >> /entrypoint.sh && \
+    echo 'if [ -z "$DLL_FILE" ]; then' >> /entrypoint.sh && \
+    echo '  DLL_FILE=$(ls -1 *.dll | head -1)' >> /entrypoint.sh && \
+    echo 'fi' >> /entrypoint.sh && \
+    echo 'exec dotnet "$DLL_FILE" "$@"' >> /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
 
