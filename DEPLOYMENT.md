@@ -15,7 +15,9 @@ Esta guía explica cómo desplegar CamiHogar en una Raspberry Pi usando Docker H
 En tu repositorio de GitHub, ve a **Settings → Secrets and variables → Actions** y agrega:
 
 - `DOCKER_USERNAME`: Tu usuario de Docker Hub
-- `DOCKER_PASSWORD`: Token de acceso de Docker Hub (crear en Account Settings → Security → New Access Token)
+- `DOCKER_PASSWORD`: Tu token de acceso de Docker Hub
+
+Ver [SETUP_GITHUB_SECRETS.md](./SETUP_GITHUB_SECRETS.md) para instrucciones detalladas.
 
 ### 2. Configurar la Raspberry Pi
 
@@ -29,13 +31,13 @@ cp .env.example .env
 
 # 3. Editar .env con tu usuario de Docker Hub
 nano .env
-# Cambiar: DOCKER_USERNAME=tu-usuario-dockerhub
+# Cambiar: DOCKER_USERNAME=verkkutech
 
 # 4. Hacer el script de despliegue ejecutable
 chmod +x deploy.sh
 
 # 5. (Opcional) Si las imágenes son privadas, hacer login
-docker login -u tu-usuario-dockerhub
+docker login -u verkkutech
 ```
 
 ## 🚀 Despliegue Inicial
@@ -66,13 +68,13 @@ El script:
 
 El workflow crea las siguientes imágenes en Docker Hub:
 
-- `tu-usuario/camihogar-frontend:latest`
-- `tu-usuario/camihogar-security-api:latest`
-- `tu-usuario/camihogar-users-api:latest`
-- `tu-usuario/camihogar-providers-api:latest`
-- `tu-usuario/camihogar-orders-api:latest`
-- `tu-usuario/camihogar-payments-api:latest`
-- `tu-usuario/camihogar-apigateway:latest`
+- `verkkutech/camihogar-frontend:latest`
+- `verkkutech/camihogar-security-api:latest`
+- `verkkutech/camihogar-users-api:latest`
+- `verkkutech/camihogar-providers-api:latest`
+- `verkkutech/camihogar-orders-api:latest`
+- `verkkutech/camihogar-payments-api:latest`
+- `verkkutech/camihogar-apigateway:latest`
 
 Cada imagen también se etiqueta con el SHA del commit para versionado.
 
@@ -163,7 +165,7 @@ docker logs watchtower -f
 
 2. Verificar que las imágenes existen en Docker Hub:
    ```bash
-   docker pull tu-usuario/camihogar-frontend:latest
+   docker pull verkkutech/camihogar-frontend:latest
    ```
 
 ### Los servicios no inician
