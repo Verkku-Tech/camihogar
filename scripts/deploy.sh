@@ -17,7 +17,7 @@ if ! command -v docker &> /dev/null; then
 fi
 
 # Verificar que Docker Compose está instalado
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+if ! command -v docker compose &> /dev/null && ! docker compose version &> /dev/null; then
     echo -e "${RED}❌ Docker Compose no está instalado. Por favor instálalo primero.${NC}"
     exit 1
 fi
@@ -163,7 +163,7 @@ fi
 
 # Detener contenedores existentes
 echo -e "${GREEN}📦 Deteniendo contenedores existentes...${NC}"
-docker-compose down || true
+docker compose down || true
 
 # Limpiar imágenes antiguas (opcional, comentado por defecto)
 # echo -e "${GREEN}🧹 Limpiando imágenes antiguas...${NC}"
@@ -171,7 +171,7 @@ docker-compose down || true
 
 # Pull de las últimas imágenes
 echo -e "${GREEN}⬇️  Descargando últimas imágenes desde GHCR...${NC}"
-docker-compose pull || {
+docker compose pull || {
     echo -e "${RED}❌ Error al descargar imágenes. Verifica:${NC}"
     echo -e "${RED}   1. Que las imágenes existan en GHCR${NC}"
     echo -e "${RED}   2. Que tengas permisos para acceder a ellas${NC}"
@@ -181,7 +181,7 @@ docker-compose pull || {
 
 # Iniciar servicios
 echo -e "${GREEN}🚀 Iniciando servicios...${NC}"
-docker-compose up -d
+docker compose up -d
 
 # Esperar un momento para que los servicios inicien
 echo -e "${GREEN}⏳ Esperando que los servicios inicien...${NC}"
@@ -190,17 +190,17 @@ sleep 10
 # Mostrar estado
 echo -e "${GREEN}✅ Despliegue completado!${NC}"
 echo -e "${YELLOW}📊 Estado de los contenedores:${NC}"
-docker-compose ps
+docker compose ps
 
 echo ""
 echo -e "${GREEN}✨ Listo! Los servicios están ejecutándose.${NC}"
 echo ""
 echo -e "${YELLOW}📝 Comandos útiles:${NC}"
-echo -e "   Ver logs:              docker-compose logs -f"
-echo -e "   Ver logs de un servicio: docker-compose logs -f frontend"
-echo -e "   Detener servicios:     docker-compose down"
-echo -e "   Reiniciar servicio:   docker-compose restart frontend"
-echo -e "   Ver estado:           docker-compose ps"
+echo -e "   Ver logs:              docker compose logs -f"
+echo -e "   Ver logs de un servicio: docker compose logs -f frontend"
+echo -e "   Detener servicios:     docker compose down"
+echo -e "   Reiniciar servicio:   docker compose restart frontend"
+echo -e "   Ver estado:           docker compose ps"
 echo ""
 echo -e "${YELLOW}📝 Watchtower está configurado para actualizar automáticamente cada 30 segundos${NC}"
 echo -e "${YELLOW}   Ver logs de Watchtower: docker logs watchtower -f${NC}"
