@@ -8,7 +8,7 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}🚀 Iniciando despliegue de CamiHogar...${NC}"
+echo -e "${GREEN}🚀 Iniciando despliegue de CamiHogar....${NC}"
 
 # Verificar que Docker está instalado
 if ! command -v docker &> /dev/null; then
