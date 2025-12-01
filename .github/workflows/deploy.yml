@@ -2,7 +2,7 @@ name: Build and Push Multi-Arch Images
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'docker-ci/cd' ]
   workflow_dispatch:
 
 env:
