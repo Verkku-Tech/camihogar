@@ -53,25 +53,41 @@ RUN dotnet restore "Ordina.sln"
 # Copiar todo el código fuente
 COPY . .
 
-# Publicar el proyecto específico
+# Publicar el proyecto específico como framework-dependent (no self-contained)
 ARG PROJECT_PATH
-ARG ASSEMBLY_NAME
 RUN dotnet publish "${PROJECT_PATH}" \
     -c $BUILD_CONFIGURATION \
     -o /app/publish \
     /p:UseAppHost=false \
+    /p:SelfContained=false \
+    /p:PublishSingleFile=false \
     --no-restore
 
 FROM base AS final
 WORKDIR /app
+
+# Copiar todos los archivos publicados (incluyendo .runtimeconfig.json y otros)
 COPY --from=build /app/publish .
-# Script que encuentra y ejecuta el DLL automáticamente
+
+# Script que encuentra y ejecuta el DLL principal automáticamente
+# Busca el DLL principal (excluyendo librerías del sistema)
 RUN echo '#!/bin/sh' > /entrypoint.sh && \
-    echo 'DLL_FILE=$(ls -1 *.dll | grep -v "Microsoft\|System\|Newtonsoft" | head -1)' >> /entrypoint.sh && \
+    echo 'set -e' >> /entrypoint.sh && \
+    echo '# Buscar el DLL principal (excluyendo librerías del sistema)' >> /entrypoint.sh && \
+    echo 'DLL_FILE=$(ls -1 *.dll 2>/dev/null | grep -v -E "^(Microsoft|System|Newtonsoft|DotNetEnv)" | head -1)' >> /entrypoint.sh && \
+    echo '# Si no se encuentra, buscar cualquier DLL' >> /entrypoint.sh && \
     echo 'if [ -z "$DLL_FILE" ]; then' >> /entrypoint.sh && \
-    echo '  DLL_FILE=$(ls -1 *.dll | head -1)' >> /entrypoint.sh && \
+    echo '  DLL_FILE=$(ls -1 *.dll 2>/dev/null | head -1)' >> /entrypoint.sh && \
     echo 'fi' >> /entrypoint.sh && \
+    echo '# Verificar que el archivo existe' >> /entrypoint.sh && \
+    echo 'if [ -z "$DLL_FILE" ] || [ ! -f "$DLL_FILE" ]; then' >> /entrypoint.sh && \
+    echo '  echo "Error: No se encontró el DLL principal de la aplicación"' >> /entrypoint.sh && \
+    echo '  ls -la *.dll 2>/dev/null || echo "No hay archivos DLL en /app"' >> /entrypoint.sh && \
+    echo '  exit 1' >> /entrypoint.sh && \
+    echo 'fi' >> /entrypoint.sh && \
+    echo 'echo "Ejecutando: dotnet $DLL_FILE"' >> /entrypoint.sh && \
     echo 'exec dotnet "$DLL_FILE" "$@"' >> /entrypoint.sh && \
     chmod +x /entrypoint.sh
+
 ENTRYPOINT ["/entrypoint.sh"]
 
