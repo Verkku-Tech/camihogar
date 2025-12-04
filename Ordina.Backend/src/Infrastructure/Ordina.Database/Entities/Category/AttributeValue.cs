@@ -15,4 +15,10 @@ public class AttributeValue
 
     [BsonElement("priceAdjustment")]
     public decimal? PriceAdjustment { get; set; } // positive for increase, negative for decrease
+
+    [BsonElement("priceAdjustmentCurrency")]
+    public string? PriceAdjustmentCurrency { get; set; } // "Bs", "USD", "EUR"
+
+    [BsonElement("productId")]
+    public string? ProductId { get; set; } // ID del producto cuando valueType es "Product"
 }

@@ -1,6 +1,6 @@
 // Wrapper genérico para IndexedDB
 const DB_NAME = "camihogar_db";
-const DB_VERSION = 5; // Incrementar para agregar app_settings
+const DB_VERSION = 6; // Incrementar para agregar api_cache
 
 interface StoreConfig {
   name: string;
@@ -86,6 +86,14 @@ const STORES: StoreConfig[] = [
       { name: "key", keyPath: "key", unique: true },
     ],
   },
+  {
+    name: "api_cache",
+    keyPath: "id",
+    indexes: [
+      { name: "endpoint", keyPath: "endpoint" },
+      { name: "timestamp", keyPath: "timestamp" },
+    ],
+  },
 ];
 
 // Inicializar la base de datos
@@ -123,7 +131,7 @@ export const initDB = (): Promise<IDBDatabase> => {
               unique: index.unique || false,
             });
           });
-        } else if (oldVersion < 5) {
+        } else if (oldVersion < 6) {
           // Agregar índices al store existente si se está actualizando
           const transaction = (event.target as IDBOpenDBRequest).transaction;
           if (transaction) {

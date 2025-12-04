@@ -21,6 +21,9 @@ public class Category
     [BsonElement("maxDiscount")]
     public decimal MaxDiscount { get; set; }
 
+    [BsonElement("maxDiscountCurrency")]
+    public string? MaxDiscountCurrency { get; set; } // "Bs", "USD", "EUR"
+
     [BsonElement("attributes")]
     public List<CategoryAttribute> Attributes { get; set; } = new();
 

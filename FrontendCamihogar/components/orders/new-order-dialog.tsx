@@ -36,6 +36,7 @@ import { ClientLookupDialog } from "@/components/orders/client-lookup-dialog";
 import { ProductSelectionDialog } from "@/components/orders/product-selection-dialog";
 import { ProductEditDialog } from "@/components/orders/product-edit-dialog";
 import { RemoveProductDialog } from "@/components/orders/remove-product-dialog";
+import { OrderConfirmationDialog } from "@/components/orders/order-confirmation-dialog";
 import {
   ChevronLeft,
   ChevronRight,
@@ -74,17 +75,44 @@ interface NewOrderDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Constantes para Condición de Pago
+export const PAYMENT_CONDITIONS = [
+  { value: "cashea", label: "Cashea" },
+  { value: "pagara_en_tienda", label: "Pagará en Tienda" },
+  { value: "pago_a_entrega", label: "Pago a la entrega" },
+  { value: "pago_parcial", label: "Pago Parcial" },
+  { value: "todo_pago", label: "Todo Pago" },
+] as const;
+
+// Constantes para Tipo de Compra
+export const PURCHASE_TYPES = [
+  { value: "delivery_express", label: "Delivery Express" },
+  { value: "encargo", label: "Encargo" },
+  { value: "encargo_entrega", label: "Encargo/Entrega" },
+  { value: "entrega", label: "Entrega" },
+  { value: "retiro_almacen", label: "Retiro x almacén" },
+  { value: "retiro_tienda", label: "Retiro x tienda" },
+  { value: "sa", label: "SA" },
+] as const;
+
+// Lista ampliada de métodos de pago
 const paymentMethods = [
-  "Pago Móvil",
+  "AirTM",
+  "Banesco Panamá",
+  "Binance",
   "Efectivo",
-  "Débito",
-  "Crédito",
-  "Cashea",
-  "Transferencia", // Agregar si no está
+  "Facebank",
+  "Mercantil Panamá",
+  "Pago Móvil",
+  "Paypal",
+  "Tarjeta de débito",
+  "Tarjeta de Crédito",
+  "Transferencia",
+  "Zelle",
 ];
 
 export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
-  const { preferredCurrency } = useCurrency();
+  const { preferredCurrency, formatWithPreference } = useCurrency();
   const [currentStep, setCurrentStep] = useState(1);
 
   // Función para obtener el orden de monedas según la preferencia
@@ -98,10 +126,30 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     }
   };
 
+  // Función helper para obtener la moneda por defecto basada en las seleccionadas
+  const getDefaultCurrencyFromSelection = (): Currency => {
+    // Si la moneda preferida está seleccionada y no es Bs, usarla
+    if (selectedCurrencies.includes(preferredCurrency) && preferredCurrency !== "Bs") {
+      return preferredCurrency;
+    }
+    
+    // Buscar la primera moneda seleccionada que no sea Bs
+    const nonBsCurrency = selectedCurrencies.find(c => c !== "Bs");
+    if (nonBsCurrency) {
+      return nonBsCurrency;
+    }
+    
+    // Si solo está Bs seleccionado o no hay ninguna, usar la preferida
+    return preferredCurrency;
+  };
+
   const [selectedClient, setSelectedClient] = useState<{
     id: string;
     name: string;
     address?: string;
+    telefono?: string;
+    email?: string;
+    rutId?: string;
   } | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<OrderProduct[]>([]);
   const [isClientLookupOpen, setIsClientLookupOpen] = useState(false);
@@ -117,6 +165,21 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [saleType, setSaleType] = useState<"apartado" | "entrega" | "contado">(
     "apartado"
   );
+  const [paymentCondition, setPaymentCondition] = useState<
+    "cashea" | "pagara_en_tienda" | "pago_a_entrega" | "pago_parcial" | "todo_pago" | ""
+  >("");
+  const [purchaseType, setPurchaseType] = useState<
+    | "delivery_express"
+    | "encargo"
+    | "encargo_entrega"
+    | "entrega"
+    | "retiro_almacen"
+    | "retiro_tienda"
+    | "sa"
+    | ""
+  >("");
+  const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
+  const [pendingOrderData, setPendingOrderData] = useState<any>(null);
   const [payments, setPayments] = useState<PartialPayment[]>([]);
   const [deliveryExpenses, setDeliveryExpenses] = useState(0);
   const [createSupplierOrder, setCreateSupplierOrder] = useState(false); // Added supplier order flag
@@ -128,9 +191,20 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     USD?: ExchangeRate;
     EUR?: ExchangeRate;
   }>({});
-  const [selectedCurrencies, setSelectedCurrencies] = useState<Currency[]>([
-    "Bs",
-  ]);
+  // Inicializar monedas seleccionadas según la preferencia del usuario
+  // Siempre incluir Bs y la moneda preferida
+  const [selectedCurrencies, setSelectedCurrencies] = useState<Currency[]>(
+    () => {
+      const currencies: Currency[] = ["Bs"];
+      if (
+        preferredCurrency !== "Bs" &&
+        !currencies.includes(preferredCurrency)
+      ) {
+        currencies.push(preferredCurrency);
+      }
+      return currencies;
+    }
+  );
   const [showCurrencyTable, setShowCurrencyTable] = useState(true);
 
   useEffect(() => {
@@ -212,10 +286,107 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [generalDiscountType, setGeneralDiscountType] = useState<
     "monto" | "porcentaje"
   >("monto");
+  const [generalDiscountCurrency, setGeneralDiscountCurrency] =
+    useState<Currency>(() => {
+      // Inicializar con la moneda seleccionada en los checkboxes
+      const currencies: Currency[] = ["Bs"];
+      if (preferredCurrency !== "Bs" && !currencies.includes(preferredCurrency)) {
+        currencies.push(preferredCurrency);
+      }
+      // Usar la primera moneda no-Bs si existe, sino la preferida
+      return currencies.find(c => c !== "Bs") || preferredCurrency;
+    });
   const [productDiscountTypes, setProductDiscountTypes] = useState<
     Record<string, "monto" | "porcentaje">
   >({});
+  const [productDiscountCurrencies, setProductDiscountCurrencies] = useState<
+    Record<string, Currency>
+  >({});
+  const [deliveryCurrency, setDeliveryCurrency] = useState<Currency>(() => {
+    // Inicializar con la moneda seleccionada en los checkboxes
+    const currencies: Currency[] = ["Bs"];
+    if (preferredCurrency !== "Bs" && !currencies.includes(preferredCurrency)) {
+      currencies.push(preferredCurrency);
+    }
+    // Usar la primera moneda no-Bs si existe, sino la preferida
+    return currencies.find(c => c !== "Bs") || preferredCurrency;
+  });
   const [generalObservations, setGeneralObservations] = useState("");
+  const [formattedProductPrices, setFormattedProductPrices] = useState<
+    Record<string, string>
+  >({});
+  const [formattedProductTotals, setFormattedProductTotals] = useState<
+    Record<string, string>
+  >({});
+  const [formattedProductFinalTotals, setFormattedProductFinalTotals] =
+    useState<Record<string, string>>({});
+  const [formattedSubtotal, setFormattedSubtotal] = useState<string>("");
+
+  // Formatear precios de productos en la moneda preferida
+  useEffect(() => {
+    const formatPrices = async () => {
+      if (selectedProducts.length === 0) {
+        setFormattedProductPrices({});
+        setFormattedProductTotals({});
+        return;
+      }
+
+      const prices: Record<string, string> = {};
+      const totals: Record<string, string> = {};
+      const finalTotals: Record<string, string> = {};
+
+      for (const product of selectedProducts) {
+        const baseTotal = getProductBaseTotal(product);
+        const discount = product.discount || 0;
+        const finalTotal = Math.max(baseTotal - discount, 0);
+
+        prices[product.id] = await formatWithPreference(product.price, "Bs");
+        totals[product.id] = await formatWithPreference(baseTotal, "Bs");
+        finalTotals[product.id] = await formatWithPreference(finalTotal, "Bs");
+      }
+
+      setFormattedProductPrices(prices);
+      setFormattedProductTotals(totals);
+      setFormattedProductFinalTotals(finalTotals);
+    };
+
+    formatPrices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedProducts,
+    preferredCurrency,
+    exchangeRates,
+    productMarkups,
+    categories,
+    allProducts,
+    formatWithPreference,
+    productDiscountTypes,
+  ]);
+
+  // Actualizar monedas seleccionadas cuando cambie la preferencia
+  useEffect(() => {
+    const currencies: Currency[] = ["Bs"];
+    if (preferredCurrency !== "Bs" && !currencies.includes(preferredCurrency)) {
+      currencies.push(preferredCurrency);
+    }
+    setSelectedCurrencies(currencies);
+  }, [preferredCurrency]);
+
+  // Actualizar monedas por defecto cuando cambien las monedas seleccionadas
+  useEffect(() => {
+    const defaultCurrency = getDefaultCurrencyFromSelection();
+    
+    // Actualizar descuento general si está en Bs y hay otra moneda seleccionada
+    if (generalDiscountCurrency === "Bs" && defaultCurrency !== "Bs") {
+      setGeneralDiscountCurrency(defaultCurrency);
+    }
+    
+    // Actualizar delivery si está en Bs y hay otra moneda seleccionada
+    if (deliveryCurrency === "Bs" && defaultCurrency !== "Bs") {
+      setDeliveryCurrency(defaultCurrency);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCurrencies, preferredCurrency]);
 
   // Función helper para renderizar celdas de moneda en el orden correcto
   const renderCurrencyCells = (amountInBs: number, className?: string) => {
@@ -309,6 +480,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           attribute.values &&
           attribute.values.length > 0
         ) {
+          const attrId = attribute.id?.toString() || attribute.title;
+
           // Todos los productos en attribute.values están siempre presentes por defecto
           for (const value of attribute.values) {
             const attrValue =
@@ -335,7 +508,40 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                   }
                 }
 
+                // Sumar el precio base del producto
                 productAttributesTotal += productPriceInBs;
+
+                // Buscar atributos editados de este producto-atributo
+                // Los atributos editados se guardan con la clave: `${attrId}_${productId}`
+                const productAttributeKey = `${attrId}_${foundProduct.id}`;
+                const editedAttributes =
+                  product.attributes?.[productAttributeKey];
+
+                // Verificar que editedAttributes sea un Record (objeto) y no un array
+                if (
+                  editedAttributes &&
+                  typeof editedAttributes === "object" &&
+                  !Array.isArray(editedAttributes)
+                ) {
+                  // Obtener la categoría del producto-atributo
+                  const productCategory = categories.find(
+                    (cat) => cat.name === foundProduct.category
+                  );
+
+                  if (productCategory) {
+                    // Calcular los ajustes de precio de los atributos editados del producto-atributo
+                    const productAttributeAdjustments =
+                      calculateProductUnitPriceWithAttributes(
+                        0, // Precio base 0 porque ya sumamos el precio del producto arriba
+                        editedAttributes as Record<string, string | number | string[]>,
+                        productCategory,
+                        exchangeRates
+                      );
+
+                    // Sumar los ajustes de atributos (el precio base ya está incluido arriba)
+                    productAttributesTotal += productAttributeAdjustments;
+                  }
+                }
               }
             }
           }
@@ -377,6 +583,16 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const deliveryCost = hasDelivery ? deliveryExpenses : 0;
   const total = subtotal + taxAmount + deliveryCost;
 
+  // Formatear subtotal en la moneda preferida
+  useEffect(() => {
+    const formatSubtotal = async () => {
+      const formatted = await formatWithPreference(subtotal, "Bs");
+      setFormattedSubtotal(formatted);
+    };
+
+    formatSubtotal();
+  }, [subtotal, preferredCurrency, formatWithPreference, exchangeRates]);
+
   useEffect(() => {
     setGeneralDiscount((prev) =>
       Math.min(Math.max(prev, 0), subtotalAfterProductDiscounts)
@@ -394,12 +610,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   }, [hasDelivery, selectedClient]);
 
   // Calcular total de pagos en Bs (para validación)
-  // IMPORTANTE: payment.amount ya está en Bs (se convierte cuando se ingresa el cashReceived)
+  // IMPORTANTE: payment.amount siempre está en Bs (se convierte al guardar)
   const calculateTotalPaidInBs = async (): Promise<number> => {
     let totalInBs = 0;
 
     for (const payment of payments) {
-      // El amount ya está en Bs, solo sumarlo
+      // payment.amount ya está en Bs, solo sumarlo
       totalInBs += payment.amount || 0;
     }
 
@@ -430,13 +646,20 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     );
     // Inicializar tipos de descuento como "monto" por defecto
     const newTypes: Record<string, "monto" | "porcentaje"> = {};
+    const newCurrencies: Record<string, Currency> = {};
     products.forEach((product) => {
       if (!productDiscountTypes[product.id]) {
         newTypes[product.id] = "monto";
       }
+      if (!productDiscountCurrencies[product.id]) {
+        newCurrencies[product.id] = getDefaultCurrencyFromSelection();
+      }
     });
     if (Object.keys(newTypes).length > 0) {
       setProductDiscountTypes((prev) => ({ ...prev, ...newTypes }));
+    }
+    if (Object.keys(newCurrencies).length > 0) {
+      setProductDiscountCurrencies((prev) => ({ ...prev, ...newCurrencies }));
     }
   };
 
@@ -448,39 +671,56 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         }
         const baseTotal = getProductBaseTotal(product);
         const discountType = productDiscountTypes[productId] || "monto";
+        const discountCurrency =
+          productDiscountCurrencies[productId] || getDefaultCurrencyFromSelection();
 
         let discountAmount: number;
         if (discountType === "porcentaje") {
           // Convertir porcentaje a monto y limitarlo al baseTotal
+          // NO aplicar maxDiscount cuando es porcentaje - permitir hasta 100%
+          // El maxDiscount solo se aplica cuando el descuento es por monto directo
           const percentage = Math.max(0, Math.min(value, 100));
-          discountAmount = (baseTotal * percentage) / 100;
-        } else {
-          // Monto directo
-          discountAmount = Math.max(0, Math.min(value, baseTotal));
-        }
 
-        // Validar descuento máximo de la categoría
-        const category = categories.find(
-          (cat) => cat.name === product.category
-        );
-        if (category && category.maxDiscount > 0) {
-          // Convertir maxDiscount a Bs si está en otra moneda
-          let maxDiscountInBs = category.maxDiscount;
-          if (
-            category.maxDiscountCurrency &&
-            category.maxDiscountCurrency !== "Bs"
-          ) {
+          // Redondear el cálculo para evitar errores de precisión
+          discountAmount =
+            Math.round(((baseTotal * percentage) / 100) * 100) / 100;
+        } else {
+          // Monto directo - convertir a Bs según la moneda seleccionada
+          let discountInBs = value;
+          if (discountCurrency !== "Bs") {
             const rate =
-              category.maxDiscountCurrency === "USD"
+              discountCurrency === "USD"
                 ? exchangeRates.USD?.rate
                 : exchangeRates.EUR?.rate;
             if (rate && rate > 0) {
-              maxDiscountInBs = category.maxDiscount * rate;
+              discountInBs = value * rate;
             }
           }
+          discountAmount = Math.max(0, Math.min(discountInBs, baseTotal));
 
-          // Limitar el descuento al máximo permitido
-          discountAmount = Math.min(discountAmount, maxDiscountInBs);
+          // Validar descuento máximo de la categoría (solo para monto)
+          const category = categories.find(
+            (cat) => cat.name === product.category
+          );
+          if (category && category.maxDiscount > 0) {
+            // Convertir maxDiscount a Bs si está en otra moneda
+            let maxDiscountInBs = category.maxDiscount;
+            if (
+              category.maxDiscountCurrency &&
+              category.maxDiscountCurrency !== "Bs"
+            ) {
+              const rate =
+                category.maxDiscountCurrency === "USD"
+                  ? exchangeRates.USD?.rate
+                  : exchangeRates.EUR?.rate;
+              if (rate && rate > 0) {
+                maxDiscountInBs = category.maxDiscount * rate;
+              }
+            }
+
+            // Limitar el descuento al máximo permitido
+            discountAmount = Math.min(discountAmount, maxDiscountInBs);
+          }
         }
 
         return {
@@ -528,7 +768,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       const percentage = Math.max(0, Math.min(value, 100));
       discountAmount = (subtotalAfterProductDiscounts * percentage) / 100;
     } else {
-      // Monto directo
+      // Monto directo - el valor ya viene en Bs desde el onChange
       discountAmount = Math.max(
         0,
         Math.min(value, subtotalAfterProductDiscounts)
@@ -623,6 +863,65 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
+      // Validar condición de pago (obligatoria)
+      if (!paymentCondition) {
+        toast.error("Por favor selecciona la condición de pago");
+        return;
+      }
+
+      // Validar tipo de compra (obligatorio)
+      if (!purchaseType) {
+        toast.error("Por favor selecciona el tipo de compra");
+        return;
+      }
+
+      // Validar observaciones generales (obligatorias)
+      if (!generalObservations || generalObservations.trim() === "") {
+        toast.error("Por favor agrega observaciones generales para el pedido");
+        return;
+      }
+
+      // Preparar datos para confirmación
+      const orderDataForConfirmation = {
+        clientName: selectedClient.name,
+        clientTelefono: selectedClient.telefono,
+        clientEmail: selectedClient.email,
+        clientRutId: selectedClient.rutId,
+        clientDireccion: selectedClient.address,
+        vendorName:
+          mockVendors.find((v) => v.id === formData.vendor)?.name || "",
+        referrerName: formData.referrer
+          ? mockReferrers.find((r) => r.id === formData.referrer)?.name
+          : undefined,
+        products: selectedProducts,
+        subtotal,
+        productDiscountTotal,
+        generalDiscountAmount,
+        taxAmount,
+        deliveryCost,
+        total,
+        payments,
+        saleType,
+        paymentCondition,
+        purchaseType,
+        hasDelivery,
+        deliveryAddress: formData.deliveryAddress,
+        observations: generalObservations.trim() || undefined,
+      };
+
+      // Mostrar modal de confirmación
+      setPendingOrderData(orderDataForConfirmation);
+      setIsConfirmationOpen(true);
+    } catch (error) {
+      console.error("Error preparing order:", error);
+      toast.error("Error al preparar el pedido. Por favor intenta nuevamente.");
+    }
+  };
+
+  const handleConfirmOrder = async () => {
+    try {
+      if (!pendingOrderData || !selectedClient) return;
+
       // Preparar el pedido
       const orderData: Omit<
         Order,
@@ -651,7 +950,21 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             : saleType === "entrega"
             ? "apartado"
             : "directo", // Mantener compatibilidad
-        saleType, // Nuevo campo
+        saleType, // Mantener para compatibilidad
+        paymentCondition: paymentCondition as
+          | "cashea"
+          | "pagara_en_tienda"
+          | "pago_a_entrega"
+          | "pago_parcial"
+          | "todo_pago",
+        purchaseType: purchaseType as
+          | "delivery_express"
+          | "encargo"
+          | "encargo_entrega"
+          | "entrega"
+          | "retiro_almacen"
+          | "retiro_tienda"
+          | "sa",
         paymentMethod:
           payments.length > 1 ? "Mixto" : payments[0]?.method || "",
         paymentDetails:
@@ -670,15 +983,33 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         createSupplierOrder,
         observations: generalObservations.trim() || undefined,
         baseCurrency: "Bs", // Moneda principal siempre es Bs
+        // Guardar las tasas de cambio del día en que se crea el pedido
+        exchangeRatesAtCreation: {
+          USD: exchangeRates.USD
+            ? {
+                rate: exchangeRates.USD.rate,
+                effectiveDate: exchangeRates.USD.effectiveDate,
+              }
+            : undefined,
+          EUR: exchangeRates.EUR
+            ? {
+                rate: exchangeRates.EUR.rate,
+                effectiveDate: exchangeRates.EUR.effectiveDate,
+              }
+            : undefined,
+        },
       };
 
-      await addOrder(orderData);
+      const createdOrder = await addOrder(orderData);
+
+      // Cerrar modales
+      setIsConfirmationOpen(false);
+      onOpenChange(false);
 
       // Mostrar mensaje de éxito
       toast.success("Pedido creado exitosamente");
 
-      // Reset y cerrar
-      onOpenChange(false);
+      // Reset
       setCurrentStep(1);
       setSelectedClient(null);
       setSelectedProducts([]);
@@ -688,7 +1019,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       setProductMarkups({});
       setGeneralDiscount(0);
       setGeneralDiscountType("monto");
+      setGeneralDiscountCurrency("Bs");
       setProductDiscountTypes({});
+      setProductDiscountCurrencies({});
+      setDeliveryCurrency("Bs");
       setCreateSupplierOrder(false);
       setGeneralObservations("");
       setSaleType("apartado"); // Reset tipo de venta
@@ -707,9 +1041,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         transferenciaDate: "",
         cashAmount: "",
       });
+      setPendingOrderData(null);
+
+      // Redirigir a la vista de detalle del pedido
+      window.location.href = `/pedidos/${createdOrder.orderNumber}`;
     } catch (error) {
       console.error("Error creating order:", error);
       toast.error("Error al crear el pedido. Por favor intenta nuevamente.");
+      setIsConfirmationOpen(false);
     }
   };
 
@@ -720,6 +1059,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       amount: 0,
       method: "",
       date: new Date().toISOString().split("T")[0],
+      currency: getDefaultCurrencyFromSelection(),
       paymentDetails: {},
     };
     setPayments([...payments, newPayment]);
@@ -728,7 +1068,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const updatePayment = (
     id: string,
     field: keyof PartialPayment,
-    value: string | number
+    value: string | number | Currency
   ) => {
     setPayments((paymentsList) =>
       paymentsList.map((payment) =>
@@ -936,7 +1276,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                     </div>
                                     <div className="text-right">
                                       <div className="text-lg font-semibold">
-                                        {formatCurrency(finalTotal, "Bs")}
+                                        {formattedProductFinalTotals[
+                                          product.id
+                                        ] || formatCurrency(finalTotal, "Bs")}
                                       </div>
                                       <div className="text-xs text-muted-foreground">
                                         Total final
@@ -950,7 +1292,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         Precio:
                                       </span>
                                       <span className="ml-2 font-medium">
-                                        {formatCurrency(product.price, "Bs")}
+                                        {formattedProductPrices[product.id] ||
+                                          formatCurrency(product.price, "Bs")}
                                       </span>
                                     </div>
                                     <div>
@@ -966,7 +1309,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         Subtotal:
                                       </span>
                                       <span className="ml-2 font-medium">
-                                        {formatCurrency(baseTotal, "Bs")}
+                                        {formattedProductTotals[product.id] ||
+                                          formatCurrency(baseTotal, "Bs")}
                                       </span>
                                     </div>
                                   </div>
@@ -1000,21 +1344,114 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                           </SelectItem>
                                         </SelectContent>
                                       </Select>
+                                      {productDiscountTypes[product.id] ===
+                                        "monto" && (
+                                        <Select
+                                          value={
+                                            productDiscountCurrencies[
+                                              product.id
+                                            ] || getDefaultCurrencyFromSelection()
+                                          }
+                                          onValueChange={(value: Currency) => {
+                                            setProductDiscountCurrencies(
+                                              (prev) => ({
+                                                ...prev,
+                                                [product.id]: value,
+                                              })
+                                            );
+                                            // Recalcular el descuento mostrado
+                                            const currentDiscount =
+                                              product.discount || 0;
+                                            const currentCurrency =
+                                              productDiscountCurrencies[
+                                                product.id
+                                              ] || getDefaultCurrencyFromSelection();
+                                            const newCurrency = value;
+                                            if (
+                                              currentCurrency !== newCurrency
+                                            ) {
+                                              // Convertir el descuento actual a la nueva moneda
+                                              let discountInNewCurrency =
+                                                currentDiscount;
+                                              if (currentCurrency === "Bs") {
+                                                const rate =
+                                                  newCurrency === "USD"
+                                                    ? exchangeRates.USD?.rate
+                                                    : exchangeRates.EUR?.rate;
+                                                if (rate && rate > 0) {
+                                                  discountInNewCurrency =
+                                                    currentDiscount / rate;
+                                                }
+                                              } else if (newCurrency === "Bs") {
+                                                const rate =
+                                                  currentCurrency === "USD"
+                                                    ? exchangeRates.USD?.rate
+                                                    : exchangeRates.EUR?.rate;
+                                                if (rate && rate > 0) {
+                                                  discountInNewCurrency =
+                                                    currentDiscount * rate;
+                                                }
+                                              } else {
+                                                const currentRate =
+                                                  currentCurrency === "USD"
+                                                    ? exchangeRates.USD?.rate
+                                                    : exchangeRates.EUR?.rate;
+                                                const newRate =
+                                                  newCurrency === "USD"
+                                                    ? exchangeRates.USD?.rate
+                                                    : exchangeRates.EUR?.rate;
+                                                if (
+                                                  currentRate &&
+                                                  newRate &&
+                                                  currentRate > 0
+                                                ) {
+                                                  discountInNewCurrency =
+                                                    (currentDiscount *
+                                                      currentRate) /
+                                                    newRate;
+                                                }
+                                              }
+                                              handleProductDiscountChange(
+                                                product.id,
+                                                discountInNewCurrency
+                                              );
+                                            }
+                                          }}
+                                        >
+                                          <SelectTrigger className="w-20">
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="Bs">
+                                              Bs
+                                            </SelectItem>
+                                            <SelectItem value="USD">
+                                              USD
+                                            </SelectItem>
+                                            <SelectItem value="EUR">
+                                              EUR
+                                            </SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      )}
                                       <Input
                                         type="number"
                                         min="0"
                                         step={
                                           productDiscountTypes[product.id] ===
                                           "porcentaje"
-                                            ? "0.1"
+                                            ? "1"
                                             : "0.01"
                                         }
                                         max={(() => {
                                           const discountType =
                                             productDiscountTypes[product.id] ||
                                             "monto";
-                                          if (discountType === "porcentaje")
+                                          if (discountType === "porcentaje") {
+                                            // Para porcentaje, permitir hasta 100% sin restricción del maxDiscount
+                                            // El maxDiscount solo se aplica cuando el descuento es por monto directo
                                             return 100;
+                                          }
 
                                           // Para monto, considerar el maxDiscount de la categoría
                                           const category = categories.find(
@@ -1060,7 +1497,25 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                               baseTotal > 0
                                                 ? (discount / baseTotal) * 100
                                                 : 0;
-                                            return percentage;
+                                            // Redondear a 2 decimales para evitar errores de precisión
+                                            return (
+                                              Math.round(percentage * 100) / 100
+                                            );
+                                          }
+                                          // Para monto, convertir a la moneda seleccionada
+                                          const discountCurrency =
+                                            productDiscountCurrencies[
+                                              product.id
+                                            ] || preferredCurrency;
+                                          if (discountCurrency === "Bs") {
+                                            return discount;
+                                          }
+                                          const rate =
+                                            discountCurrency === "USD"
+                                              ? exchangeRates.USD?.rate
+                                              : exchangeRates.EUR?.rate;
+                                          if (rate && rate > 0) {
+                                            return discount / rate;
                                           }
                                           return discount;
                                         })()}
@@ -1071,7 +1526,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                               0
                                           )
                                         }
-                                        className="flex-1"
+                                        className="flex-1 min-w-[100px] text-sm"
                                         placeholder={
                                           productDiscountTypes[product.id] ===
                                           "porcentaje"
@@ -1122,19 +1577,19 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                   <TableHead className="w-[10%]">
                                     Precio
                                   </TableHead>
-                                  <TableHead className="w-[8%]">
+                                  <TableHead className="w-[10%] text-center">
                                     Cantidad
                                   </TableHead>
                                   <TableHead className="w-[10%]">
                                     Subtotal
                                   </TableHead>
-                                  <TableHead className="w-[18%]">
+                                  <TableHead className="w-[22%]">
                                     Descuento
                                   </TableHead>
                                   <TableHead className="w-[10%]">
                                     Total final
                                   </TableHead>
-                                  <TableHead className="w-[16%] text-right">
+                                  <TableHead className="w-[12%] text-right">
                                     Acciones
                                   </TableHead>
                                 </TableRow>
@@ -1159,15 +1614,17 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         </div>
                                       </TableCell>
                                       <TableCell className="w-[10%] text-right text-sm">
-                                        {formatCurrency(product.price, "Bs")}
+                                        {formattedProductPrices[product.id] ||
+                                          formatCurrency(product.price, "Bs")}
                                       </TableCell>
-                                      <TableCell className="w-[8%] text-center text-sm">
-                                        {product.quantity}
+                                      <TableCell className="w-[10%] text-center text-sm font-medium">
+                                        {product.quantity || 1}
                                       </TableCell>
                                       <TableCell className="w-[10%] text-right text-sm">
-                                        {formatCurrency(baseTotal, "Bs")}
+                                        {formattedProductTotals[product.id] ||
+                                          formatCurrency(baseTotal, "Bs")}
                                       </TableCell>
-                                      <TableCell className="w-[18%]">
+                                      <TableCell className="w-[22%]">
                                         <div className="flex gap-1 items-center">
                                           <Select
                                             value={
@@ -1196,6 +1653,114 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                               </SelectItem>
                                             </SelectContent>
                                           </Select>
+                                          {productDiscountTypes[product.id] ===
+                                            "monto" && (
+                                            <Select
+                                              value={
+                                                productDiscountCurrencies[
+                                                  product.id
+                                                ] || getDefaultCurrencyFromSelection()
+                                              }
+                                              onValueChange={(
+                                                value: Currency
+                                              ) => {
+                                                setProductDiscountCurrencies(
+                                                  (prev) => ({
+                                                    ...prev,
+                                                    [product.id]: value,
+                                                  })
+                                                );
+                                                // Recalcular el descuento mostrado
+                                                const currentDiscount =
+                                                  product.discount || 0;
+                                                const currentCurrency =
+                                                  productDiscountCurrencies[
+                                                    product.id
+                                                  ] || preferredCurrency;
+                                                const newCurrency = value;
+                                                if (
+                                                  currentCurrency !==
+                                                  newCurrency
+                                                ) {
+                                                  // Convertir el descuento actual a la nueva moneda
+                                                  let discountInNewCurrency =
+                                                    currentDiscount;
+                                                  if (
+                                                    currentCurrency === "Bs"
+                                                  ) {
+                                                    // De Bs a otra moneda
+                                                    const rate =
+                                                      newCurrency === "USD"
+                                                        ? exchangeRates.USD
+                                                            ?.rate
+                                                        : exchangeRates.EUR
+                                                            ?.rate;
+                                                    if (rate && rate > 0) {
+                                                      discountInNewCurrency =
+                                                        currentDiscount / rate;
+                                                    }
+                                                  } else if (
+                                                    newCurrency === "Bs"
+                                                  ) {
+                                                    // De otra moneda a Bs
+                                                    const rate =
+                                                      currentCurrency === "USD"
+                                                        ? exchangeRates.USD
+                                                            ?.rate
+                                                        : exchangeRates.EUR
+                                                            ?.rate;
+                                                    if (rate && rate > 0) {
+                                                      discountInNewCurrency =
+                                                        currentDiscount * rate;
+                                                    }
+                                                  } else {
+                                                    // Entre USD y EUR
+                                                    const currentRate =
+                                                      currentCurrency === "USD"
+                                                        ? exchangeRates.USD
+                                                            ?.rate
+                                                        : exchangeRates.EUR
+                                                            ?.rate;
+                                                    const newRate =
+                                                      newCurrency === "USD"
+                                                        ? exchangeRates.USD
+                                                            ?.rate
+                                                        : exchangeRates.EUR
+                                                            ?.rate;
+                                                    if (
+                                                      currentRate &&
+                                                      newRate &&
+                                                      currentRate > 0
+                                                    ) {
+                                                      discountInNewCurrency =
+                                                        (currentDiscount *
+                                                          currentRate) /
+                                                        newRate;
+                                                    }
+                                                  }
+                                                  handleProductDiscountChange(
+                                                    product.id,
+                                                    discountInNewCurrency
+                                                  );
+                                                }
+                                              }}
+                                            >
+                                              <SelectTrigger className="w-16 h-7 text-xs px-1">
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="Bs">
+                                                  Bs
+                                                </SelectItem>
+                                                <SelectItem value="USD">
+                                                  USD
+                                                </SelectItem>
+                                                <SelectItem value="EUR">
+                                                  EUR
+                                                </SelectItem>
+                                              </SelectContent>
+                                            </Select>
+                                          )}
                                           <Input
                                             type="number"
                                             min="0"
@@ -1203,7 +1768,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                               productDiscountTypes[
                                                 product.id
                                               ] === "porcentaje"
-                                                ? "0.1"
+                                                ? "1"
                                                 : "0.01"
                                             }
                                             max={(() => {
@@ -1211,8 +1776,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                                 productDiscountTypes[
                                                   product.id
                                                 ] || "monto";
-                                              if (discountType === "porcentaje")
+                                              if (
+                                                discountType === "porcentaje"
+                                              ) {
+                                                // Para porcentaje, permitir hasta 100% sin restricción del maxDiscount
+                                                // El maxDiscount solo se aplica cuando el descuento es por monto directo
                                                 return 100;
+                                              }
 
                                               // Para monto, considerar el maxDiscount de la categoría
                                               const category = categories.find(
@@ -1263,7 +1833,26 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                                     ? (discount / baseTotal) *
                                                       100
                                                     : 0;
-                                                return percentage;
+                                                // Redondear a 2 decimales para evitar errores de precisión
+                                                return (
+                                                  Math.round(percentage * 100) /
+                                                  100
+                                                );
+                                              }
+                                              // Para monto, convertir a la moneda seleccionada
+                                              const discountCurrency =
+                                                productDiscountCurrencies[
+                                                  product.id
+                                                ] || preferredCurrency;
+                                              if (discountCurrency === "Bs") {
+                                                return discount;
+                                              }
+                                              const rate =
+                                                discountCurrency === "USD"
+                                                  ? exchangeRates.USD?.rate
+                                                  : exchangeRates.EUR?.rate;
+                                              if (rate && rate > 0) {
+                                                return discount / rate;
                                               }
                                               return discount;
                                             })()}
@@ -1275,7 +1864,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                                 ) || 0
                                               )
                                             }
-                                            className="w-full h-7 text-xs flex-1"
+                                            className="flex-1 min-w-[80px] h-7 text-sm"
                                             placeholder={
                                               productDiscountTypes[
                                                 product.id
@@ -1287,9 +1876,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         </div>
                                       </TableCell>
                                       <TableCell className="w-[10%] font-semibold text-right text-sm">
-                                        {formatCurrency(finalTotal, "Bs")}
+                                        {formattedProductFinalTotals[
+                                          product.id
+                                        ] || formatCurrency(finalTotal, "Bs")}
                                       </TableCell>
-                                      <TableCell className="w-[16%] text-right">
+                                      <TableCell className="w-[12%] text-right">
                                         <div className="flex justify-end gap-1">
                                           <Button
                                             variant="ghost"
@@ -1336,7 +1927,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           Subtotal (después de descuentos):
                         </span>
                         <span className="block sm:inline sm:ml-1">
-                          {formatCurrency(subtotal, "Bs")}
+                          {formattedSubtotal || formatCurrency(subtotal, "Bs")}
                         </span>
                       </div>
                     </div>
@@ -1394,25 +1985,111 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           rows={3}
                           className="w-full"
                         />
-                        <Label
-                          htmlFor="deliveryExpenses"
-                          className="text-sm sm:text-base"
-                        >
-                          Gastos de Entrega ($)
-                        </Label>
-                        <Input
-                          id="deliveryExpenses"
-                          type="number"
-                          step="0.01"
-                          value={deliveryExpenses === 0 ? "" : deliveryExpenses}
-                          onChange={(e) =>
-                            setDeliveryExpenses(
-                              Number.parseFloat(e.target.value) || 0
-                            )
-                          }
-                          placeholder="0.00"
-                          className="w-full"
-                        />
+                        <div className="space-y-2">
+                          <Label
+                            htmlFor="deliveryExpenses"
+                            className="text-sm sm:text-base"
+                          >
+                            Gastos de Entrega
+                          </Label>
+                          <div className="flex gap-2">
+                            <Select
+                              value={deliveryCurrency}
+                              onValueChange={(value: Currency) => {
+                                setDeliveryCurrency(value);
+                                // Convertir el valor actual a la nueva moneda
+                                if (deliveryExpenses > 0) {
+                                  let newValue = deliveryExpenses;
+                                  if (deliveryCurrency === "Bs") {
+                                    // De Bs a otra moneda
+                                    const rate =
+                                      value === "USD"
+                                        ? exchangeRates.USD?.rate
+                                        : exchangeRates.EUR?.rate;
+                                    if (rate && rate > 0) {
+                                      newValue = deliveryExpenses / rate;
+                                    }
+                                  } else if (value === "Bs") {
+                                    // De otra moneda a Bs
+                                    const rate =
+                                      deliveryCurrency === "USD"
+                                        ? exchangeRates.USD?.rate
+                                        : exchangeRates.EUR?.rate;
+                                    if (rate && rate > 0) {
+                                      newValue = deliveryExpenses * rate;
+                                    }
+                                  } else {
+                                    // Entre USD y EUR
+                                    const currentRate =
+                                      deliveryCurrency === "USD"
+                                        ? exchangeRates.USD?.rate
+                                        : exchangeRates.EUR?.rate;
+                                    const newRate =
+                                      value === "USD"
+                                        ? exchangeRates.USD?.rate
+                                        : exchangeRates.EUR?.rate;
+                                    if (
+                                      currentRate &&
+                                      newRate &&
+                                      currentRate > 0
+                                    ) {
+                                      newValue =
+                                        (deliveryExpenses * currentRate) /
+                                        newRate;
+                                    }
+                                  }
+                                  setDeliveryExpenses(newValue);
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="w-24">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Bs">Bs</SelectItem>
+                                <SelectItem value="USD">USD</SelectItem>
+                                <SelectItem value="EUR">EUR</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              id="deliveryExpenses"
+                              type="number"
+                              step="0.01"
+                              value={(() => {
+                                if (deliveryExpenses === 0) return "";
+                                if (deliveryCurrency === "Bs") {
+                                  return deliveryExpenses;
+                                }
+                                const rate =
+                                  deliveryCurrency === "USD"
+                                    ? exchangeRates.USD?.rate
+                                    : exchangeRates.EUR?.rate;
+                                if (rate && rate > 0) {
+                                  return deliveryExpenses / rate;
+                                }
+                                return deliveryExpenses;
+                              })()}
+                              onChange={(e) => {
+                                const inputValue =
+                                  Number.parseFloat(e.target.value) || 0;
+                                // Convertir a Bs según la moneda seleccionada
+                                let valueInBs = inputValue;
+                                if (deliveryCurrency !== "Bs") {
+                                  const rate =
+                                    deliveryCurrency === "USD"
+                                      ? exchangeRates.USD?.rate
+                                      : exchangeRates.EUR?.rate;
+                                  if (rate && rate > 0) {
+                                    valueInBs = inputValue * rate;
+                                  }
+                                }
+                                setDeliveryExpenses(valueInBs);
+                              }}
+                              placeholder="0.00"
+                              className="flex-1"
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1694,12 +2371,67 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           </SelectItem>
                         </SelectContent>
                       </Select>
+                      {generalDiscountType === "monto" && (
+                        <Select
+                          value={generalDiscountCurrency}
+                          onValueChange={(value: Currency) => {
+                            // Convertir el valor actual a la nueva moneda (similar a delivery)
+                            if (generalDiscount > 0) {
+                              let newValue = generalDiscount;
+                              if (generalDiscountCurrency === "Bs") {
+                                // De Bs a otra moneda
+                                const rate =
+                                  value === "USD"
+                                    ? exchangeRates.USD?.rate
+                                    : exchangeRates.EUR?.rate;
+                                if (rate && rate > 0) {
+                                  newValue = generalDiscount / rate;
+                                }
+                              } else if (value === "Bs") {
+                                // De otra moneda a Bs
+                                const rate =
+                                  generalDiscountCurrency === "USD"
+                                    ? exchangeRates.USD?.rate
+                                    : exchangeRates.EUR?.rate;
+                                if (rate && rate > 0) {
+                                  newValue = generalDiscount * rate;
+                                }
+                              } else {
+                                // Entre USD y EUR
+                                const currentRate =
+                                  generalDiscountCurrency === "USD"
+                                    ? exchangeRates.USD?.rate
+                                    : exchangeRates.EUR?.rate;
+                                const newRate =
+                                  value === "USD"
+                                    ? exchangeRates.USD?.rate
+                                    : exchangeRates.EUR?.rate;
+                                if (currentRate && newRate && currentRate > 0) {
+                                  newValue =
+                                    (generalDiscount * currentRate) / newRate;
+                                }
+                              }
+                              setGeneralDiscount(newValue);
+                            }
+                            setGeneralDiscountCurrency(value);
+                          }}
+                        >
+                          <SelectTrigger className="w-20">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Bs">Bs</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                            <SelectItem value="EUR">EUR</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
                       <Input
                         id="generalDiscount"
                         type="number"
                         min="0"
                         step={
-                          generalDiscountType === "porcentaje" ? "0.1" : "0.01"
+                          generalDiscountType === "porcentaje" ? "1" : "0.01"
                         }
                         max={
                           generalDiscountType === "porcentaje"
@@ -1711,17 +2443,51 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                             ? ""
                             : generalDiscountType === "porcentaje"
                             ? subtotalAfterProductDiscounts > 0
-                              ? (generalDiscount /
-                                  subtotalAfterProductDiscounts) *
-                                100
+                              ? Math.round(
+                                  (generalDiscount /
+                                    subtotalAfterProductDiscounts) *
+                                    100 *
+                                    100
+                                ) / 100 // Redondear a 2 decimales máximo
                               : 0
-                            : generalDiscount
+                            : (() => {
+                                // Mostrar en la moneda seleccionada (similar a delivery)
+                                if (generalDiscountCurrency === "Bs") {
+                                  return generalDiscount;
+                                }
+                                const rate =
+                                  generalDiscountCurrency === "USD"
+                                    ? exchangeRates.USD?.rate
+                                    : exchangeRates.EUR?.rate;
+                                if (rate && rate > 0) {
+                                  return (
+                                    Math.round((generalDiscount / rate) * 100) /
+                                    100
+                                  );
+                                }
+                                return generalDiscount;
+                              })()
                         }
-                        onChange={(e) =>
-                          handleGeneralDiscountChange(
-                            Number.parseFloat(e.target.value) || 0
-                          )
-                        }
+                        onChange={(e) => {
+                          const inputValue =
+                            Number.parseFloat(e.target.value) || 0;
+                          if (generalDiscountType === "monto") {
+                            // Convertir a Bs según la moneda seleccionada (similar a delivery)
+                            let valueInBs = inputValue;
+                            if (generalDiscountCurrency !== "Bs") {
+                              const rate =
+                                generalDiscountCurrency === "USD"
+                                  ? exchangeRates.USD?.rate
+                                  : exchangeRates.EUR?.rate;
+                              if (rate && rate > 0) {
+                                valueInBs = inputValue * rate;
+                              }
+                            }
+                            setGeneralDiscount(valueInBs);
+                          } else {
+                            handleGeneralDiscountChange(inputValue);
+                          }
+                        }}
                         placeholder={
                           generalDiscountType === "porcentaje" ? "0%" : "0.00"
                         }
@@ -1776,6 +2542,72 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                       </div>
                     </RadioGroup>
 
+                    {/* Condición de Pago */}
+                    <div className="space-y-2">
+                      <Label htmlFor="paymentCondition" className="text-sm sm:text-base">
+                        Condición de Pago <span className="text-red-500">*</span>
+                      </Label>
+                      <Select
+                        value={paymentCondition}
+                        onValueChange={(value) =>
+                          setPaymentCondition(
+                            value as
+                              | "cashea"
+                              | "pagara_en_tienda"
+                              | "pago_a_entrega"
+                              | "pago_parcial"
+                              | "todo_pago"
+                              | ""
+                          )
+                        }
+                      >
+                        <SelectTrigger id="paymentCondition">
+                          <SelectValue placeholder="Seleccione la condición de pago" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PAYMENT_CONDITIONS.map((condition) => (
+                            <SelectItem key={condition.value} value={condition.value}>
+                              {condition.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Tipo de Compra */}
+                    <div className="space-y-2">
+                      <Label htmlFor="purchaseType" className="text-sm sm:text-base">
+                        Tipo de Compra <span className="text-red-500">*</span>
+                      </Label>
+                      <Select
+                        value={purchaseType}
+                        onValueChange={(value) =>
+                          setPurchaseType(
+                            value as
+                              | "delivery_express"
+                              | "encargo"
+                              | "encargo_entrega"
+                              | "entrega"
+                              | "retiro_almacen"
+                              | "retiro_tienda"
+                              | "sa"
+                              | ""
+                          )
+                        }
+                      >
+                        <SelectTrigger id="purchaseType">
+                          <SelectValue placeholder="Seleccione el tipo de compra" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PURCHASE_TYPES.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     {/* Sección unificada de Pagos - funciona para todos los tipos de venta */}
                     <div className="space-y-4 pt-4">
                       <div className="space-y-4">
@@ -1802,29 +2634,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               className="space-y-3 sm:space-y-4 p-3 sm:p-4 border rounded-lg"
                             >
                               <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:items-end">
-                                {/* Solo mostrar campo Monto si NO es Efectivo */}
-                                {payment.method !== "Efectivo" && (
-                                  <div className="flex-1 w-full">
-                                    <Label className="text-xs">Monto</Label>
-                                    <Input
-                                      type="number"
-                                      value={
-                                        payment.amount === 0
-                                          ? ""
-                                          : payment.amount
-                                      }
-                                      onChange={(e) =>
-                                        updatePayment(
-                                          payment.id,
-                                          "amount",
-                                          Number.parseFloat(e.target.value) || 0
-                                        )
-                                      }
-                                      placeholder="0.00"
-                                      className="w-full"
-                                    />
-                                  </div>
-                                )}
+                                {/* Método primero */}
                                 <div className="flex-1 w-full">
                                   <Label className="text-xs">Método</Label>
                                   <Select
@@ -1862,6 +2672,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                     </SelectContent>
                                   </Select>
                                 </div>
+                                {/* Fecha */}
                                 <div className="flex-1 w-full">
                                   <Label className="text-xs">Fecha</Label>
                                   <Input
@@ -1898,6 +2709,157 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                     Información de Pago Móvil
                                   </Label>
                                   <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`pagomovil-currency-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Moneda *
+                                      </Label>
+                                      <Select
+                                        value={
+                                          payment.currency || preferredCurrency
+                                        }
+                                        onValueChange={(value: Currency) => {
+                                          // Actualizar la moneda registrada
+                                          updatePayment(
+                                            payment.id,
+                                            "currency",
+                                            value
+                                          );
+
+                                          // Si hay un monto, recalcular el monto original en la nueva moneda
+                                          if (payment.amount > 0) {
+                                            let originalAmount = payment.amount;
+                                            if (value !== "Bs") {
+                                              const rate =
+                                                value === "USD"
+                                                  ? exchangeRates.USD?.rate
+                                                  : exchangeRates.EUR?.rate;
+                                              if (rate && rate > 0) {
+                                                originalAmount =
+                                                  payment.amount / rate;
+                                                updatePaymentDetails(
+                                                  payment.id,
+                                                  "exchangeRate",
+                                                  rate
+                                                );
+                                              }
+                                            } else {
+                                              // Si cambia a Bs, el monto original es el amount
+                                              originalAmount = payment.amount;
+                                            }
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalAmount",
+                                              originalAmount
+                                            );
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalCurrency",
+                                              value
+                                            );
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="Bs">
+                                            Bolívares (Bs)
+                                          </SelectItem>
+                                          <SelectItem value="USD">
+                                            Dólares (USD)
+                                          </SelectItem>
+                                          <SelectItem value="EUR">
+                                            Euros (EUR)
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    {/* Campo Monto después de Moneda */}
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`pagomovil-amount-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Monto *
+                                      </Label>
+                                      <Input
+                                        id={`pagomovil-amount-${payment.id}`}
+                                        type="number"
+                                        step="0.01"
+                                        value={(() => {
+                                          if (payment.amount === 0) return "";
+                                          // Si hay monto original guardado, usarlo
+                                          if (
+                                            payment.paymentDetails
+                                              ?.originalAmount !== undefined
+                                          ) {
+                                            return payment.paymentDetails
+                                              .originalAmount;
+                                          }
+                                          // Fallback: calcular desde payment.amount
+                                          const paymentCurrency =
+                                            payment.currency || getDefaultCurrencyFromSelection();
+                                          if (paymentCurrency === "Bs") {
+                                            return payment.amount;
+                                          }
+                                          const rate =
+                                            paymentCurrency === "USD"
+                                              ? exchangeRates.USD?.rate
+                                              : exchangeRates.EUR?.rate;
+                                          if (rate && rate > 0) {
+                                            return payment.amount / rate;
+                                          }
+                                          return payment.amount;
+                                        })()}
+                                        onChange={(e) => {
+                                          const inputValue =
+                                            Number.parseFloat(e.target.value) ||
+                                            0;
+                                          const paymentCurrency =
+                                            payment.currency || getDefaultCurrencyFromSelection();
+
+                                          // Guardar el monto original en la moneda del pago
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "originalAmount",
+                                            inputValue
+                                          );
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "originalCurrency",
+                                            paymentCurrency
+                                          );
+
+                                          // Convertir a Bs según la moneda seleccionada
+                                          let valueInBs = inputValue;
+                                          if (paymentCurrency !== "Bs") {
+                                            const rate =
+                                              paymentCurrency === "USD"
+                                                ? exchangeRates.USD?.rate
+                                                : exchangeRates.EUR?.rate;
+                                            if (rate && rate > 0) {
+                                              valueInBs = inputValue * rate;
+                                              // Guardar la tasa de cambio usada
+                                              updatePaymentDetails(
+                                                payment.id,
+                                                "exchangeRate",
+                                                rate
+                                              );
+                                            }
+                                          }
+                                          updatePayment(
+                                            payment.id,
+                                            "amount",
+                                            valueInBs
+                                          );
+                                        }}
+                                        placeholder="0.00"
+                                      />
+                                    </div>
                                     <div className="space-y-2">
                                       <Label
                                         htmlFor={`pagomovil-reference-${payment.id}`}
@@ -1980,6 +2942,157 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                   <div className="grid gap-3 sm:grid-cols-2">
                                     <div className="space-y-2">
                                       <Label
+                                        htmlFor={`transferencia-currency-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Moneda *
+                                      </Label>
+                                      <Select
+                                        value={
+                                          payment.currency || preferredCurrency
+                                        }
+                                        onValueChange={(value: Currency) => {
+                                          // Actualizar la moneda registrada
+                                          updatePayment(
+                                            payment.id,
+                                            "currency",
+                                            value
+                                          );
+
+                                          // Si hay un monto, recalcular el monto original en la nueva moneda
+                                          if (payment.amount > 0) {
+                                            let originalAmount = payment.amount;
+                                            if (value !== "Bs") {
+                                              const rate =
+                                                value === "USD"
+                                                  ? exchangeRates.USD?.rate
+                                                  : exchangeRates.EUR?.rate;
+                                              if (rate && rate > 0) {
+                                                originalAmount =
+                                                  payment.amount / rate;
+                                                updatePaymentDetails(
+                                                  payment.id,
+                                                  "exchangeRate",
+                                                  rate
+                                                );
+                                              }
+                                            } else {
+                                              // Si cambia a Bs, el monto original es el amount
+                                              originalAmount = payment.amount;
+                                            }
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalAmount",
+                                              originalAmount
+                                            );
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalCurrency",
+                                              value
+                                            );
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="Bs">
+                                            Bolívares (Bs)
+                                          </SelectItem>
+                                          <SelectItem value="USD">
+                                            Dólares (USD)
+                                          </SelectItem>
+                                          <SelectItem value="EUR">
+                                            Euros (EUR)
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    {/* Campo Monto después de Moneda */}
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`transferencia-amount-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Monto *
+                                      </Label>
+                                      <Input
+                                        id={`transferencia-amount-${payment.id}`}
+                                        type="number"
+                                        step="0.01"
+                                        value={(() => {
+                                          if (payment.amount === 0) return "";
+                                          // Si hay monto original guardado, usarlo
+                                          if (
+                                            payment.paymentDetails
+                                              ?.originalAmount !== undefined
+                                          ) {
+                                            return payment.paymentDetails
+                                              .originalAmount;
+                                          }
+                                          // Fallback: calcular desde payment.amount
+                                          const paymentCurrency =
+                                            payment.currency || getDefaultCurrencyFromSelection();
+                                          if (paymentCurrency === "Bs") {
+                                            return payment.amount;
+                                          }
+                                          const rate =
+                                            paymentCurrency === "USD"
+                                              ? exchangeRates.USD?.rate
+                                              : exchangeRates.EUR?.rate;
+                                          if (rate && rate > 0) {
+                                            return payment.amount / rate;
+                                          }
+                                          return payment.amount;
+                                        })()}
+                                        onChange={(e) => {
+                                          const inputValue =
+                                            Number.parseFloat(e.target.value) ||
+                                            0;
+                                          const paymentCurrency =
+                                            payment.currency || getDefaultCurrencyFromSelection();
+
+                                          // Guardar el monto original en la moneda del pago
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "originalAmount",
+                                            inputValue
+                                          );
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "originalCurrency",
+                                            paymentCurrency
+                                          );
+
+                                          // Convertir a Bs según la moneda seleccionada
+                                          let valueInBs = inputValue;
+                                          if (paymentCurrency !== "Bs") {
+                                            const rate =
+                                              paymentCurrency === "USD"
+                                                ? exchangeRates.USD?.rate
+                                                : exchangeRates.EUR?.rate;
+                                            if (rate && rate > 0) {
+                                              valueInBs = inputValue * rate;
+                                              // Guardar la tasa de cambio usada
+                                              updatePaymentDetails(
+                                                payment.id,
+                                                "exchangeRate",
+                                                rate
+                                              );
+                                            }
+                                          }
+                                          updatePayment(
+                                            payment.id,
+                                            "amount",
+                                            valueInBs
+                                          );
+                                        }}
+                                        placeholder="0.00"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
                                         htmlFor={`transferencia-bank-${payment.id}`}
                                         className="text-xs"
                                       >
@@ -2028,6 +3141,167 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                 </div>
                               )}
 
+                              {/* Sección genérica para métodos que solo necesitan Moneda y Monto */}
+                              {!["Pago Móvil", "Transferencia", "Efectivo"].includes(payment.method) && (
+                                <div className="space-y-3 pt-2 border-t">
+                                  <Label className="text-sm font-medium">
+                                    Información de {payment.method}
+                                  </Label>
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-currency-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Moneda *
+                                      </Label>
+                                      <Select
+                                        value={
+                                          payment.currency || preferredCurrency
+                                        }
+                                        onValueChange={(value: Currency) => {
+                                          // Actualizar la moneda registrada
+                                          updatePayment(
+                                            payment.id,
+                                            "currency",
+                                            value
+                                          );
+
+                                          // Si hay un monto, recalcular el monto original en la nueva moneda
+                                          if (payment.amount > 0) {
+                                            let originalAmount = payment.amount;
+                                            if (value !== "Bs") {
+                                              const rate =
+                                                value === "USD"
+                                                  ? exchangeRates.USD?.rate
+                                                  : exchangeRates.EUR?.rate;
+                                              if (rate && rate > 0) {
+                                                originalAmount =
+                                                  payment.amount / rate;
+                                                updatePaymentDetails(
+                                                  payment.id,
+                                                  "exchangeRate",
+                                                  rate
+                                                );
+                                              }
+                                            } else {
+                                              // Si cambia a Bs, el monto original es el amount
+                                              originalAmount = payment.amount;
+                                            }
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalAmount",
+                                              originalAmount
+                                            );
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalCurrency",
+                                              value
+                                            );
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="Bs">
+                                            Bolívares (Bs)
+                                          </SelectItem>
+                                          <SelectItem value="USD">
+                                            Dólares (USD)
+                                          </SelectItem>
+                                          <SelectItem value="EUR">
+                                            Euros (EUR)
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label
+                                        htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-amount-${payment.id}`}
+                                        className="text-xs"
+                                      >
+                                        Monto *
+                                      </Label>
+                                      <Input
+                                        id={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-amount-${payment.id}`}
+                                        type="number"
+                                        step="0.01"
+                                        value={(() => {
+                                          if (payment.amount === 0) return "";
+                                          // Si hay monto original guardado, usarlo
+                                          if (
+                                            payment.paymentDetails
+                                              ?.originalAmount !== undefined
+                                          ) {
+                                            return payment.paymentDetails
+                                              .originalAmount;
+                                          }
+                                          // Fallback: calcular desde payment.amount
+                                          const paymentCurrency =
+                                            payment.currency || getDefaultCurrencyFromSelection();
+                                          if (paymentCurrency === "Bs") {
+                                            return payment.amount;
+                                          }
+                                          const rate =
+                                            paymentCurrency === "USD"
+                                              ? exchangeRates.USD?.rate
+                                              : exchangeRates.EUR?.rate;
+                                          if (rate && rate > 0) {
+                                            return payment.amount / rate;
+                                          }
+                                          return payment.amount;
+                                        })()}
+                                        onChange={(e) => {
+                                          const inputValue =
+                                            Number.parseFloat(e.target.value) ||
+                                            0;
+                                          const paymentCurrency =
+                                            payment.currency || getDefaultCurrencyFromSelection();
+
+                                          // Guardar el monto original en la moneda del pago
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "originalAmount",
+                                            inputValue
+                                          );
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "originalCurrency",
+                                            paymentCurrency
+                                          );
+
+                                          // Convertir a Bs según la moneda seleccionada
+                                          let valueInBs = inputValue;
+                                          if (paymentCurrency !== "Bs") {
+                                            const rate =
+                                              paymentCurrency === "USD"
+                                                ? exchangeRates.USD?.rate
+                                                : exchangeRates.EUR?.rate;
+                                            if (rate && rate > 0) {
+                                              valueInBs = inputValue * rate;
+                                              // Guardar la tasa de cambio usada
+                                              updatePaymentDetails(
+                                                payment.id,
+                                                "exchangeRate",
+                                                rate
+                                              );
+                                            }
+                                          }
+                                          updatePayment(
+                                            payment.id,
+                                            "amount",
+                                            valueInBs
+                                          );
+                                        }}
+                                        placeholder="0.00"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
                               {payment.method === "Efectivo" && (
                                 <div className="space-y-3 pt-2 border-t">
                                   <Label className="text-sm font-medium">
@@ -2044,14 +3318,23 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                       <Select
                                         value={
                                           payment.paymentDetails
-                                            ?.cashCurrency || "Bs"
+                                            ?.cashCurrency || preferredCurrency
                                         }
                                         onValueChange={(value: Currency) => {
+                                          // Actualizar cashCurrency
                                           updatePaymentDetails(
                                             payment.id,
                                             "cashCurrency",
                                             value
                                           );
+
+                                          // ACTUALIZAR payment.currency también
+                                          updatePayment(
+                                            payment.id,
+                                            "currency",
+                                            value
+                                          );
+
                                           // Actualizar la tasa de cambio si es necesario
                                           const rate =
                                             value !== "Bs" &&
@@ -2355,13 +3638,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                       htmlFor="generalObservations"
                       className="text-sm sm:text-base"
                     >
-                      Observaciones Generales
+                      Observaciones Generales <span className="text-red-500">*</span>
                     </Label>
                     <Textarea
                       id="generalObservations"
                       value={generalObservations}
                       onChange={(e) => setGeneralObservations(e.target.value)}
-                      placeholder="Agregar observaciones generales para el pedido (opcional)"
+                      placeholder="Agregar observaciones generales para el pedido (obligatorio)"
                       rows={3}
                       className="w-full"
                     />
@@ -2458,6 +3741,19 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         product={productToRemove as OrderProduct | null}
         onConfirm={confirmRemoveProduct}
       />
+
+      {pendingOrderData && (
+        <OrderConfirmationDialog
+          open={isConfirmationOpen}
+          onOpenChange={setIsConfirmationOpen}
+          onConfirm={handleConfirmOrder}
+          onCancel={() => {
+            setIsConfirmationOpen(false);
+            setPendingOrderData(null);
+          }}
+          orderData={pendingOrderData}
+        />
+      )}
     </>
   );
 }

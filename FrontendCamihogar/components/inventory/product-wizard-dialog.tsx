@@ -20,7 +20,13 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, Package, Tag, Settings } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Package,
+  Tag,
+  Settings,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   getCategories,
@@ -30,7 +36,11 @@ import {
   type AttributeValue,
   type Product,
 } from "@/lib/storage";
-import { formatCurrency, getActiveExchangeRates, convertProductPriceToBs } from "@/lib/currency-utils";
+import {
+  formatCurrency,
+  getActiveExchangeRates,
+  convertProductPriceToBs,
+} from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
 
 interface ProductWizardDialogProps {
@@ -85,7 +95,8 @@ function ProductAttributesEditor({
   onSave,
   onCancel,
 }: ProductAttributesEditorProps) {
-  const [attributes, setAttributes] = useState<Record<string, any>>(initialAttributes);
+  const [attributes, setAttributes] =
+    useState<Record<string, any>>(initialAttributes);
 
   const handleAttributeChange = (attrKey: string, value: any) => {
     setAttributes((prev) => ({
@@ -95,7 +106,9 @@ function ProductAttributesEditor({
   };
 
   const renderAttributeInput = (attribute: any, attrKey: string) => {
-    const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+    const attrValue =
+      attributes[attrKey] ??
+      (attribute.title ? attributes[attribute.title] : undefined);
 
     switch (attribute.valueType) {
       case "Number":
@@ -115,7 +128,11 @@ function ProductAttributesEditor({
             onValueChange={(val) => handleAttributeChange(attrKey, val)}
           >
             <SelectTrigger>
-              <SelectValue placeholder={`Seleccione ${attribute.title?.toLowerCase() || "opción"}`} />
+              <SelectValue
+                placeholder={`Seleccione ${
+                  attribute.title?.toLowerCase() || "opción"
+                }`}
+              />
             </SelectTrigger>
             <SelectContent>
               {attribute.values?.map((option: string | AttributeValue) => {
@@ -133,8 +150,12 @@ function ProductAttributesEditor({
 
       case "Multiple select":
         const selectedValues = Array.isArray(attrValue) ? attrValue : [];
-        const maxSelections = attribute.maxSelections !== undefined ? attribute.maxSelections : Infinity;
-        const isMaxReached = maxSelections !== Infinity && selectedValues.length >= maxSelections;
+        const maxSelections =
+          attribute.maxSelections !== undefined
+            ? attribute.maxSelections
+            : Infinity;
+        const isMaxReached =
+          maxSelections !== Infinity && selectedValues.length >= maxSelections;
 
         return (
           <div className="space-y-2">
@@ -143,15 +164,24 @@ function ProductAttributesEditor({
               disabled={isMaxReached}
               onValueChange={(val) => {
                 if (!selectedValues.includes(val)) {
-                  if (maxSelections !== Infinity && selectedValues.length >= maxSelections) {
-                    toast.error(`Solo puedes seleccionar máximo ${maxSelections} opción${maxSelections > 1 ? "es" : ""}`);
+                  if (
+                    maxSelections !== Infinity &&
+                    selectedValues.length >= maxSelections
+                  ) {
+                    toast.error(
+                      `Solo puedes seleccionar máximo ${maxSelections} opción${
+                        maxSelections > 1 ? "es" : ""
+                      }`
+                    );
                     return;
                   }
                   handleAttributeChange(attrKey, [...selectedValues, val]);
                 }
               }}
             >
-              <SelectTrigger className={isMaxReached ? "opacity-50 cursor-not-allowed" : ""}>
+              <SelectTrigger
+                className={isMaxReached ? "opacity-50 cursor-not-allowed" : ""}
+              >
                 <SelectValue
                   placeholder={
                     isMaxReached
@@ -163,12 +193,18 @@ function ProductAttributesEditor({
               <SelectContent>
                 {attribute.values
                   ?.map(getValueString)
-                  .filter((optionValue: string) => !selectedValues.includes(optionValue))
+                  .filter(
+                    (optionValue: string) =>
+                      !selectedValues.includes(optionValue)
+                  )
                   .map((optionValue: string) => {
                     const option = attribute.values?.find(
-                      (v: string | AttributeValue) => getValueString(v) === optionValue
+                      (v: string | AttributeValue) =>
+                        getValueString(v) === optionValue
                     );
-                    const optionLabel = option ? getValueLabel(option) : optionValue;
+                    const optionLabel = option
+                      ? getValueLabel(option)
+                      : optionValue;
                     return (
                       <SelectItem key={optionValue} value={optionValue}>
                         {optionLabel}
@@ -204,8 +240,10 @@ function ProductAttributesEditor({
             )}
             {maxSelections !== Infinity && (
               <p className="text-xs text-muted-foreground">
-                Máximo {maxSelections} selección{maxSelections > 1 ? "es" : ""} permitida{maxSelections > 1 ? "s" : ""}
-                {selectedValues.length > 0 && ` (${selectedValues.length}/${maxSelections})`}
+                Máximo {maxSelections} selección{maxSelections > 1 ? "es" : ""}{" "}
+                permitida{maxSelections > 1 ? "s" : ""}
+                {selectedValues.length > 0 &&
+                  ` (${selectedValues.length}/${maxSelections})`}
               </p>
             )}
           </div>
@@ -222,23 +260,30 @@ function ProductAttributesEditor({
       <div className="p-4 bg-muted rounded-lg">
         <h3 className="font-medium">{product.name}</h3>
         <p className="text-sm text-muted-foreground">
-          SKU: {product.sku} • Precio: {formatCurrency(product.price, product.priceCurrency || "Bs")}
+          SKU: {product.sku} • Precio:{" "}
+          {formatCurrency(product.price, product.priceCurrency || "Bs")}
         </p>
       </div>
 
       {/* Atributos de la categoría del producto */}
       {category.attributes && category.attributes.length > 0 ? (
         <div className="space-y-4">
-          <Label className="text-base font-medium">Atributos del Producto</Label>
+          <Label className="text-base font-medium">
+            Atributos del Producto
+          </Label>
           {category.attributes.map((attribute: any) => {
             const attrKey = attribute.id?.toString() || attribute.title;
             if (!attrKey) return null;
 
             return (
               <div key={attrKey} className="space-y-2">
-                <Label htmlFor={`edit-attr-${attrKey}`}>{attribute.title}</Label>
+                <Label htmlFor={`edit-attr-${attrKey}`}>
+                  {attribute.title}
+                </Label>
                 {attribute.description && (
-                  <p className="text-sm text-muted-foreground">{attribute.description}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {attribute.description}
+                  </p>
                 )}
                 {renderAttributeInput(attribute, attrKey)}
               </div>
@@ -255,9 +300,7 @@ function ProductAttributesEditor({
         <Button variant="outline" onClick={onCancel}>
           Cancelar
         </Button>
-        <Button onClick={() => onSave(attributes)}>
-          Guardar Atributos
-        </Button>
+        <Button onClick={() => onSave(attributes)}>Guardar Atributos</Button>
       </div>
     </div>
   );
@@ -268,6 +311,7 @@ export function ProductWizardDialog({
   onOpenChange,
   onProductCreated,
 }: ProductWizardDialogProps) {
+  const { formatWithPreference, preferredCurrency } = useCurrency();
   const [currentStep, setCurrentStep] = useState(1);
   const [categories, setCategories] = useState<Category[]>([]);
   const [formData, setFormData] = useState<ProductFormData>({
@@ -275,27 +319,33 @@ export function ProductWizardDialog({
     sku: "",
     description: "",
     price: "",
-    priceCurrency: "Bs",
+    priceCurrency: "Bs", // Valor por defecto seguro, se actualizará con preferredCurrency
     category: "",
     status: "Disponible",
     attributes: {},
   });
-  const [editingAttributeId, setEditingAttributeId] = useState<string | null>(null);
-  const [selectedProductForEdit, setSelectedProductForEdit] = useState<Product | null>(null);
+  const [editingAttributeId, setEditingAttributeId] = useState<string | null>(
+    null
+  );
+  const [selectedProductForEdit, setSelectedProductForEdit] =
+    useState<Product | null>(null);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
-  const [productAttributes, setProductAttributes] = useState<{ 
-    [key: string]: Array<{ 
+  const [productAttributes, setProductAttributes] = useState<{
+    [key: string]: Array<{
       productId: number;
-      product: Product; 
-      attributes: Record<string, any> 
-    }> 
+      product: Product;
+      attributes: Record<string, any>;
+    }>;
   }>({});
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
-  const [exchangeRates, setExchangeRates] = useState<{ USD?: any; EUR?: any }>({});
+  const [exchangeRates, setExchangeRates] = useState<{ USD?: any; EUR?: any }>(
+    {}
+  );
   const [priceEditedManually, setPriceEditedManually] = useState(false);
-  const { formatWithPreference, preferredCurrency } = useCurrency();
-  const [productPricesFormatted, setProductPricesFormatted] = useState<Record<number, string>>({});
+  const [productPricesFormatted, setProductPricesFormatted] = useState<
+    Record<number, string>
+  >({});
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -309,16 +359,17 @@ export function ProductWizardDialog({
     loadCategories();
   }, []);
 
-  // Generar SKU automático cuando se abre el diálogo
+  // Generar SKU automático y actualizar moneda cuando se abre el diálogo
   useEffect(() => {
     const generateSKU = async () => {
       try {
         const products = await getProducts();
         const nextNumber = products.length + 1;
         const sku = `PROD-${String(nextNumber).padStart(4, "0")}`;
-        setFormData((prev) => ({ ...prev, sku }));
+        setFormData((prev) => ({ ...prev, sku, priceCurrency: preferredCurrency }));
       } catch (error) {
         console.error("Error generating SKU:", error);
+        setFormData((prev) => ({ ...prev, priceCurrency: preferredCurrency }));
       }
     };
 
@@ -327,7 +378,7 @@ export function ProductWizardDialog({
       setPriceEditedManually(false); // Resetear flag cuando se abre el diálogo
       setProductAttributes({}); // Limpiar productos-atributos
     }
-  }, [open]);
+  }, [open, preferredCurrency]);
 
   const selectedCategory = categories.find(
     (cat) => cat.id.toString() === formData.category
@@ -336,7 +387,7 @@ export function ProductWizardDialog({
   // Cargar todos los productos una sola vez cuando se entra al paso 2
   useEffect(() => {
     if (currentStep !== 2 || productsLoaded) return;
-    
+
     const loadAllProducts = async () => {
       try {
         const loadedProducts = await getProducts();
@@ -346,7 +397,7 @@ export function ProductWizardDialog({
         console.error("Error loading products:", error);
       }
     };
-    
+
     loadAllProducts();
   }, [currentStep, productsLoaded]);
 
@@ -367,28 +418,43 @@ export function ProductWizardDialog({
 
   // Cargar productos desde los valores del atributo cuando se entra al paso 2 y productos están cargados
   useEffect(() => {
-    if (!selectedCategory || currentStep !== 2 || !productsLoaded || allProducts.length === 0) return;
+    if (
+      !selectedCategory ||
+      currentStep !== 2 ||
+      !productsLoaded ||
+      allProducts.length === 0
+    )
+      return;
 
     const loadProductsFromAttributeValues = () => {
       for (const attribute of selectedCategory.attributes) {
-        if (attribute.valueType === "Product" && attribute.values && attribute.values.length > 0) {
+        if (
+          attribute.valueType === "Product" &&
+          attribute.values &&
+          attribute.values.length > 0
+        ) {
           const attrId = attribute.id?.toString() || attribute.title;
-          
+
           // Verificar si ya está cargado para este atributo
           const existing = productAttributes[attrId];
           if (existing && existing.length > 0) {
             // Ya está cargado, continuar con el siguiente
             continue;
           }
-          
-          const productEntries: Array<{ productId: number; product: Product; attributes: Record<string, any> }> = [];
-          
+
+          const productEntries: Array<{
+            productId: number;
+            product: Product;
+            attributes: Record<string, any>;
+          }> = [];
+
           // Procesar cada valor del atributo
           for (const value of attribute.values) {
-            const attrValue = typeof value === "string" 
-              ? { id: "", label: value, productId: undefined }
-              : value as AttributeValue;
-            
+            const attrValue =
+              typeof value === "string"
+                ? { id: "", label: value, productId: undefined }
+                : (value as AttributeValue);
+
             if (attrValue.productId) {
               const foundProduct = productsMap.get(attrValue.productId);
               if (foundProduct) {
@@ -400,7 +466,7 @@ export function ProductWizardDialog({
               }
             }
           }
-          
+
           if (productEntries.length > 0) {
             setProductAttributes((prev) => ({
               ...prev,
@@ -418,14 +484,14 @@ export function ProductWizardDialog({
   useEffect(() => {
     const formatProductPrices = async () => {
       const prices: Record<number, string> = {};
-      
+
       const uniqueProducts = new Set<number>();
       Object.values(productAttributes).forEach((entries) => {
         entries.forEach((entry) => {
           uniqueProducts.add(entry.product.id);
         });
       });
-      
+
       for (const productId of uniqueProducts) {
         const product = allProducts.find((p) => p.id === productId);
         if (product) {
@@ -436,10 +502,10 @@ export function ProductWizardDialog({
           prices[productId] = formatted;
         }
       }
-      
+
       setProductPricesFormatted(prices);
     };
-    
+
     if (allProducts.length > 0 && Object.keys(productAttributes).length > 0) {
       formatProductPrices();
     }
@@ -458,21 +524,24 @@ export function ProductWizardDialog({
         if (attribute.valueType === "Product") {
           const attrId = attribute.id?.toString() || attribute.title;
           const productsForAttr = productAttributes[attrId] || [];
-          
+
           for (const productEntry of productsForAttr) {
             const productPrice = productEntry.product.price;
             const productCurrency = productEntry.product.priceCurrency || "Bs";
-            
+
             // Convertir a Bs si es necesario
             let productPriceInBs = productPrice;
             if (productCurrency !== "Bs") {
               if (productCurrency === "USD" && exchangeRates?.USD?.rate) {
                 productPriceInBs = productPrice * exchangeRates.USD.rate;
-              } else if (productCurrency === "EUR" && exchangeRates?.EUR?.rate) {
+              } else if (
+                productCurrency === "EUR" &&
+                exchangeRates?.EUR?.rate
+              ) {
                 productPriceInBs = productPrice * exchangeRates.EUR.rate;
               }
             }
-            
+
             totalPriceInBs += productPriceInBs;
           }
         }
@@ -482,14 +551,16 @@ export function ProductWizardDialog({
       if (totalPriceInBs > 0) {
         const currentPriceInBs = parseFloat(formData.price) || 0;
         const currentCurrency = formData.priceCurrency || "Bs";
-        
+
         // Convertir precio actual a Bs si está en otra moneda
         let currentPriceInBsConverted = currentPriceInBs;
         if (currentCurrency !== "Bs") {
           if (currentCurrency === "USD" && exchangeRates?.USD?.rate) {
-            currentPriceInBsConverted = currentPriceInBs * exchangeRates.USD.rate;
+            currentPriceInBsConverted =
+              currentPriceInBs * exchangeRates.USD.rate;
           } else if (currentCurrency === "EUR" && exchangeRates?.EUR?.rate) {
-            currentPriceInBsConverted = currentPriceInBs * exchangeRates.EUR.rate;
+            currentPriceInBsConverted =
+              currentPriceInBs * exchangeRates.EUR.rate;
           }
         }
 
@@ -505,7 +576,13 @@ export function ProductWizardDialog({
     };
 
     calculateSuggestedPrice();
-  }, [productAttributes, selectedCategory, currentStep, exchangeRates, priceEditedManually]);
+  }, [
+    productAttributes,
+    selectedCategory,
+    currentStep,
+    exchangeRates,
+    priceEditedManually,
+  ]);
 
   const handleInputChange = (field: keyof ProductFormData, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -553,7 +630,7 @@ export function ProductWizardDialog({
         sku: skuToUse,
         category: categoryName,
         price: Number.parseFloat(formData.price) || 0,
-        priceCurrency: formData.priceCurrency || "Bs",
+        priceCurrency: formData.priceCurrency || preferredCurrency,
         stock: 0, // Los productos se crean bajo demanda, no hay stock
         status: formData.status,
         attributes: formData.attributes,
@@ -578,7 +655,7 @@ export function ProductWizardDialog({
           sku,
           description: "",
           price: "",
-          priceCurrency: "Bs",
+          priceCurrency: preferredCurrency,
           category: "",
           status: "Disponible",
           attributes: {},
@@ -592,7 +669,7 @@ export function ProductWizardDialog({
           sku: "",
           description: "",
           price: "",
-          priceCurrency: "Bs",
+          priceCurrency: preferredCurrency,
           category: "",
           status: "Disponible",
           attributes: {},
@@ -745,24 +822,36 @@ export function ProductWizardDialog({
       case "Product":
         // Los productos se cargan automáticamente desde attribute.values
         const productsForAttribute = productAttributes[attribute.id] || [];
-        
+
         return (
           <div className="space-y-3">
             {productsForAttribute.length > 0 ? (
               <div className="grid grid-cols-1 gap-3">
                 {productsForAttribute.map((productEntry) => (
-                  <Card key={`${attribute.id}-${productEntry.productId}`} className="p-3">
+                  <Card
+                    key={`${attribute.id}-${productEntry.productId}`}
+                    className="p-3"
+                  >
                     <CardContent className="p-0">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3 flex-1 min-w-0">
                           <Package className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold text-sm">{productEntry.product.name}</h4>
+                            <h4 className="font-semibold text-sm">
+                              {productEntry.product.name}
+                            </h4>
                             <p className="text-xs text-muted-foreground mt-1">
                               SKU: {productEntry.product.sku}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              Precio: {productPricesFormatted[productEntry.product.id] || formatCurrency(productEntry.product.price, productEntry.product.priceCurrency || "Bs")}
+                              Precio:{" "}
+                              {productPricesFormatted[
+                                productEntry.product.id
+                              ] ||
+                                formatCurrency(
+                                  productEntry.product.price,
+                                  productEntry.product.priceCurrency || "Bs"
+                                )}
                             </p>
                             {productEntry.product.category && (
                               <p className="text-xs text-muted-foreground">
@@ -807,8 +896,12 @@ export function ProductWizardDialog({
     ? categories.find((cat) => cat.name === selectedProductForEdit.category)
     : null;
 
-  const handleSaveEditedAttributes = (attributeId: string, editedAttributes: Record<string, any>) => {
-    if (!selectedProductForEdit || !productCategoryForEdit || !editingProductId) return;
+  const handleSaveEditedAttributes = (
+    attributeId: string,
+    editedAttributes: Record<string, any>
+  ) => {
+    if (!selectedProductForEdit || !productCategoryForEdit || !editingProductId)
+      return;
 
     // Actualizar los atributos del producto específico en productAttributes
     setProductAttributes((prev) => ({
@@ -829,10 +922,10 @@ export function ProductWizardDialog({
     // Usamos una estructura anidada para mantener los atributos por producto
     setFormData((prev) => {
       const newAttributes = { ...prev.attributes };
-      
+
       // Guardar los atributos editados del producto con una clave única que combine attributeId y productId
       const productAttributeKey = `${attributeId}_${editingProductId}`;
-      
+
       // Guardar los atributos editados con las claves correctas (usando los IDs de los atributos de la categoría)
       productCategoryForEdit.attributes.forEach((attr: any) => {
         const attrKey = attr.id?.toString() || attr.title;
@@ -841,7 +934,8 @@ export function ProductWizardDialog({
           if (!newAttributes[productAttributeKey]) {
             newAttributes[productAttributeKey] = {};
           }
-          newAttributes[productAttributeKey][attrKey] = editedAttributes[attrKey];
+          newAttributes[productAttributeKey][attrKey] =
+            editedAttributes[attrKey];
         }
       });
 
@@ -872,279 +966,297 @@ export function ProductWizardDialog({
       >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Editar Atributos de {selectedProductForEdit?.name}</DialogTitle>
+            <DialogTitle>
+              Editar Atributos de {selectedProductForEdit?.name}
+            </DialogTitle>
           </DialogHeader>
-          {selectedProductForEdit && productCategoryForEdit && editingAttributeId && editingProductId && (
-            <ProductAttributesEditor
-              product={selectedProductForEdit}
-              category={productCategoryForEdit}
-              initialAttributes={
-                productAttributes[editingAttributeId]?.find(entry => entry.productId === editingProductId)?.attributes 
-                  || selectedProductForEdit.attributes 
-                  || {}
-              }
-              onSave={(editedAttributes) => {
-                handleSaveEditedAttributes(editingAttributeId, editedAttributes);
-              }}
-              onCancel={() => {
-                setEditingAttributeId(null);
-                setSelectedProductForEdit(null);
-                setEditingProductId(null);
-              }}
-            />
-          )}
+          {selectedProductForEdit &&
+            productCategoryForEdit &&
+            editingAttributeId &&
+            editingProductId && (
+              <ProductAttributesEditor
+                product={selectedProductForEdit}
+                category={productCategoryForEdit}
+                initialAttributes={
+                  productAttributes[editingAttributeId]?.find(
+                    (entry) => entry.productId === editingProductId
+                  )?.attributes ||
+                  selectedProductForEdit.attributes ||
+                  {}
+                }
+                onSave={(editedAttributes) => {
+                  handleSaveEditedAttributes(
+                    editingAttributeId,
+                    editedAttributes
+                  );
+                }}
+                onCancel={() => {
+                  setEditingAttributeId(null);
+                  setSelectedProductForEdit(null);
+                  setEditingProductId(null);
+                }}
+              />
+            )}
         </DialogContent>
       </Dialog>
 
       <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Package className="w-5 h-5" />
-            Nuevo Producto - Paso {currentStep} de 2
-          </DialogTitle>
-        </DialogHeader>
+        <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5" />
+              Nuevo Producto - Paso {currentStep} de 2
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="space-y-6">
-          <div className="flex items-center justify-center space-x-4">
-            <div
-              className={`flex items-center space-x-2 ${
-                currentStep >= 1 ? "text-primary" : "text-muted-foreground"
-              }`}
-            >
+          <div className="space-y-6">
+            <div className="flex items-center justify-center space-x-4">
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  currentStep >= 1
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
+                className={`flex items-center space-x-2 ${
+                  currentStep >= 1 ? "text-primary" : "text-muted-foreground"
                 }`}
               >
-                1
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    currentStep >= 1
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted"
+                  }`}
+                >
+                  1
+                </div>
+                <span className="text-sm font-medium">Información Básica</span>
               </div>
-              <span className="text-sm font-medium">Información Básica</span>
-            </div>
-            <div className="w-8 h-px bg-border" />
-            <div
-              className={`flex items-center space-x-2 ${
-                currentStep >= 2 ? "text-primary" : "text-muted-foreground"
-              }`}
-            >
+              <div className="w-8 h-px bg-border" />
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  currentStep >= 2
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
+                className={`flex items-center space-x-2 ${
+                  currentStep >= 2 ? "text-primary" : "text-muted-foreground"
                 }`}
               >
-                2
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    currentStep >= 2
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted"
+                  }`}
+                >
+                  2
+                </div>
+                <span className="text-sm font-medium">Atributos</span>
               </div>
-              <span className="text-sm font-medium">Atributos</span>
             </div>
-          </div>
 
-          {currentStep === 1 && (
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nombre del Producto *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    placeholder="Ej: iPhone 14 Pro"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sku">SKU *</Label>
-                  <Input
-                    id="sku"
-                    value={formData.sku}
-                    onChange={(e) => handleInputChange("sku", e.target.value)}
-                    placeholder="Se generará automáticamente"
-                    readOnly
-                    className="bg-muted cursor-not-allowed"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    El código del producto se genera automáticamente
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Descripción</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) =>
-                    handleInputChange("description", e.target.value)
-                  }
-                  placeholder="Descripción del producto..."
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="price">Precio *</Label>
-                  <div className="flex gap-2">
+            {currentStep === 1 && (
+              <div className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Nombre del Producto *</Label>
                     <Input
-                      id="price"
-                      type="number"
-                      step="0.01"
-                      value={formData.price}
-                      onChange={(e) => handleInputChange("price", e.target.value)}
-                      placeholder="0.00"
-                      className="flex-1"
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) =>
+                        handleInputChange("name", e.target.value)
+                      }
+                      placeholder="Ej: iPhone 14 Pro"
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sku">SKU *</Label>
+                    <Input
+                      id="sku"
+                      value={formData.sku}
+                      onChange={(e) => handleInputChange("sku", e.target.value)}
+                      placeholder="Se generará automáticamente"
+                      readOnly
+                      className="bg-muted cursor-not-allowed"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      El código del producto se genera automáticamente
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Descripción</Label>
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) =>
+                      handleInputChange("description", e.target.value)
+                    }
+                    placeholder="Descripción del producto..."
+                    rows={3}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="price">Precio *</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="price"
+                        type="number"
+                        step="0.01"
+                        value={formData.price}
+                        onChange={(e) =>
+                          handleInputChange("price", e.target.value)
+                        }
+                        placeholder="0.00"
+                        className="flex-1"
+                      />
+                      <Select
+                        value={formData.priceCurrency || preferredCurrency}
+                        onValueChange={(value: "Bs" | "USD" | "EUR") =>
+                          handleInputChange("priceCurrency", value)
+                        }
+                      >
+                        <SelectTrigger className="w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Bs">Bs.</SelectItem>
+                          <SelectItem value="USD">$</SelectItem>
+                          <SelectItem value="EUR">€</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Categoría *</Label>
                     <Select
-                      value={formData.priceCurrency || "Bs"}
-                      onValueChange={(value: "Bs" | "USD" | "EUR") =>
-                        handleInputChange("priceCurrency", value)
+                      value={formData.category}
+                      onValueChange={(value) =>
+                        handleInputChange("category", value)
                       }
                     >
-                      <SelectTrigger className="w-24">
-                        <SelectValue />
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccione una categoría" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Bs">Bs.</SelectItem>
-                        <SelectItem value="USD">$</SelectItem>
-                        <SelectItem value="EUR">€</SelectItem>
+                        {categories.length > 0 ? (
+                          categories.map((category) => (
+                            <SelectItem
+                              key={category.id}
+                              value={category.id.toString()}
+                            >
+                              {category.name}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="" disabled>
+                            No hay categorías disponibles
+                          </SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="category">Categoría *</Label>
+                  <Label htmlFor="status">Estado</Label>
                   <Select
-                    value={formData.category}
+                    value={formData.status}
                     onValueChange={(value) =>
-                      handleInputChange("category", value)
+                      handleInputChange("status", value)
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Seleccione una categoría" />
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories.length > 0 ? (
-                        categories.map((category) => (
-                          <SelectItem
-                            key={category.id}
-                            value={category.id.toString()}
-                          >
-                            {category.name}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="" disabled>
-                          No hay categorías disponibles
-                        </SelectItem>
-                      )}
+                      <SelectItem value="Disponible">Disponible</SelectItem>
+                      <SelectItem value="Agotado">Agotado</SelectItem>
+                      <SelectItem value="Descontinuado">
+                        Descontinuado
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+            )}
 
-              <div className="space-y-2">
-                <Label htmlFor="status">Estado</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => handleInputChange("status", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Disponible">Disponible</SelectItem>
-                    <SelectItem value="Agotado">Agotado</SelectItem>
-                    <SelectItem value="Descontinuado">Descontinuado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
+            {currentStep === 2 && (
+              <div className="space-y-4">
+                {selectedCategory ? (
+                  <>
+                    <div className="flex items-center gap-2 mb-4">
+                      <Tag className="w-4 h-4" />
+                      <h3 className="text-lg font-semibold">
+                        Atributos de {selectedCategory.name}
+                      </h3>
+                    </div>
 
-          {currentStep === 2 && (
-            <div className="space-y-4">
-              {selectedCategory ? (
-                <>
-                  <div className="flex items-center gap-2 mb-4">
-                    <Tag className="w-4 h-4" />
-                    <h3 className="text-lg font-semibold">
-                      Atributos de {selectedCategory.name}
-                    </h3>
+                    {selectedCategory.attributes.length > 0 ? (
+                      <div className="space-y-4">
+                        {selectedCategory.attributes.map((attribute) => (
+                          <div key={attribute.id} className="space-y-2">
+                            <Label htmlFor={`attr-${attribute.id}`}>
+                              {attribute.title}
+                            </Label>
+                            <p className="text-sm text-muted-foreground">
+                              {attribute.description}
+                            </p>
+                            {renderAttributeInput({
+                              id: attribute.id.toString(),
+                              title: attribute.title,
+                              description: attribute.description,
+                              valueType: attribute.valueType as
+                                | "Product"
+                                | "Number"
+                                | "Select"
+                                | "Multiple select",
+                              values: attribute.values,
+                              maxSelections: attribute.maxSelections,
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Tag className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <p>Esta categoría no tiene atributos configurados.</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Tag className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>
+                      Seleccione una categoría en el paso anterior para ver los
+                      atributos.
+                    </p>
                   </div>
+                )}
+              </div>
+            )}
 
-                  {selectedCategory.attributes.length > 0 ? (
-                    <div className="space-y-4">
-                      {selectedCategory.attributes.map((attribute) => (
-                        <div key={attribute.id} className="space-y-2">
-                          <Label htmlFor={`attr-${attribute.id}`}>
-                            {attribute.title}
-                          </Label>
-                          <p className="text-sm text-muted-foreground">
-                            {attribute.description}
-                          </p>
-                          {renderAttributeInput({
-                            id: attribute.id.toString(),
-                            title: attribute.title,
-                            description: attribute.description,
-                            valueType: attribute.valueType as
-                              | "Product"
-                              | "Number"
-                              | "Select"
-                              | "Multiple select",
-                            values: attribute.values,
-                            maxSelections: attribute.maxSelections,
-                          })}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Tag className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>Esta categoría no tiene atributos configurados.</p>
-                    </div>
-                  )}
-                </>
+            <div className="flex justify-between pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={handleBack}
+                disabled={currentStep === 1}
+              >
+                <ChevronLeft className="w-4 h-4 mr-2" />
+                Anterior
+              </Button>
+
+              {currentStep < 2 ? (
+                <Button
+                  onClick={handleNext}
+                  disabled={
+                    !formData.name || !formData.price || !formData.category
+                  }
+                >
+                  Siguiente
+                  <ChevronRight className="w-4 h-4 ml-2" />
+                </Button>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Tag className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>
-                    Seleccione una categoría en el paso anterior para ver los
-                    atributos.
-                  </p>
-                </div>
+                <Button onClick={handleSubmit}>Crear Producto</Button>
               )}
             </div>
-          )}
-
-          <div className="flex justify-between pt-4 border-t">
-            <Button
-              variant="outline"
-              onClick={handleBack}
-              disabled={currentStep === 1}
-            >
-              <ChevronLeft className="w-4 h-4 mr-2" />
-              Anterior
-            </Button>
-
-            {currentStep < 2 ? (
-              <Button
-                onClick={handleNext}
-                disabled={
-                  !formData.name || !formData.price || !formData.category
-                }
-              >
-                Siguiente
-                <ChevronRight className="w-4 h-4 ml-2" />
-              </Button>
-            ) : (
-              <Button onClick={handleSubmit}>Crear Producto</Button>
-            )}
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

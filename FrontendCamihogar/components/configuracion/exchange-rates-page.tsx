@@ -31,7 +31,7 @@ import { Plus, Trash2, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import { ExchangeRate } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
-
+import { Switch } from "@/components/ui/switch";
 export function ExchangeRatesPage() {
   const { preferredCurrency, setPreferredCurrency } = useCurrency();
   const [rates, setRates] = useState<ExchangeRate[]>([]);
@@ -74,6 +74,11 @@ export function ExchangeRatesPage() {
         await update("exchange_rates", { ...rate, isActive: false });
       }
 
+      // Disparar evento después de desactivar tasas anteriores
+      if (existingRates.length > 0) {
+        window.dispatchEvent(new CustomEvent("exchangeRateUpdated"));
+      }
+
       // Crear nueva tasa
       const newRate: ExchangeRate = {
         id: crypto.randomUUID(),
@@ -112,12 +117,19 @@ export function ExchangeRatesPage() {
     }
   };
 
-  const handleCurrencyToggle = async (currency: "USD" | "EUR", checked: boolean) => {
+  const handleCurrencyToggle = async (
+    currency: "USD" | "EUR",
+    checked: boolean
+  ) => {
     try {
       if (checked) {
         // Activar esta moneda (desactiva automáticamente Bolívar)
         await setPreferredCurrency(currency);
-        toast.success(`Moneda de visualización cambiada a ${currency === "USD" ? "Dólares" : "Euros"}`);
+        toast.success(
+          `Moneda de visualización cambiada a ${
+            currency === "USD" ? "Dólares" : "Euros"
+          }`
+        );
       } else {
         // Desactivar esta moneda (vuelve a Bolívar por defecto)
         await setPreferredCurrency("Bs");
@@ -196,7 +208,6 @@ export function ExchangeRatesPage() {
                     Ejemplo: 38.50 significa 1 USD = 38.50 Bs
                   </p>
                 </div>
-                
               </div>
               <div className="flex gap-2">
                 <Button type="submit">Guardar</Button>
@@ -242,14 +253,16 @@ export function ExchangeRatesPage() {
                   <TableHead>Moneda</TableHead>
                   <TableHead>Tasa (Bs)</TableHead>
                   <TableHead>Fecha Creación</TableHead>
-                  <TableHead className="text-center">Moneda de Visualización</TableHead>
+                  <TableHead className="text-center">
+                    Moneda de Visualización
+                  </TableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {activeRates.map((rate) => {
                   const isChecked = preferredCurrency === rate.toCurrency;
-                  
+
                   return (
                     <TableRow key={rate.id}>
                       <TableCell className="font-medium">
@@ -260,13 +273,15 @@ export function ExchangeRatesPage() {
                         {new Date(rate.createdAt).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="checkbox-con" style={{ margin: "0", justifyContent: "center" }}>
-                          <input
-                            id={`currency-checkbox-${rate.id}`}
-                            type="checkbox"
+                        <div
+                          className="checkbox-con"
+                          style={{ margin: "0", justifyContent: "center" }}
+                        >
+                          <Switch
+                            id={`currency-switch-${rate.id}`}
                             checked={isChecked}
-                            onChange={(e) =>
-                              handleCurrencyToggle(rate.toCurrency, e.target.checked)
+                            onCheckedChange={(checked) =>
+                              handleCurrencyToggle(rate.toCurrency, checked)
                             }
                           />
                         </div>
@@ -290,9 +305,11 @@ export function ExchangeRatesPage() {
         {activeRates.length > 0 && (
           <CardContent className="pt-0">
             <p className="text-sm text-muted-foreground text-center">
-              {preferredCurrency === "Bs" 
+              {preferredCurrency === "Bs"
                 ? "La moneda de visualización actual es Bolívares (por defecto). Activa un checkbox para cambiar."
-                : `La moneda de visualización actual es ${preferredCurrency === "USD" ? "Dólares" : "Euros"}. Desactiva todos los checkboxes para volver a Bolívares.`}
+                : `La moneda de visualización actual es ${
+                    preferredCurrency === "USD" ? "Dólares" : "Euros"
+                  }. Desactiva todos los checkboxes para volver a Bolívares.`}
             </p>
           </CardContent>
         )}
@@ -300,4 +317,3 @@ export function ExchangeRatesPage() {
     </div>
   );
 }
-

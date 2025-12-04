@@ -1,5 +1,16 @@
 import * as db from "./indexeddb";
 import type { Currency } from "./currency-utils";
+import { apiClient } from "./api-client";
+import type {
+  CategoryResponseDto,
+  CreateCategoryDto,
+  UpdateCategoryDto,
+  ProductResponseDto,
+  CreateProductDto,
+  UpdateProductDto,
+  UserResponseDto,
+} from "./api-client";
+import { syncManager } from "./sync-manager";
 
 export interface AttributeValue {
   id: string;
@@ -69,10 +80,143 @@ const categoryFromDB = (categoryDB: CategoryDB): Category => ({
   id: Number.parseInt(categoryDB.id),
 });
 
+// Helper para convertir string ID del backend a number ID del frontend
+// Usa un hash simple para generar un ID numérico consistente
+const backendIdToNumber = (backendId: string): number => {
+  // Si el string ID puede parsearse como número, usarlo directamente
+  const parsed = Number.parseInt(backendId);
+  if (!Number.isNaN(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  // Si no, generar un hash numérico del string
+  let hash = 0;
+  for (let i = 0; i < backendId.length; i++) {
+    const char = backendId.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convertir a 32 bits
+  }
+
+  // Retornar un número positivo
+  return Math.abs(hash) || Date.now();
+};
+
+// Helper functions para mapear entre frontend y backend
+const categoryToBackendDto = (
+  category: Omit<Category, "id">
+): CreateCategoryDto => ({
+  name: category.name,
+  description: category.description,
+  maxDiscount: category.maxDiscount,
+  maxDiscountCurrency: category.maxDiscountCurrency,
+  attributes: category.attributes.map((attr) => ({
+    title: attr.title,
+    description: attr.description,
+    valueType: attr.valueType,
+    maxSelections: attr.maxSelections,
+    values: Array.isArray(attr.values)
+      ? attr.values.map((val) =>
+          typeof val === "string"
+            ? { label: val }
+            : {
+                label: val.label,
+                isDefault: val.isDefault,
+                priceAdjustment: val.priceAdjustment,
+                priceAdjustmentCurrency: val.priceAdjustmentCurrency,
+                productId: val.productId?.toString(),
+              }
+        )
+      : [],
+  })),
+});
+
+const categoryFromBackendDto = (dto: CategoryResponseDto): Category => ({
+  id: backendIdToNumber(dto.id),
+  name: dto.name,
+  description: dto.description,
+  products: dto.products,
+  maxDiscount: dto.maxDiscount,
+  maxDiscountCurrency: dto.maxDiscountCurrency as Currency | undefined,
+  attributes: dto.attributes.map((attr) => ({
+    id: backendIdToNumber(attr.id || "0"),
+    title: attr.title,
+    description: attr.description,
+    valueType: attr.valueType,
+    maxSelections: attr.maxSelections,
+    values: attr.values.map((val) => ({
+      id: val.id,
+      label: val.label,
+      isDefault: val.isDefault,
+      priceAdjustment: val.priceAdjustment,
+      priceAdjustmentCurrency: val.priceAdjustmentCurrency as
+        | Currency
+        | undefined,
+      productId: val.productId ? backendIdToNumber(val.productId) : undefined,
+    })),
+  })),
+});
+
+// Helper para verificar si estamos online
+const isOnline = (): boolean => {
+  if (typeof window === "undefined") return false;
+  return navigator.onLine;
+};
+
 export const getCategories = async (): Promise<Category[]> => {
   try {
-    const categoriesDB = await db.getAll<CategoryDB>("categories");
-    return categoriesDB.map(categoryFromDB);
+    // Cargar siempre categorías locales desde IndexedDB primero (offline-first)
+    const localCategoriesDB = await db.getAll<CategoryDB>("categories");
+    const localCategories = localCategoriesDB.map(categoryFromDB);
+
+    // Si hay conexión, intentar sincronizar con backend y hacer merge
+    if (isOnline()) {
+      try {
+        const backendCategories = await apiClient.getCategories();
+        const backendCategoriesMapped = backendCategories.map(
+          categoryFromBackendDto
+        );
+
+        // Hacer merge: combinar categorías del backend con las locales
+        // Crear un Map usando el ID como clave para evitar duplicados
+        // Las categorías del backend tienen prioridad sobre las locales
+        const categoriesMap = new Map<number, Category>();
+
+        // Primero agregar categorías locales
+        for (const category of localCategories) {
+          categoriesMap.set(category.id, category);
+        }
+
+        // Luego agregar/actualizar con categorías del backend (estas tienen prioridad)
+        for (const category of backendCategoriesMapped) {
+          categoriesMap.set(category.id, category);
+          // Guardar/actualizar en IndexedDB
+          try {
+            await db.update("categories", categoryToDB(category));
+          } catch {
+            await db.add("categories", categoryToDB(category));
+          }
+        }
+
+        const mergedCategories = Array.from(categoriesMap.values());
+        console.log(
+          `✅ Categorías: ${localCategories.length} locales + ${backendCategoriesMapped.length} del backend = ${mergedCategories.length} totales`
+        );
+        return mergedCategories;
+      } catch (error) {
+        console.warn(
+          "⚠️ Error cargando categorías del backend, usando solo IndexedDB:",
+          error
+        );
+        // Si falla el backend, retornar categorías locales
+        return localCategories;
+      }
+    }
+
+    // Si está offline, solo retornar categorías locales
+    console.log(
+      `✅ Categorías cargadas desde IndexedDB: ${localCategories.length}`
+    );
+    return localCategories;
   } catch (error) {
     console.error("Error loading categories from IndexedDB:", error);
     return [];
@@ -91,16 +235,115 @@ export const getCategory = async (
   }
 };
 
+// Helper para resolver el ObjectId del backend de una categoría por nombre
+// Esta función se usa durante la sincronización para resolver categoryId correctamente
+export const resolveCategoryBackendId = async (
+  categoryName: string
+): Promise<string | null> => {
+  if (!isOnline()) {
+    return null;
+  }
+
+  try {
+    // Buscar directamente en el backend
+    const backendCategories = await apiClient.getCategories();
+    const backendCategory = backendCategories.find(
+      (c) => c.name === categoryName
+    );
+
+    if (backendCategory) {
+      return backendCategory.id;
+    }
+
+    // Si no existe en el backend, buscar localmente y sincronizarla
+    const categoriesDB = await db.getAll<CategoryDB>("categories");
+    const localCategories = categoriesDB.map(categoryFromDB);
+    const localCategory = localCategories.find((c) => c.name === categoryName);
+
+    if (localCategory) {
+      // Sincronizar la categoría primero
+      const createCategoryDto = categoryToBackendDto(localCategory);
+      const syncedCategory = await apiClient.createCategory(createCategoryDto);
+
+      // Actualizar la categoría local con el ID del backend
+      const updatedLocalCategory = categoryFromBackendDto(syncedCategory);
+      await db.update("categories", categoryToDB(updatedLocalCategory));
+
+      return syncedCategory.id;
+    }
+
+    return null;
+  } catch (error) {
+    console.warn("⚠️ Error resolviendo categoryId del backend:", error);
+    return null;
+  }
+};
+
 export const addCategory = async (
   category: Omit<Category, "id">
 ): Promise<Category> => {
+  let newCategory: Category;
+  let syncedToBackend = false;
+
+  // Intentar guardar en el backend primero si hay conexión
+  if (isOnline()) {
+    try {
+      const createDto = categoryToBackendDto(category);
+      const backendCategory = await apiClient.createCategory(createDto);
+      newCategory = categoryFromBackendDto(backendCategory);
+
+      // Guardar también en IndexedDB
+      await db.add("categories", categoryToDB(newCategory));
+      console.log(
+        "✅ Categoría guardada en backend y IndexedDB:",
+        newCategory.name
+      );
+      syncedToBackend = true;
+      return newCategory;
+    } catch (error) {
+      console.warn(
+        "⚠️ Error guardando categoría en backend, guardando localmente:",
+        error
+      );
+      // Continuar para guardar localmente y encolar para sincronización
+    }
+  }
+
+  // Guardar en IndexedDB
   try {
-    const categories = await getCategories();
-    const newId = Math.max(...categories.map((c) => c.id), 0) + 1;
-    const newCategory: Category = { ...category, id: newId };
+    // Cargar categorías directamente desde IndexedDB para evitar llamadas recursivas a getCategories()
+    const categoriesDB = await db.getAll<CategoryDB>("categories");
+    const localCategories = categoriesDB.map(categoryFromDB);
+    const newId = Math.max(...localCategories.map((c) => c.id), 0) + 1;
+    newCategory = { ...category, id: newId };
 
     await db.add("categories", categoryToDB(newCategory));
     console.log("✅ Categoría guardada en IndexedDB:", newCategory.name);
+
+    // Encolar para sincronización si NO se sincronizó con el backend
+    // (puede ser porque está offline O porque falló el backend aunque esté online)
+    if (!syncedToBackend) {
+      try {
+        const createDto = categoryToBackendDto(newCategory);
+        await syncManager.addToQueue({
+          type: "create",
+          entity: "category",
+          entityId: newCategory.id.toString(),
+          data: createDto,
+        });
+        console.log(
+          "✅ Categoría encolada para sincronización:",
+          newCategory.name
+        );
+      } catch (error) {
+        console.warn(
+          "⚠️ Error encolando categoría para sincronización:",
+          error
+        );
+        // No lanzar error, la categoría ya está guardada localmente
+      }
+    }
+
     return newCategory;
   } catch (error) {
     console.error("Error adding category to IndexedDB:", error);
@@ -112,18 +355,160 @@ export const updateCategory = async (
   id: number,
   updates: Partial<Category>
 ): Promise<Category> => {
+  const existingCategory = await getCategory(id);
+  if (!existingCategory) {
+    throw new Error(`Category with id ${id} not found`);
+  }
+
+  const updatedCategory: Category = {
+    ...existingCategory,
+    ...updates,
+  };
+
+  // Variable para rastrear si la categoría existe en el backend
+  let backendCategoryId: string | null = null;
+
+  // Intentar actualizar en el backend primero si hay conexión
+  if (isOnline()) {
+    try {
+      // Buscar la categoría en el backend por nombre para obtener su ObjectId
+      try {
+        const backendCategory = await apiClient.getCategoryByName(
+          existingCategory.name
+        );
+        if (backendCategory) {
+          backendCategoryId = backendCategory.id;
+        }
+      } catch (error) {
+        // La categoría no existe en el backend todavía
+        console.warn(
+          "⚠️ Categoría no encontrada en backend por nombre, actualizando solo localmente"
+        );
+      }
+
+      // Si encontramos la categoría en el backend, actualizarla
+      if (backendCategoryId) {
+        const updateDto: UpdateCategoryDto = {
+          name:
+            updatedCategory.name !== existingCategory.name
+              ? updatedCategory.name
+              : undefined,
+          description:
+            updatedCategory.description !== existingCategory.description
+              ? updatedCategory.description
+              : undefined,
+          maxDiscount:
+            updatedCategory.maxDiscount !== existingCategory.maxDiscount
+              ? updatedCategory.maxDiscount
+              : undefined,
+          maxDiscountCurrency:
+            updatedCategory.maxDiscountCurrency !==
+            existingCategory.maxDiscountCurrency
+              ? updatedCategory.maxDiscountCurrency
+              : undefined,
+          attributes:
+            updatedCategory.attributes !== existingCategory.attributes
+              ? updatedCategory.attributes.map((attr) => ({
+                  id: attr.id.toString(),
+                  title: attr.title,
+                  description: attr.description,
+                  valueType: attr.valueType,
+                  maxSelections: attr.maxSelections,
+                  values: Array.isArray(attr.values)
+                    ? attr.values.map((val) =>
+                        typeof val === "string"
+                          ? { label: val }
+                          : {
+                              id: val.id,
+                              label: val.label,
+                              isDefault: val.isDefault,
+                              priceAdjustment: val.priceAdjustment,
+                              priceAdjustmentCurrency:
+                                val.priceAdjustmentCurrency,
+                              productId: val.productId?.toString(),
+                            }
+                      )
+                    : [],
+                }))
+              : undefined,
+        };
+
+        const backendCategory = await apiClient.updateCategory(
+          backendCategoryId,
+          updateDto
+        );
+        const syncedCategory = categoryFromBackendDto(backendCategory);
+
+        // Actualizar también en IndexedDB con los datos del backend
+        await db.update("categories", categoryToDB(syncedCategory));
+        console.log(
+          "✅ Categoría actualizada en backend y IndexedDB:",
+          syncedCategory.name
+        );
+        return syncedCategory;
+      } else {
+        // La categoría no existe en el backend, actualizar localmente y encolar para sincronización
+        console.log(
+          "⚠️ Categoría no existe en backend, actualizando localmente y encolando para sincronización"
+        );
+        // Continuar para guardar localmente y encolar
+      }
+    } catch (error) {
+      console.warn(
+        "⚠️ Error actualizando categoría en backend, guardando localmente:",
+        error
+      );
+      // Continuar para guardar localmente
+    }
+  }
+
+  // Guardar en IndexedDB
   try {
-    const existingCategory = await getCategory(id);
-    if (!existingCategory) {
-      throw new Error(`Category with id ${id} not found`);
+    await db.update("categories", categoryToDB(updatedCategory));
+
+    // Encolar para sincronización si la categoría no está en el backend o estamos offline
+    const shouldEnqueue = !isOnline() || !backendCategoryId;
+    if (shouldEnqueue) {
+      try {
+        const updateDto: UpdateCategoryDto = {
+          name: updatedCategory.name,
+          description: updatedCategory.description,
+          maxDiscount: updatedCategory.maxDiscount,
+          maxDiscountCurrency: updatedCategory.maxDiscountCurrency,
+          attributes: updatedCategory.attributes.map((attr) => ({
+            id: attr.id.toString(),
+            title: attr.title,
+            description: attr.description,
+            valueType: attr.valueType,
+            maxSelections: attr.maxSelections,
+            values: Array.isArray(attr.values)
+              ? attr.values.map((val) =>
+                  typeof val === "string"
+                    ? { label: val }
+                    : {
+                        id: val.id,
+                        label: val.label,
+                        isDefault: val.isDefault,
+                        priceAdjustment: val.priceAdjustment,
+                        priceAdjustmentCurrency: val.priceAdjustmentCurrency,
+                        productId: val.productId?.toString(),
+                      }
+                )
+              : [],
+          })),
+        };
+        await syncManager.addToQueue({
+          type: "update",
+          entity: "category",
+          entityId: id.toString(),
+          data: updateDto,
+        });
+        console.log("✅ Categoría encolada para sincronización");
+      } catch (error) {
+        console.warn("⚠️ Error encolando categoría para sincronización:", error);
+      }
     }
 
-    const updatedCategory: Category = {
-      ...existingCategory,
-      ...updates,
-    };
-
-    await db.update("categories", categoryToDB(updatedCategory));
     return updatedCategory;
   } catch (error) {
     console.error("Error updating category in IndexedDB:", error);
@@ -132,8 +517,65 @@ export const updateCategory = async (
 };
 
 export const deleteCategory = async (id: number): Promise<void> => {
+  // Obtener la categoría local para tener el nombre
+  const localCategory = await getCategory(id);
+  if (!localCategory) {
+    throw new Error(`Category with id ${id} not found`);
+  }
+
+  // Intentar eliminar en el backend primero si hay conexión
+  if (isOnline()) {
+    try {
+      // Buscar la categoría en el backend por nombre para obtener su ObjectId
+      let backendCategoryId: string | null = null;
+      try {
+        const backendCategory = await apiClient.getCategoryByName(
+          localCategory.name
+        );
+        if (backendCategory) {
+          backendCategoryId = backendCategory.id;
+        }
+      } catch (error) {
+        // La categoría no existe en el backend, solo eliminar localmente
+        console.warn(
+          "⚠️ Categoría no encontrada en backend por nombre, eliminando solo localmente"
+        );
+      }
+
+      // Si encontramos la categoría en el backend, eliminarla
+      if (backendCategoryId) {
+        await apiClient.deleteCategory(backendCategoryId);
+        console.log("✅ Categoría eliminada del backend:", backendCategoryId);
+      }
+
+      // Eliminar siempre de IndexedDB
+      await db.remove("categories", id.toString());
+      console.log("✅ Categoría eliminada de IndexedDB:", id);
+      return;
+    } catch (error) {
+      console.warn(
+        "⚠️ Error eliminando categoría del backend, eliminando localmente:",
+        error
+      );
+      // Continuar para eliminar localmente
+    }
+  }
+
+  // Eliminar de IndexedDB
   try {
     await db.remove("categories", id.toString());
+
+    // Encolar para sincronización si estamos offline
+    if (!isOnline()) {
+      await syncManager.addToQueue({
+        type: "delete",
+        entity: "category",
+        entityId: id.toString(),
+        data: {},
+      });
+    }
+
+    console.log("✅ Categoría eliminada de IndexedDB:", id);
   } catch (error) {
     console.error("Error deleting category from IndexedDB:", error);
     throw error;
@@ -165,10 +607,115 @@ const productFromDB = (productDB: ProductDB): Product => ({
   id: Number.parseInt(productDB.id),
 });
 
+// Helper functions para mapear productos entre frontend y backend
+const productToBackendDto = async (
+  product: Product | Omit<Product, "id">
+): Promise<CreateProductDto> => {
+  // El backend ahora resuelve automáticamente la categoría por nombre si CategoryId no es válido
+  // Solo intentamos obtener el ID si estamos online, pero no es crítico
+  let categoryId: string = "";
+  const categoryName: string = product.category;
+
+  if (isOnline()) {
+    try {
+      const backendCategories = await apiClient.getCategories();
+      const backendCategory = backendCategories.find(
+        (c) => c.name === categoryName
+      );
+      if (backendCategory) {
+        categoryId = backendCategory.id;
+      }
+    } catch (error) {
+      // No crítico, el backend lo resolverá por nombre
+    }
+  }
+
+  return {
+    name: product.name,
+    sku: product.sku,
+    description: undefined,
+    categoryId: categoryId || undefined, // Opcional - el backend lo resolverá por nombre si no está presente
+    category: categoryName,
+    price: product.price,
+    priceCurrency: product.priceCurrency,
+    stock: product.stock,
+    status: product.status,
+    attributes: product.attributes,
+    providerId: undefined,
+  };
+};
+
+const productFromBackendDto = (dto: ProductResponseDto): Product => ({
+  id: backendIdToNumber(dto.id),
+  name: dto.name,
+  category: dto.category || "", // El backend devuelve el nombre de la categoría en 'category'
+  price: dto.price,
+  priceCurrency: dto.priceCurrency as Currency | undefined,
+  stock: dto.stock,
+  status: dto.status,
+  sku: dto.sku || "", // El DTO tiene 'sku' en minúsculas
+  attributes: dto.attributes,
+});
+
 export const getProducts = async (): Promise<Product[]> => {
   try {
-    const productsDB = await db.getAll<ProductDB>("products");
-    return productsDB.map(productFromDB);
+    // Cargar siempre productos locales desde IndexedDB primero (offline-first)
+    const localProductsDB = await db.getAll<ProductDB>("products");
+    const localProducts = localProductsDB.map(productFromDB);
+
+    // Si hay conexión, intentar sincronizar con backend y hacer merge
+    if (isOnline()) {
+      try {
+        const backendProducts = await apiClient.getProducts();
+        const backendProductsMapped = backendProducts.map(
+          productFromBackendDto
+        );
+
+        // Hacer merge: combinar productos del backend con los locales
+        // Usar SKU como clave única para evitar duplicados (más confiable que ID)
+        // Los productos del backend tienen prioridad sobre los locales
+        const productsMap = new Map<string, Product>();
+
+        // Primero agregar productos locales
+        for (const product of localProducts) {
+          if (product.sku) {
+            productsMap.set(product.sku, product);
+          }
+        }
+
+        // Luego agregar/actualizar con productos del backend (estos tienen prioridad)
+        for (const product of backendProductsMapped) {
+          if (product.sku) {
+            productsMap.set(product.sku, product);
+            // Guardar/actualizar en IndexedDB
+            try {
+              await db.update("products", productToDB(product));
+            } catch {
+              await db.add("products", productToDB(product));
+            }
+          }
+        }
+
+        const mergedProducts = Array.from(productsMap.values());
+        console.log(
+          `✅ Productos: ${localProducts.length} locales + ${backendProductsMapped.length} del backend = ${mergedProducts.length} totales`
+        );
+        return mergedProducts;
+      } catch (error) {
+        console.warn(
+          "⚠️ Error cargando productos del backend, usando solo IndexedDB:",
+          error
+        );
+        // Si falla el backend, retornar productos locales
+        return localProducts;
+      }
+    }
+
+    // Si está offline, solo retornar productos locales
+    console.log(
+      `✅ Productos cargados desde IndexedDB: ${localProducts.length}`
+    );
+    return localProducts;
   } catch (error) {
     console.error("Error loading products from IndexedDB:", error);
     return [];
@@ -220,13 +767,65 @@ export const getProductsByStatus = async (
 export const addProduct = async (
   product: Omit<Product, "id">
 ): Promise<Product> => {
+  let newProduct: Product;
+  let syncedToBackend = false;
+
+  // Intentar guardar en el backend primero si hay conexión
+  if (isOnline()) {
+    try {
+      const createDto = await productToBackendDto(product);
+      const backendProduct = await apiClient.createProduct(createDto);
+      newProduct = productFromBackendDto(backendProduct);
+
+      // Guardar también en IndexedDB
+      await db.add("products", productToDB(newProduct));
+      console.log(
+        "✅ Producto guardado en backend y IndexedDB:",
+        newProduct.name
+      );
+      syncedToBackend = true;
+      return newProduct;
+    } catch (error) {
+      console.warn(
+        "⚠️ Error guardando producto en backend, guardando localmente:",
+        error
+      );
+      // Continuar para guardar localmente y encolar para sincronización
+    }
+  }
+
+  // Guardar en IndexedDB
   try {
-    const products = await getProducts();
-    const newId = Math.max(...products.map((p) => p.id), 0) + 1;
-    const newProduct: Product = { ...product, id: newId };
+    // Cargar productos directamente desde IndexedDB para evitar llamadas recursivas a getProducts()
+    const productsDB = await db.getAll<ProductDB>("products");
+    const localProducts = productsDB.map(productFromDB);
+    const newId = Math.max(...localProducts.map((p) => p.id), 0) + 1;
+    newProduct = { ...product, id: newId };
 
     await db.add("products", productToDB(newProduct));
     console.log("✅ Producto guardado en IndexedDB:", newProduct.name);
+
+    // Encolar para sincronización si NO se sincronizó con el backend
+    // (puede ser porque está offline O porque falló el backend aunque esté online)
+    if (!syncedToBackend) {
+      try {
+        const createDto = await productToBackendDto(newProduct);
+        await syncManager.addToQueue({
+          type: "create",
+          entity: "product",
+          entityId: newProduct.id.toString(),
+          data: createDto,
+        });
+        console.log(
+          "✅ Producto encolado para sincronización:",
+          newProduct.name
+        );
+      } catch (error) {
+        console.warn("⚠️ Error encolando producto para sincronización:", error);
+        // No lanzar error, el producto ya está guardado localmente
+      }
+    }
+
     return newProduct;
   } catch (error) {
     console.error("Error adding product to IndexedDB:", error);
@@ -238,18 +837,161 @@ export const updateProduct = async (
   id: number,
   updates: Partial<Product>
 ): Promise<Product> => {
+  const existingProduct = await getProduct(id);
+  if (!existingProduct) {
+    throw new Error(`Product with id ${id} not found`);
+  }
+
+  const updatedProduct: Product = {
+    ...existingProduct,
+    ...updates,
+  };
+
+  // Variable para rastrear si el producto existe en el backend
+  let backendProductId: string | null = null;
+
+  // Intentar actualizar en el backend primero si hay conexión
+  if (isOnline()) {
+    try {
+      // Construir el DTO solo con los campos que realmente cambiaron
+      const updateDto: UpdateProductDto = {};
+      
+      if (updatedProduct.name !== existingProduct.name) {
+        updateDto.name = updatedProduct.name;
+      }
+      
+      // Siempre incluir la categoría para mantener consistencia
+      if (updatedProduct.category) {
+        updateDto.category = updatedProduct.category;
+      }
+      
+      if (updatedProduct.price !== existingProduct.price) {
+        updateDto.price = updatedProduct.price;
+      }
+      
+      if (updatedProduct.priceCurrency !== existingProduct.priceCurrency) {
+        updateDto.priceCurrency = updatedProduct.priceCurrency;
+      }
+      
+      if (updatedProduct.stock !== existingProduct.stock) {
+        updateDto.stock = updatedProduct.stock;
+      }
+      
+      if (updatedProduct.status !== existingProduct.status) {
+        updateDto.status = updatedProduct.status;
+      }
+      
+      if (updatedProduct.sku !== existingProduct.sku) {
+        updateDto.sku = updatedProduct.sku;
+      }
+      
+      // Solo incluir attributes si realmente cambiaron
+      const attributesChanged = JSON.stringify(updatedProduct.attributes || {}) !== JSON.stringify(existingProduct.attributes || {});
+      if (attributesChanged) {
+        updateDto.attributes = updatedProduct.attributes;
+      }
+      
+      // Si no hay cambios, al menos enviar la categoría para mantener consistencia
+      const hasChanges = Object.keys(updateDto).length > 0;
+      if (!hasChanges && updatedProduct.category) {
+        updateDto.category = updatedProduct.category;
+      }
+
+      // Buscar el producto en el backend por SKU para obtener su ObjectId
+      try {
+        const backendProduct = await apiClient.getProductBySku(
+          existingProduct.sku
+        );
+        if (backendProduct) {
+          backendProductId = backendProduct.id;
+        }
+      } catch (error) {
+        // El producto no existe en el backend todavía
+        console.warn(
+          "⚠️ Producto no encontrado en backend por SKU, actualizando solo localmente"
+        );
+      }
+
+      // Si encontramos el producto en el backend, actualizarlo
+      if (backendProductId) {
+        // Siempre incluir la categoría y resolver el categoryId del backend
+        const categoryName = updateDto.category || updatedProduct.category;
+        if (categoryName) {
+          const backendCategoryId = await resolveCategoryBackendId(categoryName);
+          if (backendCategoryId) {
+            updateDto.categoryId = backendCategoryId;
+          }
+          // Asegurar que siempre tenemos el nombre de la categoría
+          if (!updateDto.category) {
+            updateDto.category = categoryName;
+          }
+        }
+
+        // Log para debugging
+        console.log("📤 Enviando actualización al backend:", {
+          productId: backendProductId,
+          updateDto: JSON.stringify(updateDto, null, 2),
+        });
+
+        const backendProduct = await apiClient.updateProduct(
+          backendProductId,
+          updateDto
+        );
+        const syncedProduct = productFromBackendDto(backendProduct);
+
+        // Actualizar también en IndexedDB con los datos del backend
+        await db.update("products", productToDB(syncedProduct));
+        console.log(
+          "✅ Producto actualizado en backend y IndexedDB:",
+          syncedProduct.name
+        );
+        return syncedProduct;
+      } else {
+        // El producto no existe en el backend, actualizar localmente y encolar para sincronización
+        console.log(
+          "⚠️ Producto no existe en backend, actualizando localmente y encolando para sincronización"
+        );
+        // Continuar para guardar localmente y encolar
+      }
+    } catch (error) {
+      console.warn(
+        "⚠️ Error actualizando producto en backend, guardando localmente:",
+        error
+      );
+      // Continuar para guardar localmente
+    }
+  }
+
+  // Guardar en IndexedDB
   try {
-    const existingProduct = await getProduct(id);
-    if (!existingProduct) {
-      throw new Error(`Product with id ${id} not found`);
+    await db.update("products", productToDB(updatedProduct));
+
+    // Encolar para sincronización si el producto no está en el backend o estamos offline
+    const shouldEnqueue = !isOnline() || !backendProductId;
+    if (shouldEnqueue) {
+      try {
+        const updateDto: UpdateProductDto = {
+          name: updatedProduct.name,
+          category: updatedProduct.category,
+          price: updatedProduct.price,
+          priceCurrency: updatedProduct.priceCurrency,
+          stock: updatedProduct.stock,
+          status: updatedProduct.status,
+          sku: updatedProduct.sku,
+          attributes: updatedProduct.attributes,
+        };
+        await syncManager.addToQueue({
+          type: "update",
+          entity: "product",
+          entityId: id.toString(),
+          data: updateDto,
+        });
+        console.log("✅ Producto encolado para sincronización");
+      } catch (error) {
+        console.warn("⚠️ Error encolando producto para sincronización:", error);
+      }
     }
 
-    const updatedProduct: Product = {
-      ...existingProduct,
-      ...updates,
-    };
-
-    await db.update("products", productToDB(updatedProduct));
     return updatedProduct;
   } catch (error) {
     console.error("Error updating product in IndexedDB:", error);
@@ -258,8 +1000,63 @@ export const updateProduct = async (
 };
 
 export const deleteProduct = async (id: number): Promise<void> => {
+  // Obtener el producto local para tener el SKU
+  const localProduct = await getProduct(id);
+  if (!localProduct) {
+    throw new Error(`Product with id ${id} not found`);
+  }
+
+  // Intentar eliminar en el backend primero si hay conexión
+  if (isOnline()) {
+    try {
+      // Buscar el producto en el backend por SKU para obtener su ObjectId
+      let backendProductId: string | null = null;
+      try {
+        const backendProduct = await apiClient.getProductBySku(localProduct.sku);
+        if (backendProduct) {
+          backendProductId = backendProduct.id;
+        }
+      } catch (error) {
+        // El producto no existe en el backend, solo eliminar localmente
+        console.warn(
+          "⚠️ Producto no encontrado en backend por SKU, eliminando solo localmente"
+        );
+      }
+
+      // Si encontramos el producto en el backend, eliminarlo
+      if (backendProductId) {
+        await apiClient.deleteProduct(backendProductId);
+        console.log("✅ Producto eliminado del backend:", backendProductId);
+      }
+
+      // Eliminar siempre de IndexedDB
+      await db.remove("products", id.toString());
+      console.log("✅ Producto eliminado de IndexedDB:", id);
+      return;
+    } catch (error) {
+      console.warn(
+        "⚠️ Error eliminando producto del backend, eliminando localmente:",
+        error
+      );
+      // Continuar para eliminar localmente
+    }
+  }
+
+  // Eliminar de IndexedDB
   try {
     await db.remove("products", id.toString());
+
+    // Encolar para sincronización si estamos offline
+    if (!isOnline()) {
+      await syncManager.addToQueue({
+        type: "delete",
+        entity: "product",
+        entityId: id.toString(),
+        data: {},
+      });
+    }
+
+    console.log("✅ Producto eliminado de IndexedDB:", id);
   } catch (error) {
     console.error("Error deleting product from IndexedDB:", error);
     throw error;
@@ -287,6 +1084,7 @@ export interface PartialPayment {
   amount: number;
   method: string;
   date: string;
+  currency?: Currency; // Moneda del pago
   paymentDetails?: {
     // Pago Móvil
     pagomovilReference?: string;
@@ -300,6 +1098,9 @@ export interface PartialPayment {
     cashCurrency?: "Bs" | "USD" | "EUR"; // Moneda del pago en efectivo
     cashReceived?: number; // Monto recibido del cliente
     exchangeRate?: number; // Tasa de cambio usada al momento del pago
+    // Para Pago Móvil y Transferencia
+    originalAmount?: number; // Monto original en la moneda del pago
+    originalCurrency?: "Bs" | "USD" | "EUR"; // Moneda original del pago
   };
 }
 
@@ -321,9 +1122,12 @@ export interface Order {
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
   paymentType: "directo" | "apartado" | "mixto"; // Mantener para compatibilidad
-  saleType?: "apartado" | "entrega" | "contado"; // Nuevo campo
+  saleType?: "apartado" | "entrega" | "contado"; // Mantener para compatibilidad
   paymentMode?: "simple" | "mixto"; // Nuevo campo
   paymentMethod: string;
+  // Nuevos campos opcionales para compatibilidad hacia atrás
+  paymentCondition?: "cashea" | "pagara_en_tienda" | "pago_a_entrega" | "pago_parcial" | "todo_pago";
+  purchaseType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sa";
   paymentDetails?: {
     // Pago Móvil
     pagomovilReference?: string;
@@ -351,6 +1155,10 @@ export interface Order {
   createSupplierOrder?: boolean;
   observations?: string; // Observaciones generales del pedido
   baseCurrency?: "Bs" | "USD" | "EUR"; // Moneda base para visualización del pedido
+  exchangeRatesAtCreation?: {
+    USD?: { rate: number; effectiveDate: string };
+    EUR?: { rate: number; effectiveDate: string };
+  }; // Tasas de cambio del día en que se creó el pedido
 }
 
 export interface Client {
@@ -774,7 +1582,10 @@ export const calculateProductTotalWithAttributes = (
     }
 
     // Función helper para convertir ajuste a Bs
-    const convertAdjustment = (adjustment: number, currency?: string): number => {
+    const convertAdjustment = (
+      adjustment: number,
+      currency?: string
+    ): number => {
       if (!currency || currency === "Bs") return adjustment;
       if (currency === "USD" && exchangeRates?.USD?.rate) {
         return adjustment * exchangeRates.USD.rate;
@@ -925,9 +1736,69 @@ export const calculateProductUnitPriceWithAttributes = (
 
 // ===== USERS STORAGE (IndexedDB) =====
 
+// Helper para mapear UserResponseDto del backend a User del frontend
+const userFromBackendDto = (dto: UserResponseDto): User => ({
+  id: dto.id,
+  username: dto.username,
+  email: dto.email,
+  name: dto.name,
+  role: dto.role as User["role"],
+  status: dto.status as "active" | "inactive",
+  createdAt: dto.createdAt || new Date().toISOString(),
+});
+
 export const getUsers = async (): Promise<User[]> => {
   try {
-    return await db.getAll<User>("users");
+    // Cargar siempre usuarios locales desde IndexedDB primero (offline-first)
+    const localUsers = await db.getAll<User>("users");
+
+    // Si hay conexión, intentar sincronizar con backend y hacer merge
+    if (isOnline()) {
+      try {
+        const backendUsers = await apiClient.getUsers();
+        const backendUsersMapped = backendUsers.map(userFromBackendDto);
+
+        // Hacer merge: combinar usuarios del backend con los locales
+        // Crear un Map usando el ID como clave para evitar duplicados
+        // Los usuarios del backend tienen prioridad sobre los locales
+        const usersMap = new Map<string, User>();
+
+        // Primero agregar usuarios locales
+        for (const user of localUsers) {
+          usersMap.set(user.id, user);
+        }
+
+        // Luego agregar/actualizar con usuarios del backend (estos tienen prioridad)
+        for (const user of backendUsersMapped) {
+          usersMap.set(user.id, user);
+          // Guardar/actualizar en IndexedDB
+          try {
+            await db.update("users", user);
+          } catch {
+            await db.add("users", user);
+          }
+        }
+
+        const mergedUsers = Array.from(usersMap.values());
+        console.log(
+          `✅ Usuarios: ${localUsers.length} locales + ${backendUsersMapped.length} del backend = ${mergedUsers.length} totales`
+        );
+        return mergedUsers;
+      } catch (error) {
+        console.warn(
+          "⚠️ Error cargando usuarios del backend, usando solo IndexedDB:",
+          error
+        );
+        // Si falla el backend, retornar usuarios locales
+        return localUsers;
+      }
+    }
+
+    // Si está offline, solo retornar usuarios locales
+    console.log(
+      `✅ Usuarios cargados desde IndexedDB: ${localUsers.length}`
+    );
+    return localUsers;
   } catch (error) {
     console.error("Error loading users from IndexedDB:", error);
     return [];
@@ -1009,9 +1880,7 @@ export const getVendors = async (): Promise<Vendor[]> => {
     // Filtrar usuarios con rol de vendedor de tienda (activos)
     // Los roles pueden venir en formato API ("Store Seller") o display ("Vendedor de tienda")
     const vendorUsers = users.filter(
-      (user) =>
-        user.status === "active" &&
-        user.role === "Store Seller"
+      (user) => user.status === "active" && user.role === "Store Seller"
     );
 
     // Convertir usuarios a formato Vendor
@@ -1041,9 +1910,7 @@ export const getReferrers = async (): Promise<Vendor[]> => {
     // Filtrar usuarios con rol de vendedor online (activos)
     // Los roles pueden venir en formato API ("Online Seller") o display ("Vendedor Online")
     const referrerUsers = users.filter(
-      (user) =>
-        user.status === "active" &&
-        user.role === "Online Seller"
+      (user) => user.status === "active" && user.role === "Online Seller"
     );
 
     // Convertir usuarios a formato Vendor

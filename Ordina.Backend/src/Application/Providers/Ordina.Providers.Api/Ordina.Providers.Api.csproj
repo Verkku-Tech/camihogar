@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\Infrastructure\Ordina.ServiceDefaults\Ordina.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\..\Infrastructure\Ordina.Database\Ordina.Database.csproj" />
+    <ProjectReference Include="..\Ordina.Providers.Application\Ordina.Providers.Application.csproj" />
   </ItemGroup>
 
 </Project>

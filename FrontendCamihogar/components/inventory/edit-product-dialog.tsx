@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -24,6 +25,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Package, Settings } from "lucide-react";
 import { formatCurrency } from "@/lib/currency-utils";
 import { Badge } from "@/components/ui/badge";
+import { useCurrency } from "@/contexts/currency-context";
 
 interface EditProductDialogProps {
   open: boolean;
@@ -242,11 +244,12 @@ export function EditProductDialog({
   product,
   onSave,
 }: EditProductDialogProps) {
+  const { preferredCurrency } = useCurrency();
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     price: "",
-    priceCurrency: "Bs" as "Bs" | "USD" | "EUR",
+    priceCurrency: preferredCurrency as "Bs" | "USD" | "EUR",
     category: "",
     status: "",
     sku: "",
@@ -317,7 +320,7 @@ export function EditProductDialog({
         name: product.name || "",
         description: product.description || "",
         price: product.price && product.price !== 0 ? product.price.toString() : "",
-        priceCurrency: product.priceCurrency || "Bs",
+        priceCurrency: product.priceCurrency || preferredCurrency,
         category: product.category || "",
         status: product.status || "",
         sku: product.sku || "",
@@ -329,7 +332,7 @@ export function EditProductDialog({
         name: product.name || "",
         description: product.description || "",
         price: product.price && product.price !== 0 ? product.price.toString() : "",
-        priceCurrency: product.priceCurrency || "Bs",
+        priceCurrency: product.priceCurrency || preferredCurrency,
         category: product.category || "",
         status: product.status || "",
         sku: product.sku || "",
@@ -487,7 +490,7 @@ export function EditProductDialog({
       await updateProduct(product.id, {
         name: formData.name,
         price: price,
-        priceCurrency: formData.priceCurrency || "Bs",
+        priceCurrency: formData.priceCurrency || preferredCurrency,
         stock: 0, // Los productos se crean bajo demanda, no hay stock
         category: formData.category,
         status: formData.status,
@@ -586,6 +589,9 @@ export function EditProductDialog({
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Atributos de {selectedProductForEdit?.name}</DialogTitle>
+            <DialogDescription>
+              Modifica los atributos específicos de este producto.
+            </DialogDescription>
           </DialogHeader>
           {selectedProductForEdit && productCategoryForEdit && editingAttributeId && editingProductId && (
             <ProductAttributesEditor
@@ -613,6 +619,9 @@ export function EditProductDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar Producto</DialogTitle>
+          <DialogDescription>
+            Modifica los detalles del producto. Los cambios se guardarán en la base de datos.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -675,7 +684,7 @@ export function EditProductDialog({
                     className="flex-1"
                   />
                   <Select
-                    value={formData.priceCurrency || "Bs"}
+                    value={formData.priceCurrency || preferredCurrency}
                     onValueChange={(value: "Bs" | "USD" | "EUR") =>
                       setFormData((prev) => ({ ...prev, priceCurrency: value }))
                     }

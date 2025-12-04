@@ -14,6 +14,7 @@ import { getProducts, type Product } from "@/lib/storage"
 import { toast } from "sonner"
 import type { Currency } from "@/lib/currency-utils"
 import { formatCurrency } from "@/lib/currency-utils"
+import { useCurrency } from "@/contexts/currency-context"
 
 interface AttributeValue {
   id: string
@@ -41,13 +42,14 @@ interface AttributeValuesDialogProps {
 }
 
 export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }: AttributeValuesDialogProps) {
+  const { preferredCurrency } = useCurrency()
   const [values, setValues] = useState<AttributeValue[]>([])
   const [maxSelections, setMaxSelections] = useState<string>("1")
   const [newValue, setNewValue] = useState({
     label: "",
     isDefault: false,
     priceAdjustment: "",
-    priceAdjustmentCurrency: "Bs" as Currency,
+    priceAdjustmentCurrency: preferredCurrency as Currency,
     productId: undefined as number | undefined,
     selectedProduct: null as Product | null,
   })
@@ -92,11 +94,11 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
       label: "",
       isDefault: false,
       priceAdjustment: "",
-      priceAdjustmentCurrency: "Bs",
+      priceAdjustmentCurrency: preferredCurrency,
       productId: undefined,
       selectedProduct: null,
     })
-  }, [attribute])
+  }, [attribute, preferredCurrency])
 
   // Manejar selección de producto
   const handleProductSelect = (product: Product | null) => {
@@ -115,7 +117,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
         label: "",
         productId: undefined,
         priceAdjustment: "",
-        priceAdjustmentCurrency: "Bs",
+        priceAdjustmentCurrency: preferredCurrency,
         selectedProduct: null,
       })
     }
@@ -157,7 +159,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
       label: "",
       isDefault: false,
       priceAdjustment: "",
-      priceAdjustmentCurrency: "Bs",
+      priceAdjustmentCurrency: preferredCurrency,
       productId: undefined,
       selectedProduct: null,
     })
@@ -290,7 +292,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
                   disabled={attribute.valueType === "Product" && !!newValue.selectedProduct}
                 />
                 <Select
-                  value={newValue.priceAdjustmentCurrency || "Bs"}
+                  value={newValue.priceAdjustmentCurrency || preferredCurrency}
                   onValueChange={(value: Currency) =>
                     setNewValue({ ...newValue, priceAdjustmentCurrency: value })
                   }
@@ -407,7 +409,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
                                 autoFocus
                               />
                               <Select
-                                value={value.priceAdjustmentCurrency || "Bs"}
+                                value={value.priceAdjustmentCurrency || preferredCurrency}
                                 onValueChange={(currency: Currency) => {
                                   setValues(values.map(v => 
                                     v.id === value.id ? { ...v, priceAdjustmentCurrency: currency } : v
