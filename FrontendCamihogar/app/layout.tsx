@@ -6,6 +6,7 @@ import { AuthProvider } from "@/contexts/auth-context"
 import { NavigationProvider } from "@/contexts/navigation-context"
 import { CurrencyProvider } from "@/contexts/currency-context"
 import { Toaster } from "@/components/ui/sonner"
+import { RegisterServiceWorker } from "@/components/pwa/register-sw"
 import "./globals.css"
 
 const inter = Inter({
@@ -40,6 +41,7 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
       <body>
+        <RegisterServiceWorker />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

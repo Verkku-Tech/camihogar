@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Plus, Trash2, Settings } from "lucide-react"
 import { AttributeValuesDialog } from "./attribute-values-dialog"
+import { useCurrency } from "@/contexts/currency-context"
 
 interface AttributeValue {
   id: string
@@ -34,11 +35,12 @@ interface CategoryFormDialogProps {
 }
 
 export function CategoryFormDialog({ open, onOpenChange, category, onSave }: CategoryFormDialogProps) {
+  const { preferredCurrency } = useCurrency()
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     maxDiscount: "",
-    maxDiscountCurrency: "Bs" as "Bs" | "USD" | "EUR",
+    maxDiscountCurrency: preferredCurrency as "Bs" | "USD" | "EUR",
   })
   const [attributes, setAttributes] = useState<Attribute[]>([])
   const [newAttribute, setNewAttribute] = useState({
@@ -54,7 +56,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
         name: category.name || "",
         description: category.description || "",
         maxDiscount: category.maxDiscount && category.maxDiscount !== 0 ? category.maxDiscount.toString() : "",
-        maxDiscountCurrency: category.maxDiscountCurrency || "Bs",
+        maxDiscountCurrency: category.maxDiscountCurrency || preferredCurrency,
       })
       // Asegurar que los atributos se carguen con todos sus campos, incluyendo maxSelections
       const loadedAttributes = (category.attributes || []).map((attr: Attribute) => ({
@@ -63,10 +65,10 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
       }))
       setAttributes(loadedAttributes)
     } else {
-      setFormData({ name: "", description: "", maxDiscount: "", maxDiscountCurrency: "Bs" })
+      setFormData({ name: "", description: "", maxDiscount: "", maxDiscountCurrency: preferredCurrency })
       setAttributes([])
     }
-  }, [category])
+  }, [category, preferredCurrency])
 
   const handleAddAttribute = () => {
     if (!newAttribute.title.trim()) return
@@ -95,7 +97,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
     const categoryData = {
       ...formData,
       maxDiscount: formData.maxDiscount === "" ? 0 : parseFloat(formData.maxDiscount),
-      maxDiscountCurrency: formData.maxDiscountCurrency || "Bs",
+      maxDiscountCurrency: formData.maxDiscountCurrency || preferredCurrency,
       attributes,
     }
     onSave(categoryData)
@@ -155,7 +157,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
                         className="flex-1"
                       />
                       <Select
-                        value={formData.maxDiscountCurrency || "Bs"}
+                        value={formData.maxDiscountCurrency || preferredCurrency}
                         onValueChange={(value: "Bs" | "USD" | "EUR") =>
                           setFormData({ ...formData, maxDiscountCurrency: value })
                         }

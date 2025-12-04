@@ -1,0 +1,1769 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { Sidebar } from "@/components/dashboard/sidebar";
+import { ProtectedRoute } from "@/components/auth/protected-route";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import {
+  ArrowLeft,
+  User,
+  Package,
+  DollarSign,
+  FileText,
+  MapPin,
+  Calendar,
+  AlertCircle,
+} from "lucide-react";
+import {
+  getOrders,
+  getClient,
+  type Order,
+  type PartialPayment,
+  type Client,
+  getCategories,
+  getProducts,
+  type Product,
+  type Category,
+  type OrderProduct,
+} from "@/lib/storage";
+import { PAYMENT_CONDITIONS, PURCHASE_TYPES } from "@/components/orders/new-order-dialog";
+import {
+  formatCurrency,
+  type Currency,
+  convertFromBs,
+  type ExchangeRate,
+} from "@/lib/currency-utils";
+import { useCurrency } from "@/contexts/currency-context";
+import type { AttributeValue } from "@/lib/storage";
+import { getAll } from "@/lib/indexeddb";
+import { toast } from "sonner";
+import { Label } from "@/components/ui/label";
+
+// Función helper para obtener el monto original del pago en su moneda
+const getOriginalPaymentAmount = (
+  payment: PartialPayment,
+  exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } }
+): { amount: number; currency: string } => {
+  // Para Efectivo, el monto original está en cashReceived
+  if (payment.method === "Efectivo" && payment.paymentDetails?.cashReceived) {
+    return {
+      amount: payment.paymentDetails.cashReceived,
+      currency: payment.paymentDetails.cashCurrency || payment.currency || "Bs",
+    };
+  }
+
+  // Si hay monto original guardado (para Pago Móvil y Transferencia)
+  if (payment.paymentDetails?.originalAmount !== undefined) {
+    return {
+      amount: payment.paymentDetails.originalAmount,
+      currency:
+        payment.paymentDetails.originalCurrency || payment.currency || "Bs",
+    };
+  }
+
+  // Fallback: calcular desde payment.amount (que está en Bs)
+  const paymentCurrency = payment.currency || "Bs";
+  if (paymentCurrency === "Bs") {
+    return {
+      amount: payment.amount,
+      currency: "Bs",
+    };
+  }
+
+  // IMPORTANTE: SIEMPRE usar la tasa guardada del pago (tasa del día del pago)
+  // Solo usar tasas del día del pedido como fallback si no hay tasa guardada
+  // Esto asegura que los pagos muestren el valor correcto con la tasa que se usó cuando se hizo el pago
+  const rate =
+    payment.paymentDetails?.exchangeRate ||
+    (paymentCurrency === "USD"
+      ? exchangeRates?.USD?.rate
+      : exchangeRates?.EUR?.rate);
+
+  if (rate && rate > 0) {
+    return {
+      amount: payment.amount / rate,
+      currency: paymentCurrency,
+    };
+  }
+
+  // Si no hay tasa, devolver el amount en Bs
+  return {
+    amount: payment.amount,
+    currency: "Bs",
+  };
+};
+
+// Función para calcular ajustes detallados por atributo (similar a product-edit-dialog)
+const calculateDetailedAttributeAdjustments = (
+  productAttributes: Record<string, any>,
+  category: Category | undefined,
+  exchangeRates?: { USD?: any; EUR?: any }
+): Array<{
+  attributeName: string;
+  selectedValueLabel: string;
+  adjustment: number;
+  adjustmentInOriginalCurrency: number;
+  originalCurrency: string;
+}> => {
+  if (!productAttributes || !category || !category.attributes) {
+    return [];
+  }
+
+  const adjustments: Array<{
+    attributeName: string;
+    selectedValueLabel: string;
+    adjustment: number;
+    adjustmentInOriginalCurrency: number;
+    originalCurrency: string;
+  }> = [];
+
+  const convertAdjustmentToBs = (
+    adjustment: number,
+    currency?: string
+  ): number => {
+    if (!currency || currency === "Bs") return adjustment;
+    if (currency === "USD" && exchangeRates?.USD?.rate) {
+      return adjustment * exchangeRates.USD.rate;
+    }
+    if (currency === "EUR" && exchangeRates?.EUR?.rate) {
+      return adjustment * exchangeRates.EUR.rate;
+    }
+    return adjustment;
+  };
+
+  const getValueLabel = (value: string | AttributeValue): string => {
+    return typeof value === "string" ? value : value.label || value.id;
+  };
+
+  Object.entries(productAttributes).forEach(([attrKey, selectedValue]) => {
+    const categoryAttribute = category.attributes.find(
+      (attr) => attr.id?.toString() === attrKey || attr.title === attrKey
+    );
+
+    if (
+      !categoryAttribute ||
+      !categoryAttribute.values ||
+      categoryAttribute.valueType === "Product"
+    ) {
+      return;
+    }
+
+    let attributeAdjustment = 0;
+    let adjustmentInOriginalCurrency = 0;
+    let originalCurrency = "Bs";
+    const selectedLabels: string[] = [];
+
+    if (Array.isArray(selectedValue)) {
+      selectedValue.forEach((valStr) => {
+        const attributeValue = categoryAttribute.values.find(
+          (val: string | AttributeValue) => {
+            if (typeof val === "string") {
+              return val === valStr;
+            }
+            return val.id === valStr || val.label === valStr;
+          }
+        );
+
+        if (attributeValue) {
+          selectedLabels.push(getValueLabel(attributeValue));
+
+          if (
+            typeof attributeValue === "object" &&
+            "priceAdjustment" in attributeValue
+          ) {
+            const adjustment = attributeValue.priceAdjustment || 0;
+            const currency = attributeValue.priceAdjustmentCurrency || "Bs";
+            adjustmentInOriginalCurrency += adjustment;
+            originalCurrency = currency;
+            attributeAdjustment += convertAdjustmentToBs(adjustment, currency);
+          }
+        }
+      });
+    } else {
+      const selectedValueStr = selectedValue?.toString();
+      if (selectedValueStr) {
+        const attributeValue = categoryAttribute.values.find(
+          (val: string | AttributeValue) => {
+            if (typeof val === "string") {
+              return val === selectedValueStr;
+            }
+            return (
+              val.id === selectedValueStr || val.label === selectedValueStr
+            );
+          }
+        );
+
+        if (attributeValue) {
+          selectedLabels.push(getValueLabel(attributeValue));
+
+          if (
+            typeof attributeValue === "object" &&
+            "priceAdjustment" in attributeValue
+          ) {
+            const adjustment = attributeValue.priceAdjustment || 0;
+            const currency = attributeValue.priceAdjustmentCurrency || "Bs";
+            adjustmentInOriginalCurrency = adjustment;
+            originalCurrency = currency;
+            attributeAdjustment = convertAdjustmentToBs(adjustment, currency);
+          }
+        }
+      }
+    }
+
+    if (attributeAdjustment !== 0) {
+      adjustments.push({
+        attributeName: categoryAttribute.title || attrKey,
+        selectedValueLabel: selectedLabels.join(", ") || "",
+        adjustment: attributeAdjustment,
+        adjustmentInOriginalCurrency,
+        originalCurrency,
+      });
+    }
+  });
+
+  return adjustments;
+};
+
+function getStatusColor(status: string) {
+  switch (status) {
+    case "Completado":
+      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+    case "Apartado":
+      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
+    case "Pendiente":
+      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
+    default:
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+  }
+}
+
+export default function OrderDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const orderNumber = params.orderNumber as string;
+  const { formatWithPreference, preferredCurrency } = useCurrency();
+  const [order, setOrder] = useState<Order | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedCurrency, setSelectedCurrency] = useState<Currency | null>(
+    null
+  );
+  const [localExchangeRates, setLocalExchangeRates] = useState<{
+    USD?: ExchangeRate;
+    EUR?: ExchangeRate;
+  }>({});
+  const [formattedTotals, setFormattedTotals] = useState<
+    Record<string, string>
+  >({});
+  const [formattedPayments, setFormattedPayments] = useState<
+    Array<{
+      original: string;
+      converted?: string;
+      currency: string;
+    }>
+  >([]);
+  const [formattedTotalPaid, setFormattedTotalPaid] = useState<string>("");
+  const [formattedPendingBalance, setFormattedPendingBalance] =
+    useState<string>("");
+  const [formattedProductDiscounts, setFormattedProductDiscounts] = useState<
+    Record<string, string>
+  >({});
+  const [formattedProductPrices, setFormattedProductPrices] = useState<
+    Record<string, string>
+  >({});
+  const [formattedProductTotals, setFormattedProductTotals] = useState<
+    Record<string, string>
+  >({});
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [client, setClient] = useState<Client | null>(null);
+  const [productBreakdowns, setProductBreakdowns] = useState<
+    Record<
+      string,
+      {
+        basePrice: string;
+        attributeAdjustments: Array<{
+          name: string;
+          value: string;
+          adjustment: string;
+          adjustmentValue: number;
+        }>;
+        productAttributes: Array<{
+          name: string;
+          price: string;
+          priceValue: number;
+          adjustments: Array<{
+            name: string;
+            value: string;
+            adjustment: string;
+            adjustmentValue: number;
+          }>;
+        }>;
+        unitPrice: string;
+      }
+    >
+  >({});
+
+  useEffect(() => {
+    const loadOrder = async () => {
+      try {
+        // Cargar categorías y productos
+        const [loadedCategories, loadedProducts] = await Promise.all([
+          getCategories(),
+          getProducts(),
+        ]);
+        setCategories(loadedCategories);
+        setAllProducts(loadedProducts);
+
+        const orders = await getOrders();
+        const foundOrder = orders.find((o) => o.orderNumber === orderNumber);
+
+        if (!foundOrder) {
+          // Redirigir si no se encuentra
+          router.push("/pedidos");
+          return;
+        }
+
+        setOrder(foundOrder);
+
+        // Cargar información completa del cliente
+        if (foundOrder.clientId) {
+          const clientData = await getClient(foundOrder.clientId);
+          if (clientData) {
+            setClient(clientData);
+          }
+        }
+
+        // Cargar tasas de cambio para el día del pedido
+        // PRIORIDAD: Usar las tasas guardadas en el pedido si existen
+        if (foundOrder.exchangeRatesAtCreation) {
+          // Convertir las tasas guardadas al formato ExchangeRate
+          const savedRates: { USD?: ExchangeRate; EUR?: ExchangeRate } = {};
+
+          if (foundOrder.exchangeRatesAtCreation.USD) {
+            savedRates.USD = {
+              id: `saved-usd-${foundOrder.id}`,
+              fromCurrency: "Bs",
+              toCurrency: "USD",
+              rate: foundOrder.exchangeRatesAtCreation.USD.rate,
+              effectiveDate:
+                foundOrder.exchangeRatesAtCreation.USD.effectiveDate,
+              isActive: true,
+              createdAt: foundOrder.createdAt,
+              updatedAt: foundOrder.createdAt,
+            };
+          }
+
+          if (foundOrder.exchangeRatesAtCreation.EUR) {
+            savedRates.EUR = {
+              id: `saved-eur-${foundOrder.id}`,
+              fromCurrency: "Bs",
+              toCurrency: "EUR",
+              rate: foundOrder.exchangeRatesAtCreation.EUR.rate,
+              effectiveDate:
+                foundOrder.exchangeRatesAtCreation.EUR.effectiveDate,
+              isActive: true,
+              createdAt: foundOrder.createdAt,
+              updatedAt: foundOrder.createdAt,
+            };
+          }
+
+          setLocalExchangeRates(savedRates);
+        } else {
+          // Fallback: Buscar tasas del día del pedido si no están guardadas
+          const orderDateObj = new Date(foundOrder.createdAt);
+          orderDateObj.setHours(0, 0, 0, 0);
+
+          const allRates = await getAll<ExchangeRate>("exchange_rates");
+          const activeRates = allRates
+            .filter((r) => r.isActive)
+            .sort(
+              (a, b) =>
+                new Date(b.effectiveDate).getTime() -
+                new Date(a.effectiveDate).getTime()
+            );
+
+          // Buscar la tasa más reciente hasta el día del pedido
+          const usdRate = activeRates.find(
+            (r) =>
+              r.toCurrency === "USD" &&
+              new Date(r.effectiveDate).getTime() <= orderDateObj.getTime()
+          );
+          const eurRate = activeRates.find(
+            (r) =>
+              r.toCurrency === "EUR" &&
+              new Date(r.effectiveDate).getTime() <= orderDateObj.getTime()
+          );
+
+          // Si no hay tasa para el día del pedido, usar la más reciente disponible
+          const latestUsd = activeRates.find((r) => r.toCurrency === "USD");
+          const latestEur = activeRates.find((r) => r.toCurrency === "EUR");
+
+          setLocalExchangeRates({
+            USD: usdRate || latestUsd,
+            EUR: eurRate || latestEur,
+          });
+        }
+
+        // SIEMPRE resetear la moneda cuando se carga un pedido
+        setSelectedCurrency(null);
+
+        // Los totales se formatearán cuando se seleccione la moneda
+      } catch (error) {
+        console.error("Error loading order:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (orderNumber) {
+      loadOrder();
+    }
+  }, [orderNumber, router]);
+
+  // Función para formatear con la moneda seleccionada localmente
+  // IMPORTANTE: Siempre usa las tasas del día del pedido, no tasas actuales
+  // Esto asegura que los valores convertidos sean consistentes con el total original
+  const formatWithSelectedCurrency = useCallback(
+    async (
+      amount: number,
+      originalCurrency: Currency = "Bs"
+    ): Promise<string> => {
+      if (!selectedCurrency || selectedCurrency === originalCurrency) {
+        return formatCurrency(amount, originalCurrency);
+      }
+
+      try {
+        // Convertir usando las tasas del día del pedido (localExchangeRates)
+        // NO usar tasas actuales para mantener consistencia con los valores originales
+        let amountInBs = amount;
+        if (originalCurrency !== "Bs") {
+          const rate =
+            originalCurrency === "USD"
+              ? localExchangeRates.USD?.rate
+              : localExchangeRates.EUR?.rate;
+          if (rate && rate > 0) {
+            amountInBs = amount * rate;
+          } else {
+            // Si no hay tasa del día del pedido, no convertir (mostrar en moneda original)
+            console.warn(
+              `No hay tasa del día del pedido para ${originalCurrency}, mostrando valor original`
+            );
+            return formatCurrency(amount, originalCurrency);
+          }
+        }
+
+        if (selectedCurrency === "Bs") {
+          return formatCurrency(amountInBs, "Bs");
+        }
+
+        // Convertir de Bs a la moneda seleccionada usando la tasa del día del pedido
+        const rate =
+          selectedCurrency === "USD"
+            ? localExchangeRates.USD?.rate
+            : localExchangeRates.EUR?.rate;
+
+        if (rate && rate > 0) {
+          const converted = convertFromBs(amountInBs, selectedCurrency, rate);
+          return formatCurrency(converted, selectedCurrency);
+        }
+
+        // Si no hay tasa, mostrar en moneda original
+        console.warn(
+          `No hay tasa del día del pedido para ${selectedCurrency}, mostrando en Bs`
+        );
+        return formatCurrency(amountInBs, "Bs");
+      } catch (error) {
+        console.error("Error converting currency:", error);
+        return formatCurrency(amount, originalCurrency);
+      }
+    },
+    [selectedCurrency, localExchangeRates]
+  );
+
+  // Función para manejar la selección de moneda
+  const handleCurrencySelect = (currency: Currency) => {
+    setSelectedCurrency(currency);
+    toast.success(
+      `Moneda de visualización: ${
+        currency === "Bs"
+          ? "Bolívares"
+          : currency === "USD"
+          ? "Dólares"
+          : "Euros"
+      }`
+    );
+  };
+
+  // Formatear totales cuando cambia la moneda seleccionada
+  useEffect(() => {
+    const formatTotals = async () => {
+      if (!order) return;
+
+      // Si no hay moneda seleccionada, usar Bs por defecto
+      if (!selectedCurrency) {
+        const totals: Record<string, string> = {};
+        totals.total = formatCurrency(order.total, "Bs");
+        totals.subtotal = formatCurrency(order.subtotal, "Bs");
+        totals.tax = formatCurrency(order.taxAmount, "Bs");
+        totals.subtotalBeforeDiscounts = formatCurrency(
+          order.subtotalBeforeDiscounts || 0,
+          "Bs"
+        );
+        if (order.productDiscountTotal && order.productDiscountTotal > 0) {
+          totals.productDiscountTotal = formatCurrency(
+            order.productDiscountTotal,
+            "Bs"
+          );
+        }
+        if (order.generalDiscountAmount && order.generalDiscountAmount > 0) {
+          totals.generalDiscountAmount = formatCurrency(
+            order.generalDiscountAmount,
+            "Bs"
+          );
+        }
+        if (order.deliveryCost > 0) {
+          totals.deliveryCost = formatCurrency(order.deliveryCost, "Bs");
+        }
+        setFormattedTotals(totals);
+        return;
+      }
+
+      const totals: Record<string, string> = {};
+      totals.total = await formatWithSelectedCurrency(order.total, "Bs");
+      totals.subtotal = await formatWithSelectedCurrency(order.subtotal, "Bs");
+      totals.tax = await formatWithSelectedCurrency(order.taxAmount, "Bs");
+      totals.subtotalBeforeDiscounts = await formatWithSelectedCurrency(
+        order.subtotalBeforeDiscounts || 0,
+        "Bs"
+      );
+      if (order.productDiscountTotal && order.productDiscountTotal > 0) {
+        totals.productDiscountTotal = await formatWithSelectedCurrency(
+          order.productDiscountTotal,
+          "Bs"
+        );
+      }
+      if (order.generalDiscountAmount && order.generalDiscountAmount > 0) {
+        totals.generalDiscountAmount = await formatWithSelectedCurrency(
+          order.generalDiscountAmount,
+          "Bs"
+        );
+      }
+      if (order.deliveryCost > 0) {
+        totals.deliveryCost = await formatWithSelectedCurrency(
+          order.deliveryCost,
+          "Bs"
+        );
+      }
+      setFormattedTotals(totals);
+    };
+
+    formatTotals();
+  }, [order, selectedCurrency, formatWithSelectedCurrency]);
+
+  // Formatear pagos cuando cambia la moneda seleccionada
+  useEffect(() => {
+    const formatPayments = async () => {
+      if (
+        !order ||
+        !order.partialPayments ||
+        order.partialPayments.length === 0
+      ) {
+        setFormattedPayments([]);
+        setFormattedTotalPaid("");
+        // Si no hay pagos, el saldo pendiente es el total del pedido
+        if (order) {
+          const totalInBs = order.total;
+          if (selectedCurrency && selectedCurrency !== "Bs") {
+            const pendingFormatted = await formatWithSelectedCurrency(
+              totalInBs,
+              "Bs"
+            );
+            setFormattedPendingBalance(pendingFormatted);
+          } else {
+            setFormattedPendingBalance(formatCurrency(totalInBs, "Bs"));
+          }
+        } else {
+          setFormattedPendingBalance("");
+        }
+        return;
+      }
+
+      const paymentsFormatted = await Promise.all(
+        order.partialPayments.map(async (payment) => {
+          const originalPayment = getOriginalPaymentAmount(
+            payment,
+            localExchangeRates
+          );
+          const originalFormatted = formatCurrency(
+            originalPayment.amount,
+            originalPayment.currency as Currency
+          );
+
+          let convertedFormatted: string | undefined;
+          if (
+            selectedCurrency &&
+            selectedCurrency !== originalPayment.currency
+          ) {
+            // Convertir el pago a la moneda seleccionada
+            convertedFormatted = await formatWithSelectedCurrency(
+              originalPayment.amount,
+              originalPayment.currency as Currency
+            );
+          }
+
+          return {
+            original: originalFormatted,
+            converted: convertedFormatted,
+            currency: originalPayment.currency,
+          };
+        })
+      );
+
+      // Calcular total pagado
+      const totalPaidInBs = order.partialPayments.reduce(
+        (sum, p) => sum + (p.amount || 0),
+        0
+      );
+      if (selectedCurrency && selectedCurrency !== "Bs") {
+        const totalPaidFormatted = await formatWithSelectedCurrency(
+          totalPaidInBs,
+          "Bs"
+        );
+        setFormattedTotalPaid(totalPaidFormatted);
+      } else {
+        setFormattedTotalPaid(formatCurrency(totalPaidInBs, "Bs"));
+      }
+
+      // Calcular saldo pendiente
+      const totalOrderInBs = order.total;
+      const pendingBalanceInBs = totalOrderInBs - totalPaidInBs;
+
+      if (pendingBalanceInBs > 0) {
+        // Hay saldo pendiente
+        if (selectedCurrency && selectedCurrency !== "Bs") {
+          const pendingFormatted = await formatWithSelectedCurrency(
+            pendingBalanceInBs,
+            "Bs"
+          );
+          setFormattedPendingBalance(pendingFormatted);
+        } else {
+          setFormattedPendingBalance(formatCurrency(pendingBalanceInBs, "Bs"));
+        }
+      } else {
+        // El pedido está completamente pagado
+        setFormattedPendingBalance("");
+      }
+
+      setFormattedPayments(paymentsFormatted);
+    };
+
+    formatPayments();
+  }, [order, selectedCurrency, formatWithSelectedCurrency, localExchangeRates]);
+
+  // Formatear precios, descuentos, totales y calcular desglose detallado de productos
+  useEffect(() => {
+    const formatProductData = async () => {
+      if (!order || categories.length === 0 || allProducts.length === 0) return;
+
+      // Si no hay moneda seleccionada, usar Bs por defecto para formatear
+      const formatFunction = selectedCurrency
+        ? formatWithSelectedCurrency
+        : async (amount: number, currency: Currency = "Bs") =>
+            formatCurrency(amount, currency);
+
+      const formattedDiscounts: Record<string, string> = {};
+      const formattedPrices: Record<string, string> = {};
+      const formattedTotals: Record<string, string> = {};
+      const breakdowns: Record<
+        string,
+        {
+          basePrice: string;
+          attributeAdjustments: Array<{
+            name: string;
+            value: string;
+            adjustment: string;
+            adjustmentValue: number;
+          }>;
+          productAttributes: Array<{
+            name: string;
+            price: string;
+            priceValue: number;
+            adjustments: Array<{
+              name: string;
+              value: string;
+              adjustment: string;
+              adjustmentValue: number;
+            }>;
+          }>;
+          unitPrice: string;
+        }
+      > = {};
+
+      for (const orderProduct of order.products) {
+        // Formatear precios básicos usando la moneda seleccionada
+        formattedPrices[orderProduct.id] = await formatFunction(
+          orderProduct.price,
+          "Bs"
+        );
+        if (orderProduct.discount && orderProduct.discount > 0) {
+          formattedDiscounts[orderProduct.id] = await formatFunction(
+            orderProduct.discount,
+            "Bs"
+          );
+        }
+        const productTotal = orderProduct.total - (orderProduct.discount || 0);
+        formattedTotals[orderProduct.id] = await formatFunction(
+          productTotal,
+          "Bs"
+        );
+
+        // Calcular desglose detallado
+        const category = categories.find(
+          (cat) => cat.name === orderProduct.category
+        );
+        if (!category) continue;
+
+        // Obtener producto original para precio base
+        // Convertir orderProduct.id (string) a número para la comparación
+        const orderProductIdNum =
+          typeof orderProduct.id === "string"
+            ? Number.parseInt(orderProduct.id)
+            : orderProduct.id;
+        const originalProduct = allProducts.find(
+          (p) => p.id === orderProductIdNum
+        );
+
+        // Calcular precio base en Bs (usar precio original del producto, no el convertido)
+        // IMPORTANTE: orderProduct.price ya está en Bs, pero necesitamos el precio original
+        // para mostrarlo correctamente y calcular el desglose
+        let basePriceInBs = orderProduct.price; // Fallback: usar precio ya convertido
+        if (originalProduct) {
+          const originalPrice = originalProduct.price;
+          const originalCurrency = originalProduct.priceCurrency || "Bs";
+          if (originalCurrency === "Bs") {
+            basePriceInBs = originalPrice;
+          } else if (
+            originalCurrency === "USD" &&
+            localExchangeRates?.USD?.rate
+          ) {
+            basePriceInBs = originalPrice * localExchangeRates.USD.rate;
+          } else if (
+            originalCurrency === "EUR" &&
+            localExchangeRates?.EUR?.rate
+          ) {
+            basePriceInBs = originalPrice * localExchangeRates.EUR.rate;
+          } else {
+            basePriceInBs = originalPrice;
+          }
+        }
+
+        const basePriceCurrency = originalProduct?.priceCurrency || "Bs";
+        // Formatear precio base en la moneda seleccionada
+        const basePriceFormatted = await formatFunction(basePriceInBs, "Bs");
+
+        // Calcular ajustes de atributos normales
+        const attributeAdjustments = calculateDetailedAttributeAdjustments(
+          orderProduct.attributes || {},
+          category,
+          localExchangeRates
+        );
+
+        const formattedAttributeAdjustments = await Promise.all(
+          attributeAdjustments.map(async (adj) => ({
+            name: adj.attributeName,
+            value: adj.selectedValueLabel,
+            // Convertir ajuste a la moneda seleccionada (ya está en Bs)
+            adjustment: await formatFunction(adj.adjustment, "Bs"),
+            adjustmentValue: adj.adjustment, // Mantener el valor en Bs para cálculos
+          }))
+        );
+
+        // Calcular productos como atributos
+        const productAttributes: Array<{
+          name: string;
+          price: string;
+          priceValue: number;
+          adjustments: Array<{
+            name: string;
+            value: string;
+            adjustment: string;
+            adjustmentValue: number;
+          }>;
+        }> = [];
+
+        for (const attribute of category.attributes || []) {
+          if (attribute.valueType === "Product") {
+            const attrId = attribute.id?.toString() || attribute.title;
+            if (!attrId) continue;
+
+            // Buscar productos seleccionados para este atributo
+            const selectedProductsForAttr = orderProduct.attributes?.[attrId];
+            if (
+              !selectedProductsForAttr ||
+              !Array.isArray(selectedProductsForAttr)
+            )
+              continue;
+
+            for (const selectedProductId of selectedProductsForAttr) {
+              // Convertir a número si es string para la comparación
+              const productIdNum =
+                typeof selectedProductId === "string"
+                  ? Number.parseInt(selectedProductId)
+                  : selectedProductId;
+              const foundProduct = allProducts.find(
+                (p) => p.id === productIdNum
+              );
+              if (!foundProduct) continue;
+
+              const productPrice = foundProduct.price;
+              const productCurrency = foundProduct.priceCurrency || "Bs";
+              // Convertir precio del producto a Bs primero si no está en Bs
+              let productPriceInBsForDisplay = productPrice;
+              if (productCurrency !== "Bs") {
+                const rate =
+                  productCurrency === "USD"
+                    ? localExchangeRates?.USD?.rate
+                    : localExchangeRates?.EUR?.rate;
+                if (rate && rate > 0) {
+                  productPriceInBsForDisplay = productPrice * rate;
+                }
+              }
+              const productPriceFormatted = await formatFunction(
+                productPriceInBsForDisplay,
+                "Bs"
+              );
+
+              // Convertir precio del producto a Bs para cálculos
+              let productPriceInBs = productPrice;
+              if (productCurrency !== "Bs") {
+                const rate =
+                  productCurrency === "USD"
+                    ? localExchangeRates?.USD?.rate
+                    : localExchangeRates?.EUR?.rate;
+                if (rate && rate > 0) {
+                  productPriceInBs = productPrice * rate;
+                }
+              }
+
+              // Buscar atributos editados del producto-atributo
+              const productAttributeKey = `${attrId}_${foundProduct.id}`;
+              const editedAttributes =
+                orderProduct.attributes?.[productAttributeKey];
+
+              let productAttrAdjustments: Array<{
+                name: string;
+                value: string;
+                adjustment: string;
+                adjustmentValue: number;
+              }> = [];
+
+              if (editedAttributes && typeof editedAttributes === "object") {
+                const productCategory = categories.find(
+                  (cat) => cat.name === foundProduct.category
+                );
+                if (productCategory) {
+                  const rawAdjustments = calculateDetailedAttributeAdjustments(
+                    editedAttributes,
+                    productCategory,
+                    localExchangeRates
+                  );
+
+                  productAttrAdjustments = await Promise.all(
+                    rawAdjustments.map(async (adj) => ({
+                      name: adj.attributeName,
+                      value: adj.selectedValueLabel,
+                      // Convertir ajuste a la moneda seleccionada (ya está en Bs)
+                      adjustment: await formatFunction(adj.adjustment, "Bs"),
+                      adjustmentValue: adj.adjustment, // Mantener el valor en Bs para cálculos
+                    }))
+                  );
+                }
+              }
+
+              productAttributes.push({
+                name: foundProduct.name,
+                price: productPriceFormatted,
+                priceValue: productPriceInBs,
+                adjustments: productAttrAdjustments,
+              });
+            }
+          }
+        }
+
+        // Calcular precio unitario
+        // El precio base ya está en Bs (basePriceInBs)
+        let unitPriceInBs = basePriceInBs;
+
+        // Sumar ajustes de atributos normales (ya están en Bs)
+        formattedAttributeAdjustments.forEach((adj) => {
+          unitPriceInBs += adj.adjustmentValue;
+        });
+
+        // Sumar precios de productos como atributos y sus ajustes
+        productAttributes.forEach((prodAttr) => {
+          // Sumar precio base del producto-atributo (ya está en Bs)
+          unitPriceInBs += prodAttr.priceValue;
+
+          // Sumar ajustes de atributos del producto-atributo (ya están en Bs)
+          prodAttr.adjustments.forEach((adj) => {
+            unitPriceInBs += adj.adjustmentValue;
+          });
+        });
+
+        const unitPriceFormatted = await formatFunction(unitPriceInBs, "Bs");
+
+        breakdowns[orderProduct.id] = {
+          basePrice: basePriceFormatted,
+          attributeAdjustments: formattedAttributeAdjustments,
+          productAttributes,
+          unitPrice: unitPriceFormatted,
+        };
+      }
+
+      setFormattedProductDiscounts(formattedDiscounts);
+      setFormattedProductPrices(formattedPrices);
+      setFormattedProductTotals(formattedTotals);
+      setProductBreakdowns(breakdowns);
+    };
+    formatProductData();
+  }, [
+    order,
+    selectedCurrency,
+    formatWithSelectedCurrency,
+    categories,
+    allProducts,
+    localExchangeRates,
+  ]);
+
+  if (loading) {
+    return (
+      <ProtectedRoute>
+        <div className="flex h-screen items-center justify-center">
+          <p>Cargando pedido...</p>
+        </div>
+      </ProtectedRoute>
+    );
+  }
+
+  if (!order && !loading) {
+    return null;
+  }
+
+  // Si no hay moneda seleccionada, mostrar selector simple
+  if (!selectedCurrency && order && !loading) {
+    const savedRates = order.exchangeRatesAtCreation || {};
+
+    return (
+      <ProtectedRoute>
+        <div className="flex h-screen bg-background">
+          <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <DashboardHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+            <main className="flex-1 overflow-y-auto p-4 lg:p-6 flex items-center justify-center">
+              <div className="bg-card border rounded-lg p-6 shadow-lg max-w-md w-full space-y-4">
+                <div>
+                  <h2 className="text-xl font-semibold mb-2">
+                    Seleccionar Moneda de Visualización
+                  </h2>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Selecciona la moneda en la que deseas ver los totales de
+                    este pedido. Las conversiones usan las tasas del día en que
+                    se creó el pedido.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Label>Selecciona una moneda:</Label>
+                  <div className="grid grid-cols-1 gap-2">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start h-auto py-3"
+                      onClick={() => handleCurrencySelect("Bs")}
+                    >
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      <div className="flex-1 text-left">
+                        <div className="font-medium">Bolívares (Bs.)</div>
+                        <div className="text-xs text-muted-foreground">
+                          Moneda local
+                        </div>
+                      </div>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start h-auto py-3"
+                      onClick={() => handleCurrencySelect("USD")}
+                    >
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      <div className="flex-1 text-left">
+                        <div className="font-medium">Dólares (USD)</div>
+                        {savedRates.USD && (
+                          <div className="text-xs text-muted-foreground">
+                            1 USD = {formatCurrency(savedRates.USD.rate, "Bs")}
+                          </div>
+                        )}
+                      </div>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start h-auto py-3"
+                      onClick={() => handleCurrencySelect("EUR")}
+                    >
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      <div className="flex-1 text-left">
+                        <div className="font-medium">Euros (EUR)</div>
+                        {savedRates.EUR && (
+                          <div className="text-xs text-muted-foreground">
+                            1 EUR = {formatCurrency(savedRates.EUR.rate, "Bs")}
+                          </div>
+                        )}
+                      </div>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </main>
+          </div>
+        </div>
+      </ProtectedRoute>
+    );
+  }
+
+  if (!order) {
+    return (
+      <ProtectedRoute>
+        <div className="flex h-screen items-center justify-center">
+          <p>Cargando pedido...</p>
+        </div>
+      </ProtectedRoute>
+    );
+  }
+
+  return (
+    <ProtectedRoute>
+      <div className="flex h-screen bg-background">
+        <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <DashboardHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+          <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+            <div className="max-w-6xl mx-auto space-y-6">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <Button
+                    variant="ghost"
+                    onClick={() => router.push("/pedidos")}
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Volver
+                  </Button>
+                  <div>
+                    <h1 className="text-2xl font-bold">
+                      Pedido {order.orderNumber}
+                    </h1>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(order.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+                <Badge className={getStatusColor(order.status)}>
+                  {order.status}
+                </Badge>
+              </div>
+
+              {/* Información General */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    Información General
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {/* Información del Cliente - Agrupada */}
+                    <div>
+                      <p className="text-sm text-muted-foreground">Cliente</p>
+                      <p className="font-medium">{order.clientName}</p>
+                      {client?.rutId && (
+                        <p className="text-xs text-muted-foreground">RUT/ID: {client.rutId}</p>
+                      )}
+                    </div>
+                    {client?.telefono && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Teléfono del cliente</p>
+                        <p className="font-medium">{client.telefono}</p>
+                      </div>
+                    )}
+                    {client?.email && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Email del cliente</p>
+                        <p className="font-medium">{client.email}</p>
+                      </div>
+                    )}
+                    {/* Información del Vendedor y otros - Agrupada */}
+                    <div>
+                      <p className="text-sm text-muted-foreground">Vendedor</p>
+                      <p className="font-medium">{order.vendorName}</p>
+                    </div>
+                    {order.referrerName && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Referidor
+                        </p>
+                        <p className="font-medium">{order.referrerName}</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        Tipo de Venta
+                      </p>
+                      <Badge variant="outline" className="mt-1">
+                        {order.saleType === "apartado"
+                          ? "Apartado"
+                          : order.saleType === "entrega"
+                          ? "Entrega"
+                          : "De Contado"}
+                      </Badge>
+                    </div>
+                    {order.paymentCondition && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Condición de Pago
+                        </p>
+                        <p className="font-medium">
+                          {PAYMENT_CONDITIONS.find(
+                            (pc) => pc.value === order.paymentCondition
+                          )?.label || order.paymentCondition}
+                        </p>
+                      </div>
+                    )}
+                    {order.purchaseType && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Tipo de Compra
+                        </p>
+                        <p className="font-medium">
+                          {PURCHASE_TYPES.find(
+                            (pt) => pt.value === order.purchaseType
+                          )?.label || order.purchaseType}
+                        </p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        Método de Pago
+                      </p>
+                      <p className="font-medium">{order.paymentMethod}</p>
+                    </div>
+                    {client?.direccion && (
+                      <div className="col-span-2 md:col-span-3">
+                        <p className="text-sm text-muted-foreground">Dirección del cliente</p>
+                        <p className="font-medium">{client.direccion}</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        Fecha de Creación
+                      </p>
+                      <p className="font-medium">
+                        {new Date(order.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Observaciones Generales - DESTACADAS */}
+              {order.observations && (
+                <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                      <AlertCircle className="w-5 h-5" />
+                      Observaciones Generales
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm whitespace-pre-wrap bg-amber-50 dark:bg-amber-950 p-3 rounded">
+                      {order.observations}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Productos */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Productos ({order.products.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {order.products.map((product, idx) => {
+                      const breakdown = productBreakdowns[product.id];
+                      return (
+                        <div key={idx} className="border rounded-lg p-4">
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="flex-1">
+                              <p className="font-semibold text-lg">
+                                {product.name}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Cantidad: {product.quantity} ×{" "}
+                                {formattedProductPrices[product.id] ||
+                                  formatCurrency(product.price, "Bs")}
+                              </p>
+                              {product.discount && product.discount > 0 && (
+                                <p className="text-sm text-red-600 mt-1">
+                                  Descuento: -
+                                  {formattedProductDiscounts[product.id] ||
+                                    formatCurrency(product.discount, "Bs")}
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold text-lg">
+                                {formattedProductTotals[product.id] ||
+                                  formatCurrency(
+                                    product.total - (product.discount || 0),
+                                    "Bs"
+                                  )}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Desglose detallado de precio */}
+                          {breakdown && (
+                            <div className="mt-4 pt-4 border-t space-y-2 text-sm">
+                              <div className="font-semibold mb-2">
+                                Desglose de Precio:
+                              </div>
+
+                              {/* Precio base */}
+                              <div className="flex justify-between">
+                                <span>Precio base:</span>
+                                <span>{breakdown.basePrice}</span>
+                              </div>
+
+                              {/* Ajustes de atributos normales */}
+                              {breakdown.attributeAdjustments.length > 0 && (
+                                <>
+                                  {breakdown.attributeAdjustments.map(
+                                    (
+                                      adj: {
+                                        name: string;
+                                        value: string;
+                                        adjustment: string;
+                                      },
+                                      adjIdx: number
+                                    ) => (
+                                      <div
+                                        key={adjIdx}
+                                        className="flex justify-between pl-4"
+                                      >
+                                        <span className="text-muted-foreground">
+                                          {adj.name}
+                                          {adj.value ? ` (${adj.value})` : ""}:
+                                        </span>
+                                        <span className="text-green-600 dark:text-green-400">
+                                          +{adj.adjustment}
+                                        </span>
+                                      </div>
+                                    )
+                                  )}
+                                </>
+                              )}
+
+                              {/* Productos como atributos */}
+                              {breakdown.productAttributes.length > 0 && (
+                                <>
+                                  {breakdown.productAttributes.map(
+                                    (
+                                      prodAttr: {
+                                        name: string;
+                                        price: string;
+                                        priceValue: number;
+                                        adjustments: Array<{
+                                          name: string;
+                                          value: string;
+                                          adjustment: string;
+                                          adjustmentValue: number;
+                                        }>;
+                                      },
+                                      prodIdx: number
+                                    ) => (
+                                      <div key={prodIdx} className="space-y-1">
+                                        {/* Precio del producto */}
+                                        <div className="flex justify-between pl-4">
+                                          <span className="text-muted-foreground">
+                                            {prodAttr.name}:
+                                          </span>
+                                          <span className="text-green-600 dark:text-green-400">
+                                            +{prodAttr.price}
+                                          </span>
+                                        </div>
+                                        {/* Ajustes de atributos del producto */}
+                                        {prodAttr.adjustments.length > 0 && (
+                                          <>
+                                            {prodAttr.adjustments.map(
+                                              (
+                                                adj: {
+                                                  name: string;
+                                                  value: string;
+                                                  adjustment: string;
+                                                },
+                                                adjIdx: number
+                                              ) => (
+                                                <div
+                                                  key={adjIdx}
+                                                  className="flex justify-between pl-8 text-xs"
+                                                >
+                                                  <span className="text-muted-foreground">
+                                                    {prodAttr.name} - {adj.name}
+                                                    {adj.value
+                                                      ? ` (${adj.value})`
+                                                      : ""}
+                                                    :
+                                                  </span>
+                                                  <span className="text-green-600 dark:text-green-400">
+                                                    +{adj.adjustment}
+                                                  </span>
+                                                </div>
+                                              )
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    )
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Observaciones Individuales - DESTACADAS */}
+                          {product.observations && (
+                            <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950 rounded border border-blue-200 dark:border-blue-800">
+                              <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">
+                                Observación de este producto:
+                              </p>
+                              <p className="text-sm text-blue-700 dark:text-blue-300 whitespace-pre-wrap">
+                                {product.observations}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Dirección de Entrega */}
+              {order.hasDelivery && order.deliveryAddress && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4" />
+                      Dirección de Entrega
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm">{order.deliveryAddress}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Resumen Financiero */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4" />
+                    Resumen Financiero
+                    {selectedCurrency && (
+                      <Badge variant="outline" className="ml-2">
+                        En{" "}
+                        {selectedCurrency === "Bs"
+                          ? "Bolívares"
+                          : selectedCurrency === "USD"
+                          ? "Dólares"
+                          : "Euros"}
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  {selectedCurrency &&
+                    selectedCurrency !== "Bs" &&
+                    localExchangeRates[selectedCurrency] && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Tasa de cambio: 1 {selectedCurrency} ={" "}
+                        {formatCurrency(
+                          localExchangeRates[selectedCurrency]!.rate,
+                          "Bs"
+                        )}{" "}
+                        (Fecha efectiva:{" "}
+                        {new Date(
+                          localExchangeRates[selectedCurrency]!.effectiveDate
+                        ).toLocaleDateString()}
+                        )
+                      </p>
+                    )}
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span>Subtotal:</span>
+                      <span>
+                        {formattedTotals.subtotalBeforeDiscounts ||
+                          formatCurrency(
+                            order.subtotalBeforeDiscounts || 0,
+                            "Bs"
+                          )}
+                      </span>
+                    </div>
+                    {order.productDiscountTotal &&
+                      order.productDiscountTotal > 0 && (
+                        <div className="flex justify-between text-red-600">
+                          <span>Descuentos individuales:</span>
+                          <span>
+                            -
+                            {formattedTotals.productDiscountTotal ||
+                              formatCurrency(order.productDiscountTotal, "Bs")}
+                          </span>
+                        </div>
+                      )}
+                    {order.generalDiscountAmount &&
+                      order.generalDiscountAmount > 0 && (
+                        <div className="flex justify-between text-red-600">
+                          <span>Descuento general:</span>
+                          <span>
+                            -
+                            {formattedTotals.generalDiscountAmount ||
+                              formatCurrency(
+                                order.generalDiscountAmount || 0,
+                                "Bs"
+                              )}
+                          </span>
+                        </div>
+                      )}
+                    <Separator />
+                    <div className="flex justify-between">
+                      <span>Subtotal después de descuentos:</span>
+                      <span>
+                        {formattedTotals.subtotal ||
+                          formatCurrency(order.subtotal, "Bs")}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Impuesto (16%):</span>
+                      <span>
+                        {formattedTotals.tax ||
+                          formatCurrency(order.taxAmount, "Bs")}
+                      </span>
+                    </div>
+                    {order.deliveryCost > 0 && (
+                      <div className="flex justify-between">
+                        <span>Delivery:</span>
+                        <span>
+                          {formattedTotals.deliveryCost ||
+                            formatCurrency(order.deliveryCost, "Bs")}
+                        </span>
+                      </div>
+                    )}
+                    <Separator />
+                    <div className="flex justify-between text-xl font-bold">
+                      <span>Total:</span>
+                      <span>
+                        {formattedTotals.total ||
+                          formatCurrency(order.total, "Bs")}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Pagos */}
+              {order.partialPayments && order.partialPayments.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      Pagos
+                      {selectedCurrency && selectedCurrency !== "Bs" && (
+                        <Badge variant="outline" className="ml-2 text-xs">
+                          También en{" "}
+                          {selectedCurrency === "USD" ? "Dólares" : "Euros"}
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    {selectedCurrency &&
+                      selectedCurrency !== "Bs" &&
+                      localExchangeRates[selectedCurrency] && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Tasa del día del pedido: 1 {selectedCurrency} ={" "}
+                          {formatCurrency(
+                            localExchangeRates[selectedCurrency]!.rate,
+                            "Bs"
+                          )}{" "}
+                          (Fecha efectiva:{" "}
+                          {new Date(
+                            localExchangeRates[selectedCurrency]!.effectiveDate
+                          ).toLocaleDateString()}
+                          )
+                        </p>
+                      )}
+                    {(!selectedCurrency || selectedCurrency === "Bs") &&
+                      (localExchangeRates.USD || localExchangeRates.EUR) && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Tasas del día del pedido:{" "}
+                          {localExchangeRates.USD &&
+                            `USD: ${formatCurrency(
+                              localExchangeRates.USD.rate,
+                              "Bs"
+                            )}`}
+                          {localExchangeRates.USD &&
+                            localExchangeRates.EUR &&
+                            " | "}
+                          {localExchangeRates.EUR &&
+                            `EUR: ${formatCurrency(
+                              localExchangeRates.EUR.rate,
+                              "Bs"
+                            )}`}
+                        </p>
+                      )}
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {order.partialPayments.map((payment, idx) => {
+                        const formattedPayment = formattedPayments[idx];
+                        if (!formattedPayment) {
+                          const originalPayment = getOriginalPaymentAmount(
+                            payment,
+                            localExchangeRates
+                          );
+
+                          // Obtener la tasa de cambio guardada del pago
+                          const paymentExchangeRate =
+                            payment.paymentDetails?.exchangeRate;
+                          const paymentCurrency =
+                            payment.currency || originalPayment.currency;
+
+                          return (
+                            <div
+                              key={idx}
+                              className="space-y-1 border-b pb-2 last:border-0"
+                            >
+                              <div className="flex justify-between text-sm">
+                                <span className="font-medium">
+                                  {payment.method} ({originalPayment.currency})
+                                </span>
+                                <span className="font-medium">
+                                  {formatCurrency(
+                                    originalPayment.amount,
+                                    originalPayment.currency as Currency
+                                  )}
+                                </span>
+                              </div>
+
+                              {/* Mostrar tasa de cambio del día del pago si existe y no es en Bs */}
+                              {paymentExchangeRate &&
+                                paymentCurrency &&
+                                paymentCurrency !== "Bs" && (
+                                  <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/30 px-2 py-1 rounded">
+                                    💱 Tasa de cambio del día del pago: 1{" "}
+                                    {paymentCurrency} ={" "}
+                                    {formatCurrency(paymentExchangeRate, "Bs")}
+                                    {payment.date && (
+                                      <span className="ml-2">
+                                        (Fecha del pago:{" "}
+                                        {new Date(
+                                          payment.date
+                                        ).toLocaleDateString()}
+                                        )
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
+                              {payment.date &&
+                                (!paymentExchangeRate ||
+                                  paymentCurrency === "Bs") && (
+                                  <div className="text-xs text-muted-foreground">
+                                    Fecha:{" "}
+                                    {new Date(
+                                      payment.date
+                                    ).toLocaleDateString()}
+                                  </div>
+                                )}
+                            </div>
+                          );
+                        }
+
+                        const originalPayment = getOriginalPaymentAmount(
+                          payment,
+                          localExchangeRates
+                        );
+
+                        // Obtener la tasa de cambio guardada del pago
+                        const paymentExchangeRate =
+                          payment.paymentDetails?.exchangeRate;
+                        const paymentCurrency =
+                          payment.currency || originalPayment.currency;
+
+                        return (
+                          <div
+                            key={idx}
+                            className="space-y-1 border-b pb-2 last:border-0"
+                          >
+                            <div className="flex justify-between text-sm">
+                              <span className="font-medium">
+                                {payment.method} ({originalPayment.currency})
+                              </span>
+                              <div className="text-right">
+                                <div className="font-medium">
+                                  {formattedPayment.original}
+                                </div>
+                                {formattedPayment.converted && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {formattedPayment.converted}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Mostrar tasa de cambio del día del pago si existe y no es en Bs */}
+                            {paymentExchangeRate &&
+                              paymentCurrency &&
+                              paymentCurrency !== "Bs" && (
+                                <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/30 px-2 py-1 rounded">
+                                  💱 Tasa de cambio del día del pago: 1{" "}
+                                  {paymentCurrency} ={" "}
+                                  {formatCurrency(paymentExchangeRate, "Bs")}
+                                  {payment.date && (
+                                    <span className="ml-2">
+                                      (Fecha del pago:{" "}
+                                      {new Date(
+                                        payment.date
+                                      ).toLocaleDateString()}
+                                      )
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                            {payment.date &&
+                              (!paymentExchangeRate ||
+                                paymentCurrency === "Bs") && (
+                                <div className="text-xs text-muted-foreground">
+                                  Fecha:{" "}
+                                  {new Date(payment.date).toLocaleDateString()}
+                                </div>
+                              )}
+                          </div>
+                        );
+                      })}
+                      <Separator />
+                      <div className="flex justify-between font-semibold">
+                        <span>Total Pagado:</span>
+                        <div className="text-right">
+                          <div>
+                            {formatCurrency(
+                              order.partialPayments.reduce((sum, p) => {
+                                return sum + (p.amount || 0);
+                              }, 0),
+                              "Bs"
+                            )}
+                          </div>
+                          {formattedTotalPaid &&
+                            selectedCurrency &&
+                            selectedCurrency !== "Bs" && (
+                              <div className="text-sm text-muted-foreground font-normal">
+                                {formattedTotalPaid}
+                              </div>
+                            )}
+                        </div>
+                      </div>
+
+                      {/* Mostrar saldo pendiente si existe */}
+                      {formattedPendingBalance && (
+                        <>
+                          <Separator />
+                          <div className="flex justify-between items-center bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                            <div className="flex items-center gap-2">
+                              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                              <span className="font-semibold text-red-700 dark:text-red-300">
+                                Saldo Pendiente:
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-bold text-lg text-red-700 dark:text-red-300">
+                                {formatCurrency(
+                                  order.total -
+                                    order.partialPayments.reduce(
+                                      (sum, p) => sum + (p.amount || 0),
+                                      0
+                                    ),
+                                  "Bs"
+                                )}
+                              </div>
+                              {selectedCurrency &&
+                                selectedCurrency !== "Bs" && (
+                                  <div className="text-sm text-red-600 dark:text-red-400 font-medium">
+                                    {formattedPendingBalance}
+                                  </div>
+                                )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Mostrar saldo pendiente cuando NO hay pagos */}
+              {(!order.partialPayments || order.partialPayments.length === 0) &&
+                formattedPendingBalance && (
+                  <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">
+                        <AlertCircle className="w-5 h-5" />
+                        Pago Pendiente
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                          Este pedido aún no tiene pagos registrados.
+                        </p>
+                        <div className="flex justify-between items-center">
+                          <span className="font-semibold text-red-700 dark:text-red-300">
+                            Total Pendiente:
+                          </span>
+                          <div className="text-right">
+                            <div className="font-bold text-xl text-red-700 dark:text-red-300">
+                              {formatCurrency(order.total, "Bs")}
+                            </div>
+                            {selectedCurrency && selectedCurrency !== "Bs" && (
+                              <div className="text-sm text-red-600 dark:text-red-400 font-medium">
+                                {formattedPendingBalance}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+            </div>
+          </main>
+        </div>
+      </div>
+    </ProtectedRoute>
+  );
+}

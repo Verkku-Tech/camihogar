@@ -6,37 +6,47 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card } from "@/components/ui/card"
-import { Search, Phone, Mail } from "lucide-react"
+import { Search, Phone, Mail, Plus } from "lucide-react"
 import { getClients, type Client } from "@/lib/storage"
+import { CreateClientDialog } from "@/components/clients/create-client-dialog"
 
 interface ClientLookupDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onClientSelect: (client: { id: string; name: string; address?: string }) => void
+  onClientSelect: (client: { 
+    id: string
+    name: string
+    address?: string
+    telefono?: string
+    email?: string
+    rutId?: string
+  }) => void
 }
 
 export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: ClientLookupDialogProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [clients, setClients] = useState<Client[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+
+  const loadClients = async () => {
+    try {
+      setIsLoading(true)
+      const loadedClients = await getClients()
+      // Filtrar solo clientes activos
+      setClients(loadedClients.filter((client) => client.estado === "activo"))
+    } catch (error) {
+      console.error("Error loading clients:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const loadClients = async () => {
-      try {
-        setIsLoading(true)
-        const loadedClients = await getClients()
-        // Filtrar solo clientes activos
-        setClients(loadedClients.filter((client) => client.estado === "activo"))
-      } catch (error) {
-        console.error("Error loading clients:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     if (open) {
       loadClients()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const filteredClients = clients.filter(
@@ -52,12 +62,24 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
       id: client.id,
       name: client.nombreRazonSocial,
       address: client.direccion || undefined,
+      telefono: client.telefono,
+      email: client.email,
+      rutId: client.rutId,
     })
     onOpenChange(false)
     setSearchTerm("")
   }
 
+  const handleClientCreated = (newClient: Client) => {
+    // Recargar la lista de clientes
+    loadClients()
+    
+    // Seleccionar automáticamente el cliente recién creado
+    handleClientSelect(newClient)
+  }
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-2xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4">
         <DialogHeader className="pb-2 sm:pb-4">
@@ -65,14 +87,24 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
         </DialogHeader>
 
         <div className="space-y-3 sm:space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              placeholder="Buscar cliente por nombre, email o teléfono..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 w-full"
-            />
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+              <Input
+                placeholder="Buscar cliente por nombre, email o teléfono..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 w-full"
+              />
+            </div>
+            <Button
+              onClick={() => setIsCreateDialogOpen(true)}
+              className="bg-indigo-600 hover:bg-indigo-700"
+              title="Crear nuevo cliente"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              <span className="hidden sm:inline">Nuevo</span>
+            </Button>
           </div>
 
           {isLoading ? (
@@ -147,5 +179,13 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Diálogo para crear cliente */}
+    <CreateClientDialog
+      open={isCreateDialogOpen}
+      onOpenChange={setIsCreateDialogOpen}
+      onClientCreated={handleClientCreated}
+    />
+    </>
   )
 }

@@ -29,10 +29,10 @@ import {
   calculateProductUnitPriceWithAttributes,
 } from "@/lib/storage";
 import { toast } from "sonner";
-import { getActiveExchangeRates, formatCurrency, convertProductPriceToBs } from "@/lib/currency-utils";
+import { getActiveExchangeRates, formatCurrency, convertProductPriceToBs, type Currency } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
 import { Card, CardContent } from "@/components/ui/card";
-import { Package, Settings } from "lucide-react";
+import { Package, Settings, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface ProductEditDialogProps {
@@ -50,6 +50,129 @@ const getValueString = (value: string | AttributeValue): string => {
 
 const getValueLabel = (value: string | AttributeValue): string => {
   return typeof value === "string" ? value : value.label || value.id;
+};
+
+// Función para calcular ajustes detallados por atributo
+const calculateDetailedAttributeAdjustments = (
+  productAttributes: Record<string, any>,
+  category: Category | undefined,
+  exchangeRates?: { USD?: any; EUR?: any }
+): Array<{ 
+  attributeName: string; 
+  selectedValueLabel: string;
+  adjustment: number; 
+  adjustmentInOriginalCurrency: number; 
+  originalCurrency: string 
+}> => {
+  if (!productAttributes || !category || !category.attributes) {
+    return [];
+  }
+
+  const adjustments: Array<{ 
+    attributeName: string; 
+    selectedValueLabel: string;
+    adjustment: number; 
+    adjustmentInOriginalCurrency: number; 
+    originalCurrency: string 
+  }> = [];
+
+  // Función helper para convertir ajuste a Bs
+  const convertAdjustmentToBs = (adjustment: number, currency?: string): number => {
+    if (!currency || currency === "Bs") return adjustment;
+    if (currency === "USD" && exchangeRates?.USD?.rate) {
+      return adjustment * exchangeRates.USD.rate;
+    }
+    if (currency === "EUR" && exchangeRates?.EUR?.rate) {
+      return adjustment * exchangeRates.EUR.rate;
+    }
+    return adjustment;
+  };
+
+  // Helper para obtener el label de un valor
+  const getValueLabel = (value: string | AttributeValue): string => {
+    return typeof value === "string" ? value : value.label || value.id;
+  };
+
+  Object.entries(productAttributes).forEach(([attrKey, selectedValue]) => {
+    const categoryAttribute = category.attributes.find(
+      (attr) => attr.id?.toString() === attrKey || attr.title === attrKey
+    );
+
+    if (!categoryAttribute || !categoryAttribute.values || categoryAttribute.valueType === "Product") {
+      return;
+    }
+
+    let attributeAdjustment = 0;
+    let adjustmentInOriginalCurrency = 0;
+    let originalCurrency = "Bs";
+    const selectedLabels: string[] = [];
+
+    // Manejar arrays para selección múltiple
+    if (Array.isArray(selectedValue)) {
+      selectedValue.forEach((valStr) => {
+        const attributeValue = categoryAttribute.values.find((val: string | AttributeValue) => {
+          if (typeof val === "string") {
+            return val === valStr;
+          }
+          return val.id === valStr || val.label === valStr;
+        });
+
+        if (attributeValue) {
+          selectedLabels.push(getValueLabel(attributeValue));
+          
+          if (
+            typeof attributeValue === "object" &&
+            "priceAdjustment" in attributeValue
+          ) {
+            const adjustment = attributeValue.priceAdjustment || 0;
+            const currency = attributeValue.priceAdjustmentCurrency || "Bs";
+            adjustmentInOriginalCurrency += adjustment;
+            originalCurrency = currency;
+            attributeAdjustment += convertAdjustmentToBs(adjustment, currency);
+          }
+        }
+      });
+    } else {
+      // Manejar valores simples (selección única)
+      const selectedValueStr = selectedValue?.toString();
+      if (selectedValueStr) {
+        const attributeValue = categoryAttribute.values.find((val: string | AttributeValue) => {
+          if (typeof val === "string") {
+            return val === selectedValueStr;
+          }
+          return val.id === selectedValueStr || val.label === selectedValueStr;
+        });
+
+        if (attributeValue) {
+          selectedLabels.push(getValueLabel(attributeValue));
+          
+          if (
+            typeof attributeValue === "object" &&
+            "priceAdjustment" in attributeValue
+          ) {
+            const adjustment = attributeValue.priceAdjustment || 0;
+            const currency = attributeValue.priceAdjustmentCurrency || "Bs";
+            adjustmentInOriginalCurrency = adjustment;
+            originalCurrency = currency;
+            attributeAdjustment = convertAdjustmentToBs(adjustment, currency);
+          }
+        }
+      }
+    }
+
+    // Solo agregar si hay un ajuste de precio (solo mostramos los que afectan el precio)
+    if (attributeAdjustment !== 0) {
+      adjustments.push({
+        attributeName: categoryAttribute.title || attrKey,
+        selectedValueLabel: selectedLabels.join(", ") || "",
+        adjustment: attributeAdjustment,
+        adjustmentInOriginalCurrency,
+        originalCurrency,
+      });
+    }
+  });
+
+  return adjustments;
 };
 
 // Componente para editar atributos del producto seleccionado
@@ -239,10 +362,32 @@ function ProductAttributesEditor({
 
             return (
               <div key={attrKey} className="space-y-1.5">
-                <Label htmlFor={`edit-attr-${attrKey}`} className="text-sm">{attribute.title}</Label>
+                <Label htmlFor={`edit-attr-${attrKey}`} className="text-sm">
+                  {attribute.title}
+                  {/* Indicador visual de campo obligatorio */}
+                  {(attribute.valueType === "Select" || 
+                    attribute.valueType === "Multiple select") && (
+                    <span className="text-red-500 ml-1">*</span>
+                  )}
+                </Label>
                 {attribute.description && (
                   <p className="text-xs text-muted-foreground">{attribute.description}</p>
                 )}
+                
+                {/* Mostrar mensaje de advertencia si el atributo está vacío */}
+                {(() => {
+                  const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+                  const isEmpty = 
+                    (attribute.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null)) ||
+                    (attribute.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0));
+                  
+                  return isEmpty ? (
+                    <p className="text-xs text-red-500 mt-1 font-medium">
+                      ⚠️ Este atributo es obligatorio
+                    </p>
+                  ) : null;
+                })()}
+                
                 {renderAttributeInput(attribute, attrKey)}
               </div>
             );
@@ -258,7 +403,51 @@ function ProductAttributesEditor({
         <Button variant="outline" size="sm" onClick={onCancel}>
           Cancelar
         </Button>
-        <Button size="sm" onClick={() => onSave(attributes)}>
+        <Button 
+          size="sm" 
+          onClick={() => {
+            // Validar que todos los atributos requeridos estén seleccionados
+            const missingAttributes: string[] = [];
+            
+            if (category.attributes && category.attributes.length > 0) {
+              for (const attribute of category.attributes) {
+                const attrKey = attribute.id?.toString() || attribute.title;
+                if (!attrKey) continue;
+                
+                const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+                
+                // Validar atributos de tipo "Select" (selección única)
+                if (attribute.valueType === "Select") {
+                  if (attrValue === undefined || attrValue === "" || attrValue === null) {
+                    missingAttributes.push(attribute.title || attrKey);
+                  }
+                }
+                
+                // Validar atributos de tipo "Multiple select" (selección múltiple)
+                if (attribute.valueType === "Multiple select") {
+                  if (!Array.isArray(attrValue) || attrValue.length === 0) {
+                    missingAttributes.push(attribute.title || attrKey);
+                  }
+                }
+              }
+            }
+            
+            // Si hay atributos faltantes, mostrar alert y NO guardar
+            if (missingAttributes.length > 0) {
+              const missingList = missingAttributes.join(", ");
+              toast.error(
+                `Debe seleccionar una opción para los siguientes atributos: ${missingList}`,
+                {
+                  duration: 5000,
+                }
+              );
+              return; // Detener aquí, no guardar los atributos
+            }
+            
+            // Si todo está bien, guardar
+            onSave(attributes);
+          }}
+        >
           Guardar Atributos
         </Button>
       </div>
@@ -304,6 +493,31 @@ export function ProductEditDialog({
   const [calculatedProductAttributesTotal, setCalculatedProductAttributesTotal] = useState<number>(0);
   const [calculatedUnitPrice, setCalculatedUnitPrice] = useState<number>(0);
   const [calculatedAdjustment, setCalculatedAdjustment] = useState<number>(0);
+  const [detailedAttributeAdjustments, setDetailedAttributeAdjustments] = useState<Array<{
+    attributeName: string;
+    selectedValueLabel: string;
+    adjustment: number;
+    adjustmentInOriginalCurrency: number;
+    originalCurrency: string;
+    formattedAdjustment: string;
+  }>>([]);
+  const [detailedProductAttributeAdjustments, setDetailedProductAttributeAdjustments] = useState<Array<{
+    productName: string;
+    productPrice: number;
+    productPriceCurrency: string;
+    productPriceInBs: number;
+    formattedProductPrice: string;
+    productAdjustments: Array<{
+      attributeName: string;
+      selectedValueLabel: string;
+      adjustment: number;
+      adjustmentInOriginalCurrency: number;
+      originalCurrency: string;
+      formattedAdjustment: string;
+    }>;
+    hasAttributeAdjustments: boolean;
+  }>>([]);
+  const [formattedAttributeAdjustments, setFormattedAttributeAdjustments] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -402,6 +616,9 @@ export function ProductEditDialog({
       setBasePriceFormatted("");
       setUnitPriceFormatted("");
       setTotalFormatted("");
+      setDetailedAttributeAdjustments([]);
+      setDetailedProductAttributeAdjustments([]);
+      setFormattedAttributeAdjustments({});
     }
   }, [open]);
 
@@ -555,6 +772,73 @@ export function ProductEditDialog({
     }
   }, [productAttributes, allProducts, preferredCurrency, formatWithPreference]);
 
+  // Formatear ajustes de atributos visibles junto a los campos
+  useEffect(() => {
+    const formatVisibleAdjustments = async () => {
+      if (!currentCategory || !currentCategory.attributes) return;
+
+      const formatted: Record<string, string> = {};
+
+      for (const attribute of currentCategory.attributes) {
+        const attrKey = attribute.id?.toString() || attribute.title;
+        if (!attrKey || attribute.valueType === "Product") continue;
+
+        const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+        if (!attrValue) continue;
+
+        // Función helper para convertir ajuste a Bs
+        const convertAdjustmentToBs = (adjustment: number, currency?: string): number => {
+          if (!currency || currency === "Bs") return adjustment;
+          if (currency === "USD" && exchangeRates?.USD?.rate) {
+            return adjustment * exchangeRates.USD.rate;
+          }
+          if (currency === "EUR" && exchangeRates?.EUR?.rate) {
+            return adjustment * exchangeRates.EUR.rate;
+          }
+          return adjustment;
+        };
+
+        let totalAdjustment = 0;
+
+        if (Array.isArray(attrValue)) {
+          // Selección múltiple
+          attrValue.forEach((valStr) => {
+            const selectedValue = attribute.values?.find((val: string | AttributeValue) => {
+              const valStr2 = getValueString(val);
+              return valStr2 === valStr;
+            });
+            if (selectedValue && typeof selectedValue === "object" && "priceAdjustment" in selectedValue) {
+              const adjustment = selectedValue.priceAdjustment || 0;
+              const currency = selectedValue.priceAdjustmentCurrency || "Bs";
+              totalAdjustment += convertAdjustmentToBs(adjustment, currency);
+            }
+          });
+        } else {
+          // Selección única
+          const selectedValue = attribute.values?.find((val: string | AttributeValue) => {
+            const valStr = getValueString(val);
+            return valStr === attrValue?.toString();
+          });
+          if (selectedValue && typeof selectedValue === "object" && "priceAdjustment" in selectedValue) {
+            const adjustment = selectedValue.priceAdjustment || 0;
+            const currency = selectedValue.priceAdjustmentCurrency || "Bs";
+            totalAdjustment = convertAdjustmentToBs(adjustment, currency);
+          }
+        }
+
+        if (totalAdjustment !== 0) {
+          formatted[attrKey] = await formatWithPreference(totalAdjustment, "Bs");
+        }
+      }
+
+      setFormattedAttributeAdjustments(formatted);
+    };
+
+    if (currentCategory && attributes) {
+      formatVisibleAdjustments();
+    }
+  }, [attributes, currentCategory, exchangeRates, preferredCurrency, formatWithPreference]);
+
   // Actualizar totales formateados cuando cambien los cálculos
   useEffect(() => {
     const updateFormattedTotals = async () => {
@@ -576,6 +860,23 @@ export function ProductEditDialog({
         }
       }
 
+      // Calcular ajustes detallados de atributos normales
+      const attributeAdjustments = calculateDetailedAttributeAdjustments(
+        attributes,
+        currentCategory,
+        exchangeRates
+      );
+
+      // Formatear ajustes de atributos normales
+      const formattedAttributeAdjustments = await Promise.all(
+        attributeAdjustments.map(async (adj) => ({
+          ...adj,
+          // Usar el ajuste en su moneda original para el formateo, no el convertido a Bs
+          formattedAdjustment: await formatWithPreference(adj.adjustmentInOriginalCurrency, adj.originalCurrency as Currency),
+        }))
+      );
+      setDetailedAttributeAdjustments(formattedAttributeAdjustments);
+
       // Calcular el precio base con ajustes normales
       const basePriceWithAdjustments = calculateProductUnitPriceWithAttributes(
         basePriceInBs,
@@ -584,7 +885,24 @@ export function ProductEditDialog({
         exchangeRates
       );
 
-      // Sumar precios de productos-atributos
+      // Calcular ajustes detallados de productos-atributos
+      const productAttrAdjustments: Array<{
+        productName: string;
+        productPrice: number;
+        productPriceCurrency: string;
+        productPriceInBs: number;
+        formattedProductPrice: string;
+        productAdjustments: Array<{
+          attributeName: string;
+          selectedValueLabel: string;
+          adjustment: number;
+          adjustmentInOriginalCurrency: number;
+          originalCurrency: string;
+          formattedAdjustment: string;
+        }>;
+        hasAttributeAdjustments: boolean;
+      }> = [];
+
       let productAttributesTotal = 0;
       for (const attribute of currentCategory.attributes || []) {
         if (attribute.valueType === "Product") {
@@ -603,11 +921,62 @@ export function ProductEditDialog({
                 productPriceInBs = productPrice * exchangeRates.EUR.rate;
               }
             }
-            
+
+            // Calcular ajustes de atributos del producto-atributo
+            const productCategory = categories.find(cat => cat.name === productEntry.product.category);
+            let productAttrAdjusts: Array<{
+              attributeName: string;
+              selectedValueLabel: string;
+              adjustment: number;
+              adjustmentInOriginalCurrency: number;
+              originalCurrency: string;
+              formattedAdjustment: string;
+            }> = [];
+            let hasAttributeAdjustments = false;
+
+            if (productCategory) {
+              const rawAdjustments = calculateDetailedAttributeAdjustments(
+                productEntry.attributes,
+                productCategory,
+                exchangeRates
+              );
+              
+              hasAttributeAdjustments = rawAdjustments.length > 0 && rawAdjustments.some(adj => adj.adjustment !== 0);
+              
+              // Formatear ajustes del producto-atributo
+              productAttrAdjusts = await Promise.all(
+                rawAdjustments.map(async (adj) => ({
+                  ...adj,
+                  // Usar el ajuste en su moneda original para el formateo, no el convertido a Bs
+                  formattedAdjustment: await formatWithPreference(adj.adjustmentInOriginalCurrency, adj.originalCurrency as Currency),
+                }))
+              );
+            }
+
+            // SIEMPRE sumar el precio base del producto
             productAttributesTotal += productPriceInBs;
+            
+            // Además, sumar los ajustes de los atributos del producto
+            productAttrAdjusts.forEach(adj => {
+              productAttributesTotal += adj.adjustment;
+            });
+
+            // Formatear precio del producto
+            const formattedProductPrice = await formatWithPreference(productPrice, productCurrency);
+
+            productAttrAdjustments.push({
+              productName: productEntry.product.name,
+              productPrice: productPrice,
+              productPriceCurrency: productCurrency,
+              productPriceInBs: productPriceInBs,
+              formattedProductPrice: formattedProductPrice,
+              productAdjustments: productAttrAdjusts,
+              hasAttributeAdjustments,
+            });
           }
         }
       }
+      setDetailedProductAttributeAdjustments(productAttrAdjustments);
 
       const unitPrice = basePriceWithAdjustments + productAttributesTotal;
       const total = unitPrice * quantity;
@@ -643,7 +1012,7 @@ export function ProductEditDialog({
     if (product && currentCategory && allProducts.length > 0) {
       updateFormattedTotals();
     }
-  }, [product, quantity, attributes, currentCategory, productAttributes, exchangeRates, preferredCurrency, formatWithPreference, originalProduct, allProducts]);
+  }, [product, quantity, attributes, currentCategory, productAttributes, exchangeRates, preferredCurrency, formatWithPreference, originalProduct, allProducts, categories]);
 
   // Obtener la categoría del producto seleccionado para editar sus atributos
   const productCategoryForEdit = selectedProductForEdit
@@ -701,8 +1070,96 @@ export function ProductEditDialog({
     }));
   };
 
+  // Función helper para verificar si un producto como atributo tiene atributos obligatorios faltantes
+  const checkProductAttributeMissingMandatoryAttributes = (productEntry: { product: Product; attributes?: Record<string, any> }): string[] => {
+    const missingAttributes: string[] = [];
+    const productCategory = categories.find(cat => cat.name === productEntry.product.category);
+    
+    if (productCategory && productCategory.attributes && productCategory.attributes.length > 0) {
+      const editedAttributes = productEntry.attributes || {};
+      
+      for (const productAttr of productCategory.attributes) {
+        const productAttrKey = productAttr.id?.toString() || productAttr.title;
+        if (!productAttrKey) continue;
+        
+        // Solo validar atributos obligatorios (Select y Multiple select)
+        if (productAttr.valueType === "Select" || productAttr.valueType === "Multiple select") {
+          const productAttrValue = editedAttributes[productAttrKey] ?? (productAttr.title ? editedAttributes[productAttr.title] : undefined);
+          
+          if (productAttr.valueType === "Select") {
+            if (productAttrValue === undefined || productAttrValue === "" || productAttrValue === null) {
+              missingAttributes.push(productAttr.title || productAttrKey);
+            }
+          } else if (productAttr.valueType === "Multiple select") {
+            if (!Array.isArray(productAttrValue) || productAttrValue.length === 0) {
+              missingAttributes.push(productAttr.title || productAttrKey);
+            }
+          }
+        }
+      }
+    }
+    
+    return missingAttributes;
+  };
+
   const handleSave = () => {
     if (!product) return;
+    
+    // ===== VALIDACIÓN OBLIGATORIA DE ATRIBUTOS =====
+    // Verificar que todos los atributos de tipo Select, Multiple select y Product estén seleccionados
+    if (currentCategory && currentCategory.attributes && currentCategory.attributes.length > 0) {
+      const missingAttributes: string[] = [];
+      
+      for (const attribute of currentCategory.attributes) {
+        const attrKey = attribute.id?.toString() || attribute.title;
+        if (!attrKey) continue;
+        
+        const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+        
+        // Validar atributos de tipo "Select" (selección única)
+        if (attribute.valueType === "Select") {
+          if (attrValue === undefined || attrValue === "" || attrValue === null) {
+            missingAttributes.push(attribute.title || attrKey);
+          }
+        }
+        
+        // Validar atributos de tipo "Multiple select" (selección múltiple)
+        if (attribute.valueType === "Multiple select") {
+          if (!Array.isArray(attrValue) || attrValue.length === 0) {
+            missingAttributes.push(attribute.title || attrKey);
+          }
+        }
+        
+        // Validar atributos de tipo "Product" (como "Tela" - productos como atributos)
+        if (attribute.valueType === "Product") {
+          const productsForAttribute = productAttributes[attrKey] || [];
+          if (productsForAttribute.length === 0) {
+            missingAttributes.push(attribute.title || attrKey);
+          } else {
+            // Validar que cada producto-atributo tenga sus atributos obligatorios completos
+            for (const productEntry of productsForAttribute) {
+              const missingProductAttributes = checkProductAttributeMissingMandatoryAttributes(productEntry);
+              if (missingProductAttributes.length > 0) {
+                const missingList = missingProductAttributes.join(", ");
+                missingAttributes.push(`${attribute.title || attrKey} → ${productEntry.product.name}: ${missingList}`);
+              }
+            }
+          }
+        }
+      }
+      
+      // Si hay atributos faltantes, mostrar alert y NO permitir agregar el producto
+      if (missingAttributes.length > 0) {
+        const missingList = missingAttributes.join(", ");
+        toast.error(
+          `Debe completar los siguientes atributos obligatorios: ${missingList}`,
+          {
+            duration: 6000,
+          }
+        );
+        return; // Detener aquí, no agregar el producto al pedido
+      }
+    }
     
     // Usar el precio original del producto si está disponible, sino usar el precio convertido
     let basePriceInBs = product.price;
@@ -750,7 +1207,23 @@ export function ProductEditDialog({
               }
             }
             
+            // SIEMPRE sumar el precio base del producto
             productAttributesTotal += productPriceInBs;
+            
+            // Además, sumar los ajustes de los atributos editados del producto-atributo
+            const productCategory = categories.find(cat => cat.name === productEntry.product.category);
+            if (productCategory && productEntry.attributes) {
+              // Calcular los ajustes de precio de los atributos editados
+              const productAttributeAdjustments = calculateProductUnitPriceWithAttributes(
+                0, // Precio base 0 porque ya sumamos el precio del producto arriba
+                productEntry.attributes,
+                productCategory,
+                exchangeRates
+              );
+              
+              // Sumar los ajustes de atributos
+              productAttributesTotal += productAttributeAdjustments;
+            }
           }
         }
       }
@@ -760,12 +1233,38 @@ export function ProductEditDialog({
     const unitPrice = basePriceWithAdjustments + productAttributesTotal;
     const total = unitPrice * quantity;
 
+    // Asegurar que los atributos editados de productos-atributos estén incluidos en attributes
+    // Los atributos editados se guardan con la clave `${attrId}_${productId}`
+    const finalAttributes = { ...attributes };
+    if (currentCategory) {
+      for (const attribute of currentCategory.attributes || []) {
+        if (attribute.valueType === "Product") {
+          const attrId = attribute.id?.toString() || attribute.title;
+          const productsForAttr = productAttributes[attrId] || [];
+          
+          // IMPORTANTE: Guardar el array de IDs de productos seleccionados
+          // Esto permite que la vista de detalle pueda reconstruir el desglose correctamente
+          if (productsForAttr.length > 0) {
+            finalAttributes[attrId] = productsForAttr.map(entry => entry.productId);
+          }
+          
+          for (const productEntry of productsForAttr) {
+            const productAttributeKey = `${attrId}_${productEntry.productId}`;
+            // Si hay atributos editados, incluirlos en finalAttributes
+            if (productEntry.attributes && Object.keys(productEntry.attributes).length > 0) {
+              finalAttributes[productAttributeKey] = productEntry.attributes;
+            }
+          }
+        }
+      }
+    }
+
     // Asegurar que stock tenga un valor por defecto si no está presente
     const updatedProduct: OrderProduct = {
       ...product,
       quantity,
       total,
-      attributes,
+      attributes: finalAttributes,
       stock: product.stock ?? 0, // Usar 0 como valor por defecto si stock no existe
       observations: observations.trim() || undefined,
     };
@@ -908,7 +1407,34 @@ export function ProductEditDialog({
 
                 return (
                   <div key={attr.id ?? attr.title} className="space-y-2">
-                    <Label htmlFor={inputId}>{attr.title}</Label>
+                    <Label htmlFor={inputId}>
+                      {attr.title}
+                      {/* Indicador visual de campo obligatorio */}
+                      {(attr.valueType === "Select" || 
+                        attr.valueType === "Multiple select" || 
+                        attr.valueType === "Product") && (
+                        <span className="text-red-500 ml-1">*</span>
+                      )}
+                    </Label>
+                    {attr.description && (
+                      <p className="text-xs text-muted-foreground">{attr.description}</p>
+                    )}
+                    
+                    {/* Mostrar mensaje de advertencia si el atributo está vacío */}
+                    {(() => {
+                      const attrValue = attributes[attrKey] ?? (attr.title ? attributes[attr.title] : undefined);
+                      const isEmpty = 
+                        (attr.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null)) ||
+                        (attr.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0)) ||
+                        (attr.valueType === "Product" && (!productAttributes[attrKey] || productAttributes[attrKey].length === 0));
+                      
+                      return isEmpty ? (
+                        <p className="text-xs text-red-500 mt-1 font-medium">
+                          ⚠️ Este atributo es obligatorio
+                        </p>
+                      ) : null;
+                    })()}
+                    
                     {attr.valueType === "Select" ? (
                       <div className="flex items-center gap-2">
                         <Select
@@ -947,7 +1473,7 @@ export function ProductEditDialog({
                             }`}
                           >
                             {selectedAdjustment > 0 ? "+" : ""}
-                            {formatCurrency(selectedAdjustment, "Bs")}
+                            {formattedAttributeAdjustments[attrKey] || formatCurrency(selectedAdjustment, "Bs")}
                           </span>
                         )}
                       </div>
@@ -1016,7 +1542,7 @@ export function ProductEditDialog({
                               }`}
                             >
                               {selectedAdjustment > 0 ? "+" : ""}
-                              {formatCurrency(selectedAdjustment, "Bs")}
+                              {formattedAttributeAdjustments[attrKey] || formatCurrency(selectedAdjustment, "Bs")}
                             </span>
                           )}
                         </div>
@@ -1059,48 +1585,63 @@ export function ProductEditDialog({
                           <div className="space-y-2">
                             {productsForAttribute.length > 0 ? (
                               <div className="grid grid-cols-1 gap-2">
-                                {productsForAttribute.map((productEntry) => (
-                                  <Card key={`${attr.id}-${productEntry.productId}`} className="p-2">
-                                    <CardContent className="p-0">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                                          <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                          <div className="flex-1 min-w-0">
-                                            <h4 className="font-semibold text-xs leading-tight">{productEntry.product.name}</h4>
-                                            <div className="flex gap-2 mt-0.5 text-[10px] text-muted-foreground">
-                                              <span>SKU: {productEntry.product.sku}</span>
-                                              <span>•</span>
-                                              <span>
-                                                {productPricesFormatted[productEntry.product.id] || 
-                                                  formatCurrency(productEntry.product.price, productEntry.product.priceCurrency || "Bs")}
-                                              </span>
-                                              {productEntry.product.category && (
-                                                <>
-                                                  <span>•</span>
-                                                  <span className="truncate">{productEntry.product.category}</span>
-                                                </>
+                                {productsForAttribute.map((productEntry) => {
+                                  const missingProductAttributes = checkProductAttributeMissingMandatoryAttributes(productEntry);
+                                  const hasMissingAttributes = missingProductAttributes.length > 0;
+                                  
+                                  return (
+                                    <Card 
+                                      key={`${attr.id}-${productEntry.productId}`} 
+                                      className={`p-2 ${hasMissingAttributes ? 'border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-950/20' : ''}`}
+                                    >
+                                      <CardContent className="p-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                                            <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                            <div className="flex-1 min-w-0">
+                                              <h4 className="font-semibold text-xs leading-tight">{productEntry.product.name}</h4>
+                                              <div className="flex gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                                                <span>SKU: {productEntry.product.sku}</span>
+                                                <span>•</span>
+                                                <span>
+                                                  {productPricesFormatted[productEntry.product.id] || 
+                                                    formatCurrency(productEntry.product.price, productEntry.product.priceCurrency || "Bs")}
+                                                </span>
+                                                {productEntry.product.category && (
+                                                  <>
+                                                    <span>•</span>
+                                                    <span className="truncate">{productEntry.product.category}</span>
+                                                  </>
+                                                )}
+                                              </div>
+                                              {/* Mostrar advertencia si faltan atributos obligatorios */}
+                                              {hasMissingAttributes && (
+                                                <div className="mt-2 flex items-center gap-1 text-[10px] text-red-600 dark:text-red-400 font-medium">
+                                                  <AlertTriangle className="h-3 w-3" />
+                                                  <span>Faltan atributos obligatorios: {missingProductAttributes.join(", ")}</span>
+                                                </div>
                                               )}
                                             </div>
                                           </div>
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                              setSelectedProductForEdit(productEntry.product);
+                                              setEditingAttributeId(attrKey);
+                                              setEditingProductId(productEntry.productId);
+                                            }}
+                                            className="shrink-0 h-7 text-xs px-2"
+                                          >
+                                            <Settings className="h-3 w-3 mr-1" />
+                                            Editar
+                                          </Button>
                                         </div>
-                                        <Button
-                                          type="button"
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => {
-                                            setSelectedProductForEdit(productEntry.product);
-                                            setEditingAttributeId(attrKey);
-                                            setEditingProductId(productEntry.productId);
-                                          }}
-                                          className="shrink-0 h-7 text-xs px-2"
-                                        >
-                                          <Settings className="h-3 w-3 mr-1" />
-                                          Editar
-                                        </Button>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                ))}
+                                      </CardContent>
+                                    </Card>
+                                  );
+                                })}
                       </div>
                             ) : (
                               <div className="text-xs text-muted-foreground text-center py-3 border rounded-lg">
@@ -1181,28 +1722,67 @@ export function ProductEditDialog({
                         }
                       </span>
                     </div>
-                    {adjustment !== 0 && (
-                      <div className="flex justify-between">
-                        <span>Ajuste de atributos:</span>
-                        <span
-                          className={
-                            adjustment > 0
-                              ? "text-green-600 dark:text-green-400"
-                              : "text-red-600 dark:text-red-400"
-                          }
-                        >
-                          {adjustment > 0 ? "+" : ""}
-                          {formatCurrency(adjustment, "Bs")}
-                        </span>
-                      </div>
+                    {/* Mostrar cada atributo individualmente con su ajuste y valor seleccionado */}
+                    {detailedAttributeAdjustments.length > 0 && (
+                      <>
+                        {detailedAttributeAdjustments.map((adj, idx) => (
+                          <div key={idx} className="flex justify-between">
+                            <span>
+                              {adj.attributeName}
+                              {adj.selectedValueLabel && ` (${adj.selectedValueLabel})`}:
+                            </span>
+                            <span
+                              className={
+                                adj.adjustment > 0
+                                  ? "text-green-600 dark:text-green-400"
+                                  : "text-red-600 dark:text-red-400"
+                              }
+                            >
+                              {adj.adjustment > 0 ? "+" : ""}
+                              {adj.formattedAdjustment}
+                            </span>
+                          </div>
+                        ))}
+                      </>
                     )}
-                    {productAttributesTotal > 0 && (
-                      <div className="flex justify-between">
-                        <span>Precios de productos-atributos:</span>
-                        <span className="text-green-600 dark:text-green-400">
-                          +{formatCurrency(productAttributesTotal, "Bs")}
-                        </span>
-                      </div>
+                    {/* Mostrar cada producto-atributo individualmente con su precio y ajustes */}
+                    {detailedProductAttributeAdjustments.length > 0 && (
+                      <>
+                        {detailedProductAttributeAdjustments.map((productAttr, idx) => (
+                          <div key={idx} className="space-y-1">
+                            {/* Precio base del producto - SIEMPRE se muestra */}
+                            <div className="flex justify-between">
+                              <span>{productAttr.productName}:</span>
+                              <span className="text-green-600 dark:text-green-400">
+                                +{productAttr.formattedProductPrice}
+                              </span>
+                            </div>
+                            {/* Ajustes de atributos del producto */}
+                            {productAttr.productAdjustments.length > 0 && (
+                              <>
+                                {productAttr.productAdjustments.map((adj, adjIdx) => (
+                                  <div key={adjIdx} className="flex justify-between pl-4 text-xs">
+                                    <span className="text-muted-foreground">
+                                      {productAttr.productName} - {adj.attributeName}
+                                      {adj.selectedValueLabel && ` (${adj.selectedValueLabel})`}:
+                                    </span>
+                                    <span
+                                      className={
+                                        adj.adjustment > 0
+                                          ? "text-green-600 dark:text-green-400"
+                                          : "text-red-600 dark:text-red-400"
+                                      }
+                                    >
+                                      {adj.adjustment > 0 ? "+" : ""}
+                                      {adj.formattedAdjustment}
+                                    </span>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </>
                     )}
                     <div className="flex justify-between font-medium pt-1 border-t border-border">
                       <span>Precio unitario:</span>

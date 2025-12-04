@@ -3,7 +3,7 @@ import * as db from "./indexeddb"
 export interface SyncOperation {
   id: string
   type: 'create' | 'update' | 'delete'
-  entity: 'user' | 'order' | 'product' | 'client' | 'provider' | 'store'
+  entity: 'user' | 'order' | 'product' | 'category' | 'client' | 'provider' | 'store'
   entityId: string
   data: any
   timestamp: number
@@ -98,22 +98,143 @@ class SyncManager {
   }
 
   private async executeSyncOperation(operation: SyncOperation): Promise<void> {
-    // Esta función será implementada por cada entidad
-    // Por ahora, solo para usuarios
-    if (operation.entity === 'user') {
-      const { apiClient } = await import('./api-client')
-      
-      switch (operation.type) {
-        case 'create':
-          await apiClient.createUser(operation.data)
-          break
-        case 'update':
-          await apiClient.updateUser(operation.entityId, operation.data)
-          break
-        case 'delete':
-          await apiClient.deleteUser(operation.entityId)
-          break
+    const { apiClient } = await import('./api-client')
+    
+    try {
+      // Si la operación viene de la cola del SW, tiene formato diferente
+      if (operation.data && operation.data.url && operation.data.method) {
+        // Es una petición desde el Service Worker
+        await this.executeQueuedRequest(operation.data)
+        return
       }
+
+      // Manejar según la entidad
+      if (operation.entity === 'user') {
+        // Formato normal desde la app
+        switch (operation.type) {
+          case 'create':
+            await apiClient.createUser(operation.data)
+            break
+          case 'update':
+            await apiClient.updateUser(operation.entityId, operation.data)
+            break
+          case 'delete':
+            await apiClient.deleteUser(operation.entityId)
+            break
+        }
+        return
+      }
+
+      if (operation.entity === 'category') {
+        switch (operation.type) {
+          case 'create':
+            await apiClient.createCategory(operation.data)
+            break
+          case 'update':
+            await apiClient.updateCategory(operation.entityId, operation.data)
+            break
+          case 'delete':
+            await apiClient.deleteCategory(operation.entityId)
+            break
+        }
+        return
+      }
+
+      if (operation.entity === 'product') {
+        switch (operation.type) {
+          case 'create':
+            // Resolver el categoryId antes de crear el producto
+            const productData = operation.data as any
+            if (productData.categoryId && productData.category) {
+              // Verificar si el categoryId parece ser un ID local (numérico corto)
+              // Los ObjectIds de MongoDB tienen 24 caracteres hexadecimales
+              if (/^\d+$/.test(productData.categoryId) && productData.categoryId.length < 10) {
+                // Es un ID local, resolver el ObjectId del backend
+                const { resolveCategoryBackendId } = await import('./storage')
+                const backendCategoryId = await resolveCategoryBackendId(productData.category)
+                
+                if (backendCategoryId) {
+                  productData.categoryId = backendCategoryId
+                } else {
+                  throw new Error(
+                    `La categoría "${productData.category}" no existe en el backend y no se pudo sincronizar.`
+                  )
+                }
+              }
+            }
+            
+            await apiClient.createProduct(productData)
+            break
+          case 'update':
+            await apiClient.updateProduct(operation.entityId, operation.data)
+            break
+          case 'delete':
+            await apiClient.deleteProduct(operation.entityId)
+            break
+        }
+        return
+      }
+
+      // Para otras entidades (orders, clients, etc.)
+      // No hacer nada todavía - se implementará cuando el backend esté listo
+      console.log(`⚠️ Sincronización de ${operation.entity} no implementada aún - se guardará para cuando el backend esté listo`)
+      // No lanzar error, solo loggear - la app sigue funcionando offline
+    } catch (error) {
+      // Si falla, mantener en cola para reintentar
+      throw error
+    }
+  }
+
+  // Ejecutar petición encolada desde el Service Worker
+  private async executeQueuedRequest(requestData: any): Promise<void> {
+    try {
+      const token = typeof window !== "undefined" 
+        ? localStorage.getItem("auth_token") 
+        : null
+
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+        ...(requestData.headers || {}),
+      }
+
+      const response = await fetch(requestData.url, {
+        method: requestData.method,
+        headers,
+        body: requestData.body,
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      // Si es GET, actualizar cache
+      if (requestData.method === "GET") {
+        try {
+          const data = await response.json()
+          const { add, update } = await import("./indexeddb")
+          const cacheKey = `api_cache_${new URL(requestData.url).pathname}`
+          try {
+            await update("api_cache", {
+              id: cacheKey,
+              endpoint: new URL(requestData.url).pathname,
+              data,
+              timestamp: Date.now(),
+            })
+          } catch {
+            await add("api_cache", {
+              id: cacheKey,
+              endpoint: new URL(requestData.url).pathname,
+              data,
+              timestamp: Date.now(),
+            })
+          }
+        } catch {
+          // Si no es JSON, no cachear
+        }
+      }
+    } catch (error) {
+      throw error
     }
   }
 

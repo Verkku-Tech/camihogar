@@ -15,9 +15,15 @@ public class Product
     [BsonElement("categoryId")]
     public string CategoryId { get; set; } = string.Empty;
 
+    [BsonElement("category")]
+    public string Category { get; set; } = string.Empty; // Nombre de la categoría para compatibilidad con frontend
+
     [BsonElement("price")]
     [BsonRepresentation(BsonType.Decimal128)]
     public decimal Price { get; set; }
+
+    [BsonElement("priceCurrency")]
+    public string? PriceCurrency { get; set; } // "Bs", "USD", "EUR"
 
     [BsonElement("stock")]
     public int Stock { get; set; }

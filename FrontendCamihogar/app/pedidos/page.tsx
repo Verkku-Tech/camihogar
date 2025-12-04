@@ -118,12 +118,8 @@ export default function PedidosPage() {
   }
 
   const handleView = async (order: Order) => {
-    // TODO: Implementar vista de detalles del pedido
-    console.log("Ver pedido:", order)
-    const formattedTotal = await formatWithPreference(order.total, "Bs")
-    toast.info(`Pedido ${order.orderNumber}`, {
-      description: `Cliente: ${order.clientName}\nTotal: ${formattedTotal}`,
-    })
+    // Redirigir a la vista de detalle del pedido
+    window.location.href = `/pedidos/${order.orderNumber}`
   }
 
   const handleEdit = (order: Order) => {

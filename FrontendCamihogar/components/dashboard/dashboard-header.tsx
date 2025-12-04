@@ -72,8 +72,15 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           <Button variant="ghost" size="sm">
             <Bell className="w-5 h-5" />
           </Button>
-          <Button variant="ghost" size="sm" disabled>
-            <Sun className="h-5 w-5" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleTheme}
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          >
+            <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+            <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+            <span className="sr-only">Toggle theme</span>
           </Button>
           <Button variant="ghost" size="sm">
             <HelpCircle className="w-5 h-5" />
@@ -128,16 +135,18 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           <Bell className="w-5 h-5" />
         </Button>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={toggleTheme}
-          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-        >
-          <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-          <span className="sr-only">Toggle theme</span>
-        </Button>
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleTheme}
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          >
+            <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+            <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+            <span className="sr-only">Toggle theme</span>
+          </Button>
+        </div>
 
         <Button variant="ghost" size="sm">
           <HelpCircle className="w-5 h-5" />
