@@ -134,9 +134,10 @@ services:
     container_name: ordina-security-api
     restart: unless-stopped
     ports:
-      - "8082:8080"
+      - "8082:8082"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8082
       - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
       - MongoDb__DatabaseName=ordina_db
     depends_on:
@@ -152,9 +153,10 @@ services:
     container_name: ordina-users-api
     restart: unless-stopped
     ports:
-      - "8083:8080"
+      - "8083:8083"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8083
       - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
       - MongoDb__DatabaseName=ordina_db
     depends_on:
@@ -170,9 +172,10 @@ services:
     container_name: ordina-providers-api
     restart: unless-stopped
     ports:
-      - "8084:8080"
+      - "8084:8084"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8084
       - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
       - MongoDb__DatabaseName=ordina_db
     depends_on:
@@ -188,9 +191,10 @@ services:
     container_name: ordina-orders-api
     restart: unless-stopped
     ports:
-      - "8085:8080"
+      - "8085:8085"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8085
       - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
       - MongoDb__DatabaseName=ordina_db
     depends_on:
@@ -206,9 +210,10 @@ services:
     container_name: ordina-payments-api
     restart: unless-stopped
     ports:
-      - "8086:8080"
+      - "8086:8086"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8086
       - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
       - MongoDb__DatabaseName=ordina_db
     depends_on:
