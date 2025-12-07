@@ -8,6 +8,23 @@ builder.AddServiceDefaults();
 // Add services to the container.
 builder.Services.AddProblemDetails();
 
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins(
+                "http://localhost:3000", 
+                "https://localhost:3000",
+                "https://camihogar.verkku.com",
+                "http://48.217.223.103:3000"
+            )
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
 // Add controllers for API Gateway functionality
 builder.Services.AddControllers();
 
@@ -27,6 +44,9 @@ var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 app.UseExceptionHandler();
+
+// Enable CORS
+app.UseCors("AllowFrontend");
 
 // Enable Swagger in all environments
 if (app.Environment.IsDevelopment())

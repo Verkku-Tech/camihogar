@@ -27,7 +27,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -162,13 +161,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(
     null
   ); // Added product to remove state
-  const [saleType, setSaleType] = useState<"apartado" | "entrega" | "contado">(
-    "apartado"
-  );
   const [paymentCondition, setPaymentCondition] = useState<
     "cashea" | "pagara_en_tienda" | "pago_a_entrega" | "pago_parcial" | "todo_pago" | ""
   >("");
-  const [purchaseType, setPurchaseType] = useState<
+  const [saleType, setSaleType] = useState<
     | "delivery_express"
     | "encargo"
     | "encargo_entrega"
@@ -233,6 +229,30 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       try {
         const rates = await getActiveExchangeRates();
         setExchangeRates(rates);
+        
+        // Limpiar monedas sin tasa de selectedCurrencies (excepto Bs y la preferida)
+        setSelectedCurrencies((prev) => {
+          const newCurrencies = prev.filter((currency) => {
+            // Bs siempre se mantiene
+            if (currency === "Bs") return true;
+            // La moneda preferida siempre se mantiene
+            if (currency === preferredCurrency) return true;
+            // Otras monedas solo se mantienen si tienen tasa activa
+            if (currency === "USD") return rates.USD !== undefined;
+            if (currency === "EUR") return rates.EUR !== undefined;
+            return false;
+          });
+          
+          // Asegurar que Bs y la moneda preferida estén siempre presentes
+          if (!newCurrencies.includes("Bs")) {
+            newCurrencies.unshift("Bs");
+          }
+          if (preferredCurrency !== "Bs" && !newCurrencies.includes(preferredCurrency)) {
+            newCurrencies.push(preferredCurrency);
+          }
+          
+          return newCurrencies;
+        });
       } catch (error) {
         console.error("Error loading exchange rates:", error);
       }
@@ -363,30 +383,132 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     productDiscountTypes,
   ]);
 
-  // Actualizar monedas seleccionadas cuando cambie la preferencia
+  // Actualizar monedas seleccionadas cuando cambie la preferencia (solo si el diálogo está abierto)
   useEffect(() => {
-    const currencies: Currency[] = ["Bs"];
-    if (preferredCurrency !== "Bs" && !currencies.includes(preferredCurrency)) {
-      currencies.push(preferredCurrency);
-    }
-    setSelectedCurrencies(currencies);
-  }, [preferredCurrency]);
+    if (!open) return;
+    
+    setSelectedCurrencies((prev) => {
+      const currencies: Currency[] = ["Bs"];
+      // Asegurar que Bs siempre esté presente
+      if (!prev.includes("Bs")) {
+        currencies.push("Bs");
+      }
+      // Agregar la moneda preferida si no es Bs y tiene tasa activa
+      if (preferredCurrency !== "Bs") {
+        const hasRate = preferredCurrency === "USD" 
+          ? exchangeRates.USD !== undefined 
+          : exchangeRates.EUR !== undefined;
+        if (hasRate && !prev.includes(preferredCurrency)) {
+          currencies.push(preferredCurrency);
+        }
+      }
+      // Mantener otras monedas que ya estaban seleccionadas y tienen tasa
+      prev.forEach((currency) => {
+        if (currency !== "Bs" && 
+            currency !== preferredCurrency && 
+            !currencies.includes(currency)) {
+          const hasRate = currency === "USD" 
+            ? exchangeRates.USD !== undefined 
+            : exchangeRates.EUR !== undefined;
+          if (hasRate) {
+            currencies.push(currency);
+          }
+        }
+      });
+      return currencies.length > 0 ? currencies : ["Bs"];
+    });
+  }, [preferredCurrency, open]);
 
-  // Actualizar monedas por defecto cuando cambien las monedas seleccionadas
+  // Actualizar monedas por defecto cuando cambien las monedas seleccionadas o las tasas de cambio
   useEffect(() => {
+    if (!open) return;
+    
     const defaultCurrency = getDefaultCurrencyFromSelection();
     
-    // Actualizar descuento general si está en Bs y hay otra moneda seleccionada
-    if (generalDiscountCurrency === "Bs" && defaultCurrency !== "Bs") {
+    // Actualizar descuento general si la moneda actual no coincide con la moneda por defecto
+    // y la moneda por defecto está disponible en las monedas seleccionadas
+    if (generalDiscountCurrency !== defaultCurrency && 
+        selectedCurrencies.includes(defaultCurrency)) {
       setGeneralDiscountCurrency(defaultCurrency);
     }
     
-    // Actualizar delivery si está en Bs y hay otra moneda seleccionada
-    if (deliveryCurrency === "Bs" && defaultCurrency !== "Bs") {
+    // Actualizar delivery si la moneda actual no coincide con la moneda por defecto
+    // y la moneda por defecto está disponible en las monedas seleccionadas
+    if (deliveryCurrency !== defaultCurrency && 
+        selectedCurrencies.includes(defaultCurrency)) {
       setDeliveryCurrency(defaultCurrency);
     }
+    
+    // Actualizar monedas de pagos existentes que no tengan moneda asignada, estén en Bs, 
+    // o tengan una moneda que no está en las seleccionadas cuando hay otra disponible
+    if (defaultCurrency !== "Bs" && selectedCurrencies.includes(defaultCurrency)) {
+      setPayments((prevPayments) => {
+        return prevPayments.map((payment) => {
+          // Si no tiene moneda, está en Bs, o su moneda no está en las seleccionadas, actualizar
+          if (!payment.currency || 
+              payment.currency === "Bs" || 
+              !selectedCurrencies.includes(payment.currency)) {
+            const updatedPayment = { ...payment, currency: defaultCurrency };
+            // Si es método Efectivo, también actualizar cashCurrency
+            if (payment.method === "Efectivo") {
+              updatedPayment.paymentDetails = {
+                ...payment.paymentDetails,
+                cashCurrency: defaultCurrency
+              };
+              // Si hay una tasa de cambio disponible, guardarla
+              if (exchangeRates[defaultCurrency]?.rate) {
+                updatedPayment.paymentDetails.exchangeRate = exchangeRates[defaultCurrency].rate;
+              }
+            }
+            return updatedPayment;
+          }
+          // Si es método Efectivo y cashCurrency no coincide con currency, sincronizar
+          if (payment.method === "Efectivo" && 
+              payment.paymentDetails?.cashCurrency !== payment.currency &&
+              selectedCurrencies.includes(payment.currency)) {
+            return {
+              ...payment,
+              paymentDetails: {
+                ...payment.paymentDetails,
+                cashCurrency: payment.currency
+              }
+            };
+          }
+          return payment;
+        });
+      });
+    } else if (defaultCurrency === "Bs" && selectedCurrencies.includes("Bs")) {
+      // Si solo hay Bs disponible, asegurar que todos los pagos estén en Bs
+      setPayments((prevPayments) => {
+        return prevPayments.map((payment) => {
+          if (!payment.currency || !selectedCurrencies.includes(payment.currency)) {
+            const updatedPayment: PartialPayment = { ...payment, currency: "Bs" as Currency };
+            // Si es método Efectivo, también actualizar cashCurrency
+            if (payment.method === "Efectivo") {
+              updatedPayment.paymentDetails = {
+                ...payment.paymentDetails,
+                cashCurrency: "Bs"
+              };
+            }
+            return updatedPayment;
+          }
+          // Si es método Efectivo y cashCurrency no coincide con currency, sincronizar
+          if (payment.method === "Efectivo" && 
+              payment.paymentDetails?.cashCurrency !== payment.currency) {
+            return {
+              ...payment,
+              paymentDetails: {
+                ...payment.paymentDetails,
+                cashCurrency: payment.currency
+              }
+            };
+          }
+          return payment;
+        });
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCurrencies, preferredCurrency]);
+  }, [selectedCurrencies, preferredCurrency, exchangeRates, open]);
 
   // Función helper para renderizar celdas de moneda en el orden correcto
   const renderCurrencyCells = (amountInBs: number, className?: string) => {
@@ -849,29 +971,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
-      if (!isPaymentsValid && saleType === "contado") {
-        // Para contado, el total debe ser igual al pedido
-        toast.error(
-          `El total de los pagos (${formatCurrency(
-            totalPaidInBs,
-            "Bs"
-          )}) debe ser igual al total del pedido (${formatCurrency(
-            total,
-            "Bs"
-          )})`
-        );
-        return;
-      }
-
       // Validar condición de pago (obligatoria)
       if (!paymentCondition) {
         toast.error("Por favor selecciona la condición de pago");
         return;
       }
 
-      // Validar tipo de compra (obligatorio)
-      if (!purchaseType) {
-        toast.error("Por favor selecciona el tipo de compra");
+      // Validar tipo de venta (obligatorio)
+      if (!saleType) {
+        toast.error("Por favor selecciona el tipo de venta");
         return;
       }
 
@@ -901,9 +1009,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         deliveryCost,
         total,
         payments,
-        saleType,
         paymentCondition,
-        purchaseType,
+        saleType,
         hasDelivery,
         deliveryAddress: formData.deliveryAddress,
         observations: generalObservations.trim() || undefined,
@@ -945,19 +1052,18 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         deliveryCost,
         total,
         paymentType:
-          saleType === "apartado"
+          paymentCondition === "todo_pago"
+            ? "directo"
+            : paymentCondition === "pago_parcial"
             ? "apartado"
-            : saleType === "entrega"
-            ? "apartado"
-            : "directo", // Mantener compatibilidad
-        saleType, // Mantener para compatibilidad
+            : "apartado", // Por defecto apartado para otros casos
         paymentCondition: paymentCondition as
           | "cashea"
           | "pagara_en_tienda"
           | "pago_a_entrega"
           | "pago_parcial"
           | "todo_pago",
-        purchaseType: purchaseType as
+        saleType: saleType as
           | "delivery_express"
           | "encargo"
           | "encargo_entrega"
@@ -974,10 +1080,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         deliveryAddress: hasDelivery ? formData.deliveryAddress : undefined,
         hasDelivery,
         status:
-          saleType === "apartado" || saleType === "entrega"
-            ? "Apartado"
-            : saleType === "contado"
+          paymentCondition === "todo_pago" && isPaymentsValid
             ? "Pendiente"
+            : paymentCondition === "pago_parcial" || paymentCondition === "pagara_en_tienda" || paymentCondition === "pago_a_entrega"
+            ? "Apartado"
             : "Pendiente",
         productMarkups,
         createSupplierOrder,
@@ -1025,7 +1131,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       setDeliveryCurrency("Bs");
       setCreateSupplierOrder(false);
       setGeneralObservations("");
-      setSaleType("apartado"); // Reset tipo de venta
+      setSaleType(""); // Reset tipo de venta
+      setPaymentCondition("");
       setFormData({
         vendor: "",
         referrer: "",
@@ -1054,12 +1161,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
   // Funciones unificadas para manejar pagos (funciona para todos los tipos de venta)
   const addPayment = () => {
+    // Obtener la moneda por defecto basada en las monedas seleccionadas actuales
+    const defaultCurrency = getDefaultCurrencyFromSelection();
     const newPayment: PartialPayment = {
       id: Date.now().toString(),
       amount: 0,
       method: "",
       date: new Date().toISOString().split("T")[0],
-      currency: getDefaultCurrencyFromSelection(),
+      currency: defaultCurrency,
       paymentDetails: {},
     };
     setPayments([...payments, newPayment]);
@@ -2130,7 +2239,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                             Bs.
                           </Label>
                         </div>
-                        {/* Mostrar la moneda preferida en segundo lugar (si no es Bs) */}
+                        {/* Mostrar la moneda preferida en segundo lugar (si no es Bs) - siempre visible */}
                         {preferredCurrency !== "Bs" && (
                           <div className="flex items-center space-x-2">
                             <Checkbox
@@ -2138,6 +2247,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               checked={selectedCurrencies.includes(
                                 preferredCurrency
                               )}
+                              disabled={
+                                (preferredCurrency === "USD" && !exchangeRates.USD) ||
+                                (preferredCurrency === "EUR" && !exchangeRates.EUR)
+                              }
                               onCheckedChange={(checked) => {
                                 if (checked) {
                                   const newCurrencies: Currency[] = [
@@ -2162,7 +2275,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                             />
                             <Label
                               htmlFor={`currency-${preferredCurrency.toLowerCase()}`}
-                              className="cursor-pointer text-sm"
+                              className={`text-sm ${
+                                (preferredCurrency === "USD" && !exchangeRates.USD) ||
+                                (preferredCurrency === "EUR" && !exchangeRates.EUR)
+                                  ? "cursor-not-allowed opacity-50"
+                                  : "cursor-pointer"
+                              }`}
                             >
                               {preferredCurrency === "USD"
                                 ? "USD ($)"
@@ -2170,8 +2288,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                             </Label>
                           </div>
                         )}
-                        {/* Mostrar las otras monedas */}
-                        {preferredCurrency !== "USD" && (
+                        {/* Mostrar USD solo si tiene tasa activa y no es la preferida */}
+                        {preferredCurrency !== "USD" && exchangeRates.USD && (
                           <div className="flex items-center space-x-2">
                             <Checkbox
                               id="currency-usd"
@@ -2206,7 +2324,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                             </Label>
                           </div>
                         )}
-                        {preferredCurrency !== "EUR" && (
+                        {/* Mostrar EUR solo si tiene tasa activa y no es la preferida */}
+                        {preferredCurrency !== "EUR" && exchangeRates.EUR && (
                           <div className="flex items-center space-x-2">
                             <Checkbox
                               id="currency-eur"
@@ -2503,50 +2622,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
                   {/* 4. TIPO DE VENTA Y MÉTODO DE PAGO */}
                   <div className="space-y-4">
-                    <Label className="text-sm sm:text-base">
-                      Tipo de Venta
-                    </Label>
-                    <RadioGroup
-                      value={saleType}
-                      onValueChange={(
-                        value: "apartado" | "entrega" | "contado"
-                      ) => setSaleType(value)}
-                      className="flex flex-col sm:flex-row sm:gap-4 gap-2"
-                    >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="apartado" id="apartado" />
-                        <Label
-                          htmlFor="apartado"
-                          className="text-sm sm:text-base cursor-pointer"
-                        >
-                          Apartado
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="entrega" id="entrega" />
-                        <Label
-                          htmlFor="entrega"
-                          className="text-sm sm:text-base cursor-pointer"
-                        >
-                          Entrega
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="contado" id="contado" />
-                        <Label
-                          htmlFor="contado"
-                          className="text-sm sm:text-base cursor-pointer"
-                        >
-                          De Contado
-                        </Label>
-                      </div>
-                    </RadioGroup>
-
                     {/* Condición de Pago */}
                     <div className="space-y-2">
                       <Label htmlFor="paymentCondition" className="text-sm sm:text-base">
                         Condición de Pago <span className="text-red-500">*</span>
-                      </Label>
+                    </Label>
                       <Select
                         value={paymentCondition}
                         onValueChange={(value) =>
@@ -2572,17 +2652,17 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
+                      </div>
 
-                    {/* Tipo de Compra */}
+                    {/* Tipo de Venta */}
                     <div className="space-y-2">
-                      <Label htmlFor="purchaseType" className="text-sm sm:text-base">
-                        Tipo de Compra <span className="text-red-500">*</span>
-                      </Label>
+                      <Label htmlFor="saleType" className="text-sm sm:text-base">
+                        Tipo de Venta <span className="text-red-500">*</span>
+                        </Label>
                       <Select
-                        value={purchaseType}
+                        value={saleType}
                         onValueChange={(value) =>
-                          setPurchaseType(
+                          setSaleType(
                             value as
                               | "delivery_express"
                               | "encargo"
@@ -2595,8 +2675,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           )
                         }
                       >
-                        <SelectTrigger id="purchaseType">
-                          <SelectValue placeholder="Seleccione el tipo de compra" />
+                        <SelectTrigger id="saleType">
+                          <SelectValue placeholder="Seleccione el tipo de venta" />
                         </SelectTrigger>
                         <SelectContent>
                           {PURCHASE_TYPES.map((type) => (
@@ -2606,7 +2686,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           ))}
                         </SelectContent>
                       </Select>
-                    </div>
+                      </div>
 
                     {/* Sección unificada de Pagos - funciona para todos los tipos de venta */}
                     <div className="space-y-4 pt-4">
@@ -2645,8 +2725,32 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         "method",
                                         value
                                       );
-                                      // Si se cambia a un método diferente a Efectivo y había cashReceived, limpiarlo
-                                      if (value !== "Efectivo") {
+                                      // Si se cambia a Efectivo, inicializar cashCurrency con la moneda del pago
+                                      if (value === "Efectivo") {
+                                        const currentCurrency = payment.currency || getDefaultCurrencyFromSelection();
+                                        updatePaymentDetails(
+                                          payment.id,
+                                          "cashCurrency",
+                                          currentCurrency
+                                        );
+                                        // También actualizar payment.currency si no está definido
+                                        if (!payment.currency) {
+                                          updatePayment(
+                                            payment.id,
+                                            "currency",
+                                            currentCurrency
+                                          );
+                                        }
+                                        // Si hay una tasa de cambio disponible, guardarla
+                                        if (currentCurrency !== "Bs" && exchangeRates[currentCurrency]?.rate) {
+                                          updatePaymentDetails(
+                                            payment.id,
+                                            "exchangeRate",
+                                            exchangeRates[currentCurrency].rate
+                                          );
+                                        }
+                                      } else {
+                                        // Si se cambia a un método diferente a Efectivo y había cashReceived, limpiarlo
                                         updatePaymentDetails(
                                           payment.id,
                                           "cashReceived",
@@ -2718,7 +2822,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                       </Label>
                                       <Select
                                         value={
-                                          payment.currency || preferredCurrency
+                                          (payment.currency && selectedCurrencies.includes(payment.currency))
+                                            ? payment.currency
+                                            : getDefaultCurrencyFromSelection()
                                         }
                                         onValueChange={(value: Currency) => {
                                           // Actualizar la moneda registrada
@@ -2949,7 +3055,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                       </Label>
                                       <Select
                                         value={
-                                          payment.currency || preferredCurrency
+                                          (payment.currency && selectedCurrencies.includes(payment.currency))
+                                            ? payment.currency
+                                            : getDefaultCurrencyFromSelection()
                                         }
                                         onValueChange={(value: Currency) => {
                                           // Actualizar la moneda registrada
@@ -3142,7 +3250,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               )}
 
                               {/* Sección genérica para métodos que solo necesitan Moneda y Monto */}
-                              {!["Pago Móvil", "Transferencia", "Efectivo"].includes(payment.method) && (
+                              {payment.method && 
+                               payment.method !== "" && 
+                               !["Pago Móvil", "Transferencia", "Efectivo"].includes(payment.method) && (
                                 <div className="space-y-3 pt-2 border-t">
                                   <Label className="text-sm font-medium">
                                     Información de {payment.method}
@@ -3157,7 +3267,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                       </Label>
                                       <Select
                                         value={
-                                          payment.currency || preferredCurrency
+                                          (payment.currency && selectedCurrencies.includes(payment.currency))
+                                            ? payment.currency
+                                            : getDefaultCurrencyFromSelection()
                                         }
                                         onValueChange={(value: Currency) => {
                                           // Actualizar la moneda registrada
@@ -3317,8 +3429,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                       </Label>
                                       <Select
                                         value={
-                                          payment.paymentDetails
-                                            ?.cashCurrency || preferredCurrency
+                                          (payment.paymentDetails?.cashCurrency && 
+                                           selectedCurrencies.includes(payment.paymentDetails.cashCurrency))
+                                            ? payment.paymentDetails.cashCurrency
+                                            : getDefaultCurrencyFromSelection()
                                         }
                                         onValueChange={(value: Currency) => {
                                           // Actualizar cashCurrency

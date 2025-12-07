@@ -1122,12 +1122,11 @@ export interface Order {
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
   paymentType: "directo" | "apartado" | "mixto"; // Mantener para compatibilidad
-  saleType?: "apartado" | "entrega" | "contado"; // Mantener para compatibilidad
   paymentMode?: "simple" | "mixto"; // Nuevo campo
   paymentMethod: string;
   // Nuevos campos opcionales para compatibilidad hacia atrás
   paymentCondition?: "cashea" | "pagara_en_tienda" | "pago_a_entrega" | "pago_parcial" | "todo_pago";
-  purchaseType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sa";
+  saleType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sa";
   paymentDetails?: {
     // Pago Móvil
     pagomovilReference?: string;
