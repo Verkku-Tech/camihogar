@@ -482,7 +482,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       setPayments((prevPayments) => {
         return prevPayments.map((payment) => {
           if (!payment.currency || !selectedCurrencies.includes(payment.currency)) {
-            const updatedPayment = { ...payment, currency: "Bs" };
+            const updatedPayment: PartialPayment = { ...payment, currency: "Bs" as Currency };
             // Si es método Efectivo, también actualizar cashCurrency
             if (payment.method === "Efectivo") {
               updatedPayment.paymentDetails = {
