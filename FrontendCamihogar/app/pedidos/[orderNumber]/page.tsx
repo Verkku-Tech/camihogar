@@ -1119,18 +1119,6 @@ export default function OrderDetailPage() {
                         <p className="font-medium">{order.referrerName}</p>
                       </div>
                     )}
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        Tipo de Venta
-                      </p>
-                      <Badge variant="outline" className="mt-1">
-                        {order.saleType === "apartado"
-                          ? "Apartado"
-                          : order.saleType === "entrega"
-                          ? "Entrega"
-                          : "De Contado"}
-                      </Badge>
-                    </div>
                     {order.paymentCondition && (
                       <div>
                         <p className="text-sm text-muted-foreground">
@@ -1143,15 +1131,15 @@ export default function OrderDetailPage() {
                         </p>
                       </div>
                     )}
-                    {order.purchaseType && (
+                    {order.saleType && (
                       <div>
                         <p className="text-sm text-muted-foreground">
-                          Tipo de Compra
+                          Tipo de Venta
                         </p>
                         <p className="font-medium">
                           {PURCHASE_TYPES.find(
-                            (pt) => pt.value === order.purchaseType
-                          )?.label || order.purchaseType}
+                            (pt) => pt.value === order.saleType
+                          )?.label || order.saleType}
                         </p>
                       </div>
                     )}
