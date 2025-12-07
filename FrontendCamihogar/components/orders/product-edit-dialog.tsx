@@ -191,9 +191,10 @@ function ProductAttributesEditor({
   onSave,
   onCancel,
 }: ProductAttributesEditorProps) {
-  const { formatWithPreference } = useCurrency();
+  const { formatWithPreference, exchangeRates } = useCurrency();
   const [attributes, setAttributes] = useState<Record<string, any>>(initialAttributes);
   const [productPriceFormatted, setProductPriceFormatted] = useState<string>("");
+  const [formattedAttributeAdjustments, setFormattedAttributeAdjustments] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const updatePrice = async () => {
@@ -202,6 +203,75 @@ function ProductAttributesEditor({
     };
     updatePrice();
   }, [product.price, product.priceCurrency, formatWithPreference]);
+
+  // Calcular y formatear ajustes de precio cuando cambian los atributos
+  useEffect(() => {
+    const calculateAndFormatAdjustments = async () => {
+      if (!category || !category.attributes) return;
+
+      const adjustments: Record<string, string> = {};
+
+      // Función helper para convertir ajuste a Bs
+      const convertAdjustmentToBs = (adjustment: number, currency?: string): number => {
+        if (!currency || currency === "Bs") return adjustment;
+        if (currency === "USD" && exchangeRates?.USD?.rate) {
+          return adjustment * exchangeRates.USD.rate;
+        }
+        if (currency === "EUR" && exchangeRates?.EUR?.rate) {
+          return adjustment * exchangeRates.EUR.rate;
+        }
+        return adjustment;
+      };
+
+      // Función helper para obtener el ajuste de precio de un valor
+      const getPriceAdjustment = (value: string | AttributeValue): number => {
+        if (typeof value === "object" && "priceAdjustment" in value) {
+          const adjustment = value.priceAdjustment || 0;
+          const currency = value.priceAdjustmentCurrency || "Bs";
+          return convertAdjustmentToBs(adjustment, currency);
+        }
+        return 0;
+      };
+
+      // Calcular ajustes para cada atributo
+      for (const attribute of category.attributes) {
+        if (attribute.valueType === "Product" || !attribute.values) continue;
+
+        const attrKey = attribute.id?.toString() || attribute.title;
+        if (!attrKey) continue;
+
+        const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+
+        // Calcular ajuste total
+        let totalAdjustment = 0;
+        if (Array.isArray(attrValue)) {
+          totalAdjustment = attrValue.reduce((total, valStr) => {
+            const selectedValue = attribute.values?.find((val: string | AttributeValue) => {
+              const valStr2 = getValueString(val);
+              return valStr2 === valStr;
+            });
+            return total + (selectedValue ? getPriceAdjustment(selectedValue) : 0);
+          }, 0);
+        } else if (attrValue !== undefined) {
+          const selectedValue = attribute.values?.find((val: string | AttributeValue) => {
+            const valStr = getValueString(val);
+            return valStr === attrValue?.toString();
+          });
+          totalAdjustment = selectedValue ? getPriceAdjustment(selectedValue) : 0;
+        }
+
+        // Formatear el ajuste
+        if (totalAdjustment !== 0) {
+          const formatted = await formatWithPreference(Math.abs(totalAdjustment), "Bs");
+          adjustments[attrKey] = formatted;
+        }
+      }
+
+      setFormattedAttributeAdjustments(adjustments);
+    };
+
+    calculateAndFormatAdjustments();
+  }, [attributes, category, exchangeRates, formatWithPreference]);
 
   const handleAttributeChange = (attrKey: string, value: any) => {
     setAttributes((prev) => ({
@@ -225,26 +295,69 @@ function ProductAttributesEditor({
         );
 
       case "Select":
+        // Función helper para convertir ajuste a Bs
+        const convertAdjustmentToBs = (adjustment: number, currency?: string): number => {
+          if (!currency || currency === "Bs") return adjustment;
+          if (currency === "USD" && exchangeRates?.USD?.rate) {
+            return adjustment * exchangeRates.USD.rate;
+          }
+          if (currency === "EUR" && exchangeRates?.EUR?.rate) {
+            return adjustment * exchangeRates.EUR.rate;
+          }
+          return adjustment;
+        };
+
+        // Función helper para obtener el ajuste de precio de un valor
+        const getPriceAdjustment = (value: string | AttributeValue): number => {
+          if (typeof value === "object" && "priceAdjustment" in value) {
+            const adjustment = value.priceAdjustment || 0;
+            const currency = value.priceAdjustmentCurrency || "Bs";
+            return convertAdjustmentToBs(adjustment, currency);
+          }
+          return 0;
+        };
+
+        // Calcular ajuste para el valor seleccionado
+        const selectedValue = attribute.values?.find((val: string | AttributeValue) => {
+          const valStr = getValueString(val);
+          return valStr === attrValue?.toString();
+        });
+        const selectedAdjustment = selectedValue ? getPriceAdjustment(selectedValue) : 0;
+
         return (
-          <Select
-            value={attrValue || ""}
-            onValueChange={(val) => handleAttributeChange(attrKey, val)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={`Seleccione ${attribute.title?.toLowerCase() || "opción"}`} />
-            </SelectTrigger>
-            <SelectContent>
-              {attribute.values?.map((option: string | AttributeValue) => {
-                const optionValue = typeof option === "string" ? option : option.id || option.label;
-                const optionLabel = typeof option === "string" ? option : option.label || option.id;
-                return (
-                  <SelectItem key={optionValue} value={optionValue}>
-                    {optionLabel}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Select
+              value={attrValue || ""}
+              onValueChange={(val) => handleAttributeChange(attrKey, val)}
+            >
+              <SelectTrigger className="flex-1">
+                <SelectValue placeholder={`Seleccione ${attribute.title?.toLowerCase() || "opción"}`} />
+              </SelectTrigger>
+              <SelectContent>
+                {attribute.values?.map((option: string | AttributeValue) => {
+                  const optionValue = typeof option === "string" ? option : option.id || option.label;
+                  const optionLabel = typeof option === "string" ? option : option.label || option.id;
+                  return (
+                    <SelectItem key={optionValue} value={optionValue}>
+                      {optionLabel}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            {selectedAdjustment !== 0 && (
+              <span
+                className={`text-sm font-medium whitespace-nowrap ${
+                  selectedAdjustment > 0
+                    ? "text-green-600 dark:text-green-400"
+                    : "text-red-600 dark:text-red-400"
+                }`}
+              >
+                {selectedAdjustment > 0 ? "+" : ""}
+                {formattedAttributeAdjustments[attrKey] || formatCurrency(selectedAdjustment, "Bs")}
+              </span>
+            )}
+          </div>
         );
 
       case "Multiple select":
@@ -252,52 +365,97 @@ function ProductAttributesEditor({
         const maxSelections = attribute.maxSelections !== undefined ? attribute.maxSelections : Infinity;
         const isMaxReached = maxSelections !== Infinity && selectedValues.length >= maxSelections;
 
+        // Función helper para convertir ajuste a Bs
+        const convertAdjustmentToBsMultiple = (adjustment: number, currency?: string): number => {
+          if (!currency || currency === "Bs") return adjustment;
+          if (currency === "USD" && exchangeRates?.USD?.rate) {
+            return adjustment * exchangeRates.USD.rate;
+          }
+          if (currency === "EUR" && exchangeRates?.EUR?.rate) {
+            return adjustment * exchangeRates.EUR.rate;
+          }
+          return adjustment;
+        };
+
+        // Función helper para obtener el ajuste de precio de un valor
+        const getPriceAdjustmentMultiple = (value: string | AttributeValue): number => {
+          if (typeof value === "object" && "priceAdjustment" in value) {
+            const adjustment = value.priceAdjustment || 0;
+            const currency = value.priceAdjustmentCurrency || "Bs";
+            return convertAdjustmentToBsMultiple(adjustment, currency);
+          }
+          return 0;
+        };
+
+        // Calcular ajuste total para selección múltiple
+        const totalAdjustment = selectedValues.reduce((total, valStr) => {
+          const selectedValue = attribute.values?.find((val: string | AttributeValue) => {
+            const valStr2 = getValueString(val);
+            return valStr2 === valStr;
+          });
+          return total + (selectedValue ? getPriceAdjustmentMultiple(selectedValue) : 0);
+        }, 0);
+
         return (
           <div className="space-y-2">
-            <Select
-              value=""
-              disabled={isMaxReached}
-              onValueChange={(val) => {
-                if (!selectedValues.includes(val)) {
-                  if (maxSelections !== Infinity && selectedValues.length >= maxSelections) {
-                    toast.error(`Solo puedes seleccionar máximo ${maxSelections} opción${maxSelections > 1 ? "es" : ""}`);
-                    return;
+            <div className="flex items-center gap-2">
+              <Select
+                value=""
+                disabled={isMaxReached}
+                onValueChange={(val) => {
+                  if (!selectedValues.includes(val)) {
+                    if (maxSelections !== Infinity && selectedValues.length >= maxSelections) {
+                      toast.error(`Solo puedes seleccionar máximo ${maxSelections} opción${maxSelections > 1 ? "es" : ""}`);
+                      return;
+                    }
+                    handleAttributeChange(attrKey, [...selectedValues, val]);
                   }
-                  handleAttributeChange(attrKey, [...selectedValues, val]);
-                }
-              }}
-            >
-              <SelectTrigger className={isMaxReached ? "opacity-50 cursor-not-allowed" : ""}>
-                <SelectValue
-                  placeholder={
-                    isMaxReached
-                      ? `Máximo alcanzado (${maxSelections})`
-                      : "Seleccione opciones"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {attribute.values
-                  ?.map((v: string | AttributeValue) => typeof v === "string" ? v : v.id || v.label)
-                  .filter((optionValue: string) => !selectedValues.includes(optionValue))
-                  .map((optionValue: string) => {
-                    const option = attribute.values?.find(
-                      (v: string | AttributeValue) => {
-                        const valStr = typeof v === "string" ? v : v.id || v.label;
-                        return valStr === optionValue;
-                      }
-                    );
-                    const optionLabel = option 
-                      ? (typeof option === "string" ? option : option.label || option.id)
-                      : optionValue;
-                    return (
-                      <SelectItem key={optionValue} value={optionValue}>
-                        {optionLabel}
-                      </SelectItem>
-                    );
-                  })}
-              </SelectContent>
-            </Select>
+                }}
+              >
+                <SelectTrigger className={`flex-1 ${isMaxReached ? "opacity-50 cursor-not-allowed" : ""}`}>
+                  <SelectValue
+                    placeholder={
+                      isMaxReached
+                        ? `Máximo alcanzado (${maxSelections})`
+                        : "Seleccione opciones"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {attribute.values
+                    ?.map((v: string | AttributeValue) => typeof v === "string" ? v : v.id || v.label)
+                    .filter((optionValue: string) => !selectedValues.includes(optionValue))
+                    .map((optionValue: string) => {
+                      const option = attribute.values?.find(
+                        (v: string | AttributeValue) => {
+                          const valStr = typeof v === "string" ? v : v.id || v.label;
+                          return valStr === optionValue;
+                        }
+                      );
+                      const optionLabel = option 
+                        ? (typeof option === "string" ? option : option.label || option.id)
+                        : optionValue;
+                      return (
+                        <SelectItem key={optionValue} value={optionValue}>
+                          {optionLabel}
+                        </SelectItem>
+                      );
+                    })}
+                </SelectContent>
+              </Select>
+              {totalAdjustment !== 0 && (
+                <span
+                  className={`text-sm font-medium whitespace-nowrap ${
+                    totalAdjustment > 0
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {totalAdjustment > 0 ? "+" : ""}
+                  {formattedAttributeAdjustments[attrKey] || formatCurrency(totalAdjustment, "Bs")}
+                </span>
+              )}
+            </div>
             {selectedValues.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {selectedValues.map((val: string) => {
