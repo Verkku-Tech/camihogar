@@ -472,10 +472,12 @@ export function OrderConfirmationDialog({
         const productAttributes: Array<{
           name: string;
           price: string;
+          priceInBs: number;
           adjustments: Array<{
             name: string;
             value: string;
             adjustment: string;
+            adjustmentInBs: number;
           }>;
         }> = [];
         
@@ -527,6 +529,7 @@ export function OrderConfirmationDialog({
                 name: string;
                 value: string;
                 adjustment: string;
+                adjustmentInBs: number;
               }> = [];
               
               if (editedAttributes && typeof editedAttributes === "object") {
