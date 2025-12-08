@@ -1,13 +1,13 @@
 // API Client para comunicación con el backend
-// URLs base para cada microservicio
-const SECURITY_API_URL =
-  process.env.NEXT_PUBLIC_SECURITY_API_URL ||
+// URLs base para cada microservicio (solo para servidor/SSR)
+const SECURITY_API_URL_DIRECT =
+  process.env.SECURITY_API_URL ||
   "http://camihogar.eastus.cloudapp.azure.com:8082";
-const USERS_API_URL =
-  process.env.NEXT_PUBLIC_USERS_API_URL ||
+const USERS_API_URL_DIRECT =
+  process.env.USERS_API_URL ||
   "http://camihogar.eastus.cloudapp.azure.com:8083";
-const PROVIDERS_API_URL =
-  process.env.NEXT_PUBLIC_PROVIDERS_API_URL ||
+const PROVIDERS_API_URL_DIRECT =
+  process.env.PROVIDERS_API_URL ||
   "http://camihogar.eastus.cloudapp.azure.com:8084";
 
 export interface ApiError {
@@ -24,25 +24,44 @@ interface CachedApiResponse {
 
 export class ApiClient {
   private getBaseUrl(endpoint: string): string {
-    // Determinar qué API usar según el endpoint
+    // Determinar qué servicio usar según el endpoint
+    let service: "security" | "users" | "providers" = "security";
+
     if (endpoint.startsWith("/api/Auth")) {
-      return SECURITY_API_URL;
-    }
-    if (
+      service = "security";
+    } else if (
       endpoint.startsWith("/api/users") ||
       endpoint.startsWith("/api/Users")
     ) {
-      return USERS_API_URL;
-    }
-    if (
+      service = "users";
+    } else if (
       endpoint.startsWith("/api/categories") ||
       endpoint.startsWith("/api/products") ||
       endpoint.startsWith("/api/providers")
     ) {
-      return PROVIDERS_API_URL;
+      service = "providers";
     }
-    // Por defecto, usar Security API
-    return SECURITY_API_URL;
+
+    // Si estamos en el cliente (navegador) y la página está en HTTPS, usar proxy
+    if (typeof window !== "undefined") {
+      const isHttps = window.location.protocol === "https:";
+      if (isHttps) {
+        // Usar proxy para evitar contenido mixto
+        return `/api/proxy/${service}`;
+      }
+    }
+
+    // En servidor (SSR) o si estamos en HTTP, usar URLs directas
+    switch (service) {
+      case "security":
+        return SECURITY_API_URL_DIRECT;
+      case "users":
+        return USERS_API_URL_DIRECT;
+      case "providers":
+        return PROVIDERS_API_URL_DIRECT;
+      default:
+        return SECURITY_API_URL_DIRECT;
+    }
   }
 
   // Verificar si el endpoint existe en el backend
@@ -198,8 +217,16 @@ export class ApiClient {
       }
     }
 
+    // Construir la URL final
+    // Si baseUrl es un proxy (/api/proxy/security), agregar el endpoint sin el / inicial
+    // Si baseUrl es una URL directa (http://...), agregar el endpoint completo
+    const isProxy = baseUrl.startsWith("/api/proxy/");
+    const finalUrl = isProxy
+      ? `${baseUrl}${endpoint}` // Proxy: /api/proxy/security/api/Auth/login
+      : `${baseUrl}${endpoint}`; // Directo: http://.../api/Auth/login
+
     try {
-      const response = await fetch(`${baseUrl}${endpoint}`, {
+      const response = await fetch(finalUrl, {
         ...options,
         headers,
       });
@@ -320,28 +347,27 @@ export class ApiClient {
     }
 
     try {
-      const response = await fetch(`${SECURITY_API_URL}/api/Auth/refresh`, {
+      // Usar el mismo método request para mantener consistencia
+      const response = await this.request<{
+        token: string;
+        refreshToken: string;
+        expiresAt: string;
+        refreshTokenExpiresAt: string;
+      }>("/api/Auth/refresh", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken }),
       });
 
-      if (!response.ok) {
-        return false;
-      }
-
-      const data = await response.json();
-
       // Guardar nuevos tokens
-      localStorage.setItem("auth_token", data.token);
-      localStorage.setItem("refresh_token", data.refreshToken);
+      localStorage.setItem("auth_token", response.token);
+      localStorage.setItem("refresh_token", response.refreshToken);
       localStorage.setItem(
         "token_expires_at",
-        new Date(data.expiresAt).getTime().toString()
+        new Date(response.expiresAt).getTime().toString()
       );
       localStorage.setItem(
         "refresh_token_expires_at",
-        new Date(data.refreshTokenExpiresAt).getTime().toString()
+        new Date(response.refreshTokenExpiresAt).getTime().toString()
       );
 
       return true;
