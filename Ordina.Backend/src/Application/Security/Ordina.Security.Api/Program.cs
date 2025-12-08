@@ -40,6 +40,7 @@ builder.Services.AddCors(options =>
                 { 
                     "http://localhost:3000", 
                     "https://localhost:3000",
+                    "http://camihogar.verkku.com",
                     "https://camihogar.verkku.com",
                     "http://48.217.223.103:3000",
                     "http://camihogar.eastus.cloudapp.azure.com:3000"
