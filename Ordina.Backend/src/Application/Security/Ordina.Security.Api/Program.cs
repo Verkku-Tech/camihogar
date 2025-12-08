@@ -21,12 +21,32 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins(
-                "http://localhost:3000", 
-                "https://localhost:3000",
-                "https://camihogar.verkku.com",
-                "http://48.217.223.103:3000"
-            )
+        // Obtener URLs permitidas desde variable de entorno o configuración
+        var allowedOriginsEnv = builder.Configuration["AllowedUrls"];
+        string[] allowedOrigins;
+        
+        if (!string.IsNullOrEmpty(allowedOriginsEnv))
+        {
+            // Si existe la variable de entorno, usar esa (formato: "url1,url2,url3")
+            allowedOrigins = allowedOriginsEnv.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(url => url.Trim())
+                .ToArray();
+        }
+        else
+        {
+            // Si no, usar configuración desde appsettings.json
+            allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+                ?? new[] 
+                { 
+                    "http://localhost:3000", 
+                    "https://localhost:3000",
+                    "https://camihogar.verkku.com",
+                    "http://48.217.223.103:3000",
+                    "http://camihogar.eastus.cloudapp.azure.com:3000"
+                };
+        }
+        
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
