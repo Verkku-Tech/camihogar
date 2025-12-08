@@ -1,11 +1,14 @@
 // API Client para comunicación con el backend
 // URLs base para cada microservicio
 const SECURITY_API_URL =
-  process.env.NEXT_PUBLIC_SECURITY_API_URL || "http://48.217.223.103:8082";
+  process.env.NEXT_PUBLIC_SECURITY_API_URL ||
+  "http://camihogar.eastus.cloudapp.azure.com:8082";
 const USERS_API_URL =
-  process.env.NEXT_PUBLIC_USERS_API_URL || "http://48.217.223.103:8083";
+  process.env.NEXT_PUBLIC_USERS_API_URL ||
+  "http://camihogar.eastus.cloudapp.azure.com:8083";
 const PROVIDERS_API_URL =
-  process.env.NEXT_PUBLIC_PROVIDERS_API_URL || "http://48.217.223.103:8084";
+  process.env.NEXT_PUBLIC_PROVIDERS_API_URL ||
+  "http://camihogar.eastus.cloudapp.azure.com:8084";
 
 export interface ApiError {
   message: string;
