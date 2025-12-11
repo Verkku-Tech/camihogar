@@ -510,63 +510,60 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCurrencies, preferredCurrency, exchangeRates, open]);
 
-  // Función helper para renderizar celdas de moneda en el orden correcto
-  const renderCurrencyCells = (amountInBs: number, className?: string) => {
-    return getCurrencyOrder().map((currency) => {
-      if (!selectedCurrencies.includes(currency)) return null;
-
-      let amount = amountInBs;
-      let rate: number | undefined;
-
-      if (currency === "USD") {
-        rate = exchangeRates.USD?.rate;
-        if (rate) amount = amountInBs / rate;
-      } else if (currency === "EUR") {
-        rate = exchangeRates.EUR?.rate;
-        if (rate) amount = amountInBs / rate;
-      }
-
-      const defaultClass = className ? "" : "text-xs sm:text-sm";
-      const finalClass = className || defaultClass;
-
+  // Función helper para renderizar celda de moneda con USD arriba y Bs abajo
+  const renderCurrencyCell = (amountInBs: number, className?: string) => {
+    // Intentar convertir a USD si hay tasa disponible
+    const usdRate = exchangeRates.USD?.rate;
+    
+    if (usdRate && usdRate > 0) {
+      const amountInUsd = amountInBs / usdRate;
       return (
-        <TableCell key={currency} className={`text-right ${finalClass}`}>
-          {currency !== "Bs" && !rate ? "-" : formatCurrency(amount, currency)}
+        <TableCell className={`text-right ${className || ""}`}>
+          <div className="font-medium">
+            {formatCurrency(amountInUsd, "USD")}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {formatCurrency(amountInBs, "Bs")}
+          </div>
         </TableCell>
       );
-    });
+    }
+    
+    // Si no hay tasa USD, mostrar solo en Bs
+    return (
+      <TableCell className={`text-right ${className || ""}`}>
+        <div className="font-medium">
+          {formatCurrency(amountInBs, "Bs")}
+        </div>
+      </TableCell>
+    );
   };
 
-  // Función helper para renderizar celdas de moneda con signo negativo (descuentos)
-  const renderCurrencyCellsNegative = (
-    amountInBs: number,
-    className?: string
-  ) => {
-    return getCurrencyOrder().map((currency) => {
-      if (!selectedCurrencies.includes(currency)) return null;
-
-      let amount = amountInBs;
-      let rate: number | undefined;
-
-      if (currency === "USD") {
-        rate = exchangeRates.USD?.rate;
-        if (rate) amount = amountInBs / rate;
-      } else if (currency === "EUR") {
-        rate = exchangeRates.EUR?.rate;
-        if (rate) amount = amountInBs / rate;
-      }
-
+  // Función helper para renderizar celda de moneda con signo negativo (descuentos)
+  const renderCurrencyCellNegative = (amountInBs: number, className?: string) => {
+    const usdRate = exchangeRates.USD?.rate;
+    
+    if (usdRate && usdRate > 0) {
+      const amountInUsd = amountInBs / usdRate;
       return (
-        <TableCell
-          key={currency}
-          className={`text-right text-xs sm:text-sm ${className || ""}`}
-        >
-          {currency !== "Bs" && !rate
-            ? "-"
-            : `- ${formatCurrency(amount, currency)}`}
+        <TableCell className={`text-right ${className || ""}`}>
+          <div className="font-medium">
+            -{formatCurrency(amountInUsd, "USD")}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            -{formatCurrency(amountInBs, "Bs")}
+          </div>
         </TableCell>
       );
-    });
+    }
+    
+    return (
+      <TableCell className={`text-right ${className || ""}`}>
+        <div className="font-medium">
+          -{formatCurrency(amountInBs, "Bs")}
+        </div>
+      </TableCell>
+    );
   };
 
   const getProductBaseTotal = (product: OrderProduct) => {
@@ -983,11 +980,6 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
-      // Validar observaciones generales (obligatorias)
-      if (!generalObservations || generalObservations.trim() === "") {
-        toast.error("Por favor agrega observaciones generales para el pedido");
-        return;
-      }
 
       // Preparar datos para confirmación
       const orderDataForConfirmation = {
@@ -2205,186 +2197,17 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
                   {/* 2. TOTALIZACIÓN */}
                   <div className="p-3 sm:p-4 bg-muted rounded-lg space-y-4">
-                    {/* Selector de monedas */}
-                    <div className="space-y-2">
-                      <Label className="text-sm sm:text-base">
-                        Ver totales en:
-                      </Label>
-                      <div className="flex flex-wrap gap-2">
-                        {/* Bs siempre primero */}
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="currency-bs"
-                            checked={selectedCurrencies.includes("Bs")}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                const newCurrencies: Currency[] = [
-                                  ...selectedCurrencies,
-                                  "Bs",
-                                ];
-                                setSelectedCurrencies(newCurrencies);
-                                setShowCurrencyTable(newCurrencies.length > 0);
-                              } else {
-                                const newCurrencies: Currency[] =
-                                  selectedCurrencies.filter((c) => c !== "Bs");
-                                setSelectedCurrencies(newCurrencies);
-                                setShowCurrencyTable(newCurrencies.length > 0);
-                              }
-                            }}
-                          />
-                          <Label
-                            htmlFor="currency-bs"
-                            className="cursor-pointer text-sm"
-                          >
-                            Bs.
-                          </Label>
-                        </div>
-                        {/* Mostrar la moneda preferida en segundo lugar (si no es Bs) - siempre visible */}
-                        {preferredCurrency !== "Bs" && (
-                          <div className="flex items-center space-x-2">
-                            <Checkbox
-                              id={`currency-${preferredCurrency.toLowerCase()}`}
-                              checked={selectedCurrencies.includes(
-                                preferredCurrency
-                              )}
-                              disabled={
-                                (preferredCurrency === "USD" && !exchangeRates.USD) ||
-                                (preferredCurrency === "EUR" && !exchangeRates.EUR)
-                              }
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  const newCurrencies: Currency[] = [
-                                    ...selectedCurrencies,
-                                    preferredCurrency,
-                                  ];
-                                  setSelectedCurrencies(newCurrencies);
-                                  setShowCurrencyTable(
-                                    newCurrencies.length > 0
-                                  );
-                                } else {
-                                  const newCurrencies: Currency[] =
-                                    selectedCurrencies.filter(
-                                      (c) => c !== preferredCurrency
-                                    );
-                                  setSelectedCurrencies(newCurrencies);
-                                  setShowCurrencyTable(
-                                    newCurrencies.length > 0
-                                  );
-                                }
-                              }}
-                            />
-                            <Label
-                              htmlFor={`currency-${preferredCurrency.toLowerCase()}`}
-                              className={`text-sm ${
-                                (preferredCurrency === "USD" && !exchangeRates.USD) ||
-                                (preferredCurrency === "EUR" && !exchangeRates.EUR)
-                                  ? "cursor-not-allowed opacity-50"
-                                  : "cursor-pointer"
-                              }`}
-                            >
-                              {preferredCurrency === "USD"
-                                ? "USD ($)"
-                                : "EUR (€)"}
-                            </Label>
-                          </div>
-                        )}
-                        {/* Mostrar USD solo si tiene tasa activa y no es la preferida */}
-                        {preferredCurrency !== "USD" && exchangeRates.USD && (
-                          <div className="flex items-center space-x-2">
-                            <Checkbox
-                              id="currency-usd"
-                              checked={selectedCurrencies.includes("USD")}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  const newCurrencies: Currency[] = [
-                                    ...selectedCurrencies,
-                                    "USD",
-                                  ];
-                                  setSelectedCurrencies(newCurrencies);
-                                  setShowCurrencyTable(
-                                    newCurrencies.length > 0
-                                  );
-                                } else {
-                                  const newCurrencies: Currency[] =
-                                    selectedCurrencies.filter(
-                                      (c) => c !== "USD"
-                                    );
-                                  setSelectedCurrencies(newCurrencies);
-                                  setShowCurrencyTable(
-                                    newCurrencies.length > 0
-                                  );
-                                }
-                              }}
-                            />
-                            <Label
-                              htmlFor="currency-usd"
-                              className="cursor-pointer text-sm"
-                            >
-                              USD ($)
-                            </Label>
-                          </div>
-                        )}
-                        {/* Mostrar EUR solo si tiene tasa activa y no es la preferida */}
-                        {preferredCurrency !== "EUR" && exchangeRates.EUR && (
-                          <div className="flex items-center space-x-2">
-                            <Checkbox
-                              id="currency-eur"
-                              checked={selectedCurrencies.includes("EUR")}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  const newCurrencies: Currency[] = [
-                                    ...selectedCurrencies,
-                                    "EUR",
-                                  ];
-                                  setSelectedCurrencies(newCurrencies);
-                                  setShowCurrencyTable(
-                                    newCurrencies.length > 0
-                                  );
-                                } else {
-                                  const newCurrencies: Currency[] =
-                                    selectedCurrencies.filter(
-                                      (c) => c !== "EUR"
-                                    );
-                                  setSelectedCurrencies(newCurrencies);
-                                  setShowCurrencyTable(
-                                    newCurrencies.length > 0
-                                  );
-                                }
-                              }}
-                            />
-                            <Label
-                              htmlFor="currency-eur"
-                              className="cursor-pointer text-sm"
-                            >
-                              EUR (€)
-                            </Label>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Tabla de totales - Solo mostrar si hay monedas seleccionadas */}
-                    {showCurrencyTable && selectedCurrencies.length > 0 && (
-                      <div className="overflow-x-auto">
-                        <Table>
+                    {/* Tabla de totales */}
+                    <div className="overflow-x-auto">
+                      <Table>
                           <TableHeader>
                             <TableRow>
                               <TableHead className="w-[200px]">
                                 Concepto
                               </TableHead>
-                              {getCurrencyOrder().map((currency) => {
-                                if (selectedCurrencies.includes(currency)) {
-                                  return (
-                                    <TableHead
-                                      key={currency}
-                                      className="text-right"
-                                    >
-                                      {currency}
-                                    </TableHead>
-                                  );
-                                }
-                                return null;
-                              })}
+                              <TableHead className="text-right">
+                                Monto
+                              </TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -2393,7 +2216,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               <TableCell className="text-xs sm:text-sm">
                                 Subtotal productos:
                               </TableCell>
-                              {renderCurrencyCells(productSubtotal)}
+                              {renderCurrencyCell(productSubtotal)}
                             </TableRow>
 
                             {/* Descuentos individuales */}
@@ -2402,7 +2225,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                 <TableCell className="text-xs sm:text-sm text-red-600">
                                   Descuentos individuales:
                                 </TableCell>
-                                {renderCurrencyCellsNegative(
+                                {renderCurrencyCellNegative(
                                   productDiscountTotal,
                                   "text-red-600"
                                 )}
@@ -2415,7 +2238,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                 <TableCell className="text-xs sm:text-sm text-red-600">
                                   Descuento general:
                                 </TableCell>
-                                {renderCurrencyCellsNegative(
+                                {renderCurrencyCellNegative(
                                   generalDiscountAmount,
                                   "text-red-600"
                                 )}
@@ -2427,7 +2250,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               <TableCell className="text-xs sm:text-sm">
                                 Subtotal después de descuentos:
                               </TableCell>
-                              {renderCurrencyCells(subtotal)}
+                              {renderCurrencyCell(subtotal)}
                             </TableRow>
 
                             {/* Impuesto */}
@@ -2435,7 +2258,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               <TableCell className="text-xs sm:text-sm">
                                 Impuesto (16%):
                               </TableCell>
-                              {renderCurrencyCells(taxAmount)}
+                              {renderCurrencyCell(taxAmount)}
                             </TableRow>
 
                             {/* Gastos de entrega */}
@@ -2444,7 +2267,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                 <TableCell className="text-xs sm:text-sm">
                                   Gastos de entrega:
                                 </TableCell>
-                                {renderCurrencyCells(deliveryCost)}
+                                {renderCurrencyCell(deliveryCost)}
                               </TableRow>
                             )}
 
@@ -2453,7 +2276,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               <TableCell className="text-base sm:text-lg">
                                 Total:
                               </TableCell>
-                              {renderCurrencyCells(
+                              {renderCurrencyCell(
                                 total,
                                 "text-base sm:text-lg font-semibold"
                               )}
@@ -2461,7 +2284,6 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           </TableBody>
                         </Table>
                       </div>
-                    )}
                   </div>
 
                   {/* 3. DESCUENTO */}
@@ -3648,30 +3470,16 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           ))}
 
                           {/* Tabla de resumen de pagos - Similar a la tabla de totales */}
-                          {showCurrencyTable &&
-                            selectedCurrencies.length > 0 && (
-                              <div className="mt-4 overflow-x-auto">
-                                <Table>
+                          <div className="mt-4 overflow-x-auto">
+                            <Table>
                                   <TableHeader>
                                     <TableRow>
                                       <TableHead className="w-[200px]">
                                         Concepto
                                       </TableHead>
-                                      {getCurrencyOrder().map((currency) => {
-                                        if (
-                                          selectedCurrencies.includes(currency)
-                                        ) {
-                                          return (
-                                            <TableHead
-                                              key={currency}
-                                              className="text-right"
-                                            >
-                                              {currency}
-                                            </TableHead>
-                                          );
-                                        }
-                                        return null;
-                                      })}
+                                      <TableHead className="text-right">
+                                        Monto
+                                      </TableHead>
                                     </TableRow>
                                   </TableHeader>
                                   <TableBody>
@@ -3688,7 +3496,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                           Total pagado:
                                         </span>
                                       </TableCell>
-                                      {renderCurrencyCells(
+                                      {renderCurrencyCell(
                                         totalPaidInBs,
                                         isPaymentsValid
                                           ? "text-green-600 font-semibold"
@@ -3701,7 +3509,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                       <TableCell className="text-xs sm:text-sm">
                                         Total del pedido:
                                       </TableCell>
-                                      {renderCurrencyCells(total)}
+                                      {renderCurrencyCell(total)}
                                     </TableRow>
 
                                     {/* Falta / Cambio / Estado */}
@@ -3721,7 +3529,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                           ? "Falta:"
                                           : "Cambio/Vuelto:"}
                                       </TableCell>
-                                      {renderCurrencyCells(
+                                      {renderCurrencyCell(
                                         Math.abs(remainingAmount),
                                         `text-sm sm:text-base font-semibold ${
                                           isPaymentsValid
@@ -3740,7 +3548,6 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                   </p>
                                 )}
                               </div>
-                            )}
                         </div>
                       </div>
                     </div>
@@ -3752,13 +3559,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                       htmlFor="generalObservations"
                       className="text-sm sm:text-base"
                     >
-                      Observaciones Generales <span className="text-red-500">*</span>
+                      Observaciones Generales
                     </Label>
                     <Textarea
                       id="generalObservations"
                       value={generalObservations}
                       onChange={(e) => setGeneralObservations(e.target.value)}
-                      placeholder="Agregar observaciones generales para el pedido (obligatorio)"
+                      placeholder="Agregar observaciones generales para el pedido"
                       rows={3}
                       className="w-full"
                     />

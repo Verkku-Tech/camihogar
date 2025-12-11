@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Plus, Trash2, Settings } from "lucide-react"
+import { toast } from "sonner"
 import { AttributeValuesDialog } from "./attribute-values-dialog"
 import { useCurrency } from "@/contexts/currency-context"
 
@@ -25,6 +26,8 @@ interface Attribute {
   valueType: "Product" | "Number" | "Select" | "Multiple select"
   values: string[] | AttributeValue[]
   maxSelections?: number
+  minValue?: number
+  maxValue?: number
 }
 
 interface CategoryFormDialogProps {
@@ -58,10 +61,12 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
         maxDiscount: category.maxDiscount && category.maxDiscount !== 0 ? category.maxDiscount.toString() : "",
         maxDiscountCurrency: category.maxDiscountCurrency || preferredCurrency,
       })
-      // Asegurar que los atributos se carguen con todos sus campos, incluyendo maxSelections
+      // Asegurar que los atributos se carguen con todos sus campos
       const loadedAttributes = (category.attributes || []).map((attr: Attribute) => ({
         ...attr,
-        maxSelections: attr.maxSelections !== undefined ? attr.maxSelections : undefined
+        maxSelections: attr.maxSelections !== undefined ? attr.maxSelections : undefined,
+        minValue: attr.minValue !== undefined ? attr.minValue : undefined,
+        maxValue: attr.maxValue !== undefined ? attr.maxValue : undefined,
       }))
       setAttributes(loadedAttributes)
     } else {
@@ -89,16 +94,54 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
     setAttributes(attributes.filter((attr) => attr.id !== id))
   }
 
-  const handleUpdateAttributeValues = (attributeId: string, values: any[], maxSelections?: number) => {
-    setAttributes(attributes.map((attr) => (attr.id === attributeId ? { ...attr, values, maxSelections } : attr)))
+  const handleUpdateAttributeValues = (
+    attributeId: string, 
+    values: any[], 
+    maxSelections?: number,
+    minValue?: number,
+    maxValue?: number
+  ) => {
+    setAttributes(attributes.map((attr) => 
+      attr.id === attributeId 
+        ? { ...attr, values, maxSelections, minValue, maxValue } 
+        : attr
+    ))
   }
 
   const handleSave = () => {
+    // Validar nombre de la categoría
+    const trimmedName = formData.name.trim();
+    if (trimmedName.length < 2) {
+      toast.error("El nombre de la categoría debe tener al menos 2 caracteres");
+      return;
+    }
+    if (trimmedName.length > 200) {
+      toast.error("El nombre de la categoría no puede exceder 200 caracteres");
+      return;
+    }
+
+    // Validar títulos de atributos
+    for (const attr of attributes) {
+      const trimmedTitle = attr.title.trim();
+      if (trimmedTitle.length < 2) {
+        toast.error(`El título del atributo "${attr.title || '(sin título)'}" debe tener al menos 2 caracteres`);
+        return;
+      }
+      if (trimmedTitle.length > 200) {
+        toast.error(`El título del atributo "${attr.title}" no puede exceder 200 caracteres`);
+        return;
+      }
+    }
+
     const categoryData = {
       ...formData,
+      name: trimmedName,
       maxDiscount: formData.maxDiscount === "" ? 0 : parseFloat(formData.maxDiscount),
       maxDiscountCurrency: formData.maxDiscountCurrency || preferredCurrency,
-      attributes,
+      attributes: attributes.map(attr => ({
+        ...attr,
+        title: attr.title.trim(),
+      })),
     }
     onSave(categoryData)
   }
@@ -258,7 +301,17 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
                             <TableCell>{attribute.description}</TableCell>
                             <TableCell>{getValueTypeLabel(attribute.valueType)}</TableCell>
                             <TableCell>
-                              <span className="text-sm text-muted-foreground">{attribute.values.length} valor(es)</span>
+                              {attribute.valueType === "Number" && (attribute.minValue !== undefined || attribute.maxValue !== undefined) ? (
+                                <span className="text-sm text-muted-foreground">
+                                  {attribute.minValue !== undefined && attribute.maxValue !== undefined
+                                    ? `${attribute.minValue} - ${attribute.maxValue}`
+                                    : attribute.maxValue !== undefined
+                                    ? `≤ ${attribute.maxValue}`
+                                    : `≥ ${attribute.minValue}`}
+                                </span>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">{attribute.values.length} valor(es)</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               <div className="flex space-x-1">
@@ -296,8 +349,8 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
           open={!!showAttributeValues}
           onOpenChange={() => setShowAttributeValues(null)}
           attribute={attributes.find((attr) => attr.id === showAttributeValues)! as any}
-          onSave={(values, maxSelections) => {
-            handleUpdateAttributeValues(showAttributeValues, values, maxSelections)
+          onSave={(values, maxSelections, minValue, maxValue) => {
+            handleUpdateAttributeValues(showAttributeValues, values, maxSelections, minValue, maxValue)
             setShowAttributeValues(null)
           }}
         />

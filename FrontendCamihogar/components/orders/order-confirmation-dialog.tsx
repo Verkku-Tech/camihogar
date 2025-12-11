@@ -178,11 +178,30 @@ const calculateDetailedAttributeAdjustments = (
       (attr) => attr.id?.toString() === attrKey || attr.title === attrKey
     );
 
-    if (
-      !categoryAttribute ||
-      !categoryAttribute.values ||
-      categoryAttribute.valueType === "Product"
-    ) {
+    if (!categoryAttribute || categoryAttribute.valueType === "Product") {
+      return;
+    }
+
+    // Manejar atributos numéricos de forma especial
+    if (categoryAttribute.valueType === "Number") {
+      // Para atributos numéricos, el valor viene directamente de selectedValue
+      // No hay valores predefinidos ni ajustes de precio
+      const numericValue = selectedValue !== undefined && selectedValue !== null && selectedValue !== "" 
+        ? selectedValue.toString() 
+        : "";
+      
+      adjustments.push({
+        attributeName: categoryAttribute.title || attrKey,
+        selectedValueLabel: numericValue,
+        adjustment: 0, // Los atributos numéricos no tienen ajuste de precio
+        adjustmentInOriginalCurrency: 0,
+        originalCurrency: "Bs",
+      });
+      return;
+    }
+
+    // Para otros tipos de atributos, necesitan values
+    if (!categoryAttribute.values) {
       return;
     }
 
@@ -195,10 +214,10 @@ const calculateDetailedAttributeAdjustments = (
       selectedValue.forEach((valStr) => {
         const attributeValue = categoryAttribute.values.find(
           (val: string | AttributeValue) => {
-          if (typeof val === "string") {
-            return val === valStr;
-          }
-          return val.id === valStr || val.label === valStr;
+            if (typeof val === "string") {
+              return val === valStr;
+            }
+            return val.id === valStr || val.label === valStr;
           }
         );
 
@@ -270,15 +289,15 @@ const calculateDetailedAttributeAdjustments = (
       }
     }
 
-    if (attributeAdjustment !== 0) {
-      adjustments.push({
-        attributeName: categoryAttribute.title || attrKey,
-        selectedValueLabel: selectedLabels.join(", ") || "",
-        adjustment: attributeAdjustment,
-        adjustmentInOriginalCurrency,
-        originalCurrency,
-      });
-    }
+    // Siempre agregar el atributo, incluso si no tiene ajuste de precio
+    // Esto asegura transparencia mostrando todos los atributos seleccionados
+    adjustments.push({
+      attributeName: categoryAttribute.title || attrKey,
+      selectedValueLabel: selectedLabels.join(", ") || "",
+      adjustment: attributeAdjustment,
+      adjustmentInOriginalCurrency,
+      originalCurrency,
+    });
   });
 
   return adjustments;
@@ -697,32 +716,33 @@ export function OrderConfirmationDialog({
     return currencies;
   };
 
-  // Función helper para renderizar celdas de moneda en el orden correcto
-  const renderCurrencyCells = (amountInBs: number, className?: string) => {
-    const availableCurrencies = getAvailableCurrencies();
-    return getCurrencyOrder().map((currency) => {
-      if (!availableCurrencies.includes(currency)) return null;
-
-      let amount = amountInBs;
-      let rate: number | undefined;
-
-      if (currency === "USD") {
-        rate = exchangeRates?.USD?.rate;
-        if (rate) amount = amountInBs / rate;
-      } else if (currency === "EUR") {
-        rate = exchangeRates?.EUR?.rate;
-        if (rate) amount = amountInBs / rate;
-      }
-
-      const defaultClass = className ? "" : "text-xs sm:text-sm";
-      const finalClass = className || defaultClass;
-
+  // Función helper para renderizar celda de moneda con USD arriba y Bs abajo
+  const renderCurrencyCell = (amountInBs: number, className?: string) => {
+    // Intentar convertir a USD si hay tasa disponible
+    const usdRate = exchangeRates?.USD?.rate;
+    
+    if (usdRate && usdRate > 0) {
+      const amountInUsd = amountInBs / usdRate;
       return (
-        <TableCell key={currency} className={`text-right ${finalClass}`}>
-          {currency !== "Bs" && !rate ? "-" : formatCurrency(amount, currency)}
+        <TableCell className={`text-right ${className || ""}`}>
+          <div className="font-medium">
+            {formatCurrency(amountInUsd, "USD")}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {formatCurrency(amountInBs, "Bs")}
+          </div>
         </TableCell>
       );
-    });
+    }
+    
+    // Si no hay tasa USD, mostrar solo en Bs
+    return (
+      <TableCell className={`text-right ${className || ""}`}>
+        <div className="font-medium">
+          {formatCurrency(amountInBs, "Bs")}
+        </div>
+      </TableCell>
+    );
   };
 
   // Función helper para renderizar celdas de moneda con signo negativo (descuentos)
@@ -927,27 +947,7 @@ export function OrderConfirmationDialog({
                             {product.name}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            Cantidad: {product.quantity} ×{" "}
-                            {breakdown
-                              ? formatCurrency(breakdown.unitPriceInBs, "Bs")
-                              : formatCurrency(product.price, "Bs")}
-                            {preferredCurrency !== "Bs" && 
-                             (preferredCurrency === "USD" ? exchangeRates?.USD : exchangeRates?.EUR) && (
-                              <span className="ml-2">
-                                ({(() => {
-                                  const unitPriceInBs = breakdown
-                                    ? breakdown.unitPriceInBs
-                                    : product.price;
-                                  const rate = preferredCurrency === "USD" 
-                                    ? exchangeRates?.USD?.rate 
-                                    : exchangeRates?.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    return formatCurrency(unitPriceInBs / rate, preferredCurrency);
-                                  }
-                                  return "";
-                                })()})
-                              </span>
-                            )}
+                            Cantidad: {product.quantity}
                           </p>
                           {product.discount && product.discount > 0 && (
                             <p className="text-sm text-red-600 mt-1">
@@ -998,19 +998,9 @@ export function OrderConfirmationDialog({
                                     <TableHead className="w-[200px]">
                                       Concepto
                                     </TableHead>
-                                    {getCurrencyOrder().map((currency) => {
-                                      if (availableCurrenciesProducts.includes(currency)) {
-                                        return (
-                                          <TableHead
-                                            key={currency}
-                                            className="text-right"
-                                          >
-                                            {currency}
-                                          </TableHead>
-                                        );
-                                      }
-                                      return null;
-                                    })}
+                                    <TableHead className="text-right">
+                                      Monto
+                                    </TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -1019,7 +1009,7 @@ export function OrderConfirmationDialog({
                                     <TableCell className="text-xs sm:text-sm">
                                       Precio base:
                                     </TableCell>
-                                    {renderCurrencyCells(breakdown.basePriceInBs)}
+                                    {renderCurrencyCell(breakdown.basePriceInBs)}
                                   </TableRow>
 
                                   {/* Ajustes de atributos normales */}
@@ -1032,9 +1022,13 @@ export function OrderConfirmationDialog({
                                               {adj.name}
                                               {adj.value ? ` (${adj.value})` : ""}:
                                             </TableCell>
-                                            {renderCurrencyCells(
+                                            {renderCurrencyCell(
                                               adj.adjustmentInBs,
-                                              "text-green-600 dark:text-green-400"
+                                              adj.adjustmentInBs > 0
+                                                ? "text-green-600 dark:text-green-400"
+                                                : adj.adjustmentInBs < 0
+                                                ? "text-red-600 dark:text-red-400"
+                                                : "text-muted-foreground"
                                             )}
                                           </TableRow>
                                         )
@@ -1053,7 +1047,7 @@ export function OrderConfirmationDialog({
                                               <TableCell className="text-xs sm:text-sm text-muted-foreground pl-4">
                                                 {prodAttr.name}:
                                               </TableCell>
-                                              {renderCurrencyCells(
+                                              {renderCurrencyCell(
                                                 prodAttr.priceInBs,
                                                 "text-green-600 dark:text-green-400"
                                               )}
@@ -1071,9 +1065,13 @@ export function OrderConfirmationDialog({
                                                           : ""}
                                                         :
                                                       </TableCell>
-                                                      {renderCurrencyCells(
+                                                      {renderCurrencyCell(
                                                         adj.adjustmentInBs,
-                                                        "text-xs text-green-600 dark:text-green-400"
+                                                        adj.adjustmentInBs > 0
+                                                          ? "text-xs text-green-600 dark:text-green-400"
+                                                          : adj.adjustmentInBs < 0
+                                                          ? "text-xs text-red-600 dark:text-red-400"
+                                                          : "text-xs text-muted-foreground"
                                                       )}
                                                     </TableRow>
                                                   )
@@ -1091,7 +1089,7 @@ export function OrderConfirmationDialog({
                                     <TableCell className="text-sm sm:text-base">
                                       Precio unitario:
                                     </TableCell>
-                                    {renderCurrencyCells(
+                                    {renderCurrencyCell(
                                       breakdown.unitPriceInBs,
                                       "text-sm sm:text-base font-semibold"
                                     )}
@@ -1121,8 +1119,13 @@ export function OrderConfirmationDialog({
                                           {adj.name}
                                           {adj.value ? ` (${adj.value})` : ""}:
                                   </span>
-                                  <span className="text-green-600 dark:text-green-400">
-                                    +{adj.adjustment}
+                                  <span className={
+                                    adj.adjustmentInBs !== 0
+                                      ? "text-green-600 dark:text-green-400"
+                                      : "text-muted-foreground"
+                                  }>
+                                    {adj.adjustmentInBs > 0 ? "+" : ""}
+                                    {adj.adjustment}
                                   </span>
                                 </div>
                                     )
@@ -1161,8 +1164,13 @@ export function OrderConfirmationDialog({
                                                       : ""}
                                                     :
                                           </span>
-                                          <span className="text-green-600 dark:text-green-400">
-                                            +{adj.adjustment}
+                                          <span className={
+                                            adj.adjustmentInBs !== 0
+                                              ? "text-green-600 dark:text-green-400"
+                                              : "text-muted-foreground"
+                                          }>
+                                            {adj.adjustmentInBs > 0 ? "+" : ""}
+                                            {adj.adjustment}
                                           </span>
                                         </div>
                                               )
@@ -1396,19 +1404,9 @@ export function OrderConfirmationDialog({
                           <TableHead className="w-[200px]">
                             Concepto
                           </TableHead>
-                          {getCurrencyOrder().map((currency) => {
-                            if (availableCurrenciesPayments.includes(currency)) {
-                              return (
-                                <TableHead
-                                  key={currency}
-                                  className="text-right"
-                                >
-                                  {currency}
-                                </TableHead>
-                              );
-                            }
-                            return null;
-                          })}
+                          <TableHead className="text-right">
+                            Monto
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1419,7 +1417,7 @@ export function OrderConfirmationDialog({
                               Total pagado:
                             </span>
                           </TableCell>
-                          {renderCurrencyCells(
+                          {renderCurrencyCell(
                             totalPaid,
                             "font-semibold"
                           )}
@@ -1430,7 +1428,7 @@ export function OrderConfirmationDialog({
                           <TableCell className="text-xs sm:text-sm">
                             Total del pedido:
                           </TableCell>
-                          {renderCurrencyCells(orderData.total)}
+                          {renderCurrencyCell(orderData.total)}
                         </TableRow>
 
                         {/* Falta / Cambio / Estado */}
@@ -1450,7 +1448,7 @@ export function OrderConfirmationDialog({
                               ? "Falta:"
                               : "Cambio/Vuelto:"}
                           </TableCell>
-                          {renderCurrencyCells(
+                          {renderCurrencyCell(
                             Math.abs(pendingBalance),
                             `text-sm sm:text-base font-semibold ${
                               pendingBalance === 0
@@ -1532,19 +1530,9 @@ export function OrderConfirmationDialog({
                         <TableHead className="w-[200px]">
                           Concepto
                         </TableHead>
-                        {getCurrencyOrder().map((currency) => {
-                          if (availableCurrencies.includes(currency)) {
-                            return (
-                              <TableHead
-                                key={currency}
-                                className="text-right"
-                              >
-                                {currency}
-                              </TableHead>
-                            );
-                          }
-                          return null;
-                        })}
+                        <TableHead className="text-right">
+                          Monto
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1553,7 +1541,7 @@ export function OrderConfirmationDialog({
                         <TableCell className="text-xs sm:text-sm">
                           Subtotal productos:
                         </TableCell>
-                        {renderCurrencyCells(subtotalBeforeDiscounts)}
+                        {renderCurrencyCell(subtotalBeforeDiscounts)}
                       </TableRow>
 
                       {/* Descuentos individuales */}
@@ -1587,7 +1575,7 @@ export function OrderConfirmationDialog({
                         <TableCell className="text-xs sm:text-sm">
                           Subtotal después de descuentos:
                         </TableCell>
-                        {renderCurrencyCells(orderData.subtotal)}
+                        {renderCurrencyCell(orderData.subtotal)}
                       </TableRow>
 
                       {/* Impuesto */}
@@ -1595,7 +1583,7 @@ export function OrderConfirmationDialog({
                         <TableCell className="text-xs sm:text-sm">
                           Impuesto (16%):
                         </TableCell>
-                        {renderCurrencyCells(orderData.taxAmount)}
+                        {renderCurrencyCell(orderData.taxAmount)}
                       </TableRow>
 
                       {/* Gastos de entrega */}
@@ -1604,7 +1592,7 @@ export function OrderConfirmationDialog({
                           <TableCell className="text-xs sm:text-sm">
                             Delivery:
                           </TableCell>
-                          {renderCurrencyCells(orderData.deliveryCost)}
+                          {renderCurrencyCell(orderData.deliveryCost)}
                         </TableRow>
                       )}
 
@@ -1613,7 +1601,7 @@ export function OrderConfirmationDialog({
                         <TableCell className="text-base sm:text-lg">
                           Total:
                         </TableCell>
-                        {renderCurrencyCells(
+                        {renderCurrencyCell(
                           orderData.total,
                           "text-base sm:text-lg font-semibold"
                         )}

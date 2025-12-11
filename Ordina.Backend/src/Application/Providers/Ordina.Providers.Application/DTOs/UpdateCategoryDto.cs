@@ -17,6 +17,8 @@ public class UpdateCategoryAttributeDto
 
     public List<UpdateAttributeValueDto>? Values { get; set; }
     public int? MaxSelections { get; set; }
+    public decimal? MinValue { get; set; } // For "Number" type
+    public decimal? MaxValue { get; set; } // For "Number" type (REQUIRED when ValueType is "Number")
 }
 
 public class UpdateAttributeValueDto

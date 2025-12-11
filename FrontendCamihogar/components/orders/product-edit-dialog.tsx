@@ -160,16 +160,15 @@ const calculateDetailedAttributeAdjustments = (
       }
     }
 
-    // Solo agregar si hay un ajuste de precio (solo mostramos los que afectan el precio)
-    if (attributeAdjustment !== 0) {
-      adjustments.push({
-        attributeName: categoryAttribute.title || attrKey,
-        selectedValueLabel: selectedLabels.join(", ") || "",
-        adjustment: attributeAdjustment,
-        adjustmentInOriginalCurrency,
-        originalCurrency,
-      });
-    }
+    // Siempre agregar el atributo, incluso si no tiene ajuste de precio
+    // Esto asegura transparencia mostrando todos los atributos seleccionados
+    adjustments.push({
+      attributeName: categoryAttribute.title || attrKey,
+      selectedValueLabel: selectedLabels.join(", ") || "",
+      adjustment: attributeAdjustment,
+      adjustmentInOriginalCurrency,
+      originalCurrency,
+    });
   });
 
   return adjustments;
@@ -285,12 +284,41 @@ function ProductAttributesEditor({
 
     switch (attribute.valueType) {
       case "Number":
+        const numValue = attrValue ? parseFloat(attrValue.toString()) : undefined;
+        const minValue = attribute.minValue !== undefined ? attribute.minValue : undefined;
+        const maxValue = attribute.maxValue !== undefined ? attribute.maxValue : undefined;
+        
         return (
           <Input
             type="number"
             value={attrValue || ""}
-            onChange={(e) => handleAttributeChange(attrKey, e.target.value)}
+            onChange={(e) => {
+              const inputValue = e.target.value;
+              if (inputValue === "") {
+                handleAttributeChange(attrKey, "");
+                return;
+              }
+              
+              const parsedValue = parseFloat(inputValue);
+              if (isNaN(parsedValue)) {
+                return;
+              }
+              
+              // Validar rango
+              if (minValue !== undefined && parsedValue < minValue) {
+                toast.error(`El valor debe ser mayor o igual a ${minValue}`);
+                return;
+              }
+              if (maxValue !== undefined && parsedValue > maxValue) {
+                toast.error(`El valor debe ser menor o igual a ${maxValue}`);
+                return;
+              }
+              
+              handleAttributeChange(attrKey, parsedValue);
+            }}
             placeholder="0"
+            min={minValue !== undefined ? minValue : undefined}
+            max={maxValue !== undefined ? maxValue : undefined}
           />
         );
 
@@ -524,7 +552,8 @@ function ProductAttributesEditor({
                   {attribute.title}
                   {/* Indicador visual de campo obligatorio */}
                   {(attribute.valueType === "Select" || 
-                    attribute.valueType === "Multiple select") && (
+                    attribute.valueType === "Multiple select" ||
+                    attribute.valueType === "Number") && (
                     <span className="text-red-500 ml-1">*</span>
                   )}
                 </Label>
@@ -1288,6 +1317,28 @@ export function ProductEditDialog({
           }
         }
         
+        // Validar atributos de tipo "Number" (número)
+        if (attribute.valueType === "Number") {
+          if (attrValue === undefined || attrValue === "" || attrValue === null) {
+            missingAttributes.push(attribute.title || attrKey);
+          } else {
+            // Validar que el valor esté dentro del rango permitido
+            const numValue = parseFloat(attrValue.toString());
+            if (isNaN(numValue)) {
+              missingAttributes.push(attribute.title || attrKey);
+            } else {
+              // Validar minValue si existe
+              if (attribute.minValue !== undefined && numValue < attribute.minValue) {
+                missingAttributes.push(`${attribute.title || attrKey} (mínimo: ${attribute.minValue})`);
+              }
+              // Validar maxValue si existe
+              if (attribute.maxValue !== undefined && numValue > attribute.maxValue) {
+                missingAttributes.push(`${attribute.title || attrKey} (máximo: ${attribute.maxValue})`);
+              }
+            }
+          }
+        }
+        
         // Validar atributos de tipo "Product" (como "Tela" - productos como atributos)
         if (attribute.valueType === "Product") {
           const productsForAttribute = productAttributes[attrKey] || [];
@@ -1570,7 +1621,8 @@ export function ProductEditDialog({
                       {/* Indicador visual de campo obligatorio */}
                       {(attr.valueType === "Select" || 
                         attr.valueType === "Multiple select" || 
-                        attr.valueType === "Product") && (
+                        attr.valueType === "Product" ||
+                        attr.valueType === "Number") && (
                         <span className="text-red-500 ml-1">*</span>
                       )}
                     </Label>
@@ -1813,14 +1865,33 @@ export function ProductEditDialog({
                       <Input
                         id={inputId}
                         type="number"
-                        min="0"
+                        min={attr.minValue !== undefined ? attr.minValue : undefined}
+                        max={attr.maxValue !== undefined ? attr.maxValue : undefined}
                         value={attrValue && !Array.isArray(attrValue) ? attrValue.toString() : ""}
-                        onChange={(e) =>
-                          handleAttributeChange(
-                            attrKey,
-                            Number.parseInt(e.target.value) || 0
-                          )
-                        }
+                        onChange={(e) => {
+                          const inputValue = e.target.value;
+                          if (inputValue === "") {
+                            handleAttributeChange(attrKey, "");
+                            return;
+                          }
+                          
+                          const parsedValue = parseFloat(inputValue);
+                          if (isNaN(parsedValue)) {
+                            return;
+                          }
+                          
+                          // Validar rango
+                          if (attr.minValue !== undefined && parsedValue < attr.minValue) {
+                            toast.error(`El valor debe ser mayor o igual a ${attr.minValue}`);
+                            return;
+                          }
+                          if (attr.maxValue !== undefined && parsedValue > attr.maxValue) {
+                            toast.error(`El valor debe ser menor o igual a ${attr.maxValue}`);
+                            return;
+                          }
+                          
+                          handleAttributeChange(attrKey, parsedValue);
+                        }}
                         placeholder={`Ingrese ${
                           attr.title ? attr.title.toLowerCase() : "valor"
                         }`}

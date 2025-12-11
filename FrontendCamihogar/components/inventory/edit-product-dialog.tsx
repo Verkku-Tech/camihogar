@@ -64,13 +64,63 @@ function ProductAttributesEditor({
 
     switch (attribute.valueType) {
       case "Number":
+        // Para Number, siempre validar con min/max si existen
+        const minValue = attribute.minValue;
+        const maxValue = attribute.maxValue;
+        
+        const validateNumberRange = (val: string): boolean => {
+          if (val === "" || val === undefined) return true;
+          const num = parseFloat(val);
+          if (isNaN(num)) return false;
+          
+          if (maxValue !== undefined && num > maxValue) {
+            toast.error(`El valor debe ser menor o igual a ${maxValue}`);
+            return false;
+          }
+          if (minValue !== undefined && num < minValue) {
+            toast.error(`El valor debe ser mayor o igual a ${minValue}`);
+            return false;
+          }
+          return true;
+        };
+
+        const getPlaceholder = () => {
+          if (minValue !== undefined && maxValue !== undefined) {
+            return `Entre ${minValue} y ${maxValue}`;
+          } else if (maxValue !== undefined) {
+            return `Máximo ${maxValue}`;
+          } else if (minValue !== undefined) {
+            return `Mínimo ${minValue}`;
+          }
+          return "Ingrese un número";
+        };
+
         return (
-          <Input
-            type="number"
-            value={attrValue || ""}
-            onChange={(e) => handleAttributeChange(attrKey, e.target.value)}
-            placeholder="0"
-          />
+          <div className="space-y-1">
+            <Input
+              type="number"
+              min={minValue}
+              max={maxValue}
+              step="any"
+              value={attrValue || ""}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                if (validateNumberRange(newValue)) {
+                  handleAttributeChange(attrKey, newValue);
+                }
+              }}
+              placeholder={getPlaceholder()}
+            />
+            {(minValue !== undefined || maxValue !== undefined) && (
+              <p className="text-xs text-muted-foreground">
+                {minValue !== undefined && maxValue !== undefined
+                  ? `Rango permitido: ${minValue} - ${maxValue}`
+                  : maxValue !== undefined
+                  ? `Máximo permitido: ${maxValue}`
+                  : `Mínimo permitido: ${minValue}`}
+              </p>
+            )}
+          </div>
         );
 
       case "Select":
@@ -789,19 +839,68 @@ export function EditProductDialog({
                       </Select>
                     )}
 
-                    {(attribute.valueType === "Number" || attribute.valueType === "number") && (
-                      <Input
-                        type="number"
-                        value={currentValue === "" ? "" : currentValue.toString()}
-                        onChange={(e) =>
-                          handleAttributeChange(
-                            attrKey,
-                            e.target.value === "" ? "" : parseFloat(e.target.value)
-                          )
+                    {(attribute.valueType === "Number" || attribute.valueType === "number") && (() => {
+                      const minValue = attribute.minValue;
+                      const maxValue = attribute.maxValue;
+
+                      const validateNumberRange = (val: string): boolean => {
+                        if (val === "" || val === undefined) return true;
+                        const num = parseFloat(val);
+                        if (isNaN(num)) return false;
+                        
+                        if (maxValue !== undefined && num > maxValue) {
+                          toast.error(`El valor debe ser menor o igual a ${maxValue}`);
+                          return false;
                         }
-                        placeholder="0"
-                      />
-                    )}
+                        if (minValue !== undefined && num < minValue) {
+                          toast.error(`El valor debe ser mayor o igual a ${minValue}`);
+                          return false;
+                        }
+                        return true;
+                      };
+
+                      const getPlaceholder = () => {
+                        if (minValue !== undefined && maxValue !== undefined) {
+                          return `Entre ${minValue} y ${maxValue}`;
+                        } else if (maxValue !== undefined) {
+                          return `Máximo ${maxValue}`;
+                        } else if (minValue !== undefined) {
+                          return `Mínimo ${minValue}`;
+                        }
+                        return "0";
+                      };
+
+                      return (
+                        <div className="space-y-1">
+                          <Input
+                            type="number"
+                            min={minValue}
+                            max={maxValue}
+                            step="any"
+                            value={currentValue === "" ? "" : currentValue.toString()}
+                            onChange={(e) => {
+                              const newValue = e.target.value;
+                              if (validateNumberRange(newValue)) {
+                                handleAttributeChange(
+                                  attrKey,
+                                  newValue === "" ? "" : parseFloat(newValue)
+                                );
+                              }
+                            }}
+                            placeholder={getPlaceholder()}
+                          />
+                          {(minValue !== undefined || maxValue !== undefined) && (
+                            <p className="text-xs text-muted-foreground">
+                              {minValue !== undefined && maxValue !== undefined
+                                ? `Rango permitido: ${minValue} - ${maxValue}`
+                                : maxValue !== undefined
+                                ? `Máximo permitido: ${maxValue}`
+                                : `Mínimo permitido: ${minValue}`}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {attribute.valueType === "Product" && (() => {
                       const productsForAttribute = productAttributes[attrKey] || [];

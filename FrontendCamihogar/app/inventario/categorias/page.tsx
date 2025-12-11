@@ -54,9 +54,12 @@ export default function CategoriasPage() {
       setCategories(loadedCategories)
       setShowCategoryForm(false)
       setEditingCategory(null)
-    } catch (error) {
+      toast.success(editingCategory ? "Categoría actualizada exitosamente" : "Categoría creada exitosamente")
+    } catch (error: any) {
       console.error("Error saving category:", error)
-      toast.error("Error al guardar la categoría")
+      // Mostrar el mensaje de error específico si está disponible
+      const errorMessage = error?.message || "Error al guardar la categoría"
+      toast.error(errorMessage)
     }
   }
 
