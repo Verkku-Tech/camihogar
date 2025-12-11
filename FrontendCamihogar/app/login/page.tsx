@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Lock, User } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/contexts/auth-context"
@@ -21,7 +20,6 @@ export default function LoginPage() {
   })
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
 
   const { login } = useAuth()
   const router = useRouter()
@@ -29,13 +27,15 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    setError("")
 
     try {
       await login(formData.username, formData.password, formData.rememberMe)
+      toast.success("Sesión iniciada correctamente")
       router.push("/")
     } catch (err: any) {
-      setError(err.message || "Error al iniciar sesión")
+      // Mostrar el mensaje de error real del backend
+      const errorMessage = err.message || "Error al iniciar sesión"
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -43,7 +43,6 @@ export default function LoginPage() {
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
-    if (error) setError("")
   }
 
   return (
@@ -60,12 +59,6 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
             <div className="space-y-2">
               <Label htmlFor="username">Usuario o correo electrónico</Label>
               <div className="relative">

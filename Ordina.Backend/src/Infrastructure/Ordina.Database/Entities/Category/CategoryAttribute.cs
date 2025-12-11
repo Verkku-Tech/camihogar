@@ -21,4 +21,10 @@ public class CategoryAttribute
 
     [BsonElement("maxSelections")]
     public int? MaxSelections { get; set; } // For "Multiple select" type
+
+    [BsonElement("minValue")]
+    public decimal? MinValue { get; set; } // For "Number" type
+
+    [BsonElement("maxValue")]
+    public decimal? MaxValue { get; set; } // For "Number" type (REQUIRED when ValueType is "Number")
 }

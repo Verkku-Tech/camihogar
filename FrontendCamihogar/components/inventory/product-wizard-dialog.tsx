@@ -112,13 +112,63 @@ function ProductAttributesEditor({
 
     switch (attribute.valueType) {
       case "Number":
+        // Para Number, siempre validar con min/max si existen
+        const minValue = attribute.minValue;
+        const maxValue = attribute.maxValue;
+        
+        const validateNumberRange = (val: string): boolean => {
+          if (val === "" || val === undefined) return true;
+          const num = parseFloat(val);
+          if (isNaN(num)) return false;
+          
+          if (maxValue !== undefined && num > maxValue) {
+            toast.error(`El valor debe ser menor o igual a ${maxValue}`);
+            return false;
+          }
+          if (minValue !== undefined && num < minValue) {
+            toast.error(`El valor debe ser mayor o igual a ${minValue}`);
+            return false;
+          }
+          return true;
+        };
+
+        const getPlaceholder = () => {
+          if (minValue !== undefined && maxValue !== undefined) {
+            return `Entre ${minValue} y ${maxValue}`;
+          } else if (maxValue !== undefined) {
+            return `Máximo ${maxValue}`;
+          } else if (minValue !== undefined) {
+            return `Mínimo ${minValue}`;
+          }
+          return "Ingrese un número";
+        };
+
         return (
-          <Input
-            type="number"
-            value={attrValue || ""}
-            onChange={(e) => handleAttributeChange(attrKey, e.target.value)}
-            placeholder="0"
-          />
+          <div className="space-y-1">
+            <Input
+              type="number"
+              min={minValue}
+              max={maxValue}
+              step="any"
+              value={attrValue || ""}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                if (validateNumberRange(newValue)) {
+                  handleAttributeChange(attrKey, newValue);
+                }
+              }}
+              placeholder={getPlaceholder()}
+            />
+            {(minValue !== undefined || maxValue !== undefined) && (
+              <p className="text-xs text-muted-foreground">
+                {minValue !== undefined && maxValue !== undefined
+                  ? `Rango permitido: ${minValue} - ${maxValue}`
+                  : maxValue !== undefined
+                  ? `Máximo permitido: ${maxValue}`
+                  : `Mínimo permitido: ${minValue}`}
+              </p>
+            )}
+          </div>
         );
 
       case "Select":
@@ -352,12 +402,24 @@ export function ProductWizardDialog({
       try {
         const loadedCategories = await getCategories();
         setCategories(loadedCategories);
+        
+        // Si no hay categorías y el diálogo está abierto, cerrarlo y mostrar toast
+        if (loadedCategories.length === 0 && open) {
+          toast.error(
+            "No hay categorías disponibles",
+            {
+              description: "Debes crear al menos una categoría antes de crear un producto.",
+              duration: 5000,
+            }
+          );
+          onOpenChange(false);
+        }
       } catch (error) {
         console.error("Error loading categories:", error);
       }
     };
     loadCategories();
-  }, []);
+  }, [open, onOpenChange]);
 
   // Generar SKU automático y actualizar moneda cuando se abre el diálogo
   useEffect(() => {
@@ -683,18 +745,70 @@ export function ProductWizardDialog({
 
   const renderAttributeInput = (attribute: CategoryAttribute) => {
     const value = formData.attributes[attribute.id];
+    // Buscar el atributo completo en la categoría seleccionada para obtener minValue y maxValue
+    const fullAttribute = selectedCategory?.attributes.find(
+      (attr) => attr.id.toString() === attribute.id
+    );
 
     switch (attribute.valueType) {
       case "Number":
+        const minValue = fullAttribute?.minValue;
+        const maxValue = fullAttribute?.maxValue;
+        const numValue = value ? parseFloat(String(value)) : undefined;
+
+        const validateNumberRange = (val: string): boolean => {
+          if (val === "" || val === undefined) return true; // Permitir vacío
+          const num = parseFloat(val);
+          if (isNaN(num)) return false;
+          
+          if (maxValue !== undefined && num > maxValue) {
+            toast.error(`El valor debe ser menor o igual a ${maxValue}`);
+            return false;
+          }
+          if (minValue !== undefined && num < minValue) {
+            toast.error(`El valor debe ser mayor o igual a ${minValue}`);
+            return false;
+          }
+          return true;
+        };
+
+        const getPlaceholder = () => {
+          if (minValue !== undefined && maxValue !== undefined) {
+            return `Entre ${minValue} y ${maxValue}`;
+          } else if (maxValue !== undefined) {
+            return `Máximo ${maxValue}`;
+          } else if (minValue !== undefined) {
+            return `Mínimo ${minValue}`;
+          }
+          return "Ingrese un número";
+        };
+
         return (
-          <Input
-            type="number"
-            value={value || ""}
-            onChange={(e) =>
-              handleAttributeChange(attribute.id, e.target.value)
-            }
-            placeholder="Ingrese un número"
-          />
+          <div className="space-y-1">
+            <Input
+              type="number"
+              min={minValue}
+              max={maxValue}
+              step="any"
+              value={value || ""}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                if (validateNumberRange(newValue)) {
+                  handleAttributeChange(attribute.id, newValue === "" ? "" : newValue);
+                }
+              }}
+              placeholder={getPlaceholder()}
+            />
+            {(minValue !== undefined || maxValue !== undefined) && (
+              <p className="text-xs text-muted-foreground">
+                {minValue !== undefined && maxValue !== undefined
+                  ? `Rango permitido: ${minValue} - ${maxValue}`
+                  : maxValue !== undefined
+                  ? `Máximo permitido: ${maxValue}`
+                  : `Mínimo permitido: ${minValue}`}
+              </p>
+            )}
+          </div>
         );
 
       case "Select":

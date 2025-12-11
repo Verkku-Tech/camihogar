@@ -32,19 +32,23 @@ interface Attribute {
   valueType: "Product" | "Number" | "Select" | "Multiple select"
   values: string[] | AttributeValue[]
   maxSelections?: number
+  minValue?: number
+  maxValue?: number
 }
 
 interface AttributeValuesDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   attribute: Attribute
-  onSave: (values: AttributeValue[], maxSelections?: number) => void
+  onSave: (values: AttributeValue[], maxSelections?: number, minValue?: number, maxValue?: number) => void
 }
 
 export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }: AttributeValuesDialogProps) {
   const { preferredCurrency } = useCurrency()
   const [values, setValues] = useState<AttributeValue[]>([])
   const [maxSelections, setMaxSelections] = useState<string>("1")
+  const [minValue, setMinValue] = useState<string>(attribute.minValue?.toString() || "")
+  const [maxValue, setMaxValue] = useState<string>(attribute.maxValue?.toString() || "")
   const [newValue, setNewValue] = useState({
     label: "",
     isDefault: false,
@@ -88,6 +92,15 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
       setMaxSelections(maxSelectionsValue)
     } else {
       setMaxSelections("1")
+    }
+    
+    // Para Number, cargar minValue y maxValue
+    if (attribute.valueType === "Number") {
+      setMinValue(attribute.minValue?.toString() || "")
+      setMaxValue(attribute.maxValue?.toString() || "")
+    } else {
+      setMinValue("")
+      setMaxValue("")
     }
     // Resetear el formulario cuando cambia el atributo
     setNewValue({
@@ -188,6 +201,31 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
   }
 
   const handleSave = () => {
+    // Validar min/max para Number
+    if (attribute.valueType === "Number") {
+      if (!maxValue || maxValue.trim() === "") {
+        toast.error("El valor máximo es obligatorio para atributos de tipo Número")
+        return
+      }
+      
+      const minVal = minValue && minValue.trim() !== "" ? parseFloat(minValue) : undefined
+      const maxVal = parseFloat(maxValue)
+      
+      if (isNaN(maxVal)) {
+        toast.error("El valor máximo debe ser un número válido")
+        return
+      }
+      
+      if (minVal !== undefined && !isNaN(minVal) && minVal >= maxVal) {
+        toast.error("El valor mínimo debe ser menor que el valor máximo")
+        return
+      }
+      
+      // Para Number, pasar array vacío de values y los min/max
+      onSave([], undefined, minVal, maxVal)
+      return
+    }
+    
     // Para Multiple select, siempre pasar maxSelections (incluso si es 1 por defecto)
     // Para otros tipos, pasar undefined
     if (attribute.valueType === "Multiple select") {
@@ -258,7 +296,46 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/50">
+          {attribute.valueType === "Number" && (
+            <div className="p-4 border rounded-lg bg-muted/50">
+              <Label>Rango de Valores</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="minValue">
+                    Valor Mínimo <span className="text-muted-foreground">(Opcional)</span>
+                  </Label>
+                  <Input
+                    id="minValue"
+                    type="number"
+                    step="any"
+                    value={minValue}
+                    onChange={(e) => setMinValue(e.target.value)}
+                    placeholder="Ej: 0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxValue">
+                    Valor Máximo <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="maxValue"
+                    type="number"
+                    step="any"
+                    required
+                    value={maxValue}
+                    onChange={(e) => setMaxValue(e.target.value)}
+                    placeholder="Ej: 6"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Define el rango permitido para este atributo numérico. El usuario podrá escribir un número dentro de este rango al crear productos. El valor máximo es obligatorio.
+              </p>
+            </div>
+          )}
+
+          {attribute.valueType !== "Number" && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/50">
             <div className="space-y-2">
               <Label htmlFor="newValue">Valor</Label>
               {attribute.valueType === "Product" ? (
@@ -334,9 +411,11 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
               </Button>
             </div>
           </div>
+          )}
 
-          <div className="space-y-2">
-            <Label>Valores Actuales ({values.length})</Label>
+          {attribute.valueType !== "Number" && (
+            <div className="space-y-2">
+              <Label>Valores Actuales ({values.length})</Label>
             {values.length === 0 ? (
               <div className="border rounded-lg p-8">
                 <p className="text-sm text-muted-foreground text-center">No hay valores agregados aún</p>
@@ -397,35 +476,58 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
                                 className="w-24"
                                 placeholder="0.00"
                                 onBlur={(e) => {
-                                  handleUpdatePriceAdjustment(value.id, e.target.value === "" ? 0 : parseFloat(e.target.value))
-                                  setEditingId(null)
+                                  // Usar setTimeout para verificar si el nuevo foco está en el Select
+                                  setTimeout(() => {
+                                    const activeElement = document.activeElement
+                                    const isSelectOpen = activeElement?.closest('[role="listbox"]') || 
+                                                       activeElement?.closest('[data-radix-popper-content-wrapper]') ||
+                                                       activeElement?.closest('[data-radix-select-content]')
+                                    if (!isSelectOpen) {
+                                      const inputValue = e.target.value === "" ? 0 : parseFloat(e.target.value)
+                                      if (!isNaN(inputValue)) {
+                                        handleUpdatePriceAdjustment(value.id, inputValue)
+                                      }
+                                      setEditingId(null)
+                                    }
+                                  }, 200)
                                 }}
                                 onKeyPress={(e) => {
                                   if (e.key === "Enter") {
-                                    handleUpdatePriceAdjustment(value.id, Number(e.currentTarget.value))
+                                    const inputValue = Number(e.currentTarget.value)
+                                    if (!isNaN(inputValue)) {
+                                      handleUpdatePriceAdjustment(value.id, inputValue)
+                                    }
                                     setEditingId(null)
                                   }
                                 }}
                                 autoFocus
                               />
-                              <Select
-                                value={value.priceAdjustmentCurrency || preferredCurrency}
-                                onValueChange={(currency: Currency) => {
-                                  setValues(values.map(v => 
-                                    v.id === value.id ? { ...v, priceAdjustmentCurrency: currency } : v
-                                  ))
+                              <div onMouseDown={(e) => e.preventDefault()}>
+                                <Select
+                                  value={value.priceAdjustmentCurrency || preferredCurrency}
+                                  onValueChange={(currency: Currency) => {
+                                    setValues(values.map(v => 
+                                      v.id === value.id ? { ...v, priceAdjustmentCurrency: currency } : v
+                                    ))
+                                  }}
+                                >
+                                  <SelectTrigger className="w-20">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Bs">Bs.</SelectItem>
+                                    <SelectItem value="USD">$</SelectItem>
+                                    <SelectItem value="EUR">€</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                onClick={() => {
+                                  setEditingId(null)
                                 }}
                               >
-                                <SelectTrigger className="w-20">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Bs">Bs.</SelectItem>
-                                  <SelectItem value="USD">$</SelectItem>
-                                  <SelectItem value="EUR">€</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
                                 <Check className="w-4 h-4" />
                               </Button>
                             </div>
@@ -463,6 +565,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
               </div>
             )}
           </div>
+          )}
 
           {/* Actions */}
           <div className="flex justify-end space-x-2">

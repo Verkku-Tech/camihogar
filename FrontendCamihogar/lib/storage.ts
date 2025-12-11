@@ -35,6 +35,8 @@ export interface Category {
     valueType: string;
     values: string[] | AttributeValue[]; // Support both old and new format
     maxSelections?: number; // For "Multiple select" type
+    minValue?: number; // For "Number" type
+    maxValue?: number; // For "Number" type (REQUIRED when valueType is "Number")
   }[];
 }
 
@@ -67,6 +69,8 @@ interface CategoryDB {
     valueType: string;
     values: string[] | AttributeValue[];
     maxSelections?: number;
+    minValue?: number; // For "Number" type
+    maxValue?: number; // For "Number" type (REQUIRED when valueType is "Number")
   }[];
 }
 
@@ -109,25 +113,55 @@ const categoryToBackendDto = (
   description: category.description,
   maxDiscount: category.maxDiscount,
   maxDiscountCurrency: category.maxDiscountCurrency,
-  attributes: category.attributes.map((attr) => ({
-    title: attr.title,
-    description: attr.description,
-    valueType: attr.valueType,
-    maxSelections: attr.maxSelections,
-    values: Array.isArray(attr.values)
-      ? attr.values.map((val) =>
-          typeof val === "string"
-            ? { label: val }
-            : {
-                label: val.label,
-                isDefault: val.isDefault,
-                priceAdjustment: val.priceAdjustment,
-                priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-                productId: val.productId?.toString(),
-              }
-        )
-      : [],
-  })),
+  attributes: category.attributes.map((attr) => {
+    const attrDto: any = {
+      title: attr.title,
+      description: attr.description,
+      valueType: attr.valueType,
+      values: Array.isArray(attr.values)
+        ? attr.values.map((val) =>
+            typeof val === "string"
+              ? { label: val }
+              : {
+                  label: val.label,
+                  isDefault: val.isDefault,
+                  priceAdjustment: val.priceAdjustment,
+                  priceAdjustmentCurrency: val.priceAdjustmentCurrency,
+                  productId: val.productId?.toString(),
+                }
+          )
+        : [],
+    };
+
+    // Incluir maxSelections si existe
+    if (attr.maxSelections !== undefined) {
+      attrDto.maxSelections = attr.maxSelections;
+    }
+
+    // Para atributos de tipo "Number", siempre incluir minValue y maxValue
+    // El backend los requiere cuando valueType es "Number"
+    if (attr.valueType === "Number") {
+      // Si están definidos, usarlos; si no, enviar null explícitamente
+      // El backend acepta decimal? (nullable), así que null debería ser válido
+      attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
+      attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
+      
+      // Log para debugging
+      if (attr.maxValue === undefined || attr.maxValue === null) {
+        console.warn("⚠️ Atributo numérico sin maxValue:", attr.title, "valueType:", attr.valueType);
+      }
+    } else {
+      // Para otros tipos, incluir solo si existen
+      if (attr.minValue !== undefined) {
+        attrDto.minValue = attr.minValue;
+      }
+      if (attr.maxValue !== undefined) {
+        attrDto.maxValue = attr.maxValue;
+      }
+    }
+
+    return attrDto;
+  }),
 });
 
 const categoryFromBackendDto = (dto: CategoryResponseDto): Category => ({
@@ -143,6 +177,8 @@ const categoryFromBackendDto = (dto: CategoryResponseDto): Category => ({
     description: attr.description,
     valueType: attr.valueType,
     maxSelections: attr.maxSelections,
+    minValue: attr.minValue,
+    maxValue: attr.maxValue,
     values: attr.values.map((val) => ({
       id: val.id,
       label: val.label,
@@ -282,6 +318,26 @@ export const resolveCategoryBackendId = async (
 export const addCategory = async (
   category: Omit<Category, "id">
 ): Promise<Category> => {
+  // Validación del nombre
+  const trimmedName = category.name.trim();
+  if (trimmedName.length < 2) {
+    throw new Error("El nombre de la categoría debe tener al menos 2 caracteres");
+  }
+  if (trimmedName.length > 200) {
+    throw new Error("El nombre de la categoría no puede exceder 200 caracteres");
+  }
+
+  // Validación de atributos
+  for (const attr of category.attributes) {
+    const trimmedTitle = attr.title.trim();
+    if (trimmedTitle.length < 2) {
+      throw new Error(`El título del atributo "${attr.title || '(sin título)'}" debe tener al menos 2 caracteres`);
+    }
+    if (trimmedTitle.length > 200) {
+      throw new Error(`El título del atributo "${attr.title}" no puede exceder 200 caracteres`);
+    }
+  }
+
   let newCategory: Category;
   let syncedToBackend = false;
 
@@ -289,6 +345,7 @@ export const addCategory = async (
   if (isOnline()) {
     try {
       const createDto = categoryToBackendDto(category);
+      console.log("📤 Enviando categoría al backend:", JSON.stringify(createDto, null, 2));
       const backendCategory = await apiClient.createCategory(createDto);
       newCategory = categoryFromBackendDto(backendCategory);
 
@@ -325,6 +382,7 @@ export const addCategory = async (
     if (!syncedToBackend) {
       try {
         const createDto = categoryToBackendDto(newCategory);
+        console.log("📤 Encolando categoría para sincronización:", JSON.stringify(createDto, null, 2));
         await syncManager.addToQueue({
           type: "create",
           entity: "category",
@@ -358,6 +416,30 @@ export const updateCategory = async (
   const existingCategory = await getCategory(id);
   if (!existingCategory) {
     throw new Error(`Category with id ${id} not found`);
+  }
+
+  // Validación del nombre si se está actualizando
+  if (updates.name !== undefined) {
+    const trimmedName = updates.name.trim();
+    if (trimmedName.length < 2) {
+      throw new Error("El nombre de la categoría debe tener al menos 2 caracteres");
+    }
+    if (trimmedName.length > 200) {
+      throw new Error("El nombre de la categoría no puede exceder 200 caracteres");
+    }
+  }
+
+  // Validación de atributos si se están actualizando
+  if (updates.attributes !== undefined) {
+    for (const attr of updates.attributes) {
+      const trimmedTitle = attr.title.trim();
+      if (trimmedTitle.length < 2) {
+        throw new Error(`El título del atributo "${attr.title || '(sin título)'}" debe tener al menos 2 caracteres`);
+      }
+      if (trimmedTitle.length > 200) {
+        throw new Error(`El título del atributo "${attr.title}" no puede exceder 200 caracteres`);
+      }
+    }
   }
 
   const updatedCategory: Category = {
@@ -408,28 +490,46 @@ export const updateCategory = async (
               : undefined,
           attributes:
             updatedCategory.attributes !== existingCategory.attributes
-              ? updatedCategory.attributes.map((attr) => ({
-                  id: attr.id.toString(),
-                  title: attr.title,
-                  description: attr.description,
-                  valueType: attr.valueType,
-                  maxSelections: attr.maxSelections,
-                  values: Array.isArray(attr.values)
-                    ? attr.values.map((val) =>
-                        typeof val === "string"
-                          ? { label: val }
-                          : {
-                              id: val.id,
-                              label: val.label,
-                              isDefault: val.isDefault,
-                              priceAdjustment: val.priceAdjustment,
-                              priceAdjustmentCurrency:
-                                val.priceAdjustmentCurrency,
-                              productId: val.productId?.toString(),
-                            }
-                      )
-                    : [],
-                }))
+              ? updatedCategory.attributes.map((attr) => {
+                  const attrDto: any = {
+                    id: attr.id.toString(),
+                    title: attr.title,
+                    description: attr.description,
+                    valueType: attr.valueType,
+                    maxSelections: attr.maxSelections,
+                    values: Array.isArray(attr.values)
+                      ? attr.values.map((val) =>
+                          typeof val === "string"
+                            ? { label: val }
+                            : {
+                                id: val.id,
+                                label: val.label,
+                                isDefault: val.isDefault,
+                                priceAdjustment: val.priceAdjustment,
+                                priceAdjustmentCurrency:
+                                  val.priceAdjustmentCurrency,
+                                productId: val.productId?.toString(),
+                              }
+                        )
+                      : [],
+                  };
+
+                  // Para atributos de tipo "Number", siempre incluir minValue y maxValue
+                  if (attr.valueType === "Number") {
+                    attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
+                    attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
+                  } else {
+                    // Para otros tipos, incluir solo si existen
+                    if (attr.minValue !== undefined) {
+                      attrDto.minValue = attr.minValue;
+                    }
+                    if (attr.maxValue !== undefined) {
+                      attrDto.maxValue = attr.maxValue;
+                    }
+                  }
+
+                  return attrDto;
+                })
               : undefined,
         };
 
@@ -475,27 +575,45 @@ export const updateCategory = async (
           description: updatedCategory.description,
           maxDiscount: updatedCategory.maxDiscount,
           maxDiscountCurrency: updatedCategory.maxDiscountCurrency,
-          attributes: updatedCategory.attributes.map((attr) => ({
-            id: attr.id.toString(),
-            title: attr.title,
-            description: attr.description,
-            valueType: attr.valueType,
-            maxSelections: attr.maxSelections,
-            values: Array.isArray(attr.values)
-              ? attr.values.map((val) =>
-                  typeof val === "string"
-                    ? { label: val }
-                    : {
-                        id: val.id,
-                        label: val.label,
-                        isDefault: val.isDefault,
-                        priceAdjustment: val.priceAdjustment,
-                        priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-                        productId: val.productId?.toString(),
-                      }
-                )
-              : [],
-          })),
+          attributes: updatedCategory.attributes.map((attr) => {
+            const attrDto: any = {
+              id: attr.id.toString(),
+              title: attr.title,
+              description: attr.description,
+              valueType: attr.valueType,
+              maxSelections: attr.maxSelections,
+              values: Array.isArray(attr.values)
+                ? attr.values.map((val) =>
+                    typeof val === "string"
+                      ? { label: val }
+                      : {
+                          id: val.id,
+                          label: val.label,
+                          isDefault: val.isDefault,
+                          priceAdjustment: val.priceAdjustment,
+                          priceAdjustmentCurrency: val.priceAdjustmentCurrency,
+                          productId: val.productId?.toString(),
+                        }
+                  )
+                : [],
+            };
+
+            // Para atributos de tipo "Number", siempre incluir minValue y maxValue
+            if (attr.valueType === "Number") {
+              attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
+              attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
+            } else {
+              // Para otros tipos, incluir solo si existen
+              if (attr.minValue !== undefined) {
+                attrDto.minValue = attr.minValue;
+              }
+              if (attr.maxValue !== undefined) {
+                attrDto.maxValue = attr.maxValue;
+              }
+            }
+
+            return attrDto;
+          }),
         };
         await syncManager.addToQueue({
           type: "update",

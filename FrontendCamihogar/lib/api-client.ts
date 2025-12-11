@@ -231,8 +231,40 @@ export class ApiClient {
         headers,
       });
 
-      // Si es 401, intentar refresh token
+      // Si es 401, intentar refresh token (excepto para login que es un error de credenciales)
       if (response.status === 401) {
+        // No intentar refresh si es el endpoint de login (es un error de credenciales, no de token)
+        if (endpoint === "/api/Auth/login") {
+          // Leer el mensaje de error real del backend
+          const errorData = await response
+            .json()
+            .catch(() => ({ message: "Usuario o contraseña incorrectos" }));
+          
+          let errorMessage = errorData.message || "Usuario o contraseña incorrectos";
+          if (errorData.errors || errorData.title) {
+            const errors: string[] = [];
+            if (errorData.errors) {
+              Object.keys(errorData.errors).forEach((key) => {
+                const fieldErrors = errorData.errors[key];
+                if (Array.isArray(fieldErrors)) {
+                  fieldErrors.forEach((err: string) => {
+                    errors.push(`${key}: ${err}`);
+                  });
+                } else {
+                  errors.push(`${key}: ${fieldErrors}`);
+                }
+              });
+            }
+            if (errorData.title) {
+              errors.push(errorData.title);
+            }
+            errorMessage = errors.length > 0 ? errors.join("; ") : errorMessage;
+          }
+          
+          throw new Error(errorMessage);
+        }
+        
+        // Para otros endpoints, intentar refresh token
         const refreshed = await this.refreshToken();
         if (refreshed) {
           // Reintentar request con nuevo token
@@ -271,7 +303,38 @@ export class ApiClient {
         const errorData = await response
           .json()
           .catch(() => ({ message: response.statusText }));
-        throw new Error(errorData.message || `Error: ${response.statusText}`);
+        
+        // Si es un ModelState (validación de ASP.NET), extraer los mensajes
+        let errorMessage = errorData.message || `Error: ${response.statusText}`;
+        if (errorData.errors || errorData.title) {
+          // ModelState de ASP.NET Core
+          const errors: string[] = [];
+          if (errorData.errors) {
+            Object.keys(errorData.errors).forEach((key) => {
+              const fieldErrors = errorData.errors[key];
+              if (Array.isArray(fieldErrors)) {
+                fieldErrors.forEach((err: string) => {
+                  errors.push(`${key}: ${err}`);
+                });
+              } else {
+                errors.push(`${key}: ${fieldErrors}`);
+              }
+            });
+          }
+          if (errorData.title) {
+            errors.push(errorData.title);
+          }
+          errorMessage = errors.length > 0 ? errors.join("; ") : errorMessage;
+        }
+        
+        console.error("❌ Error del backend:", {
+          status: response.status,
+          statusText: response.statusText,
+          errorData,
+          errorMessage,
+        });
+        
+        throw new Error(errorMessage);
       }
 
       // Si es GET exitoso y es un endpoint del backend, guardar en cache
@@ -285,6 +348,26 @@ export class ApiClient {
           await this.cacheResponse(endpoint, data);
         } catch {
           // Si no es JSON, no cachear
+        }
+      }
+
+      // Manejar respuesta 201 Created (puede tener body con el objeto creado)
+      if (response.status === 201) {
+        const contentType = response.headers.get("content-type");
+        const location = response.headers.get("location");
+        console.log("📥 Respuesta 201 Created:", { contentType, location });
+        
+        if (contentType && contentType.includes("application/json")) {
+          try {
+            const data = await response.json();
+            console.log("✅ Datos recibidos del 201:", data);
+            // El body de un 201 Created debería contener el objeto creado
+            return data;
+          } catch (error) {
+            console.warn("⚠️ No se pudo parsear el body de la respuesta 201:", error);
+            // Si no hay body, retornar objeto vacío
+            return {} as T;
+          }
         }
       }
 
@@ -555,6 +638,8 @@ export interface CategoryAttributeDto {
   valueType: string;
   values: AttributeValueDto[];
   maxSelections?: number;
+  minValue?: number;
+  maxValue?: number;
 }
 
 export interface AttributeValueDto {
@@ -584,6 +669,8 @@ export interface CreateCategoryAttributeDto {
   valueType: string;
   values: CreateAttributeValueDto[];
   maxSelections?: number;
+  minValue?: number;
+  maxValue?: number;
 }
 
 export interface CreateAttributeValueDto {
@@ -609,6 +696,8 @@ export interface UpdateCategoryAttributeDto {
   valueType?: string;
   values?: UpdateAttributeValueDto[];
   maxSelections?: number;
+  minValue?: number;
+  maxValue?: number;
 }
 
 export interface UpdateAttributeValueDto {

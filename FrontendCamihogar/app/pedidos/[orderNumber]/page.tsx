@@ -43,6 +43,11 @@ import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 
 // Función helper para obtener el monto original del pago en su moneda
 const getOriginalPaymentAmount = (
@@ -98,6 +103,106 @@ const getOriginalPaymentAmount = (
   };
 };
 
+// Función helper para formatear moneda siempre en USD como principal, Bs como secundario
+const formatCurrencyWithUsdPrimary = (
+  amountInBs: number,
+  exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } }
+): { primary: string; secondary?: string } => {
+  // Intentar convertir a USD si hay tasa disponible
+  const usdRate = exchangeRates?.USD?.rate;
+  
+  if (usdRate && usdRate > 0) {
+    const amountInUsd = amountInBs / usdRate;
+    return {
+      primary: formatCurrency(amountInUsd, "USD"),
+      secondary: formatCurrency(amountInBs, "Bs"),
+    };
+  }
+  
+  // Si no hay tasa USD, mostrar solo en Bs
+  return {
+    primary: formatCurrency(amountInBs, "Bs"),
+  };
+};
+
+// Componente para renderizar moneda con formato USD principal / Bs secundario
+const CurrencyDisplay = ({ 
+  amountInBs, 
+  exchangeRates,
+  className = "",
+  inline = false
+}: { 
+  amountInBs: number; 
+  exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } };
+  className?: string;
+  inline?: boolean;
+}) => {
+  const formatted = formatCurrencyWithUsdPrimary(amountInBs, exchangeRates);
+  
+  if (inline) {
+    return (
+      <span className={className}>
+        <span className="font-medium">{formatted.primary}</span>
+        {formatted.secondary && (
+          <span className="text-xs text-muted-foreground ml-1">
+            ({formatted.secondary})
+          </span>
+        )}
+      </span>
+    );
+  }
+  
+  return (
+    <div className={`text-right ${className}`}>
+      <div className="font-medium">
+        {formatted.primary}
+      </div>
+      {formatted.secondary && (
+        <div className="text-xs text-muted-foreground">
+          {formatted.secondary}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Helper para renderizar un valor formateado (objeto con primary/secondary)
+const FormattedCurrencyDisplay = ({
+  formatted,
+  className = "",
+  inline = false
+}: {
+  formatted: { primary: string; secondary?: string };
+  className?: string;
+  inline?: boolean;
+}) => {
+  if (inline) {
+    return (
+      <span className={className}>
+        <span className="font-medium">{formatted.primary}</span>
+        {formatted.secondary && (
+          <span className="text-xs text-muted-foreground ml-1">
+            ({formatted.secondary})
+          </span>
+        )}
+      </span>
+    );
+  }
+  
+  return (
+    <div className={`text-right ${className}`}>
+      <div className="font-medium">
+        {formatted.primary}
+      </div>
+      {formatted.secondary && (
+        <div className="text-xs text-muted-foreground">
+          {formatted.secondary}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Función para calcular ajustes detallados por atributo (similar a product-edit-dialog)
 const calculateDetailedAttributeAdjustments = (
   productAttributes: Record<string, any>,
@@ -145,11 +250,30 @@ const calculateDetailedAttributeAdjustments = (
       (attr) => attr.id?.toString() === attrKey || attr.title === attrKey
     );
 
-    if (
-      !categoryAttribute ||
-      !categoryAttribute.values ||
-      categoryAttribute.valueType === "Product"
-    ) {
+    if (!categoryAttribute || categoryAttribute.valueType === "Product") {
+      return;
+    }
+
+    // Manejar atributos numéricos de forma especial
+    if (categoryAttribute.valueType === "Number") {
+      // Para atributos numéricos, el valor viene directamente de selectedValue
+      // No hay valores predefinidos ni ajustes de precio
+      const numericValue = selectedValue !== undefined && selectedValue !== null && selectedValue !== "" 
+        ? selectedValue.toString() 
+        : "";
+      
+      adjustments.push({
+        attributeName: categoryAttribute.title || attrKey,
+        selectedValueLabel: numericValue,
+        adjustment: 0, // Los atributos numéricos no tienen ajuste de precio
+        adjustmentInOriginalCurrency: 0,
+        originalCurrency: "Bs",
+      });
+      return;
+    }
+
+    // Para otros tipos de atributos, necesitan values
+    if (!categoryAttribute.values) {
       return;
     }
 
@@ -215,15 +339,15 @@ const calculateDetailedAttributeAdjustments = (
       }
     }
 
-    if (attributeAdjustment !== 0) {
-      adjustments.push({
-        attributeName: categoryAttribute.title || attrKey,
-        selectedValueLabel: selectedLabels.join(", ") || "",
-        adjustment: attributeAdjustment,
-        adjustmentInOriginalCurrency,
-        originalCurrency,
-      });
-    }
+    // Siempre agregar el atributo, incluso si no tiene ajuste de precio
+    // Esto asegura transparencia mostrando todos los atributos seleccionados
+    adjustments.push({
+      attributeName: categoryAttribute.title || attrKey,
+      selectedValueLabel: selectedLabels.join(", ") || "",
+      adjustment: attributeAdjustment,
+      adjustmentInOriginalCurrency,
+      originalCurrency,
+    });
   });
 
   return adjustments;
@@ -250,15 +374,13 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [selectedCurrency, setSelectedCurrency] = useState<Currency | null>(
-    null
-  );
+  const [selectedCurrency] = useState<Currency>("Bs"); // Siempre usar Bs como base, mostrar USD/Bs en formato fijo
   const [localExchangeRates, setLocalExchangeRates] = useState<{
     USD?: ExchangeRate;
     EUR?: ExchangeRate;
   }>({});
   const [formattedTotals, setFormattedTotals] = useState<
-    Record<string, string>
+    Record<string, { primary: string; secondary?: string }>
   >({});
   const [formattedPayments, setFormattedPayments] = useState<
     Array<{
@@ -271,13 +393,13 @@ export default function OrderDetailPage() {
   const [formattedPendingBalance, setFormattedPendingBalance] =
     useState<string>("");
   const [formattedProductDiscounts, setFormattedProductDiscounts] = useState<
-    Record<string, string>
+    Record<string, { primary: string; secondary?: string }>
   >({});
   const [formattedProductPrices, setFormattedProductPrices] = useState<
-    Record<string, string>
+    Record<string, { primary: string; secondary?: string }>
   >({});
   const [formattedProductTotals, setFormattedProductTotals] = useState<
-    Record<string, string>
+    Record<string, { primary: string; secondary?: string }>
   >({});
   const [categories, setCategories] = useState<Category[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
@@ -286,25 +408,25 @@ export default function OrderDetailPage() {
     Record<
       string,
       {
-        basePrice: string;
+        basePrice: { primary: string; secondary?: string };
         attributeAdjustments: Array<{
           name: string;
           value: string;
-          adjustment: string;
+          adjustment: { primary: string; secondary?: string };
           adjustmentValue: number;
         }>;
         productAttributes: Array<{
           name: string;
-          price: string;
+          price: { primary: string; secondary?: string };
           priceValue: number;
           adjustments: Array<{
             name: string;
             value: string;
-            adjustment: string;
+            adjustment: { primary: string; secondary?: string };
             adjustmentValue: number;
           }>;
         }>;
-        unitPrice: string;
+        unitPrice: { primary: string; secondary?: string };
       }
     >
   >({});
@@ -409,11 +531,6 @@ export default function OrderDetailPage() {
             EUR: eurRate || latestEur,
           });
         }
-
-        // SIEMPRE resetear la moneda cuando se carga un pedido
-        setSelectedCurrency(null);
-
-        // Los totales se formatearán cuando se seleccione la moneda
       } catch (error) {
         console.error("Error loading order:", error);
       } finally {
@@ -486,85 +603,49 @@ export default function OrderDetailPage() {
     [selectedCurrency, localExchangeRates]
   );
 
-  // Función para manejar la selección de moneda
-  const handleCurrencySelect = (currency: Currency) => {
-    setSelectedCurrency(currency);
-    toast.success(
-      `Moneda de visualización: ${
-        currency === "Bs"
-          ? "Bolívares"
-          : currency === "USD"
-          ? "Dólares"
-          : "Euros"
-      }`
-    );
-  };
 
-  // Formatear totales cuando cambia la moneda seleccionada
+  // Formatear totales siempre en USD como principal, Bs como secundario
   useEffect(() => {
-    const formatTotals = async () => {
+    const formatTotals = () => {
       if (!order) return;
 
-      // Si no hay moneda seleccionada, usar Bs por defecto
-      if (!selectedCurrency) {
-        const totals: Record<string, string> = {};
-        totals.total = formatCurrency(order.total, "Bs");
-        totals.subtotal = formatCurrency(order.subtotal, "Bs");
-        totals.tax = formatCurrency(order.taxAmount, "Bs");
-        totals.subtotalBeforeDiscounts = formatCurrency(
-          order.subtotalBeforeDiscounts || 0,
-          "Bs"
-        );
-        if (order.productDiscountTotal && order.productDiscountTotal > 0) {
-          totals.productDiscountTotal = formatCurrency(
-            order.productDiscountTotal,
-            "Bs"
-          );
-        }
-        if (order.generalDiscountAmount && order.generalDiscountAmount > 0) {
-          totals.generalDiscountAmount = formatCurrency(
-            order.generalDiscountAmount,
-            "Bs"
-          );
-        }
-        if (order.deliveryCost > 0) {
-          totals.deliveryCost = formatCurrency(order.deliveryCost, "Bs");
-        }
-        setFormattedTotals(totals);
-        return;
-      }
-
-      const totals: Record<string, string> = {};
-      totals.total = await formatWithSelectedCurrency(order.total, "Bs");
-      totals.subtotal = await formatWithSelectedCurrency(order.subtotal, "Bs");
-      totals.tax = await formatWithSelectedCurrency(order.taxAmount, "Bs");
-      totals.subtotalBeforeDiscounts = await formatWithSelectedCurrency(
+      const totals: Record<string, { primary: string; secondary?: string }> = {};
+      
+      // Usar siempre USD como principal
+      totals.total = formatCurrencyWithUsdPrimary(order.total, localExchangeRates);
+      totals.subtotal = formatCurrencyWithUsdPrimary(order.subtotal, localExchangeRates);
+      totals.tax = formatCurrencyWithUsdPrimary(order.taxAmount, localExchangeRates);
+      totals.subtotalBeforeDiscounts = formatCurrencyWithUsdPrimary(
         order.subtotalBeforeDiscounts || 0,
-        "Bs"
+        localExchangeRates
       );
+      
       if (order.productDiscountTotal && order.productDiscountTotal > 0) {
-        totals.productDiscountTotal = await formatWithSelectedCurrency(
+        totals.productDiscountTotal = formatCurrencyWithUsdPrimary(
           order.productDiscountTotal,
-          "Bs"
+          localExchangeRates
         );
       }
+      
       if (order.generalDiscountAmount && order.generalDiscountAmount > 0) {
-        totals.generalDiscountAmount = await formatWithSelectedCurrency(
+        totals.generalDiscountAmount = formatCurrencyWithUsdPrimary(
           order.generalDiscountAmount,
-          "Bs"
+          localExchangeRates
         );
       }
+      
       if (order.deliveryCost > 0) {
-        totals.deliveryCost = await formatWithSelectedCurrency(
+        totals.deliveryCost = formatCurrencyWithUsdPrimary(
           order.deliveryCost,
-          "Bs"
+          localExchangeRates
         );
       }
+      
       setFormattedTotals(totals);
     };
 
     formatTotals();
-  }, [order, selectedCurrency, formatWithSelectedCurrency]);
+  }, [order, localExchangeRates]);
 
   // Formatear pagos cuando cambia la moneda seleccionada
   useEffect(() => {
@@ -668,59 +749,53 @@ export default function OrderDetailPage() {
 
   // Formatear precios, descuentos, totales y calcular desglose detallado de productos
   useEffect(() => {
-    const formatProductData = async () => {
+    const formatProductData = () => {
       if (!order || categories.length === 0 || allProducts.length === 0) return;
 
-      // Si no hay moneda seleccionada, usar Bs por defecto para formatear
-      const formatFunction = selectedCurrency
-        ? formatWithSelectedCurrency
-        : async (amount: number, currency: Currency = "Bs") =>
-            formatCurrency(amount, currency);
-
-      const formattedDiscounts: Record<string, string> = {};
-      const formattedPrices: Record<string, string> = {};
-      const formattedTotals: Record<string, string> = {};
+      const formattedDiscounts: Record<string, { primary: string; secondary?: string }> = {};
+      const formattedPrices: Record<string, { primary: string; secondary?: string }> = {};
+      const formattedTotals: Record<string, { primary: string; secondary?: string }> = {};
       const breakdowns: Record<
         string,
         {
-          basePrice: string;
+          basePrice: { primary: string; secondary?: string };
           attributeAdjustments: Array<{
             name: string;
             value: string;
-            adjustment: string;
+            adjustment: { primary: string; secondary?: string };
             adjustmentValue: number;
           }>;
           productAttributes: Array<{
             name: string;
-            price: string;
+            price: { primary: string; secondary?: string };
             priceValue: number;
             adjustments: Array<{
               name: string;
               value: string;
-              adjustment: string;
+              adjustment: { primary: string; secondary?: string };
               adjustmentValue: number;
             }>;
           }>;
-          unitPrice: string;
+          unitPrice: { primary: string; secondary?: string };
         }
       > = {};
 
       for (const orderProduct of order.products) {
-        // Formatear precios básicos usando la moneda seleccionada
-        formattedPrices[orderProduct.id] = await formatFunction(
+        // Formatear precios básicos siempre en USD como principal
+        formattedPrices[orderProduct.id] = formatCurrencyWithUsdPrimary(
           orderProduct.price,
-          "Bs"
+          localExchangeRates
         );
         if (orderProduct.discount && orderProduct.discount > 0) {
-          formattedDiscounts[orderProduct.id] = await formatFunction(
+          formattedDiscounts[orderProduct.id] = formatCurrencyWithUsdPrimary(
             orderProduct.discount,
-            "Bs"
+            localExchangeRates
           );
         }
         const productTotal = orderProduct.total - (orderProduct.discount || 0);
-        formattedTotals[orderProduct.id] = await formatFunction(
+        formattedTotals[orderProduct.id] = formatCurrencyWithUsdPrimary(
           productTotal,
-          "Bs"
+          localExchangeRates
         );
 
         // Calcular desglose detallado
@@ -764,8 +839,8 @@ export default function OrderDetailPage() {
         }
 
         const basePriceCurrency = originalProduct?.priceCurrency || "Bs";
-        // Formatear precio base en la moneda seleccionada
-        const basePriceFormatted = await formatFunction(basePriceInBs, "Bs");
+        // Formatear precio base siempre en USD como principal
+        const basePriceFormatted = formatCurrencyWithUsdPrimary(basePriceInBs, localExchangeRates);
 
         // Calcular ajustes de atributos normales
         const attributeAdjustments = calculateDetailedAttributeAdjustments(
@@ -774,25 +849,23 @@ export default function OrderDetailPage() {
           localExchangeRates
         );
 
-        const formattedAttributeAdjustments = await Promise.all(
-          attributeAdjustments.map(async (adj) => ({
-            name: adj.attributeName,
-            value: adj.selectedValueLabel,
-            // Convertir ajuste a la moneda seleccionada (ya está en Bs)
-            adjustment: await formatFunction(adj.adjustment, "Bs"),
-            adjustmentValue: adj.adjustment, // Mantener el valor en Bs para cálculos
-          }))
-        );
+        const formattedAttributeAdjustments = attributeAdjustments.map((adj) => ({
+          name: adj.attributeName,
+          value: adj.selectedValueLabel,
+          // Formatear ajuste siempre en USD como principal
+          adjustment: formatCurrencyWithUsdPrimary(adj.adjustment, localExchangeRates),
+          adjustmentValue: adj.adjustment, // Mantener el valor en Bs para cálculos
+        }));
 
         // Calcular productos como atributos
         const productAttributes: Array<{
           name: string;
-          price: string;
+          price: { primary: string; secondary?: string };
           priceValue: number;
           adjustments: Array<{
             name: string;
             value: string;
-            adjustment: string;
+            adjustment: { primary: string; secondary?: string };
             adjustmentValue: number;
           }>;
         }> = [];
@@ -834,9 +907,9 @@ export default function OrderDetailPage() {
                   productPriceInBsForDisplay = productPrice * rate;
                 }
               }
-              const productPriceFormatted = await formatFunction(
+              const productPriceFormatted = formatCurrencyWithUsdPrimary(
                 productPriceInBsForDisplay,
-                "Bs"
+                localExchangeRates
               );
 
               // Convertir precio del producto a Bs para cálculos
@@ -859,7 +932,7 @@ export default function OrderDetailPage() {
               let productAttrAdjustments: Array<{
                 name: string;
                 value: string;
-                adjustment: string;
+                adjustment: { primary: string; secondary?: string };
                 adjustmentValue: number;
               }> = [];
 
@@ -874,15 +947,13 @@ export default function OrderDetailPage() {
                     localExchangeRates
                   );
 
-                  productAttrAdjustments = await Promise.all(
-                    rawAdjustments.map(async (adj) => ({
-                      name: adj.attributeName,
-                      value: adj.selectedValueLabel,
-                      // Convertir ajuste a la moneda seleccionada (ya está en Bs)
-                      adjustment: await formatFunction(adj.adjustment, "Bs"),
-                      adjustmentValue: adj.adjustment, // Mantener el valor en Bs para cálculos
-                    }))
-                  );
+                  productAttrAdjustments = rawAdjustments.map((adj) => ({
+                    name: adj.attributeName,
+                    value: adj.selectedValueLabel,
+                    // Formatear ajuste siempre en USD como principal
+                    adjustment: formatCurrencyWithUsdPrimary(adj.adjustment, localExchangeRates),
+                    adjustmentValue: adj.adjustment, // Mantener el valor en Bs para cálculos
+                  }));
                 }
               }
 
@@ -916,7 +987,7 @@ export default function OrderDetailPage() {
           });
         });
 
-        const unitPriceFormatted = await formatFunction(unitPriceInBs, "Bs");
+        const unitPriceFormatted = formatCurrencyWithUsdPrimary(unitPriceInBs, localExchangeRates);
 
         breakdowns[orderProduct.id] = {
           basePrice: basePriceFormatted,
@@ -932,14 +1003,7 @@ export default function OrderDetailPage() {
       setProductBreakdowns(breakdowns);
     };
     formatProductData();
-  }, [
-    order,
-    selectedCurrency,
-    formatWithSelectedCurrency,
-    categories,
-    allProducts,
-    localExchangeRates,
-  ]);
+  }, [order, categories, allProducts, localExchangeRates]);
 
   if (loading) {
     return (
@@ -955,84 +1019,6 @@ export default function OrderDetailPage() {
     return null;
   }
 
-  // Si no hay moneda seleccionada, mostrar selector simple
-  if (!selectedCurrency && order && !loading) {
-    const savedRates = order.exchangeRatesAtCreation || {};
-
-    return (
-      <ProtectedRoute>
-        <div className="flex h-screen bg-background">
-          <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <DashboardHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-            <main className="flex-1 overflow-y-auto p-4 lg:p-6 flex items-center justify-center">
-              <div className="bg-card border rounded-lg p-6 shadow-lg max-w-md w-full space-y-4">
-                <div>
-                  <h2 className="text-xl font-semibold mb-2">
-                    Seleccionar Moneda de Visualización
-                  </h2>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Selecciona la moneda en la que deseas ver los totales de
-                    este pedido. Las conversiones usan las tasas del día en que
-                    se creó el pedido.
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <Label>Selecciona una moneda:</Label>
-                  <div className="grid grid-cols-1 gap-2">
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start h-auto py-3"
-                      onClick={() => handleCurrencySelect("Bs")}
-                    >
-                      <DollarSign className="w-4 h-4 mr-2" />
-                      <div className="flex-1 text-left">
-                        <div className="font-medium">Bolívares (Bs.)</div>
-                        <div className="text-xs text-muted-foreground">
-                          Moneda local
-                        </div>
-                      </div>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start h-auto py-3"
-                      onClick={() => handleCurrencySelect("USD")}
-                    >
-                      <DollarSign className="w-4 h-4 mr-2" />
-                      <div className="flex-1 text-left">
-                        <div className="font-medium">Dólares (USD)</div>
-                        {savedRates.USD && (
-                          <div className="text-xs text-muted-foreground">
-                            1 USD = {formatCurrency(savedRates.USD.rate, "Bs")}
-                          </div>
-                        )}
-                      </div>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start h-auto py-3"
-                      onClick={() => handleCurrencySelect("EUR")}
-                    >
-                      <DollarSign className="w-4 h-4 mr-2" />
-                      <div className="flex-1 text-left">
-                        <div className="font-medium">Euros (EUR)</div>
-                        {savedRates.EUR && (
-                          <div className="text-xs text-muted-foreground">
-                            1 EUR = {formatCurrency(savedRates.EUR.rate, "Bs")}
-                          </div>
-                        )}
-                      </div>
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </main>
-          </div>
-        </div>
-      </ProtectedRoute>
-    );
-  }
 
   if (!order) {
     return (
@@ -1197,33 +1183,46 @@ export default function OrderDetailPage() {
                     {order.products.map((product, idx) => {
                       const breakdown = productBreakdowns[product.id];
                       return (
-                        <div key={idx} className="border rounded-lg p-4">
-                          <div className="flex justify-between items-start mb-2">
-                            <div className="flex-1">
-                              <p className="font-semibold text-lg">
-                                {product.name}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                Cantidad: {product.quantity} ×{" "}
-                                {formattedProductPrices[product.id] ||
-                                  formatCurrency(product.price, "Bs")}
-                              </p>
-                              {product.discount && product.discount > 0 && (
-                                <p className="text-sm text-red-600 mt-1">
-                                  Descuento: -
-                                  {formattedProductDiscounts[product.id] ||
-                                    formatCurrency(product.discount, "Bs")}
-                                </p>
-                              )}
-                            </div>
+                        <HoverCard key={idx} openDelay={200} closeDelay={100}>
+                          <HoverCardTrigger asChild>
+                            <div className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex-1">
+                                  <p className="font-semibold text-lg">
+                                    {product.name}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    Cantidad: {product.quantity}
+                                  </p>
+                                  {product.discount && product.discount > 0 && (
+                                    <p className="text-sm text-red-600 mt-1">
+                                      Descuento: -
+                                      {formattedProductDiscounts[product.id] ? (
+                                        <FormattedCurrencyDisplay 
+                                          formatted={formattedProductDiscounts[product.id]} 
+                                          inline={true}
+                                          className="inline"
+                                        />
+                                      ) : (
+                                        formatCurrency(product.discount, "Bs")
+                                      )}
+                                    </p>
+                                  )}
+                                </div>
                             <div className="text-right">
-                              <p className="font-semibold text-lg">
-                                {formattedProductTotals[product.id] ||
-                                  formatCurrency(
+                              {formattedProductTotals[product.id] ? (
+                                <FormattedCurrencyDisplay 
+                                  formatted={formattedProductTotals[product.id]} 
+                                  className="font-semibold text-lg"
+                                />
+                              ) : (
+                                <p className="font-semibold text-lg">
+                                  {formatCurrency(
                                     product.total - (product.discount || 0),
                                     "Bs"
                                   )}
-                              </p>
+                                </p>
+                              )}
                             </div>
                           </div>
 
@@ -1237,7 +1236,9 @@ export default function OrderDetailPage() {
                               {/* Precio base */}
                               <div className="flex justify-between">
                                 <span>Precio base:</span>
-                                <span>{breakdown.basePrice}</span>
+                                {breakdown.basePrice ? (
+                                  <FormattedCurrencyDisplay formatted={breakdown.basePrice} />
+                                ) : null}
                               </div>
 
                               {/* Ajustes de atributos normales */}
@@ -1248,7 +1249,8 @@ export default function OrderDetailPage() {
                                       adj: {
                                         name: string;
                                         value: string;
-                                        adjustment: string;
+                                        adjustment: { primary: string; secondary?: string };
+                                        adjustmentValue: number;
                                       },
                                       adjIdx: number
                                     ) => (
@@ -1260,8 +1262,19 @@ export default function OrderDetailPage() {
                                           {adj.name}
                                           {adj.value ? ` (${adj.value})` : ""}:
                                         </span>
-                                        <span className="text-green-600 dark:text-green-400">
-                                          +{adj.adjustment}
+                                        <span className={
+                                          adj.adjustmentValue > 0
+                                            ? "text-green-600 dark:text-green-400"
+                                            : adj.adjustmentValue < 0
+                                            ? "text-red-600 dark:text-red-400"
+                                            : "text-muted-foreground"
+                                        }>
+                                          {adj.adjustmentValue > 0 ? "+" : ""}
+                                          <FormattedCurrencyDisplay 
+                                            formatted={adj.adjustment} 
+                                            inline={true}
+                                            className="inline"
+                                          />
                                         </span>
                                       </div>
                                     )
@@ -1276,12 +1289,12 @@ export default function OrderDetailPage() {
                                     (
                                       prodAttr: {
                                         name: string;
-                                        price: string;
+                                        price: { primary: string; secondary?: string };
                                         priceValue: number;
                                         adjustments: Array<{
                                           name: string;
                                           value: string;
-                                          adjustment: string;
+                                          adjustment: { primary: string; secondary?: string };
                                           adjustmentValue: number;
                                         }>;
                                       },
@@ -1294,7 +1307,11 @@ export default function OrderDetailPage() {
                                             {prodAttr.name}:
                                           </span>
                                           <span className="text-green-600 dark:text-green-400">
-                                            +{prodAttr.price}
+                                            +<FormattedCurrencyDisplay 
+                                              formatted={prodAttr.price} 
+                                              inline={true}
+                                              className="inline"
+                                            />
                                           </span>
                                         </div>
                                         {/* Ajustes de atributos del producto */}
@@ -1305,7 +1322,8 @@ export default function OrderDetailPage() {
                                                 adj: {
                                                   name: string;
                                                   value: string;
-                                                  adjustment: string;
+                                                  adjustment: { primary: string; secondary?: string };
+                                                  adjustmentValue: number;
                                                 },
                                                 adjIdx: number
                                               ) => (
@@ -1320,8 +1338,17 @@ export default function OrderDetailPage() {
                                                       : ""}
                                                     :
                                                   </span>
-                                                  <span className="text-green-600 dark:text-green-400">
-                                                    +{adj.adjustment}
+                                                  <span className={
+                                                    adj.adjustmentValue !== 0
+                                                      ? "text-green-600 dark:text-green-400"
+                                                      : "text-muted-foreground"
+                                                  }>
+                                                    {adj.adjustmentValue > 0 ? "+" : ""}
+                                                    <FormattedCurrencyDisplay 
+                                                      formatted={adj.adjustment} 
+                                                      inline={true}
+                                                      className="inline"
+                                                    />
                                                   </span>
                                                 </div>
                                               )
@@ -1347,7 +1374,62 @@ export default function OrderDetailPage() {
                               </p>
                             </div>
                           )}
-                        </div>
+                            </div>
+                          </HoverCardTrigger>
+                          <HoverCardContent className="w-80" align="start">
+                            <div className="space-y-2">
+                              <h4 className="font-semibold text-sm mb-3">
+                                {product.name}
+                              </h4>
+                              {breakdown && breakdown.attributeAdjustments.length > 0 && (
+                                <div className="space-y-1.5">
+                                  {breakdown.attributeAdjustments.map((adj, adjIdx) => (
+                                    <div key={adjIdx} className="text-sm">
+                                      <span className="font-medium text-muted-foreground">
+                                        {adj.name}:
+                                      </span>{" "}
+                                      <span className="text-foreground">
+                                        {adj.value || "N/A"}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {breakdown && breakdown.productAttributes.length > 0 && (
+                                <div className="space-y-2 mt-3 pt-3 border-t">
+                                  {breakdown.productAttributes.map((prodAttr, prodIdx) => (
+                                    <div key={prodIdx} className="space-y-1">
+                                      <div className="text-sm font-medium text-muted-foreground">
+                                        {prodAttr.name}
+                                      </div>
+                                      {prodAttr.adjustments.length > 0 && (
+                                        <div className="pl-3 space-y-1">
+                                          {prodAttr.adjustments.map((adj, adjIdx) => (
+                                            <div key={adjIdx} className="text-xs">
+                                              <span className="text-muted-foreground">
+                                                {adj.name}:
+                                              </span>{" "}
+                                              <span className="text-foreground">
+                                                {adj.value || "N/A"}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {(!breakdown || 
+                                (breakdown.attributeAdjustments.length === 0 && 
+                                 breakdown.productAttributes.length === 0)) && (
+                                <p className="text-sm text-muted-foreground">
+                                  Sin atributos personalizados
+                                </p>
+                              )}
+                            </div>
+                          </HoverCardContent>
+                        </HoverCard>
                       );
                     })}
                   </div>
@@ -1407,70 +1489,88 @@ export default function OrderDetailPage() {
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span>Subtotal:</span>
-                      <span>
-                        {formattedTotals.subtotalBeforeDiscounts ||
-                          formatCurrency(
-                            order.subtotalBeforeDiscounts || 0,
-                            "Bs"
-                          )}
-                      </span>
-                    </div>
-                    {order.productDiscountTotal &&
-                      order.productDiscountTotal > 0 && (
+                      {formattedTotals.subtotalBeforeDiscounts ? (
+                        <FormattedCurrencyDisplay formatted={formattedTotals.subtotalBeforeDiscounts} />
+                      ) : (
+                        <CurrencyDisplay 
+                          amountInBs={order.subtotalBeforeDiscounts || 0} 
+                          exchangeRates={localExchangeRates}
+                        />
+                    )}
+                  </div>
+                  {order.productDiscountTotal && order.productDiscountTotal > 0 && (
                         <div className="flex justify-between text-red-600">
                           <span>Descuentos individuales:</span>
-                          <span>
-                            -
-                            {formattedTotals.productDiscountTotal ||
-                              formatCurrency(order.productDiscountTotal, "Bs")}
-                          </span>
+                          {formattedTotals.productDiscountTotal ? (
+                            <FormattedCurrencyDisplay formatted={formattedTotals.productDiscountTotal} />
+                          ) : (
+                            <CurrencyDisplay 
+                              amountInBs={order.productDiscountTotal} 
+                              exchangeRates={localExchangeRates}
+                            />
+                          )}
                         </div>
                       )}
-                    {order.generalDiscountAmount &&
-                      order.generalDiscountAmount > 0 && (
+                    {order.generalDiscountAmount && order.generalDiscountAmount > 0 && (
                         <div className="flex justify-between text-red-600">
                           <span>Descuento general:</span>
-                          <span>
-                            -
-                            {formattedTotals.generalDiscountAmount ||
-                              formatCurrency(
-                                order.generalDiscountAmount || 0,
-                                "Bs"
-                              )}
-                          </span>
+                          {formattedTotals.generalDiscountAmount ? (
+                            <FormattedCurrencyDisplay formatted={formattedTotals.generalDiscountAmount} />
+                          ) : (
+                            <CurrencyDisplay 
+                              amountInBs={order.generalDiscountAmount} 
+                              exchangeRates={localExchangeRates}
+                            />
+                          )}
                         </div>
                       )}
                     <Separator />
                     <div className="flex justify-between">
                       <span>Subtotal después de descuentos:</span>
-                      <span>
-                        {formattedTotals.subtotal ||
-                          formatCurrency(order.subtotal, "Bs")}
-                      </span>
+                      {formattedTotals.subtotal ? (
+                        <FormattedCurrencyDisplay formatted={formattedTotals.subtotal} />
+                      ) : (
+                        <CurrencyDisplay 
+                          amountInBs={order.subtotal} 
+                          exchangeRates={localExchangeRates}
+                        />
+                      )}
                     </div>
                     <div className="flex justify-between">
                       <span>Impuesto (16%):</span>
-                      <span>
-                        {formattedTotals.tax ||
-                          formatCurrency(order.taxAmount, "Bs")}
-                      </span>
+                      {formattedTotals.tax ? (
+                        <FormattedCurrencyDisplay formatted={formattedTotals.tax} />
+                      ) : (
+                        <CurrencyDisplay 
+                          amountInBs={order.taxAmount} 
+                          exchangeRates={localExchangeRates}
+                        />
+                      )}
                     </div>
                     {order.deliveryCost > 0 && (
                       <div className="flex justify-between">
                         <span>Delivery:</span>
-                        <span>
-                          {formattedTotals.deliveryCost ||
-                            formatCurrency(order.deliveryCost, "Bs")}
-                        </span>
+                        {formattedTotals.deliveryCost ? (
+                          <FormattedCurrencyDisplay formatted={formattedTotals.deliveryCost} />
+                        ) : (
+                          <CurrencyDisplay 
+                            amountInBs={order.deliveryCost} 
+                            exchangeRates={localExchangeRates}
+                          />
+                        )}
                       </div>
                     )}
                     <Separator />
                     <div className="flex justify-between text-xl font-bold">
                       <span>Total:</span>
-                      <span>
-                        {formattedTotals.total ||
-                          formatCurrency(order.total, "Bs")}
-                      </span>
+                      {formattedTotals.total ? (
+                        <FormattedCurrencyDisplay formatted={formattedTotals.total} />
+                      ) : (
+                        <CurrencyDisplay 
+                          amountInBs={order.total} 
+                          exchangeRates={localExchangeRates}
+                        />
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -1658,23 +1758,10 @@ export default function OrderDetailPage() {
                       <Separator />
                       <div className="flex justify-between font-semibold">
                         <span>Total Pagado:</span>
-                        <div className="text-right">
-                          <div>
-                            {formatCurrency(
-                              order.partialPayments.reduce((sum, p) => {
-                                return sum + (p.amount || 0);
-                              }, 0),
-                              "Bs"
-                            )}
-                          </div>
-                          {formattedTotalPaid &&
-                            selectedCurrency &&
-                            selectedCurrency !== "Bs" && (
-                              <div className="text-sm text-muted-foreground font-normal">
-                                {formattedTotalPaid}
-                              </div>
-                            )}
-                        </div>
+                        <CurrencyDisplay 
+                          amountInBs={order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)} 
+                          exchangeRates={localExchangeRates}
+                        />
                       </div>
 
                       {/* Mostrar saldo pendiente si existe */}
@@ -1689,22 +1776,11 @@ export default function OrderDetailPage() {
                               </span>
                             </div>
                             <div className="text-right">
-                              <div className="font-bold text-lg text-red-700 dark:text-red-300">
-                                {formatCurrency(
-                                  order.total -
-                                    order.partialPayments.reduce(
-                                      (sum, p) => sum + (p.amount || 0),
-                                      0
-                                    ),
-                                  "Bs"
-                                )}
-                              </div>
-                              {selectedCurrency &&
-                                selectedCurrency !== "Bs" && (
-                                  <div className="text-sm text-red-600 dark:text-red-400 font-medium">
-                                    {formattedPendingBalance}
-                                  </div>
-                                )}
+                              <CurrencyDisplay 
+                                amountInBs={order.total - order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)} 
+                                exchangeRates={localExchangeRates}
+                                className="font-bold text-lg text-red-700 dark:text-red-300"
+                              />
                             </div>
                           </div>
                         </>

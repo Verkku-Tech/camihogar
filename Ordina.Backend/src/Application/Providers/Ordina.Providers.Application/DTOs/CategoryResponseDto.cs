@@ -8,6 +8,8 @@ public class CategoryAttributeDto
     public string ValueType { get; set; } = string.Empty;
     public List<AttributeValueDto> Values { get; set; } = new();
     public int? MaxSelections { get; set; }
+    public decimal? MinValue { get; set; } // For "Number" type
+    public decimal? MaxValue { get; set; } // For "Number" type (REQUIRED when ValueType is "Number")
 }
 
 public class AttributeValueDto
