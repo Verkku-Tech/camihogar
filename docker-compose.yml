@@ -118,13 +118,24 @@ services:
       - ASPNETCORE_Kestrel__Certificates__Default__Password=password
       - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
     depends_on:
-      - security-api
-      - users-api
-      - providers-api
-      - orders-api
-      - payments-api
+      security-api:
+        condition: service_healthy
+      users-api:
+        condition: service_healthy
+      providers-api:
+        condition: service_healthy
+      orders-api:
+        condition: service_healthy
+      payments-api:
+        condition: service_healthy
     networks:
       - ordina-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || curl -f http://localhost:8080 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # Microservices (All using MongoDB)
   security-api:
@@ -146,11 +157,11 @@ services:
     networks:
       - ordina-network
     healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 0s
+      retries: 5
+      start_period: 60s
 
   users-api:
     build:
@@ -171,11 +182,11 @@ services:
     networks:
       - ordina-network
     healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 0s
+      retries: 5
+      start_period: 60s
 
   providers-api:
     build:
@@ -196,11 +207,11 @@ services:
     networks:
       - ordina-network
     healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8084/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 0s
+      retries: 5
+      start_period: 60s
 
   orders-api:
     build:
@@ -221,11 +232,11 @@ services:
     networks:
       - ordina-network
     healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8085/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 0s
+      retries: 5
+      start_period: 60s
 
   payments-api:
     build:
@@ -246,11 +257,11 @@ services:
     networks:
       - ordina-network
     healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8086/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 0s
+      retries: 5
+      start_period: 60s
 
   # Frontend Application
   frontend:
@@ -268,9 +279,12 @@ services:
       - NEXT_PUBLIC_PROVIDERS_API_URL=${NEXT_PUBLIC_PROVIDERS_API_URL:-http://localhost:8084}
     restart: unless-stopped
     depends_on:
-      - security-api
-      - users-api
-      - providers-api
+      security-api:
+        condition: service_healthy
+      users-api:
+        condition: service_healthy
+      providers-api:
+        condition: service_healthy
     networks:
       - ordina-network
     healthcheck:
