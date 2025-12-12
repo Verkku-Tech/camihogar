@@ -2,7 +2,7 @@ name: Deploy Camihogar (RPi)
 
 on:
   push:
-    branches: ["main"]
+    ##branches: ["main"]
 
 concurrency:
   group: camihogar-rpi
@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: [self-hosted, Linux, ARM64, rpi]
+    #runs-on: [self-hosted, Linux, ARM64, rpi]
     steps:
       - uses: actions/checkout@v4
 
