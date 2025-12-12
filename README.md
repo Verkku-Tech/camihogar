@@ -2,7 +2,7 @@
 
 Monorepo para la aplicación Camihogar que contiene el frontend (Next.js) y el backend (.NET).
 
-## 📁 Estructura del Proyecto
+## 📁 Estructura del Proyecto.
 
 ```
 camihogar/
