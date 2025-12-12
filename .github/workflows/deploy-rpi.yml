@@ -14,21 +14,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Docker Permissions
+        run: |
+          set -euo pipefail
+          echo "=== Configurando permisos de Docker ==="
+          # Verificar acceso a Docker
+          if docker ps >/dev/null 2>&1; then
+            echo "✓ Docker accesible sin sudo"
+          elif sudo docker ps >/dev/null 2>&1; then
+            echo "⚠️  Docker requiere sudo"
+            # Agregar usuario al grupo docker para futuras ejecuciones
+            if ! groups | grep -q docker; then
+              echo "Agregando usuario al grupo docker..."
+              sudo usermod -aG docker $USER || true
+            fi
+          else
+            echo "✗ No se puede acceder a Docker"
+            exit 1
+          fi
+
       - name: Sanity Check
         run: |
           set -euo pipefail
           echo "=== Verificando entorno ==="
           whoami
           echo "=== Verificando Docker ==="
-          docker --version
-          docker compose version
+          docker --version || sudo docker --version
+          docker compose version || sudo docker compose version
           echo "=== Verificando espacio en disco ==="
           df -h
           echo "=== Verificando directorios ==="
           ls -la Ordina.Backend
           ls -la Ordina.Frontend
           echo "=== Verificando conectividad Docker ==="
-          docker ps
+          docker ps || sudo docker ps
 
       - name: Ensure curl exists
         run: |
@@ -42,7 +61,13 @@ jobs:
         run: |
           set -euo pipefail
           echo "=== Desplegando todos los servicios ==="
-          docker compose up -d --build --remove-orphans
+          # Intentar sin sudo primero, si falla usar sudo
+          if docker compose up -d --build --remove-orphans 2>/dev/null; then
+            echo "✓ Despliegue exitoso sin sudo"
+          else
+            echo "⚠️  Usando sudo para docker compose"
+            sudo docker compose up -d --build --remove-orphans
+          fi
 
       - name: Wait for Services
         run: |
@@ -54,7 +79,7 @@ jobs:
 
           while [ $elapsed -lt $timeout ]; do
             # si todos están "running" y no hay "restarting"/"exited", consideramos OK
-            if docker compose ps --format json 2>/dev/null | grep -q '"State":"running"'; then
+            if (docker compose ps --format json 2>/dev/null || sudo docker compose ps --format json 2>/dev/null) | grep -q '"State":"running"'; then
               echo "Contenedores running detectados. Continuando..."
               break
             fi
@@ -64,7 +89,7 @@ jobs:
           done
 
           echo "=== Estado de contenedores ==="
-          docker compose ps
+          docker compose ps || sudo docker compose ps
 
       - name: Health Check
         run: |
@@ -94,8 +119,8 @@ jobs:
 
           if [ $failed -gt 0 ]; then
             echo "⚠️  Algunos servicios no están respondiendo correctamente"
-            docker compose ps || true
-            docker compose logs --tail=80 || true
+            docker compose ps || sudo docker compose ps || true
+            docker compose logs --tail=80 || sudo docker compose logs --tail=80 || true
             exit 1
           fi
 
@@ -106,6 +131,6 @@ jobs:
         run: |
           set -euo pipefail
           echo "=== Limpiando imágenes no utilizadas ==="
-          docker image prune -af || true
+          docker image prune -af || sudo docker image prune -af || true
           echo "=== Espacio en disco después de limpieza ==="
           df -h
