@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: [self-hosted, Linux, ARM64, vm]
+    runs-on: [self-hosted, Linux, ARM64, rpi]
     steps:
       - uses: actions/checkout@v4
 
