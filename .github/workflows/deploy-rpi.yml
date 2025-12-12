@@ -1,0 +1,111 @@
+name: Deploy Camihogar (RPi)
+
+on:
+  push:
+    branches: ["ci/cd"]
+
+concurrency:
+  group: camihogar-rpi
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, ARM64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sanity Check
+        run: |
+          set -euo pipefail
+          echo "=== Verificando entorno ==="
+          whoami
+          echo "=== Verificando Docker ==="
+          docker --version
+          docker compose version
+          echo "=== Verificando espacio en disco ==="
+          df -h
+          echo "=== Verificando directorios ==="
+          ls -la Ordina.Backend
+          ls -la Ordina.Frontend
+          echo "=== Verificando conectividad Docker ==="
+          docker ps
+
+      - name: Ensure curl exists
+        run: |
+          set -euo pipefail
+          if ! command -v curl >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y curl
+          fi
+
+      - name: Deploy Services
+        run: |
+          set -euo pipefail
+          echo "=== Desplegando todos los servicios ==="
+          docker compose up -d --build --remove-orphans
+
+      - name: Wait for Services
+        run: |
+          set -euo pipefail
+          echo "=== Esperando a que los servicios estén listos ==="
+          timeout=300
+          interval=10
+          elapsed=0
+
+          while [ $elapsed -lt $timeout ]; do
+            # si todos están "running" y no hay "restarting"/"exited", consideramos OK
+            if docker compose ps --format json 2>/dev/null | grep -q '"State":"running"'; then
+              echo "Contenedores running detectados. Continuando..."
+              break
+            fi
+            echo "Aún no están listos... ($elapsed/$timeout)"
+            sleep $interval
+            elapsed=$((elapsed + interval))
+          done
+
+          echo "=== Estado de contenedores ==="
+          docker compose ps
+
+      - name: Health Check
+        run: |
+          set -euo pipefail
+          echo "=== Verificando salud de los servicios ==="
+
+          apis=("8082:security-api" "8083:users-api" "8084:providers-api" "8085:orders-api" "8086:payments-api")
+          failed=0
+
+          for api in "${apis[@]}"; do
+            port="${api%%:*}"
+            name="${api##*:}"
+            if curl -fsS "http://localhost:$port/health" >/dev/null 2>&1 || curl -fsS "http://localhost:$port" >/dev/null 2>&1; then
+              echo "✓ $name (puerto $port) está respondiendo"
+            else
+              echo "✗ $name (puerto $port) no está respondiendo"
+              failed=$((failed + 1))
+            fi
+          done
+
+          if curl -fsS "http://localhost:3000" >/dev/null 2>&1; then
+            echo "✓ Frontend está respondiendo"
+          else
+            echo "✗ Frontend no está respondiendo"
+            failed=$((failed + 1))
+          fi
+
+          if [ $failed -gt 0 ]; then
+            echo "⚠️  Algunos servicios no están respondiendo correctamente"
+            docker compose ps || true
+            docker compose logs --tail=80 || true
+            exit 1
+          fi
+
+          echo "✓ Todos los servicios están funcionando correctamente"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "=== Limpiando imágenes no utilizadas ==="
+          docker image prune -af || true
+          echo "=== Espacio en disco después de limpieza ==="
+          df -h

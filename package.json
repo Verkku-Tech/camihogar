@@ -4,10 +4,10 @@
   "private": true,
   "description": "Monorepo para la aplicación Camihogar - Frontend Next.js y Backend .NET",
   "scripts": {
-    "dev": "pnpm --filter FrontendCamihogar dev",
-    "build": "pnpm --filter FrontendCamihogar build",
-    "lint": "pnpm --filter FrontendCamihogar lint",
-    "start": "pnpm --filter FrontendCamihogar start",
+    "dev": "pnpm --filter Ordina.Frontend dev",
+    "build": "pnpm --filter Ordina.Frontend build",
+    "lint": "pnpm --filter Ordina.Frontend lint",
+    "start": "pnpm --filter Ordina.Frontend start",
     "clean": "pnpm -r exec rm -rf node_modules && rm -rf node_modules"
   },
   "devDependencies": {

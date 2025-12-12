@@ -6,7 +6,7 @@ Monorepo para la aplicación Camihogar que contiene el frontend (Next.js) y el b
 
 ```
 camihogar/
-├── FrontendCamihogar/     # Frontend Next.js
+├── Ordina.Frontend/       # Frontend Next.js
 │   ├── app/               # Páginas y rutas de Next.js
 │   ├── components/        # Componentes React
 │   ├── lib/               # Utilidades y clientes API
@@ -58,14 +58,14 @@ Desde la raíz del monorepo:
 Para ejecutar comandos en un workspace específico:
 
 ```bash
-pnpm --filter FrontendCamihogar <comando>
+pnpm --filter Ordina.Frontend <comando>
 ```
 
 ## 🏗️ Workspaces
 
 Este monorepo utiliza pnpm workspaces para gestionar múltiples paquetes:
 
-- **FrontendCamihogar**: Aplicación Next.js con TypeScript y Tailwind CSS
+- **Ordina.Frontend**: Aplicación Next.js con TypeScript y Tailwind CSS
 
 ## 🔧 Desarrollo
 
@@ -98,15 +98,16 @@ pnpm install
 Para agregar una dependencia a un workspace específico:
 
 ```bash
-pnpm --filter FrontendCamihogar add <paquete>
+pnpm --filter Ordina.Frontend add <paquete>
 ```
 
 ## 🐳 Docker
 
 Ambos proyectos tienen configuración Docker:
 
-- Frontend: `FrontendCamihogar/Dockerfile` y `docker-compose.yml`
-- Backend: `Ordina.Backend/docker-compose.yml`
+- Frontend: `Ordina.Frontend/Dockerfile`
+- Backend: `Ordina.Backend/`
+- Unificado: `docker-compose.yml` (raíz del proyecto)
 
 ## 📝 Notas
 
