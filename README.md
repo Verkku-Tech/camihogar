@@ -215,7 +215,7 @@ El workflow se ejecutará automáticamente y desplegará todos los servicios en 
 
 ## 🤝 Contribución
 
-1. Crear una rama desde `main` o `ci/cd`
+1. Crear una rama desde `main`
 2. Realizar los cambios
 3. Ejecutar `pnpm lint` antes de hacer commit
 4. Crear un Pull Request
