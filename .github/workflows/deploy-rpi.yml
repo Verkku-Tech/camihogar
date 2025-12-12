@@ -2,7 +2,7 @@ name: Deploy Camihogar (RPi)
 
 on:
   push:
-    branches: ["main"]
+    branches: ["ci/cd"]
 
 concurrency:
   group: camihogar-rpi
