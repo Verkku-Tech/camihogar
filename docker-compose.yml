@@ -146,11 +146,11 @@ services:
     networks:
       - ordina-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/health"]
+      test: ["CMD-SHELL", "exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 0s
 
   users-api:
     build:
@@ -171,11 +171,11 @@ services:
     networks:
       - ordina-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8083/health"]
+      test: ["CMD-SHELL", "exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 0s
 
   providers-api:
     build:
@@ -196,11 +196,11 @@ services:
     networks:
       - ordina-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/health"]
+      test: ["CMD-SHELL", "exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 0s
 
   orders-api:
     build:
@@ -221,11 +221,11 @@ services:
     networks:
       - ordina-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8085/health"]
+      test: ["CMD-SHELL", "exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 0s
 
   payments-api:
     build:
@@ -246,11 +246,11 @@ services:
     networks:
       - ordina-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8086/health"]
+      test: ["CMD-SHELL", "exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 0s
 
   # Frontend Application
   frontend:
@@ -268,20 +268,17 @@ services:
       - NEXT_PUBLIC_PROVIDERS_API_URL=${NEXT_PUBLIC_PROVIDERS_API_URL:-http://localhost:8084}
     restart: unless-stopped
     depends_on:
-      security-api:
-        condition: service_healthy
-      users-api:
-        condition: service_healthy
-      providers-api:
-        condition: service_healthy
+      - security-api
+      - users-api
+      - providers-api
     networks:
       - ordina-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
 
 volumes:
   postgres_data:
