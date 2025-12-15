@@ -65,7 +65,7 @@ jobs:
           if docker compose up -d --build --remove-orphans 2>/dev/null; then
             echo "✓ Despliegue exitoso sin sudo"
           else
-            echo "⚠️  Usando sudo para docker compose"
+            echo "⚠️  Usando sudo para docker compose."
             sudo docker compose up -d --build --remove-orphans
           fi
 
