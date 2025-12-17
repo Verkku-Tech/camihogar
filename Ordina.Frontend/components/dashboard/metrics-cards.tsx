@@ -1,16 +1,55 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { TrendingDown, TrendingUp, AlertTriangle } from "lucide-react"
 import { DashboardMetrics } from "@/lib/storage"
-import { formatCurrency } from "@/lib/currency-utils"
+import { formatCurrency, getActiveExchangeRates, type ExchangeRate } from "@/lib/currency-utils"
 
 interface MetricsCardsProps {
   metrics: DashboardMetrics
   isLoading?: boolean
 }
 
+// Función helper para formatear moneda siempre en USD como principal, Bs como secundario
+const formatCurrencyWithUsdPrimary = (
+  amountInBs: number,
+  exchangeRates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
+): string => {
+  // Intentar convertir a USD si hay tasa disponible
+  const usdRate = exchangeRates?.USD?.rate
+  
+  if (usdRate && usdRate > 0) {
+    const amountInUsd = amountInBs / usdRate
+    const usdFormatted = formatCurrency(amountInUsd, "USD")
+    const bsFormatted = formatCurrency(amountInBs, "Bs")
+    return `${usdFormatted} (${bsFormatted})`
+  }
+  
+  // Si no hay tasa USD, mostrar solo en Bs
+  return formatCurrency(amountInBs, "Bs")
+}
+
 export function MetricsCards({ metrics, isLoading = false }: MetricsCardsProps) {
+  const [exchangeRates, setExchangeRates] = useState<{ USD?: ExchangeRate; EUR?: ExchangeRate }>({})
+  const [formattedPendingPayments, setFormattedPendingPayments] = useState<string>("")
+  const [formattedAverageOrderValue, setFormattedAverageOrderValue] = useState<string>("")
+
+  // Cargar tasas de cambio
+  useEffect(() => {
+    const loadExchangeRates = async () => {
+      const rates = await getActiveExchangeRates()
+      setExchangeRates(rates)
+    }
+    loadExchangeRates()
+  }, [])
+
+  // Formatear valores monetarios cuando cambien las métricas o las tasas
+  useEffect(() => {
+    setFormattedPendingPayments(formatCurrencyWithUsdPrimary(metrics.pendingPayments, exchangeRates))
+    setFormattedAverageOrderValue(formatCurrencyWithUsdPrimary(metrics.averageOrderValue, exchangeRates))
+  }, [metrics.pendingPayments, metrics.averageOrderValue, exchangeRates])
+
   const metricsData = [
     {
       title: "Pedidos completados",
@@ -23,7 +62,7 @@ export function MetricsCards({ metrics, isLoading = false }: MetricsCardsProps) 
     {
       title: "Abonos por recaudar",
       subtitle: "(total)",
-      value: formatCurrency(metrics.pendingPayments, "Bs"),
+      value: formattedPendingPayments || formatCurrency(metrics.pendingPayments, "Bs"),
       change: metrics.pendingPaymentsChange,
     },
     {
@@ -34,7 +73,7 @@ export function MetricsCards({ metrics, isLoading = false }: MetricsCardsProps) 
     {
       title: "Pedidos completados",
       subtitle: "(promedio)",
-      value: formatCurrency(metrics.averageOrderValue, "Bs"),
+      value: formattedAverageOrderValue || formatCurrency(metrics.averageOrderValue, "Bs"),
       change: null,
     },
   ]

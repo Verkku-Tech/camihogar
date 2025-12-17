@@ -14,6 +14,7 @@ import {
   User,
   Package,
   FileText,
+  DollarSign,
   Calendar,
   Clock,
   AlertCircle,
@@ -29,9 +30,110 @@ import {
   type Category,
   type OrderProduct,
 } from "@/lib/storage"
-import { formatCurrency } from "@/lib/currency-utils"
+import { formatCurrency, type ExchangeRate } from "@/lib/currency-utils"
 import { useCurrency } from "@/contexts/currency-context"
 import type { AttributeValue } from "@/lib/storage"
+import { getAll } from "@/lib/indexeddb"
+
+// Función helper para formatear moneda siempre en USD como principal, Bs como secundario
+const formatCurrencyWithUsdPrimary = (
+  amountInBs: number,
+  exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } }
+): { primary: string; secondary?: string } => {
+  // Intentar convertir a USD si hay tasa disponible
+  const usdRate = exchangeRates?.USD?.rate
+  
+  if (usdRate && usdRate > 0) {
+    const amountInUsd = amountInBs / usdRate
+    return {
+      primary: formatCurrency(amountInUsd, "USD"),
+      secondary: formatCurrency(amountInBs, "Bs"),
+    }
+  }
+  
+  // Si no hay tasa USD, mostrar solo en Bs
+  return {
+    primary: formatCurrency(amountInBs, "Bs"),
+  }
+}
+
+// Componente para renderizar moneda con formato USD principal / Bs secundario
+const CurrencyDisplay = ({ 
+  amountInBs, 
+  exchangeRates,
+  className = "",
+  inline = false
+}: { 
+  amountInBs: number
+  exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } }
+  className?: string
+  inline?: boolean
+}) => {
+  const formatted = formatCurrencyWithUsdPrimary(amountInBs, exchangeRates)
+  
+  if (inline) {
+    return (
+      <span className={className}>
+        <span className="font-medium">{formatted.primary}</span>
+        {formatted.secondary && (
+          <span className="text-xs text-muted-foreground ml-1">
+            ({formatted.secondary})
+          </span>
+        )}
+      </span>
+    )
+  }
+  
+  return (
+    <div className={`text-right ${className}`}>
+      <div className="font-medium">
+        {formatted.primary}
+      </div>
+      {formatted.secondary && (
+        <div className="text-xs text-muted-foreground">
+          {formatted.secondary}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Helper para renderizar un valor formateado (objeto con primary/secondary)
+const FormattedCurrencyDisplay = ({
+  formatted,
+  className = "",
+  inline = false
+}: {
+  formatted: { primary: string; secondary?: string }
+  className?: string
+  inline?: boolean
+}) => {
+  if (inline) {
+    return (
+      <span className={className}>
+        <span className="font-medium">{formatted.primary}</span>
+        {formatted.secondary && (
+          <span className="text-xs text-muted-foreground ml-1">
+            ({formatted.secondary})
+          </span>
+        )}
+      </span>
+    )
+  }
+  
+  return (
+    <div className={`text-right ${className}`}>
+      <div className="font-medium">
+        {formatted.primary}
+      </div>
+      {formatted.secondary && (
+        <div className="text-xs text-muted-foreground">
+          {formatted.secondary}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -122,10 +224,31 @@ export default function BudgetDetailPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [allProducts, setAllProducts] = useState<Product[]>([])
   const [client, setClient] = useState<Client | null>(null)
+  const [localExchangeRates, setLocalExchangeRates] = useState<{
+    USD?: ExchangeRate
+    EUR?: ExchangeRate
+  }>({})
+  const [formattedTotals, setFormattedTotals] = useState<
+    Record<string, { primary: string; secondary?: string }>
+  >({})
+  const [formattedProductTotals, setFormattedProductTotals] = useState<
+    Record<string, { primary: string; secondary?: string }>
+  >({})
+  const [formattedProductDiscounts, setFormattedProductDiscounts] = useState<
+    Record<string, { primary: string; secondary?: string }>
+  >({})
 
   useEffect(() => {
     const loadBudget = async () => {
       try {
+        // Cargar categorías y productos primero
+        const [loadedCategories, loadedProducts] = await Promise.all([
+          getCategories(),
+          getProducts(),
+        ])
+        setCategories(loadedCategories)
+        setAllProducts(loadedProducts)
+
         const loadedBudget = await getBudgetByNumber(budgetNumber)
         if (loadedBudget) {
           setBudget(loadedBudget)
@@ -134,6 +257,75 @@ export default function BudgetDetailPage() {
           const loadedClient = await getClient(loadedBudget.clientId)
           if (loadedClient) {
             setClient(loadedClient)
+          }
+
+          // Cargar tasas de cambio para el día del presupuesto
+          // PRIORIDAD: Usar las tasas guardadas en el presupuesto si existen
+          if (loadedBudget.exchangeRatesAtCreation) {
+            // Convertir las tasas guardadas al formato ExchangeRate
+            const savedRates: { USD?: ExchangeRate; EUR?: ExchangeRate } = {}
+
+            if (loadedBudget.exchangeRatesAtCreation.USD) {
+              savedRates.USD = {
+                id: `saved-usd-${loadedBudget.id}`,
+                fromCurrency: "Bs",
+                toCurrency: "USD",
+                rate: loadedBudget.exchangeRatesAtCreation.USD.rate,
+                effectiveDate: loadedBudget.exchangeRatesAtCreation.USD.effectiveDate,
+                isActive: true,
+                createdAt: loadedBudget.createdAt,
+                updatedAt: loadedBudget.createdAt,
+              }
+            }
+
+            if (loadedBudget.exchangeRatesAtCreation.EUR) {
+              savedRates.EUR = {
+                id: `saved-eur-${loadedBudget.id}`,
+                fromCurrency: "Bs",
+                toCurrency: "EUR",
+                rate: loadedBudget.exchangeRatesAtCreation.EUR.rate,
+                effectiveDate: loadedBudget.exchangeRatesAtCreation.EUR.effectiveDate,
+                isActive: true,
+                createdAt: loadedBudget.createdAt,
+                updatedAt: loadedBudget.createdAt,
+              }
+            }
+
+            setLocalExchangeRates(savedRates)
+          } else {
+            // Fallback: Buscar tasas del día del presupuesto si no están guardadas
+            const budgetDateObj = new Date(loadedBudget.createdAt)
+            budgetDateObj.setHours(0, 0, 0, 0)
+
+            const allRates = await getAll<ExchangeRate>("exchange_rates")
+            const activeRates = allRates
+              .filter((r) => r.isActive)
+              .sort(
+                (a, b) =>
+                  new Date(b.effectiveDate).getTime() -
+                  new Date(a.effectiveDate).getTime()
+              )
+
+            // Buscar la tasa más reciente hasta el día del presupuesto
+            const usdRate = activeRates.find(
+              (r) =>
+                r.toCurrency === "USD" &&
+                new Date(r.effectiveDate).getTime() <= budgetDateObj.getTime()
+            )
+            const eurRate = activeRates.find(
+              (r) =>
+                r.toCurrency === "EUR" &&
+                new Date(r.effectiveDate).getTime() <= budgetDateObj.getTime()
+            )
+
+            // Si no hay tasa para el día del presupuesto, usar la más reciente disponible
+            const latestUsd = activeRates.find((r) => r.toCurrency === "USD")
+            const latestEur = activeRates.find((r) => r.toCurrency === "EUR")
+
+            setLocalExchangeRates({
+              USD: usdRate || latestUsd,
+              EUR: eurRate || latestEur,
+            })
           }
         }
       } catch (error) {
@@ -148,22 +340,76 @@ export default function BudgetDetailPage() {
     }
   }, [budgetNumber])
 
+  // Formatear totales siempre en USD como principal, Bs como secundario
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [loadedCategories, loadedProducts] = await Promise.all([
-          getCategories(),
-          getProducts(),
-        ])
-        setCategories(loadedCategories)
-        setAllProducts(loadedProducts)
-      } catch (error) {
-        console.error("Error loading categories/products:", error)
+    const formatTotals = () => {
+      if (!budget) return
+
+      const totals: Record<string, { primary: string; secondary?: string }> = {}
+      
+      // Usar siempre USD como principal
+      totals.total = formatCurrencyWithUsdPrimary(budget.total, localExchangeRates)
+      totals.subtotal = formatCurrencyWithUsdPrimary(budget.subtotal, localExchangeRates)
+      totals.tax = formatCurrencyWithUsdPrimary(budget.taxAmount, localExchangeRates)
+      totals.subtotalBeforeDiscounts = formatCurrencyWithUsdPrimary(
+        budget.subtotalBeforeDiscounts || budget.subtotal,
+        localExchangeRates
+      )
+      
+      if (budget.productDiscountTotal && budget.productDiscountTotal > 0) {
+        totals.productDiscountTotal = formatCurrencyWithUsdPrimary(
+          budget.productDiscountTotal,
+          localExchangeRates
+        )
       }
+      
+      if (budget.generalDiscountAmount && budget.generalDiscountAmount > 0) {
+        totals.generalDiscountAmount = formatCurrencyWithUsdPrimary(
+          budget.generalDiscountAmount,
+          localExchangeRates
+        )
+      }
+      
+      if (budget.deliveryCost > 0) {
+        totals.deliveryCost = formatCurrencyWithUsdPrimary(
+          budget.deliveryCost,
+          localExchangeRates
+        )
+      }
+      
+      setFormattedTotals(totals)
     }
 
-    loadData()
-  }, [])
+    formatTotals()
+  }, [budget, localExchangeRates])
+
+  // Formatear precios y descuentos de productos
+  useEffect(() => {
+    const formatProductData = () => {
+      if (!budget) return
+
+      const formattedDiscounts: Record<string, { primary: string; secondary?: string }> = {}
+      const formattedTotals: Record<string, { primary: string; secondary?: string }> = {}
+
+      for (const budgetProduct of budget.products) {
+        if (budgetProduct.discount && budgetProduct.discount > 0) {
+          formattedDiscounts[budgetProduct.id] = formatCurrencyWithUsdPrimary(
+            budgetProduct.discount,
+            localExchangeRates
+          )
+        }
+        const productTotal = budgetProduct.total - (budgetProduct.discount || 0)
+        formattedTotals[budgetProduct.id] = formatCurrencyWithUsdPrimary(
+          productTotal,
+          localExchangeRates
+        )
+      }
+
+      setFormattedProductDiscounts(formattedDiscounts)
+      setFormattedProductTotals(formattedTotals)
+    }
+    formatProductData()
+  }, [budget, localExchangeRates])
 
   if (loading) {
     return (
@@ -330,7 +576,16 @@ export default function BudgetDetailPage() {
                               </p>
                               {product.discount && product.discount > 0 && (
                                 <p className="text-sm text-red-600 mt-1">
-                                  Descuento: -{formatCurrency(product.discount, "Bs")}
+                                  Descuento: -
+                                  {formattedProductDiscounts[product.id] ? (
+                                    <FormattedCurrencyDisplay 
+                                      formatted={formattedProductDiscounts[product.id]} 
+                                      inline={true}
+                                      className="inline"
+                                    />
+                                  ) : (
+                                    formatCurrency(product.discount, "Bs")
+                                  )}
                                 </p>
                               )}
                               {product.observations && (
@@ -340,12 +595,19 @@ export default function BudgetDetailPage() {
                               )}
                             </div>
                             <div className="text-right">
-                              <p className="font-semibold text-lg">
-                                {formatCurrency(
-                                  product.total - (product.discount || 0),
-                                  budget.baseCurrency || "Bs"
-                                )}
-                              </p>
+                              {formattedProductTotals[product.id] ? (
+                                <FormattedCurrencyDisplay 
+                                  formatted={formattedProductTotals[product.id]} 
+                                  className="font-semibold text-lg"
+                                />
+                              ) : (
+                                <p className="font-semibold text-lg">
+                                  {formatCurrency(
+                                    product.total - (product.discount || 0),
+                                    "Bs"
+                                  )}
+                                </p>
+                              )}
                             </div>
                           </div>
 
@@ -382,55 +644,108 @@ export default function BudgetDetailPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
+                    <DollarSign className="w-4 h-4" />
                     Resumen de Costos
                   </CardTitle>
+                  {(localExchangeRates.USD || localExchangeRates.EUR) && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Tasas del día del presupuesto:{" "}
+                      {localExchangeRates.USD &&
+                        `USD: ${formatCurrency(localExchangeRates.USD.rate, "Bs")}`}
+                      {localExchangeRates.USD &&
+                        localExchangeRates.EUR &&
+                        " | "}
+                      {localExchangeRates.EUR &&
+                        `EUR: ${formatCurrency(localExchangeRates.EUR.rate, "Bs")}`}
+                    </p>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span>Subtotal:</span>
-                      <span className="font-medium">
-                        {formatCurrency(budget.subtotalBeforeDiscounts || budget.subtotal, budget.baseCurrency || "Bs")}
-                      </span>
+                      {formattedTotals.subtotalBeforeDiscounts ? (
+                        <FormattedCurrencyDisplay formatted={formattedTotals.subtotalBeforeDiscounts} />
+                      ) : (
+                        <CurrencyDisplay 
+                          amountInBs={budget.subtotalBeforeDiscounts || budget.subtotal} 
+                          exchangeRates={localExchangeRates}
+                        />
+                      )}
                     </div>
                     {budget.productDiscountTotal && budget.productDiscountTotal > 0 && (
                       <div className="flex justify-between text-red-600">
                         <span>Descuentos individuales:</span>
-                        <span>-{formatCurrency(budget.productDiscountTotal, budget.baseCurrency || "Bs")}</span>
+                        {formattedTotals.productDiscountTotal ? (
+                          <FormattedCurrencyDisplay formatted={formattedTotals.productDiscountTotal} />
+                        ) : (
+                          <CurrencyDisplay 
+                            amountInBs={budget.productDiscountTotal} 
+                            exchangeRates={localExchangeRates}
+                          />
+                        )}
                       </div>
                     )}
                     {budget.generalDiscountAmount && budget.generalDiscountAmount > 0 && (
                       <div className="flex justify-between text-red-600">
                         <span>Descuento general:</span>
-                        <span>-{formatCurrency(budget.generalDiscountAmount, budget.baseCurrency || "Bs")}</span>
+                        {formattedTotals.generalDiscountAmount ? (
+                          <FormattedCurrencyDisplay formatted={formattedTotals.generalDiscountAmount} />
+                        ) : (
+                          <CurrencyDisplay 
+                            amountInBs={budget.generalDiscountAmount} 
+                            exchangeRates={localExchangeRates}
+                          />
+                        )}
                       </div>
                     )}
                     <Separator />
                     <div className="flex justify-between">
                       <span>Subtotal después de descuentos:</span>
-                      <span className="font-medium">
-                        {formatCurrency(budget.subtotal, budget.baseCurrency || "Bs")}
-                      </span>
+                      {formattedTotals.subtotal ? (
+                        <FormattedCurrencyDisplay formatted={formattedTotals.subtotal} />
+                      ) : (
+                        <CurrencyDisplay 
+                          amountInBs={budget.subtotal} 
+                          exchangeRates={localExchangeRates}
+                        />
+                      )}
                     </div>
                     <div className="flex justify-between">
                       <span>Impuesto (16%):</span>
-                      <span className="font-medium">
-                        {formatCurrency(budget.taxAmount, budget.baseCurrency || "Bs")}
-                      </span>
+                      {formattedTotals.tax ? (
+                        <FormattedCurrencyDisplay formatted={formattedTotals.tax} />
+                      ) : (
+                        <CurrencyDisplay 
+                          amountInBs={budget.taxAmount} 
+                          exchangeRates={localExchangeRates}
+                        />
+                      )}
                     </div>
                     {budget.deliveryCost > 0 && (
                       <div className="flex justify-between">
                         <span>Delivery:</span>
-                        <span className="font-medium">
-                          {formatCurrency(budget.deliveryCost, budget.baseCurrency || "Bs")}
-                        </span>
+                        {formattedTotals.deliveryCost ? (
+                          <FormattedCurrencyDisplay formatted={formattedTotals.deliveryCost} />
+                        ) : (
+                          <CurrencyDisplay 
+                            amountInBs={budget.deliveryCost} 
+                            exchangeRates={localExchangeRates}
+                          />
+                        )}
                       </div>
                     )}
                     <Separator />
                     <div className="flex justify-between text-xl font-bold">
                       <span>Total:</span>
-                      <span>{formatCurrency(budget.total, budget.baseCurrency || "Bs")}</span>
+                      {formattedTotals.total ? (
+                        <FormattedCurrencyDisplay formatted={formattedTotals.total} />
+                      ) : (
+                        <CurrencyDisplay 
+                          amountInBs={budget.total} 
+                          exchangeRates={localExchangeRates}
+                        />
+                      )}
                     </div>
                   </div>
                 </CardContent>

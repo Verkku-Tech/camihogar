@@ -1664,12 +1664,13 @@ export const calculateDashboardMetrics = async (
     return orderDate >= previousPeriodStart && orderDate < previousPeriodEnd;
   });
 
-  // Pedidos completados
+  // Pedidos completados (los que están listos para despachar o ya despachados)
+  // Estos son los que se ven en la nota de despacho
   const completedOrders = periodOrders.filter(
-    (order) => order.status === "Completada"
+    (order) => order.status === "Por despachar" || order.status === "Completada"
   ).length;
   const previousCompletedOrders = previousPeriodOrders.filter(
-    (order) => order.status === "Completada"
+    (order) => order.status === "Por despachar" || order.status === "Completada"
   ).length;
   const completedOrdersChange =
     previousCompletedOrders > 0
@@ -1728,9 +1729,9 @@ export const calculateDashboardMetrics = async (
     );
   }, 0);
 
-  // Promedio de pedidos completados
+  // Promedio de pedidos completados (Por despachar o Completada)
   const completedOrdersTotal = periodOrders
-    .filter((order) => order.status === "Completada")
+    .filter((order) => order.status === "Por despachar" || order.status === "Completada")
     .reduce((sum, order) => sum + order.total, 0);
   const averageOrderValue =
     completedOrders > 0 ? completedOrdersTotal / completedOrders : 0;

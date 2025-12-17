@@ -1141,7 +1141,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         mixedPayments: payments.length > 1 ? payments : undefined,
         deliveryAddress: hasDelivery ? formData.deliveryAddress : undefined,
         hasDelivery,
-        // El status se establecerá automáticamente como "Generado" en addOrder
+        status: "Generado", // Estado inicial para pedidos normales
         productMarkups,
         createSupplierOrder,
         observations: generalObservations.trim() || undefined,

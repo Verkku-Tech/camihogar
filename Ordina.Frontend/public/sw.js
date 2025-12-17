@@ -1,9 +1,10 @@
-// Service Worker para PWA Offline
-const CACHE_NAME = "camihogar-v2"
+// Service Worker mejorado para PWA Offline
+const CACHE_NAME = "camihogar-v3"
 const API_CACHE_NAME = "camihogar-api-v2"
 const SYNC_QUEUE_NAME = "sync-requests"
+const RUNTIME_CACHE = "camihogar-runtime-v3"
 
-// Recursos estáticos a cachear
+// Recursos críticos a precachear en instalación
 const STATIC_ASSETS = [
   "/",
   "/manifest.json",
@@ -19,7 +20,7 @@ const AVAILABLE_ENDPOINTS = [
 
 // Instalación
 self.addEventListener("install", (event) => {
-  console.log("📦 Service Worker instalando...")
+  console.log("📦 Service Worker instalando v3...")
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(STATIC_ASSETS).catch((err) => {
@@ -32,12 +33,16 @@ self.addEventListener("install", (event) => {
 
 // Activación
 self.addEventListener("activate", (event) => {
-  console.log("✅ Service Worker activo")
+  console.log("✅ Service Worker activo v3")
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames
-          .filter((name) => name !== CACHE_NAME && name !== API_CACHE_NAME)
+          .filter((name) => 
+            name !== CACHE_NAME && 
+            name !== API_CACHE_NAME && 
+            name !== RUNTIME_CACHE
+          )
           .map((name) => {
             console.log("🗑️ Eliminando cache antiguo:", name)
             return caches.delete(name)
@@ -53,15 +58,37 @@ self.addEventListener("fetch", (event) => {
   const { request } = event
   const url = new URL(request.url)
 
+  // Ignorar peticiones que no son GET
+  if (request.method !== "GET") {
+    return
+  }
+
+  // Ignorar peticiones a diferentes dominios (excepto APIs que manejamos)
+  if (!url.origin.startsWith(self.location.origin) && !isApiRequest(request)) {
+    return
+  }
+
   // Peticiones API - manejar offline
   if (isApiRequest(request)) {
     event.respondWith(handleApiRequest(request))
     return
   }
 
-  // Recursos estáticos - estrategia Cache First
+  // Assets estáticos de Next.js - Cache First (siempre disponibles)
+  if (isNextStaticAsset(request)) {
+    event.respondWith(cacheFirst(request, RUNTIME_CACHE))
+    return
+  }
+
+  // Páginas HTML - Stale While Revalidate (muestra cache mientras actualiza)
+  if (isHtmlRequest(request)) {
+    event.respondWith(staleWhileRevalidate(request))
+    return
+  }
+
+  // Otros recursos estáticos - Cache First
   if (isStaticAsset(request)) {
-    event.respondWith(cacheFirst(request))
+    event.respondWith(cacheFirst(request, RUNTIME_CACHE))
     return
   }
 
@@ -79,14 +106,32 @@ function isApiRequest(request) {
   )
 }
 
+// Detectar assets estáticos de Next.js
+function isNextStaticAsset(request) {
+  const url = new URL(request.url)
+  return (
+    url.pathname.startsWith("/_next/static/") ||
+    url.pathname.startsWith("/_next/image") ||
+    url.pathname.match(/\/_next\/data\/.*\.json$/)
+  )
+}
+
+// Detectar si es petición HTML
+function isHtmlRequest(request) {
+  const url = new URL(request.url)
+  return (
+    request.headers.get("accept")?.includes("text/html") ||
+    url.pathname.endsWith("/") ||
+    !url.pathname.includes(".")
+  )
+}
+
 // Detectar si es recurso estático
 function isStaticAsset(request) {
   const url = new URL(request.url)
   return (
-    request.method === "GET" &&
-    (url.pathname.startsWith("/_next/static/") ||
-      url.pathname.startsWith("/static/") ||
-      url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2)$/))
+    url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/) ||
+    url.pathname.startsWith("/static/")
   )
 }
 
@@ -198,8 +243,8 @@ async function addToSyncQueue(request) {
   }
 }
 
-// Estrategia Cache First para recursos estáticos
-async function cacheFirst(request) {
+// Estrategia Cache First mejorada
+async function cacheFirst(request, cacheName = CACHE_NAME) {
   const cachedResponse = await caches.match(request)
   if (cachedResponse) {
     return cachedResponse
@@ -208,12 +253,17 @@ async function cacheFirst(request) {
   try {
     const response = await fetch(request)
     if (response.ok) {
-      const cache = await caches.open(CACHE_NAME)
-      cache.put(request, response.clone())
+      const cache = await caches.open(cacheName)
+      // Solo cachear si la respuesta es exitosa y no es demasiado grande
+      if (response.status === 200) {
+        cache.put(request, response.clone()).catch(err => {
+          console.warn("Error cacheando:", err)
+        })
+      }
     }
     return response
   } catch (error) {
-    // Si es HTML, retornar página offline
+    // Si es HTML y falla, retornar página offline
     if (request.headers.get("accept")?.includes("text/html")) {
       const offlinePage = await caches.match("/offline.html")
       if (offlinePage) {
@@ -224,13 +274,57 @@ async function cacheFirst(request) {
   }
 }
 
+// Nueva estrategia: Stale While Revalidate (para páginas HTML)
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(RUNTIME_CACHE)
+  const cachedResponse = await cache.match(request)
+  
+  // Intentar actualizar en background
+  const fetchPromise = fetch(request).then((response) => {
+    if (response.ok) {
+      cache.put(request, response.clone()).catch(err => {
+        console.warn("Error actualizando cache:", err)
+      })
+    }
+    return response
+  }).catch(() => {
+    // Si falla la red, no hacer nada (ya tenemos cache)
+    return null
+  })
+
+  // Si hay cache, devolverlo inmediatamente
+  if (cachedResponse) {
+    // No esperar la actualización, devolver cache de inmediato
+    fetchPromise.catch(() => {}) // Silenciar errores de actualización
+    return cachedResponse
+  }
+
+  // Si no hay cache, esperar la respuesta de red
+  try {
+    const response = await fetchPromise
+    if (response) {
+      return response
+    }
+    throw new Error("No hay respuesta")
+  } catch (error) {
+    // Si falla, intentar página offline
+    const offlinePage = await caches.match("/offline.html")
+    if (offlinePage) {
+      return offlinePage
+    }
+    throw error
+  }
+}
+
 // Estrategia Network First con fallback a cache
 async function networkFirst(request) {
   try {
     const response = await fetch(request)
     if (response.ok) {
-      const cache = await caches.open(CACHE_NAME)
-      cache.put(request, response.clone())
+      const cache = await caches.open(RUNTIME_CACHE)
+      cache.put(request, response.clone()).catch(err => {
+        console.warn("Error cacheando:", err)
+      })
     }
     return response
   } catch (error) {
@@ -238,6 +332,15 @@ async function networkFirst(request) {
     if (cachedResponse) {
       return cachedResponse
     }
+    
+    // Si es HTML y no hay cache, retornar offline
+    if (request.headers.get("accept")?.includes("text/html")) {
+      const offlinePage = await caches.match("/offline.html")
+      if (offlinePage) {
+        return offlinePage
+      }
+    }
+    
     throw error
   }
 }
@@ -273,8 +376,10 @@ self.addEventListener("message", (event) => {
   
   if (event.data && event.data.type === "CACHE_URLS") {
     event.waitUntil(
-      caches.open(CACHE_NAME).then((cache) => {
-        return cache.addAll(event.data.urls)
+      caches.open(RUNTIME_CACHE).then((cache) => {
+        return cache.addAll(event.data.urls).catch(err => {
+          console.warn("Error cacheando URLs:", err)
+        })
       })
     )
   }

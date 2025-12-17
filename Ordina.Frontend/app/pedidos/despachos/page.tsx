@@ -48,6 +48,11 @@ const isOrderReadyForDispatch = (order: UnifiedOrder): boolean => {
   // Solo pedidos tipo "order" (no presupuestos)
   if (order.type !== "order") return false
 
+  // Si ya está completado, incluirlo en las notas de despacho
+  if (order.status === "Completada") {
+    return true
+  }
+
   // Verificar que tenga productos
   if (!order.products || order.products.length === 0) return false
 
@@ -136,10 +141,11 @@ export default function DespachosPage() {
     })
   }
 
-  // Manejar selección de todos
+  // Manejar selección de todos (solo los que no están completados)
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedOrders(new Set(filteredOrders.map((order) => order.id)))
+      const selectableOrders = filteredOrders.filter(order => order.status !== "Completada")
+      setSelectedOrders(new Set(selectableOrders.map((order) => order.id)))
     } else {
       setSelectedOrders(new Set())
     }
@@ -228,8 +234,10 @@ export default function DespachosPage() {
     setIsCompleteDialogOpen(true)
   }
 
-  const allSelected = filteredOrders.length > 0 && selectedOrders.size === filteredOrders.length
-  const someSelected = selectedOrders.size > 0 && selectedOrders.size < filteredOrders.length
+  // Solo contar pedidos que no están completados para la selección
+  const selectableOrders = filteredOrders.filter(order => order.status !== "Completada")
+  const allSelected = selectableOrders.length > 0 && selectedOrders.size === selectableOrders.length
+  const someSelected = selectedOrders.size > 0 && selectedOrders.size < selectableOrders.length
 
   return (
     <ProtectedRoute>
@@ -277,7 +285,7 @@ export default function DespachosPage() {
                     Pedidos para Despachar
                   </CardTitle>
                   <CardDescription>
-                    Lista de pedidos listos para ser despachados. Selecciona uno o varios para despachar.
+                    Lista de pedidos listos para ser despachados y pedidos ya completados. Selecciona uno o varios para despachar.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -292,11 +300,13 @@ export default function DespachosPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-12">
-                            <Checkbox
-                              checked={allSelected}
-                              onCheckedChange={handleSelectAll}
-                              aria-label="Seleccionar todos"
-                            />
+                            {filteredOrders.some(order => order.status !== "Completada") && (
+                              <Checkbox
+                                checked={allSelected}
+                                onCheckedChange={handleSelectAll}
+                                aria-label="Seleccionar todos"
+                              />
+                            )}
                           </TableHead>
                           <TableHead>N° Pedido</TableHead>
                           <TableHead>Cliente</TableHead>
@@ -312,11 +322,13 @@ export default function DespachosPage() {
                         {filteredOrders.map((order) => (
                           <TableRow key={order.id}>
                             <TableCell>
-                              <Checkbox
-                                checked={selectedOrders.has(order.id)}
-                                onCheckedChange={() => handleToggleSelect(order.id)}
-                                aria-label={`Seleccionar pedido ${order.orderNumber}`}
-                              />
+                              {order.status !== "Completada" && (
+                                <Checkbox
+                                  checked={selectedOrders.has(order.id)}
+                                  onCheckedChange={() => handleToggleSelect(order.id)}
+                                  aria-label={`Seleccionar pedido ${order.orderNumber}`}
+                                />
+                              )}
                             </TableCell>
                             <TableCell className="font-medium">{order.orderNumber}</TableCell>
                             <TableCell>{order.clientName}</TableCell>
@@ -339,15 +351,17 @@ export default function DespachosPage() {
                                 >
                                   <Eye className="w-4 h-4" />
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleCompleteClick(order)}
-                                  title="Despachar pedido"
-                                  className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
-                                >
-                                  <CheckCircle className="w-4 h-4" />
-                                </Button>
+                                {order.status !== "Completada" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleCompleteClick(order)}
+                                    title="Despachar pedido"
+                                    className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                                  >
+                                    <CheckCircle className="w-4 h-4" />
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
