@@ -22,17 +22,25 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Search, Plus, Eye, Edit, Trash2 } from "lucide-react"
 import { toast } from "sonner"
-import { getOrders, deleteOrder, type Order } from "@/lib/storage"
+import { getUnifiedOrders, deleteOrder, deleteBudget, type UnifiedOrder } from "@/lib/storage"
 import { useCurrency } from "@/contexts/currency-context"
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case "Completado":
-      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-    case "Apartado":
-      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
-    case "Pendiente":
+    case "Presupuesto":
+      return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300"
+    case "Generado":
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+    case "Generada":
       return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+    case "Fabricación":
+      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300"
+    case "Por despachar":
+      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
+    case "Completada":
+      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+    case "Cancelado":
+      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
     default:
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
   }
@@ -40,12 +48,12 @@ const getStatusColor = (status: string) => {
 
 export default function PedidosPage() {
   const { formatWithPreference, preferredCurrency } = useCurrency()
-  const [orders, setOrders] = useState<Order[]>([])
+  const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null)
+  const [orderToDelete, setOrderToDelete] = useState<UnifiedOrder | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
 
@@ -53,7 +61,7 @@ export default function PedidosPage() {
     const loadOrders = async () => {
       try {
         setIsLoading(true)
-        const loadedOrders = await getOrders()
+        const loadedOrders = await getUnifiedOrders()
         setOrders(loadedOrders)
       } catch (error) {
         console.error("Error loading orders:", error)
@@ -83,7 +91,7 @@ export default function PedidosPage() {
 
   // Función para refrescar después de crear un pedido
   const handleOrderCreated = async () => {
-    const loadedOrders = await getOrders()
+    const loadedOrders = await getUnifiedOrders()
     setOrders(loadedOrders)
     setIsNewOrderOpen(false)
   }
@@ -105,32 +113,42 @@ export default function PedidosPage() {
     if (!orderToDelete) return
 
     try {
-      await deleteOrder(orderToDelete.id)
+      // Eliminar según el tipo (pedido o presupuesto)
+      if (orderToDelete.type === "order") {
+        await deleteOrder(orderToDelete.id)
+      } else {
+        await deleteBudget(orderToDelete.id)
+      }
       // Refrescar la lista de pedidos
-      const loadedOrders = await getOrders()
+      const loadedOrders = await getUnifiedOrders()
       setOrders(loadedOrders)
       setIsDeleteDialogOpen(false)
       setOrderToDelete(null)
+      toast.success("Eliminado exitosamente")
     } catch (error) {
       console.error("Error deleting order:", error)
-      toast.error("Error al eliminar el pedido. Por favor intenta nuevamente.")
+      toast.error("Error al eliminar. Por favor intenta nuevamente.")
     }
   }
 
-  const handleView = async (order: Order) => {
-    // Redirigir a la vista de detalle del pedido
-    window.location.href = `/pedidos/${order.orderNumber}`
+  const handleView = async (order: UnifiedOrder) => {
+    // Redirigir según el tipo (pedido o presupuesto)
+    if (order.type === "order") {
+      window.location.href = `/pedidos/${order.orderNumber}`
+    } else {
+      window.location.href = `/presupuestos/${order.orderNumber}`
+    }
   }
 
-  const handleEdit = (order: Order) => {
+  const handleEdit = (order: UnifiedOrder) => {
     // TODO: Implementar edición del pedido
     console.log("Editar pedido:", order)
-    toast.info(`Editar pedido ${order.orderNumber}`, {
+    toast.info(`Editar ${order.type === "order" ? "pedido" : "presupuesto"} ${order.orderNumber}`, {
       description: "Esta funcionalidad será implementada próximamente.",
     })
   }
 
-  const handleDeleteClick = (order: Order) => {
+  const handleDeleteClick = (order: UnifiedOrder) => {
     setOrderToDelete(order)
     setIsDeleteDialogOpen(true)
   }
@@ -206,7 +224,7 @@ export default function PedidosPage() {
                             <TableCell>
                               <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
                             </TableCell>
-                            <TableCell>{order.paymentMethod}</TableCell>
+                            <TableCell>{order.paymentMethod || (order.type === "budget" ? "N/A" : "-")}</TableCell>
                             <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                             <TableCell>{order.products.length}</TableCell>
                             <TableCell className="text-right">
@@ -265,9 +283,9 @@ export default function PedidosPage() {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar pedido?</AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar {orderToDelete?.type === "order" ? "pedido" : "presupuesto"}?</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Estás seguro de que deseas eliminar el pedido "{orderToDelete?.orderNumber}"?
+              ¿Estás seguro de que deseas eliminar el {orderToDelete?.type === "order" ? "pedido" : "presupuesto"} "{orderToDelete?.orderNumber}"?
               <br />
               <span className="text-sm text-muted-foreground mt-2 block">
                 Cliente: {orderToDelete?.clientName} - Total: {getDeleteOrderTotal()}

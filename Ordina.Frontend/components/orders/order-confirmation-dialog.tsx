@@ -941,6 +941,42 @@ export function OrderConfirmationDialog({
                   const breakdown = productBreakdowns[product.id];
                   return (
                     <div key={idx} className="border rounded-lg p-4">
+                      {/* Estado de ubicación */}
+                      <div className="mb-3 pb-3 border-b">
+                        {(() => {
+                          let badgeText = "Sin definir";
+                          let badgeVariant: "default" | "destructive" | "secondary" = "secondary";
+                          let badgeClassName = "text-sm";
+
+                          if (product.locationStatus === "en_tienda") {
+                            badgeText = "En Tienda";
+                            badgeVariant = "default";
+                          } else if (product.locationStatus === "mandar_a_fabricar") {
+                            if (product.manufacturingStatus === "fabricado") {
+                              badgeText = "Fabricado";
+                              badgeVariant = "default";
+                              badgeClassName = "text-sm bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+                            } else if (product.manufacturingStatus === "fabricando") {
+                              badgeText = "En Fabricación";
+                              badgeVariant = "secondary";
+                              badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+                            } else {
+                              badgeText = "Mandar a Fabricar";
+                              badgeVariant = "destructive";
+                            }
+                          }
+
+                          return (
+                            <Badge 
+                              variant={badgeVariant}
+                              className={badgeClassName}
+                            >
+                              {badgeText}
+                            </Badge>
+                          );
+                        })()}
+                      </div>
+                      
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex-1">
                           <p className="font-semibold text-lg">

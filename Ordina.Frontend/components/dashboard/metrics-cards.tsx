@@ -2,39 +2,65 @@
 
 import { Card, CardContent } from "@/components/ui/card"
 import { TrendingDown, TrendingUp, AlertTriangle } from "lucide-react"
+import { DashboardMetrics } from "@/lib/storage"
+import { formatCurrency } from "@/lib/currency-utils"
 
-const metrics = [
-  {
-    title: "Pedidos completados",
-    value: "24",
-    subtitle: "items",
-    change: -22,
-    icon: AlertTriangle,
-    iconColor: "text-yellow-500",
-  },
-  {
-    title: "Abonos por recaudar",
-    subtitle: "(total)",
-    value: "$5,123",
-    change: 7,
-  },
-  {
-    title: "Productos por fabricar",
-    value: "30",
-    change: -7,
-  },
-  {
-    title: "Pedidos completados",
-    subtitle: "(promedio)",
-    value: "1,934",
-    change: null,
-  },
-]
+interface MetricsCardsProps {
+  metrics: DashboardMetrics
+  isLoading?: boolean
+}
 
-export function MetricsCards() {
+export function MetricsCards({ metrics, isLoading = false }: MetricsCardsProps) {
+  const metricsData = [
+    {
+      title: "Pedidos completados",
+      value: metrics.completedOrders.toString(),
+      subtitle: "items",
+      change: metrics.completedOrdersChange,
+      icon: AlertTriangle,
+      iconColor: "text-yellow-500",
+    },
+    {
+      title: "Abonos por recaudar",
+      subtitle: "(total)",
+      value: formatCurrency(metrics.pendingPayments, "Bs"),
+      change: metrics.pendingPaymentsChange,
+    },
+    {
+      title: "Productos por fabricar",
+      value: metrics.productsToManufacture.toString(),
+      change: metrics.productsToManufactureChange,
+    },
+    {
+      title: "Pedidos completados",
+      subtitle: "(promedio)",
+      value: formatCurrency(metrics.averageOrderValue, "Bs"),
+      change: null,
+    },
+  ]
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[1, 2, 3, 4].map((index) => (
+          <Card key={index} className="relative">
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="h-4 bg-muted rounded w-24 mb-4 animate-pulse" />
+                  <div className="h-8 bg-muted rounded w-16 mb-2 animate-pulse" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      {metrics.map((metric, index) => (
+      {metricsData.map((metric, index) => (
         <Card key={index} className="relative">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
