@@ -93,6 +93,9 @@ export function ExchangeRatesPage() {
 
       await add("exchange_rates", newRate);
       
+      // Activar automáticamente el modo de visualización para la nueva moneda
+      await setPreferredCurrency(formData.toCurrency);
+      
       // Disparar evento para actualizar el sidebar
       window.dispatchEvent(new CustomEvent("exchangeRateUpdated"));
       
@@ -103,7 +106,7 @@ export function ExchangeRatesPage() {
         rate: "",
         effectiveDate: new Date().toISOString().split("T")[0],
       });
-      toast.success("Tasa de cambio creada exitosamente y marcada como activa");
+      toast.success("Tasa de cambio creada exitosamente y marcada como activa. Moneda de visualización activada automáticamente.");
     } catch (error) {
       console.error("Error saving exchange rate:", error);
       toast.error("Error al guardar la tasa de cambio");
