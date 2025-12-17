@@ -691,19 +691,26 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     0
   );
 
-  const generalDiscountAmount = Math.min(
-    Math.max(generalDiscount, 0),
-    subtotalAfterProductDiscounts
-  );
-
-  const subtotal = Math.max(
-    subtotalAfterProductDiscounts - generalDiscountAmount,
-    0
-  );
+  // El subtotal NO incluye el descuento general (se aplica al total final)
+  const subtotal = subtotalAfterProductDiscounts;
 
   const taxAmount = subtotal * 0.16; // Impuesto fijo del 16%
   const deliveryCost = hasDelivery ? deliveryExpenses : 0;
-  const total = subtotal + taxAmount + deliveryCost;
+  
+  // Calcular el total antes del descuento general
+  const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
+  
+  // El descuento general se aplica al total final (después de impuestos y delivery)
+  const generalDiscountAmount = Math.min(
+    Math.max(generalDiscount, 0),
+    totalBeforeGeneralDiscount
+  );
+
+  // Total final después del descuento general
+  const total = Math.max(
+    totalBeforeGeneralDiscount - generalDiscountAmount,
+    0
+  );
 
   // Formatear subtotal en la moneda preferida
   useEffect(() => {
@@ -716,10 +723,16 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   }, [subtotal, preferredCurrency, formatWithPreference, exchangeRates]);
 
   useEffect(() => {
+    // Limitar el descuento general al total antes del descuento
+    const subtotal = subtotalAfterProductDiscounts;
+    const taxAmount = subtotal * 0.16;
+    const deliveryCost = hasDelivery ? deliveryExpenses : 0;
+    const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
+    
     setGeneralDiscount((prev) =>
-      Math.min(Math.max(prev, 0), subtotalAfterProductDiscounts)
+      Math.min(Math.max(prev, 0), totalBeforeGeneralDiscount)
     );
-  }, [subtotalAfterProductDiscounts]);
+  }, [subtotalAfterProductDiscounts, hasDelivery, deliveryExpenses]);
 
   // Cargar dirección del cliente cuando se activa delivery y hay un cliente seleccionado
   useEffect(() => {
@@ -885,15 +898,21 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const handleGeneralDiscountChange = (value: number) => {
     let discountAmount: number;
 
+    // Calcular el total antes del descuento general
+    const subtotal = subtotalAfterProductDiscounts;
+    const taxAmount = subtotal * 0.16;
+    const deliveryCost = hasDelivery ? deliveryExpenses : 0;
+    const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
+
     if (generalDiscountType === "porcentaje") {
-      // Convertir porcentaje a monto
+      // Convertir porcentaje a monto basado en el total final
       const percentage = Math.max(0, Math.min(value, 100));
-      discountAmount = (subtotalAfterProductDiscounts * percentage) / 100;
+      discountAmount = (totalBeforeGeneralDiscount * percentage) / 100;
     } else {
       // Monto directo - el valor ya viene en Bs desde el onChange
       discountAmount = Math.max(
         0,
-        Math.min(value, subtotalAfterProductDiscounts)
+        Math.min(value, totalBeforeGeneralDiscount)
       );
     }
 
@@ -903,11 +922,17 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const handleGeneralDiscountTypeChange = (type: "monto" | "porcentaje") => {
     const currentDiscount = generalDiscount;
 
+    // Calcular el total antes del descuento general
+    const subtotal = subtotalAfterProductDiscounts;
+    const taxAmount = subtotal * 0.16;
+    const deliveryCost = hasDelivery ? deliveryExpenses : 0;
+    const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
+
     if (type === "porcentaje") {
-      // Convertir monto actual a porcentaje para mostrar en el input
+      // Convertir monto actual a porcentaje basado en el total final
       const percentage =
-        subtotalAfterProductDiscounts > 0
-          ? (currentDiscount / subtotalAfterProductDiscounts) * 100
+        totalBeforeGeneralDiscount > 0
+          ? (currentDiscount / totalBeforeGeneralDiscount) * 100
           : 0;
       setGeneralDiscountType(type);
       // El discount se mantiene como monto, solo cambia cómo se muestra
@@ -981,10 +1006,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         referrerName: formData.referrer
           ? mockReferrers.find((r) => r.id === formData.referrer)?.name
           : undefined,
-        products: selectedProducts,
+        products: selectedProducts.map(product => ({
+          ...product,
+          discount: product.discount && product.discount > 0 ? product.discount : undefined
+        })),
         subtotalBeforeDiscounts: productSubtotal,
-        productDiscountTotal,
-        generalDiscountAmount,
+        productDiscountTotal: productDiscountTotal > 0 ? productDiscountTotal : undefined,
+        generalDiscountAmount: generalDiscountAmount > 0 ? generalDiscountAmount : undefined,
         subtotal,
         taxAmount,
         deliveryCost,
@@ -1063,10 +1091,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         referrerName: formData.referrer
           ? mockReferrers.find((r) => r.id === formData.referrer)?.name
           : undefined,
-        products: selectedProducts,
+        products: selectedProducts.map(product => ({
+          ...product,
+          discount: product.discount && product.discount > 0 ? product.discount : undefined
+        })),
         subtotal,
-        productDiscountTotal,
-        generalDiscountAmount,
+        productDiscountTotal: productDiscountTotal > 0 ? productDiscountTotal : undefined,
+        generalDiscountAmount: generalDiscountAmount > 0 ? generalDiscountAmount : undefined,
         taxAmount,
         deliveryCost,
         total,
@@ -1105,10 +1136,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         referrerName: formData.referrer
           ? mockReferrers.find((r) => r.id === formData.referrer)?.name
           : undefined,
-        products: selectedProducts,
+        products: selectedProducts.map(product => ({
+          ...product,
+          discount: product.discount && product.discount > 0 ? product.discount : undefined
+        })),
         subtotalBeforeDiscounts: productSubtotal,
-        productDiscountTotal,
-        generalDiscountAmount,
+        productDiscountTotal: productDiscountTotal > 0 ? productDiscountTotal : undefined,
+        generalDiscountAmount: generalDiscountAmount > 0 ? generalDiscountAmount : undefined,
         subtotal,
         taxAmount,
         deliveryCost,
@@ -1303,7 +1337,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-4xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4">
+        <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4">
           <DialogHeader className="pb-2 sm:pb-4">
             <DialogTitle className="text-lg sm:text-xl">
               Nuevo Pedido - Paso {currentStep} de 3
@@ -1311,14 +1345,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           </DialogHeader>
 
           {currentStep === 1 && (
-            <div className="space-y-4 sm:space-y-6">
+            <div className="space-y-5 sm:space-y-6">
               <Card>
-                <CardHeader className="p-3 sm:p-6 pb-3 sm:pb-6">
+                <CardHeader className="p-4 sm:p-6 pb-4 sm:pb-6">
                   <CardTitle className="text-base sm:text-lg">
                     Presupuesto
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4 p-3 sm:p-6">
+                <CardContent className="space-y-5 p-4 sm:p-6">
                   {/* Vendor Selection */}
                   <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
                     <div className="space-y-2">
@@ -1422,7 +1456,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                     {selectedProducts.length > 0 ? (
                       <>
                         {/* Vista de tarjetas para móvil */}
-                        <div className="space-y-3 sm:hidden">
+                        <div className="space-y-4 sm:hidden">
                           {selectedProducts.map((product) => {
                             const baseTotal = getProductBaseTotal(product);
                             const discount = product.discount || 0;
@@ -1432,8 +1466,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                             );
 
                             return (
-                              <Card key={product.id} className="p-4">
-                                <div className="space-y-3">
+                              <Card key={product.id} className="p-4 sm:p-5">
+                                <div className="space-y-4">
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1">
                                       <div className="font-medium text-base mb-1">
@@ -1481,9 +1515,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                     </div>
                                   </div>
 
-                                  <div className="space-y-2 pt-2 border-t">
-                                    <Label className="text-sm">Descuento</Label>
-                                    <div className="flex gap-2">
+                                  <div className="space-y-2.5 pt-3 border-t">
+                                    <Label className="text-sm font-medium">Descuento</Label>
+                                    <div className="flex gap-2.5">
                                       <Select
                                         value={
                                           productDiscountTypes[product.id] ||
@@ -1498,15 +1532,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                           )
                                         }
                                       >
-                                        <SelectTrigger className="w-20">
+                                        <SelectTrigger className="w-28">
                                           <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
                                           <SelectItem value="monto">
-                                            $
+                                            Monto
                                           </SelectItem>
                                           <SelectItem value="porcentaje">
-                                            %
+                                            Porcentaje
                                           </SelectItem>
                                         </SelectContent>
                                       </Select>
@@ -1749,7 +1783,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                   <TableHead className="w-[10%]">
                                     Subtotal
                                   </TableHead>
-                                  <TableHead className="w-[22%]">
+                                  <TableHead className="w-[24%]">
                                     Descuento
                                   </TableHead>
                                   <TableHead className="w-[10%]">
@@ -1790,8 +1824,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         {formattedProductTotals[product.id] ||
                                           formatCurrency(baseTotal, "Bs")}
                                       </TableCell>
-                                      <TableCell className="w-[22%]">
-                                        <div className="flex gap-1 items-center">
+                                      <TableCell className="w-[24%]">
+                                        <div className="flex gap-1.5 items-center">
                                           <Select
                                             value={
                                               productDiscountTypes[
@@ -1807,15 +1841,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                               )
                                             }
                                           >
-                                            <SelectTrigger className="w-14 h-7 text-xs px-1">
+                                            <SelectTrigger className="w-28 h-8 text-xs px-2">
                                               <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
                                               <SelectItem value="monto">
-                                                $
+                                                Monto
                                               </SelectItem>
                                               <SelectItem value="porcentaje">
-                                                %
+                                                Porcentaje
                                               </SelectItem>
                                             </SelectContent>
                                           </Select>
@@ -2104,9 +2138,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           )}
 
           {currentStep === 2 && (
-            <div className="space-y-4 sm:space-y-6">
+            <div className="space-y-5 sm:space-y-6">
               <Card>
-                <CardHeader className="p-3 sm:p-6 pb-3 sm:pb-6">
+                <CardHeader className="p-4 sm:p-6 pb-4 sm:pb-6">
                   <CardTitle className="text-base sm:text-lg">
                     Estado de Productos
                   </CardTitle>
@@ -2114,7 +2148,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                     Indica si cada producto está en tienda o debe mandarse a fabricar
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4 p-3 sm:p-6">
+                <CardContent className="space-y-5 p-4 sm:p-6">
                   <div className="space-y-6">
                     {selectedProducts.map((product) => {
                       const category = categories.find(c => c.name === product.category)
@@ -2268,14 +2302,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           )}
 
           {currentStep === 3 && (
-            <div className="space-y-4 sm:space-y-6">
+            <div className="space-y-5 sm:space-y-6">
               <Card>
-                <CardHeader className="p-3 sm:p-6 pb-3 sm:pb-6">
+                <CardHeader className="p-4 sm:p-6 pb-4 sm:pb-6">
                   <CardTitle className="text-base sm:text-lg">
                     Realizar Pedido
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4 sm:space-y-6 p-3 sm:p-6">
+                <CardContent className="space-y-5 sm:space-y-6 p-4 sm:p-6">
                   {/* 1. DELIVERY */}
                   <div className="space-y-4">
                     <div className="flex items-center space-x-2">
@@ -2461,20 +2495,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               </TableRow>
                             )}
 
-                            {/* Descuento general */}
-                            {generalDiscountAmount > 0 && (
-                              <TableRow>
-                                <TableCell className="text-xs sm:text-sm text-red-600">
-                                  Descuento general:
-                                </TableCell>
-                                {renderCurrencyCellNegative(
-                                  generalDiscountAmount,
-                                  "text-red-600"
-                                )}
-                              </TableRow>
-                            )}
-
-                            {/* Subtotal después de descuentos */}
+                            {/* Subtotal después de descuentos individuales */}
                             <TableRow className="font-medium border-t">
                               <TableCell className="text-xs sm:text-sm">
                                 Subtotal después de descuentos:
@@ -2500,10 +2521,31 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               </TableRow>
                             )}
 
-                            {/* Total */}
+                            {/* Total antes del descuento general */}
+                            <TableRow className="font-medium border-t">
+                              <TableCell className="text-xs sm:text-sm">
+                                Total:
+                              </TableCell>
+                              {renderCurrencyCell(totalBeforeGeneralDiscount)}
+                            </TableRow>
+
+                            {/* Descuento general */}
+                            {generalDiscountAmount > 0 && (
+                              <TableRow>
+                                <TableCell className="text-xs sm:text-sm text-red-600">
+                                  Descuento general:
+                                </TableCell>
+                                {renderCurrencyCellNegative(
+                                  generalDiscountAmount,
+                                  "text-red-600"
+                                )}
+                              </TableRow>
+                            )}
+
+                            {/* Total final */}
                             <TableRow className="font-semibold border-t-2">
                               <TableCell className="text-base sm:text-lg">
-                                Total:
+                                Total final:
                               </TableCell>
                               {renderCurrencyCell(
                                 total,
@@ -2516,14 +2558,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                   </div>
 
                   {/* 3. DESCUENTO */}
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <Label
                       htmlFor="generalDiscount"
-                      className="text-sm sm:text-base"
+                      className="text-sm sm:text-base font-medium"
                     >
                       Descuento general
                     </Label>
-                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                    <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center">
                       <Select
                         value={generalDiscountType}
                         onValueChange={(value: "monto" | "porcentaje") =>
@@ -2531,13 +2573,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                         }
                         disabled={selectedProducts.length === 0}
                       >
-                        <SelectTrigger className="w-full sm:w-24">
+                        <SelectTrigger className="w-full sm:w-32">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="monto">Monto ($)</SelectItem>
+                          <SelectItem value="monto">Monto</SelectItem>
                           <SelectItem value="porcentaje">
-                            Porcentaje (%)
+                            Porcentaje
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -2606,20 +2648,32 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                         max={
                           generalDiscountType === "porcentaje"
                             ? 100
-                            : subtotalAfterProductDiscounts
+                            : (() => {
+                                const subtotal = subtotalAfterProductDiscounts;
+                                const taxAmount = subtotal * 0.16;
+                                const deliveryCost = hasDelivery ? deliveryExpenses : 0;
+                                const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
+                                return totalBeforeGeneralDiscount;
+                              })()
                         }
                         value={
                           generalDiscount === 0
                             ? ""
                             : generalDiscountType === "porcentaje"
-                            ? subtotalAfterProductDiscounts > 0
-                              ? Math.round(
-                                  (generalDiscount /
-                                    subtotalAfterProductDiscounts) *
-                                    100 *
-                                    100
-                                ) / 100 // Redondear a 2 decimales máximo
-                              : 0
+                            ? (() => {
+                                const subtotal = subtotalAfterProductDiscounts;
+                                const taxAmount = subtotal * 0.16;
+                                const deliveryCost = hasDelivery ? deliveryExpenses : 0;
+                                const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
+                                return totalBeforeGeneralDiscount > 0
+                                  ? Math.round(
+                                      (generalDiscount /
+                                        totalBeforeGeneralDiscount) *
+                                        100 *
+                                        100
+                                    ) / 100 // Redondear a 2 decimales máximo
+                                  : 0;
+                              })()
                             : (() => {
                                 // Mostrar en la moneda seleccionada (similar a delivery)
                                 if (generalDiscountCurrency === "Bs") {
@@ -2666,8 +2720,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                       />
                     </div>
                     <p className="text-xs sm:text-sm text-muted-foreground">
-                      Este descuento se aplica después de los descuentos
-                      individuales por producto.
+                      Este descuento se aplica al total final (después de impuestos y gastos de entrega).
                     </p>
                   </div>
 

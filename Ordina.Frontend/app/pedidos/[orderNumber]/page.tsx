@@ -1286,9 +1286,11 @@ export default function OrderDetailPage() {
                               </div>
 
                               {/* Ajustes de atributos normales */}
-                              {breakdown.attributeAdjustments.length > 0 && (
+                              {breakdown.attributeAdjustments.filter(adj => adj.adjustmentValue !== 0).length > 0 && (
                                 <>
-                                  {breakdown.attributeAdjustments.map(
+                                  {breakdown.attributeAdjustments
+                                    .filter(adj => adj.adjustmentValue !== 0)
+                                    .map(
                                     (
                                       adj: {
                                         name: string;
@@ -1359,9 +1361,11 @@ export default function OrderDetailPage() {
                                           </span>
                                         </div>
                                         {/* Ajustes de atributos del producto */}
-                                        {prodAttr.adjustments.length > 0 && (
+                                        {prodAttr.adjustments.filter(adj => adj.adjustmentValue !== 0).length > 0 && (
                                           <>
-                                            {prodAttr.adjustments.map(
+                                            {prodAttr.adjustments
+                                              .filter(adj => adj.adjustmentValue !== 0)
+                                              .map(
                                               (
                                                 adj: {
                                                   name: string;
