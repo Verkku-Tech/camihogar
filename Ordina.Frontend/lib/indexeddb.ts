@@ -1,6 +1,6 @@
 // Wrapper genérico para IndexedDB
 const DB_NAME = "camihogar_db";
-const DB_VERSION = 6; // Incrementar para agregar api_cache
+const DB_VERSION = 7; // Incrementar para agregar budgets
 
 interface StoreConfig {
   name: string;
@@ -92,6 +92,17 @@ const STORES: StoreConfig[] = [
     indexes: [
       { name: "endpoint", keyPath: "endpoint" },
       { name: "timestamp", keyPath: "timestamp" },
+    ],
+  },
+  {
+    name: "budgets",
+    keyPath: "id",
+    indexes: [
+      { name: "budgetNumber", keyPath: "budgetNumber", unique: true },
+      { name: "clientId", keyPath: "clientId" },
+      { name: "createdAt", keyPath: "createdAt" },
+      { name: "status", keyPath: "status" },
+      { name: "expiresAt", keyPath: "expiresAt" },
     ],
   },
 ];

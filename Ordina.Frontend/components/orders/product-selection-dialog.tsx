@@ -116,9 +116,14 @@ export function ProductSelectionDialog({
   }
 
   const handleAddProduct = async (product: Product) => {
-    const productKey = product.id.toString()
-    const quantity = quantities[productKey] || 1
-    const existingProduct = selectedProducts.find((p) => p.id === productKey)
+    const productBaseId = product.id.toString()
+    const quantity = quantities[productBaseId] || 1
+    
+    // Generar ID único para esta instancia del producto
+    // Formato: {productId}-{timestamp}-{randomString}
+    // Esto permite agregar el mismo producto múltiples veces con diferentes atributos
+    const uniqueId = `${productBaseId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
     const cloneAttributes = (attrs?: Record<string, any>) => {
       if (!attrs) return {}
       const cloned: Record<string, any> = {}
@@ -133,10 +138,7 @@ export function ProductSelectionDialog({
       })
       return cloned
     }
-    const mergedAttributes =
-      existingProduct?.attributes !== undefined
-        ? cloneAttributes(existingProduct.attributes)
-        : cloneAttributes(product.attributes)
+    const mergedAttributes = cloneAttributes(product.attributes)
     
     // Convertir precio del producto a Bs si está en otra moneda
     const productCurrency = product.priceCurrency || "Bs"
@@ -149,7 +151,7 @@ export function ProductSelectionDialog({
     // Preparar producto y abrir modal de edición
     // IMPORTANTE: Guardamos el precio convertido a Bs para todos los cálculos
     const newProduct: OrderProduct = {
-      id: productKey,
+      id: uniqueId, // ID único para esta instancia
       name: product.name,
       price: priceInBs, // Precio ya convertido a Bs
       quantity,
@@ -157,7 +159,7 @@ export function ProductSelectionDialog({
       category: product.category,
       stock: 0, // Los productos se crean bajo demanda, no hay stock
       attributes: mergedAttributes,
-      discount: existingProduct?.discount ?? 0,
+      discount: 0, // Inicializar sin descuento
     }
     
     setProductToEdit(newProduct)
@@ -165,30 +167,38 @@ export function ProductSelectionDialog({
   }
 
   const handleConfirmAdd = (product: OrderProduct) => {
-    const existingProductIndex = selectedProducts.findIndex((p) => p.id === product.id)
-    let updatedProducts: OrderProduct[]
-
-    if (existingProductIndex >= 0) {
-      updatedProducts = selectedProducts.map((p, index) =>
-        index === existingProductIndex ? product : p,
-      )
-    } else {
-      updatedProducts = [...selectedProducts, product]
-    }
+    // Siempre agregar como nueva instancia ya que cada producto tiene un ID único
+    // Esto permite agregar el mismo producto múltiples veces con diferentes atributos
+    const updatedProducts = [...selectedProducts, product]
 
     onProductsSelect(updatedProducts)
     setIsEditDialogOpen(false)
     setProductToEdit(null)
-    setQuantities((prev) => ({ ...prev, [product.id]: 1 }))
+    
+    // Resetear cantidad para este producto base (extraer ID base antes del primer guión)
+    const productBaseId = product.id.split('-')[0]
+    setQuantities((prev) => ({ ...prev, [productBaseId]: 1 }))
   }
 
   const isProductSelected = (productId: string) => {
-    return selectedProducts.some((p) => p.id === productId)
+    // Verificar si algún producto seleccionado tiene este ID base
+    // Los IDs únicos tienen formato: {productId}-{timestamp}-{random}
+    // Extraemos el ID base (antes del primer guión) para comparar
+    return selectedProducts.some((p) => {
+      const baseId = p.id.split('-')[0]
+      return baseId === productId
+    })
   }
 
   const getSelectedQuantity = (productId: string) => {
-    const selected = selectedProducts.find((p) => p.id === productId)
-    return selected?.quantity || 0
+    // Contar la cantidad total de este producto (puede haber múltiples instancias)
+    // Los IDs únicos tienen formato: {productId}-{timestamp}-{random}
+    // Sumamos las cantidades de todas las instancias que coinciden con este ID base
+    const matchingProducts = selectedProducts.filter((p) => {
+      const baseId = p.id.split('-')[0]
+      return baseId === productId
+    })
+    return matchingProducts.reduce((sum, p) => sum + (p.quantity || 0), 0)
   }
 
   return (
@@ -294,12 +304,12 @@ export function ProductSelectionDialog({
 
                     <Button
                       onClick={() => handleAddProduct(product)}
-                      variant={isSelected ? "outline" : "default"}
+                      variant="default"
                       className="w-full"
                       size="sm"
                     >
                       <Plus className="w-4 h-4 mr-2" />
-                      {isSelected ? "Actualizar" : "Agregar"}
+                      Agregar
                     </Button>
                   </div>
                 </Card>
@@ -360,10 +370,10 @@ export function ProductSelectionDialog({
                       <Button
                         size="sm"
                         onClick={() => handleAddProduct(product)}
-                          variant={isSelected ? "outline" : "default"}
+                        variant="default"
                       >
                         <Plus className="w-4 h-4 mr-2" />
-                          {isSelected ? "Actualizar" : "Agregar"}
+                        Agregar
                       </Button>
                     </TableCell>
                   </TableRow>

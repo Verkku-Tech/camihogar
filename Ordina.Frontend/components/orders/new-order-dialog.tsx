@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -44,9 +44,12 @@ import {
   Trash2,
   Search,
   AlertTriangle,
+  Package,
+  FileText,
 } from "lucide-react";
 import {
   addOrder,
+  addBudget,
   getVendors,
   getReferrers,
   getCategories,
@@ -915,21 +918,32 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   };
 
   const handleNext = () => {
-    if (currentStep < 2) {
-      // Validar que tenga vendedor, cliente y al menos un producto
-      if (!formData.vendor) {
-        toast.error("Por favor selecciona un vendedor");
-        return;
+    if (currentStep < 3) {
+      // Validación del paso 1
+      if (currentStep === 1) {
+        if (!formData.vendor) {
+          toast.error("Por favor selecciona un vendedor");
+          return;
+        }
+
+        if (!selectedClient) {
+          toast.error("Por favor selecciona un cliente");
+          return;
+        }
+
+        if (selectedProducts.length === 0) {
+          toast.error("Por favor agrega al menos un producto");
+          return;
+        }
       }
 
-      if (!selectedClient) {
-        toast.error("Por favor selecciona un cliente");
-        return;
-      }
-
-      if (selectedProducts.length === 0) {
-        toast.error("Por favor agrega al menos un producto");
-        return;
+      // Validación del paso 2
+      if (currentStep === 2) {
+        const productsWithoutLocation = selectedProducts.filter(p => !p.locationStatus);
+        if (productsWithoutLocation.length > 0) {
+          toast.error("Por favor indica el estado de ubicación para todos los productos");
+          return;
+        }
       }
 
       setCurrentStep(currentStep + 1);
@@ -941,7 +955,63 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
   // Validación para habilitar botón siguiente
   const canGoToNextStep =
-    formData.vendor && selectedClient && selectedProducts.length > 0;
+    currentStep === 1
+      ? formData.vendor && selectedClient && selectedProducts.length > 0
+      : currentStep === 2
+      ? selectedProducts.every(p => p.locationStatus) && selectedProducts.length > 0
+      : true;
+
+  // Validación para habilitar botón de presupuesto (misma que siguiente en paso 1)
+  const canCreateBudget = currentStep === 1 && formData.vendor && selectedClient && selectedProducts.length > 0;
+
+  const handleCreateBudget = async () => {
+    try {
+      if (!selectedClient || !formData.vendor || selectedProducts.length === 0) {
+        toast.error("Por favor completa la información requerida");
+        return;
+      }
+
+      // Calcular totales (usar la misma lógica que handleSubmit)
+      const orderData = {
+        clientId: selectedClient.id,
+        clientName: selectedClient.name,
+        vendorId: formData.vendor,
+        vendorName: mockVendors.find((v) => v.id === formData.vendor)?.name || "",
+        referrerId: formData.referrer || undefined,
+        referrerName: formData.referrer
+          ? mockReferrers.find((r) => r.id === formData.referrer)?.name
+          : undefined,
+        products: selectedProducts,
+        subtotalBeforeDiscounts: productSubtotal,
+        productDiscountTotal,
+        generalDiscountAmount,
+        subtotal,
+        taxAmount,
+        deliveryCost,
+        total,
+        hasDelivery,
+        deliveryAddress: hasDelivery ? formData.deliveryAddress : undefined,
+        observations: generalObservations.trim() || undefined,
+        baseCurrency: preferredCurrency,
+        exchangeRatesAtCreation: exchangeRates,
+        validForDays: 30, // Por defecto 30 días
+      };
+
+      // Crear presupuesto
+      const budget = await addBudget(orderData);
+
+      toast.success(`Presupuesto ${budget.budgetNumber} creado exitosamente`);
+      
+      // Cerrar el diálogo
+      onOpenChange(false);
+      
+      // Opcional: Redirigir al detalle del presupuesto
+      // window.location.href = `/presupuestos/${budget.budgetNumber}`;
+    } catch (error) {
+      console.error("Error creating budget:", error);
+      toast.error("Error al crear el presupuesto. Por favor intenta nuevamente.");
+    }
+  };
 
   const handleBack = () => {
     if (currentStep > 1) {
@@ -1071,12 +1141,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         mixedPayments: payments.length > 1 ? payments : undefined,
         deliveryAddress: hasDelivery ? formData.deliveryAddress : undefined,
         hasDelivery,
-        status:
-          paymentCondition === "todo_pago" && isPaymentsValid
-            ? "Pendiente"
-            : paymentCondition === "pago_parcial" || paymentCondition === "pagara_en_tienda" || paymentCondition === "pago_a_entrega"
-            ? "Apartado"
-            : "Pendiente",
+        status: "Generado", // Estado inicial para pedidos normales
         productMarkups,
         createSupplierOrder,
         observations: generalObservations.trim() || undefined,
@@ -1241,7 +1306,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-4xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4">
           <DialogHeader className="pb-2 sm:pb-4">
             <DialogTitle className="text-lg sm:text-xl">
-              Nuevo Pedido - Paso {currentStep} de 2
+              Nuevo Pedido - Paso {currentStep} de 3
             </DialogTitle>
           </DialogHeader>
 
@@ -2039,6 +2104,170 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           )}
 
           {currentStep === 2 && (
+            <div className="space-y-4 sm:space-y-6">
+              <Card>
+                <CardHeader className="p-3 sm:p-6 pb-3 sm:pb-6">
+                  <CardTitle className="text-base sm:text-lg">
+                    Estado de Productos
+                  </CardTitle>
+                  <CardDescription>
+                    Indica si cada producto está en tienda o debe mandarse a fabricar
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 p-3 sm:p-6">
+                  <div className="space-y-6">
+                    {selectedProducts.map((product) => {
+                      const category = categories.find(c => c.name === product.category)
+                      
+                      // Función helper para obtener el label de un valor de atributo
+                      const getValueLabel = (value: string | AttributeValue): string => {
+                        if (typeof value === "string") return value
+                        return value.label || value.id || String(value)
+                      }
+
+                      // Función para procesar y obtener el label del valor de un atributo
+                      const getAttributeValueLabel = (
+                        selectedValue: any,
+                        categoryAttribute: Category["attributes"][0] | undefined
+                      ): string => {
+                        if (!categoryAttribute) {
+                          return String(selectedValue)
+                        }
+
+                        // Si es un atributo numérico, mostrar el valor directamente
+                        if (categoryAttribute.valueType === "Number") {
+                          return selectedValue !== undefined && selectedValue !== null && selectedValue !== ""
+                            ? selectedValue.toString()
+                            : ""
+                        }
+
+                        // Si no tiene values, mostrar el valor tal cual
+                        if (!categoryAttribute.values || categoryAttribute.values.length === 0) {
+                          return String(selectedValue)
+                        }
+
+                        // Buscar el valor en los values del atributo
+                        if (Array.isArray(selectedValue)) {
+                          const labels: string[] = []
+                          selectedValue.forEach((valStr) => {
+                            const attributeValue = categoryAttribute.values!.find(
+                              (val: string | AttributeValue) => {
+                                if (typeof val === "string") {
+                                  return val === valStr
+                                }
+                                return val.id === valStr || val.label === valStr
+                              }
+                            )
+                            if (attributeValue) {
+                              labels.push(getValueLabel(attributeValue))
+                            } else {
+                              labels.push(String(valStr))
+                            }
+                          })
+                          return labels.join(", ")
+                        } else {
+                          const selectedValueStr = selectedValue?.toString()
+                          if (selectedValueStr) {
+                            const attributeValue = categoryAttribute.values.find(
+                              (val: string | AttributeValue) => {
+                                if (typeof val === "string") {
+                                  return val === selectedValueStr
+                                }
+                                return val.id === selectedValueStr || val.label === selectedValueStr
+                              }
+                            )
+                            if (attributeValue) {
+                              return getValueLabel(attributeValue)
+                            }
+                          }
+                          return String(selectedValue)
+                        }
+                      }
+                      
+                      return (
+                        <div key={product.id} className="border rounded-lg p-4 space-y-4">
+                          {/* Header del producto con select */}
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Package className="w-5 h-5 text-primary" />
+                                <h3 className="text-lg font-semibold">{product.name}</h3>
+                              </div>
+                              <Badge variant="outline">{product.category}</Badge>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Cantidad: {product.quantity}
+                              </p>
+                            </div>
+                            
+                            {/* Select de estado */}
+                            <div className="w-full sm:w-48">
+                              <Label>Estado de Ubicación *</Label>
+                              <Select
+                                value={product.locationStatus || ""}
+                                onValueChange={(value: "en_tienda" | "mandar_a_fabricar") => {
+                                  setSelectedProducts(products =>
+                                    products.map(p =>
+                                      p.id === product.id
+                                        ? { ...p, locationStatus: value }
+                                        : p
+                                    )
+                                  )
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Seleccionar estado" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="en_tienda">En Tienda</SelectItem>
+                                  <SelectItem value="mandar_a_fabricar">Mandar a Fabricar</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          {/* Atributos del producto */}
+                          {product.attributes && Object.keys(product.attributes).length > 0 && (
+                            <div className="space-y-2 pt-4 border-t">
+                              <p className="text-sm font-medium">Atributos</p>
+                              <div className="space-y-2">
+                                {Object.entries(product.attributes).map(([key, value]) => {
+                                  const categoryAttribute = category?.attributes?.find(
+                                    attr => attr.id?.toString() === key || attr.title === key
+                                  )
+                                  const valueLabel = getAttributeValueLabel(value, categoryAttribute)
+                                  
+                                  return (
+                                    <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
+                                      <span className="text-muted-foreground min-w-[120px] font-medium">
+                                        {categoryAttribute?.title || key}:
+                                      </span>
+                                      <Badge variant="secondary">{valueLabel || "-"}</Badge>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Observaciones */}
+                          {product.observations && (
+                            <div className="pt-4 border-t">
+                              <p className="text-sm font-medium mb-1">Observaciones</p>
+                              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                {product.observations}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {currentStep === 3 && (
             <div className="space-y-4 sm:space-y-6">
               <Card>
                 <CardHeader className="p-3 sm:p-6 pb-3 sm:pb-6">
@@ -3590,39 +3819,79 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               Anterior
             </Button>
 
-            {currentStep < 2 ? (
-              <Button
-                onClick={handleNext}
-                className="w-full sm:w-auto"
-                disabled={!canGoToNextStep}
-                title={
-                  !formData.vendor &&
-                  !selectedClient &&
-                  selectedProducts.length === 0
-                    ? "Selecciona vendedor, cliente y al menos un producto para continuar"
-                    : !formData.vendor && !selectedClient
-                    ? "Selecciona vendedor y cliente para continuar"
-                    : !formData.vendor && selectedProducts.length === 0
-                    ? "Selecciona vendedor y al menos un producto para continuar"
-                    : !selectedClient && selectedProducts.length === 0
-                    ? "Selecciona cliente y al menos un producto para continuar"
-                    : !formData.vendor
-                    ? "Selecciona un vendedor para continuar"
-                    : !selectedClient
-                    ? "Selecciona un cliente para continuar"
-                    : selectedProducts.length === 0
-                    ? "Agrega al menos un producto para continuar"
-                    : ""
-                }
-              >
-                Siguiente
-                <ChevronRight className="w-4 h-4 ml-2" />
-              </Button>
-            ) : (
-              <Button onClick={handleSubmit} className="w-full sm:w-auto">
-                Crear Pedido
-              </Button>
-            )}
+            <div className="flex gap-2">
+              {/* Botón Presupuesto - Solo en paso 1 */}
+              {currentStep === 1 && (
+                <Button
+                  onClick={handleCreateBudget}
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  disabled={!canCreateBudget}
+                  title={
+                    !formData.vendor &&
+                    !selectedClient &&
+                    selectedProducts.length === 0
+                      ? "Selecciona vendedor, cliente y al menos un producto para crear presupuesto"
+                      : !formData.vendor && !selectedClient
+                      ? "Selecciona vendedor y cliente para crear presupuesto"
+                      : !formData.vendor && selectedProducts.length === 0
+                      ? "Selecciona vendedor y al menos un producto para crear presupuesto"
+                      : !selectedClient && selectedProducts.length === 0
+                      ? "Selecciona cliente y al menos un producto para crear presupuesto"
+                      : !formData.vendor
+                      ? "Selecciona un vendedor para crear presupuesto"
+                      : !selectedClient
+                      ? "Selecciona un cliente para crear presupuesto"
+                      : selectedProducts.length === 0
+                      ? "Agrega al menos un producto para crear presupuesto"
+                      : "Crear presupuesto con los productos seleccionados"
+                  }
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Presupuesto
+                </Button>
+              )}
+
+              {currentStep < 3 ? (
+                <Button
+                  onClick={handleNext}
+                  className="w-full sm:w-auto"
+                  disabled={!canGoToNextStep}
+                  title={
+                    currentStep === 1
+                      ? !formData.vendor &&
+                        !selectedClient &&
+                        selectedProducts.length === 0
+                        ? "Selecciona vendedor, cliente y al menos un producto para continuar"
+                        : !formData.vendor && !selectedClient
+                        ? "Selecciona vendedor y cliente para continuar"
+                        : !formData.vendor && selectedProducts.length === 0
+                        ? "Selecciona vendedor y al menos un producto para continuar"
+                        : !selectedClient && selectedProducts.length === 0
+                        ? "Selecciona cliente y al menos un producto para continuar"
+                        : !formData.vendor
+                        ? "Selecciona un vendedor para continuar"
+                        : !selectedClient
+                        ? "Selecciona un cliente para continuar"
+                        : selectedProducts.length === 0
+                        ? "Agrega al menos un producto para continuar"
+                        : ""
+                      : currentStep === 2
+                      ? selectedProducts.some(p => !p.locationStatus)
+                        ? "Indica el estado de ubicación para todos los productos"
+                        : ""
+                      : ""
+                  }
+                >
+                  Siguiente
+                  <ChevronRight className="w-4 h-4 ml-2" />
+                </Button>
+              ) : (
+                <Button onClick={handleSubmit} className="w-full sm:w-auto">
+                  Crear Pedido
+                </Button>
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

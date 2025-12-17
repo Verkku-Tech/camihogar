@@ -1195,6 +1195,16 @@ export interface OrderProduct {
   attributes?: Record<string, string | number | string[]>; // Permite arrays para selección múltiple
   discount?: number; // Descuento aplicado al producto (monto)
   observations?: string; // Observaciones específicas del producto
+  // Campos de fabricación
+  availabilityStatus?: "disponible" | "no_disponible"; // Estado de disponibilidad
+  manufacturingStatus?: "debe_fabricar" | "fabricando" | "fabricado"; // Estado de fabricación (solo si no_disponible)
+  manufacturingProviderId?: string; // ID del proveedor asignado
+  manufacturingProviderName?: string; // Nombre del proveedor (para display)
+  manufacturingStartedAt?: string; // Fecha de inicio de fabricación
+  manufacturingCompletedAt?: string; // Fecha de finalización de fabricación
+  manufacturingNotes?: string; // Notas de fabricación
+  // Estado de ubicación del producto
+  locationStatus?: "en_tienda" | "mandar_a_fabricar"; // Estado de ubicación: en tienda o mandar a fabricar
 }
 
 export interface PartialPayment {
@@ -1265,7 +1275,7 @@ export interface Order {
   mixedPayments?: PartialPayment[]; // Para pagos mixtos
   deliveryAddress?: string;
   hasDelivery: boolean;
-  status: "Pendiente" | "Apartado" | "Completado" | "Cancelado";
+  status: "Presupuesto" | "Generado" | "Generada" | "Fabricación" | "Por despachar" | "Completada" | "Cancelado";
   createdAt: string;
   updatedAt: string;
   productMarkups?: Record<string, number>;
@@ -1276,6 +1286,8 @@ export interface Order {
     USD?: { rate: number; effectiveDate: string };
     EUR?: { rate: number; effectiveDate: string };
   }; // Tasas de cambio del día en que se creó el pedido
+  dispatchDate?: string; // Fecha de despacho
+  completedAt?: string; // Fecha de completado
 }
 
 export interface Client {
@@ -1343,7 +1355,58 @@ export interface Vendor {
 
 export const getOrders = async (): Promise<Order[]> => {
   try {
-    return await db.getAll<Order>("orders");
+    // Cargar siempre órdenes locales desde IndexedDB primero (offline-first)
+    const localOrders = await db.getAll<Order>("orders");
+
+    // Si hay conexión, intentar sincronizar con backend y hacer merge
+    if (isOnline()) {
+      try {
+        // TODO: Cuando el backend esté listo, descomentar y adaptar:
+        // const backendOrders = await apiClient.getOrders();
+        // const backendOrdersMapped = backendOrders.map(orderFromBackendDto);
+
+        // Hacer merge usando orderNumber como clave única para evitar duplicados
+        // Los pedidos del backend tienen prioridad sobre los locales
+        // const ordersMap = new Map<string, Order>();
+
+        // Primero agregar órdenes locales
+        // for (const order of localOrders) {
+        //   ordersMap.set(order.orderNumber, order);
+        // }
+
+        // Luego agregar/actualizar con órdenes del backend (estas tienen prioridad)
+        // for (const order of backendOrdersMapped) {
+        //   ordersMap.set(order.orderNumber, order);
+        //   // Guardar/actualizar en IndexedDB
+        //   try {
+        //     await db.update("orders", order);
+        //   } catch {
+        //     await db.add("orders", order);
+        //   }
+        // }
+
+        // const mergedOrders = Array.from(ordersMap.values());
+        // console.log(
+        //   `✅ Órdenes: ${localOrders.length} locales + ${backendOrdersMapped.length} del backend = ${mergedOrders.length} totales`
+        // );
+        // return mergedOrders;
+
+        // Por ahora, solo retornar órdenes locales
+        console.log(`✅ Órdenes cargadas desde IndexedDB: ${localOrders.length}`);
+        return localOrders;
+      } catch (error) {
+        console.warn(
+          "⚠️ Error cargando órdenes del backend, usando solo IndexedDB:",
+          error
+        );
+        // Si falla el backend, retornar órdenes locales
+        return localOrders;
+      }
+    }
+
+    // Si está offline, solo retornar órdenes locales
+    console.log(`✅ Órdenes cargadas desde IndexedDB (offline): ${localOrders.length}`);
+    return localOrders;
   } catch (error) {
     console.error("Error loading orders from IndexedDB:", error);
     return [];
@@ -1391,6 +1454,7 @@ export const addOrder = async (
       orderNumber,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      status: "Generado", // Estado inicial para pedidos normales
     };
 
     await db.add("orders", newOrder);
@@ -1431,6 +1495,407 @@ export const deleteOrder = async (id: string): Promise<void> => {
     await db.remove("orders", id);
   } catch (error) {
     console.error("Error deleting order from IndexedDB:", error);
+    throw error;
+  }
+};
+
+// ===== UNIFIED ORDERS (Pedidos + Presupuestos) =====
+
+// Interfaz unificada para mostrar pedidos y presupuestos juntos
+export interface UnifiedOrder {
+  id: string;
+  orderNumber: string;
+  clientId: string;
+  clientName: string;
+  vendorId: string;
+  vendorName: string;
+  referrerId?: string;
+  referrerName?: string;
+  products: OrderProduct[];
+  subtotal: number;
+  taxAmount: number;
+  deliveryCost: number;
+  total: number;
+  subtotalBeforeDiscounts?: number;
+  productDiscountTotal?: number;
+  generalDiscountAmount?: number;
+  deliveryAddress?: string;
+  hasDelivery: boolean;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  observations?: string;
+  baseCurrency?: "Bs" | "USD" | "EUR";
+  exchangeRatesAtCreation?: {
+    USD?: { rate: number; effectiveDate: string };
+    EUR?: { rate: number; effectiveDate: string };
+  };
+  type: "order" | "budget"; // Para distinguir entre pedido y presupuesto
+  expiresAt?: string; // Solo para presupuestos
+  validForDays?: number; // Solo para presupuestos
+  paymentMethod?: string; // Solo para pedidos
+}
+
+// Función para obtener pedidos y presupuestos unificados
+export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
+  try {
+    const [orders, budgets] = await Promise.all([
+      getOrders(),
+      getBudgets(),
+    ]);
+
+    // Convertir pedidos a formato unificado
+    const unifiedOrders: UnifiedOrder[] = orders.map((order) => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      clientId: order.clientId,
+      clientName: order.clientName,
+      vendorId: order.vendorId,
+      vendorName: order.vendorName,
+      referrerId: order.referrerId,
+      referrerName: order.referrerName,
+      products: order.products,
+      subtotal: order.subtotal,
+      taxAmount: order.taxAmount,
+      deliveryCost: order.deliveryCost,
+      total: order.total,
+      subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
+      productDiscountTotal: order.productDiscountTotal,
+      generalDiscountAmount: order.generalDiscountAmount,
+      deliveryAddress: order.deliveryAddress,
+      hasDelivery: order.hasDelivery,
+      status: order.status,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      observations: order.observations,
+      baseCurrency: order.baseCurrency,
+      exchangeRatesAtCreation: order.exchangeRatesAtCreation,
+      type: "order",
+      paymentMethod: order.paymentMethod,
+    }));
+
+    // Convertir presupuestos a formato unificado
+    const unifiedBudgets: UnifiedOrder[] = budgets.map((budget) => ({
+      id: budget.id,
+      orderNumber: budget.budgetNumber, // Usar budgetNumber como orderNumber
+      clientId: budget.clientId,
+      clientName: budget.clientName,
+      vendorId: budget.vendorId,
+      vendorName: budget.vendorName,
+      referrerId: budget.referrerId,
+      referrerName: budget.referrerName,
+      products: budget.products,
+      subtotal: budget.subtotal,
+      taxAmount: budget.taxAmount,
+      deliveryCost: budget.deliveryCost,
+      total: budget.total,
+      subtotalBeforeDiscounts: budget.subtotalBeforeDiscounts,
+      productDiscountTotal: budget.productDiscountTotal,
+      generalDiscountAmount: budget.generalDiscountAmount,
+      deliveryAddress: budget.deliveryAddress,
+      hasDelivery: budget.hasDelivery,
+      status: budget.status,
+      createdAt: budget.createdAt,
+      updatedAt: budget.createdAt, // Los presupuestos no tienen updatedAt
+      observations: budget.observations,
+      baseCurrency: budget.baseCurrency,
+      exchangeRatesAtCreation: budget.exchangeRatesAtCreation,
+      type: "budget",
+      expiresAt: budget.expiresAt,
+      validForDays: budget.validForDays,
+    }));
+
+    // Combinar y ordenar por fecha de creación (más recientes primero)
+    const allUnified = [...unifiedOrders, ...unifiedBudgets].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    return allUnified;
+  } catch (error) {
+    console.error("Error loading unified orders:", error);
+    return [];
+  }
+};
+
+// ===== DASHBOARD METRICS =====
+
+export interface DashboardMetrics {
+  completedOrders: number;
+  completedOrdersChange: number;
+  pendingPayments: number;
+  pendingPaymentsChange: number;
+  productsToManufacture: number;
+  productsToManufactureChange: number;
+  averageOrderValue: number;
+}
+
+export const calculateDashboardMetrics = async (
+  period: "week" | "month" | "year" = "week"
+): Promise<DashboardMetrics> => {
+  const orders = await getOrders();
+
+  // Filtrar por período
+  const now = new Date();
+  const periodStart = new Date();
+  switch (period) {
+    case "week":
+      periodStart.setDate(now.getDate() - 7);
+      break;
+    case "month":
+      periodStart.setMonth(now.getMonth() - 1);
+      break;
+    case "year":
+      periodStart.setFullYear(now.getFullYear() - 1);
+      break;
+  }
+
+  const periodOrders = orders.filter(
+    (order) => new Date(order.createdAt) >= periodStart
+  );
+
+  // Calcular período anterior para comparar cambios
+  const previousPeriodStart = new Date(periodStart);
+  const previousPeriodEnd = new Date(periodStart);
+  const periodDuration = now.getTime() - periodStart.getTime();
+  previousPeriodStart.setTime(periodStart.getTime() - periodDuration);
+
+  const previousPeriodOrders = orders.filter((order) => {
+    const orderDate = new Date(order.createdAt);
+    return orderDate >= previousPeriodStart && orderDate < previousPeriodEnd;
+  });
+
+  // Pedidos completados (los que están listos para despachar o ya despachados)
+  // Estos son los que se ven en la nota de despacho
+  const completedOrders = periodOrders.filter(
+    (order) => order.status === "Por despachar" || order.status === "Completada"
+  ).length;
+  const previousCompletedOrders = previousPeriodOrders.filter(
+    (order) => order.status === "Por despachar" || order.status === "Completada"
+  ).length;
+  const completedOrdersChange =
+    previousCompletedOrders > 0
+      ? Math.round(
+          ((completedOrders - previousCompletedOrders) /
+            previousCompletedOrders) *
+            100
+        )
+      : 0;
+
+  // Abonos por recaudar (suma de pagos parciales pendientes)
+  const pendingPayments = orders.reduce((total, order) => {
+    if (order.status === "Generado" || order.status === "Generada" || order.status === "Fabricación" || order.status === "Por despachar") {
+      const paidAmount =
+        order.partialPayments?.reduce(
+          (sum, payment) => sum + (payment.amount || 0),
+          0
+        ) || 0;
+      return total + Math.max(0, order.total - paidAmount);
+    }
+    return total;
+  }, 0);
+
+  const previousPendingPayments = previousPeriodOrders.reduce(
+    (total, order) => {
+      if (order.status === "Generado" || order.status === "Generada" || order.status === "Fabricación" || order.status === "Por despachar") {
+        const paidAmount =
+          order.partialPayments?.reduce(
+            (sum, payment) => sum + (payment.amount || 0),
+            0
+          ) || 0;
+        return total + Math.max(0, order.total - paidAmount);
+      }
+      return total;
+    },
+    0
+  );
+  const pendingPaymentsChange =
+    previousPendingPayments > 0
+      ? Math.round(
+          ((pendingPayments - previousPendingPayments) /
+            previousPendingPayments) *
+            100
+        )
+      : 0;
+
+  // Productos por fabricar
+  const productsToManufacture = orders.reduce((count, order) => {
+    return (
+      count +
+      order.products.filter(
+        (product) =>
+          product.locationStatus === "mandar_a_fabricar" &&
+          product.manufacturingStatus !== "fabricado"
+      ).length
+    );
+  }, 0);
+
+  // Promedio de pedidos completados (Por despachar o Completada)
+  const completedOrdersTotal = periodOrders
+    .filter((order) => order.status === "Por despachar" || order.status === "Completada")
+    .reduce((sum, order) => sum + order.total, 0);
+  const averageOrderValue =
+    completedOrders > 0 ? completedOrdersTotal / completedOrders : 0;
+
+  return {
+    completedOrders,
+    completedOrdersChange,
+    pendingPayments,
+    pendingPaymentsChange,
+    productsToManufacture,
+    productsToManufactureChange: 0, // TODO: calcular cuando tengamos datos históricos
+    averageOrderValue,
+  };
+};
+
+// ===== BUDGETS STORAGE (IndexedDB) =====
+
+export interface Budget {
+  id: string;
+  budgetNumber: string;
+  clientId: string;
+  clientName: string;
+  vendorId: string;
+  vendorName: string;
+  referrerId?: string;
+  referrerName?: string;
+  products: OrderProduct[];
+  subtotal: number;
+  taxAmount: number;
+  deliveryCost: number;
+  total: number;
+  subtotalBeforeDiscounts?: number;
+  productDiscountTotal?: number;
+  generalDiscountAmount?: number;
+  deliveryAddress?: string;
+  hasDelivery: boolean;
+  status: "Presupuesto" | "Aprobado" | "Rechazado" | "Vencido" | "Convertido";
+  createdAt: string;
+  expiresAt: string;
+  validForDays: number;
+  observations?: string;
+  baseCurrency?: "Bs" | "USD" | "EUR";
+  exchangeRatesAtCreation?: {
+    USD?: { rate: number; effectiveDate: string };
+    EUR?: { rate: number; effectiveDate: string };
+  };
+  convertedToOrderId?: string;
+}
+
+export const getBudgets = async (): Promise<Budget[]> => {
+  try {
+    // Cargar siempre presupuestos locales desde IndexedDB primero (offline-first)
+    const localBudgets = await db.getAll<Budget>("budgets");
+
+    // Si hay conexión, intentar sincronizar con backend (por ahora solo local)
+    if (isOnline()) {
+      // TODO: Cuando el backend esté listo, descomentar:
+      // const backendBudgets = await apiClient.getBudgets();
+      // Hacer merge similar a orders
+    }
+
+    console.log(`✅ Presupuestos cargados desde IndexedDB: ${localBudgets.length}`);
+    return localBudgets;
+  } catch (error) {
+    console.error("Error loading budgets from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const getBudget = async (id: string): Promise<Budget | undefined> => {
+  try {
+    return await db.get<Budget>("budgets", id);
+  } catch (error) {
+    console.error("Error loading budget from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const getBudgetByNumber = async (budgetNumber: string): Promise<Budget | undefined> => {
+  try {
+    const budgets = await getBudgets();
+    return budgets.find((b) => b.budgetNumber === budgetNumber);
+  } catch (error) {
+    console.error("Error loading budget by number from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const getBudgetsByClient = async (clientId: string): Promise<Budget[]> => {
+  try {
+    return await db.getByIndex<Budget>("budgets", "clientId", clientId);
+  } catch (error) {
+    console.error("Error loading budgets by client from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const getBudgetsByStatus = async (status: string): Promise<Budget[]> => {
+  try {
+    return await db.getByIndex<Budget>("budgets", "status", status);
+  } catch (error) {
+    console.error("Error loading budgets by status from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const addBudget = async (
+  budget: Omit<Budget, "id" | "budgetNumber" | "createdAt" | "expiresAt" | "status"> & {
+    validForDays?: number;
+  }
+): Promise<Budget> => {
+  try {
+    const budgets = await getBudgets();
+    const budgetNumber = `PRE-${String(budgets.length + 1).padStart(3, "0")}`;
+
+    const now = new Date();
+    const validForDays = budget.validForDays || 30;
+    const expiresAt = new Date(now);
+    expiresAt.setDate(now.getDate() + validForDays);
+
+    const newBudget: Budget = {
+      ...budget,
+      id: Date.now().toString(),
+      budgetNumber,
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      status: "Presupuesto", // Nuevo estado inicial
+      validForDays,
+    };
+
+    await db.add("budgets", newBudget);
+    console.log("✅ Presupuesto guardado en IndexedDB:", newBudget.budgetNumber);
+    return newBudget;
+  } catch (error) {
+    console.error("Error adding budget to IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const updateBudget = async (id: string, updates: Partial<Budget>): Promise<Budget> => {
+  try {
+    const existingBudget = await getBudget(id);
+    if (!existingBudget) {
+      throw new Error(`Budget with id ${id} not found`);
+    }
+
+    const updatedBudget: Budget = {
+      ...existingBudget,
+      ...updates,
+    };
+
+    await db.update("budgets", updatedBudget);
+    return updatedBudget;
+  } catch (error) {
+    console.error("Error updating budget in IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const deleteBudget = async (id: string): Promise<void> => {
+  try {
+    await db.remove("budgets", id);
+  } catch (error) {
+    console.error("Error deleting budget from IndexedDB:", error);
     throw error;
   }
 };
