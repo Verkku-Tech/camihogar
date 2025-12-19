@@ -278,6 +278,7 @@ services:
       - NEXT_PUBLIC_USERS_API_URL=${NEXT_PUBLIC_USERS_API_URL:-http://localhost:8083}
       - NEXT_PUBLIC_PROVIDERS_API_URL=${NEXT_PUBLIC_PROVIDERS_API_URL:-http://localhost:8084}
       - NEXT_PUBLIC_ORDERS_API_URL=${NEXT_PUBLIC_ORDERS_API_URL:-http://localhost:8085}
+      #- NEXT_PUBLIC_ORDERS_API_URL=${NEXT_PUBLIC_ORDERS_API_URL:-http://camihogar.eastus.cloudapp.azure.com:8085}
     restart: unless-stopped
     depends_on:
       security-api:
