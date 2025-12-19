@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Menu,
   Search,
@@ -11,6 +12,8 @@ import {
   HelpCircle,
   User,
   LogOut,
+  AlertCircle,
+  DollarSign,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -22,6 +25,9 @@ import {
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { getAll } from "@/lib/indexeddb";
+import { ExchangeRate } from "@/lib/currency-utils";
+import { useRouter } from "next/navigation";
 
 interface DashboardHeaderProps {
   onMenuClick: () => void;
@@ -31,9 +37,37 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const { user, logout } = useAuth();
+  const router = useRouter();
+  const [hasActiveExchangeRates, setHasActiveExchangeRates] = useState(true);
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Verificar si hay tasas de cambio activas
+  useEffect(() => {
+    const checkExchangeRates = async () => {
+      try {
+        const allRates = await getAll<ExchangeRate>("exchange_rates");
+        const activeRates = allRates.filter((r) => r.isActive);
+        setHasActiveExchangeRates(activeRates.length > 0);
+      } catch (error) {
+        console.error("Error checking exchange rates:", error);
+        setHasActiveExchangeRates(true); // Por defecto asumir que hay tasas
+      }
+    };
+
+    checkExchangeRates();
+
+    // Escuchar cambios en las tasas
+    const handleRateUpdate = () => {
+      checkExchangeRates();
+    };
+    window.addEventListener("exchangeRateUpdated", handleRateUpdate);
+
+    return () => {
+      window.removeEventListener("exchangeRateUpdated", handleRateUpdate);
+    };
   }, []);
 
   const toggleTheme = () => {
@@ -69,9 +103,48 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Buscar..." className="pl-10 w-64" />
           </div>
-          <Button variant="ghost" size="sm">
-            <Bell className="w-5 h-5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="relative">
+                <Bell className="w-5 h-5" />
+                {!hasActiveExchangeRates && (
+                  <span className="absolute top-0 right-0 h-2 w-2 bg-red-500 rounded-full border-2 border-background" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              {!hasActiveExchangeRates ? (
+                <>
+                  <div className="px-3 py-2">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="font-semibold text-sm text-amber-800 dark:text-amber-200 mb-1">
+                          No hay tasas de cambio configuradas
+                        </p>
+                        <p className="text-xs text-amber-700 dark:text-amber-300 mb-3">
+                          Es necesario crear al menos una tasa de cambio (USD o EUR) para poder 
+                          realizar conversiones de moneda en pedidos y presupuestos.
+                        </p>
+                        <Button
+                          size="sm"
+                          onClick={() => router.push("/configuracion/tasas")}
+                          className="w-full"
+                        >
+                          <DollarSign className="w-4 h-4 mr-2" />
+                          Ir a Tasas de Cambio
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="px-3 py-2 text-sm text-muted-foreground">
+                  No hay notificaciones
+                </div>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             variant="ghost"
             size="sm"
@@ -131,9 +204,48 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           <Input placeholder="Buscar..." className="pl-10 w-64" />
         </div>
 
-        <Button variant="ghost" size="sm">
-          <Bell className="w-5 h-5" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="relative">
+              <Bell className="w-5 h-5" />
+              {!hasActiveExchangeRates && (
+                <span className="absolute top-0 right-0 h-2 w-2 bg-red-500 rounded-full border-2 border-background" />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80">
+            {!hasActiveExchangeRates ? (
+              <>
+                <div className="px-3 py-2">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-sm text-amber-800 dark:text-amber-200 mb-1">
+                        No hay tasas de cambio configuradas
+                      </p>
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mb-3">
+                        Es necesario crear al menos una tasa de cambio (USD o EUR) para poder 
+                        realizar conversiones de moneda en pedidos y presupuestos.
+                      </p>
+                      <Button
+                        size="sm"
+                        onClick={() => router.push("/configuracion/tasas")}
+                        className="w-full"
+                      >
+                        <DollarSign className="w-4 h-4 mr-2" />
+                        Ir a Tasas de Cambio
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="px-3 py-2 text-sm text-muted-foreground">
+                No hay notificaciones
+              </div>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <div className="relative">
           <Button

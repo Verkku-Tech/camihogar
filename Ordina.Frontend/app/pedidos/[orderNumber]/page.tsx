@@ -355,12 +355,20 @@ const calculateDetailedAttributeAdjustments = (
 
 function getStatusColor(status: string) {
   switch (status) {
-    case "Completado":
-      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
-    case "Apartado":
-      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
-    case "Pendiente":
+    case "Presupuesto":
+      return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300";
+    case "Generado":
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+    case "Generada":
       return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
+    case "Fabricación":
+      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+    case "Por despachar":
+      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
+    case "Completada":
+      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+    case "Cancelado":
+      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300";
     default:
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
   }
@@ -1186,6 +1194,42 @@ export default function OrderDetailPage() {
                         <HoverCard key={idx} openDelay={200} closeDelay={100}>
                           <HoverCardTrigger asChild>
                             <div className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                              {/* Estado de ubicación */}
+                              <div className="mb-3 pb-3 border-b">
+                                {(() => {
+                                  let badgeText = "Sin definir";
+                                  let badgeVariant: "default" | "destructive" | "secondary" = "secondary";
+                                  let badgeClassName = "text-sm";
+
+                                  if (product.locationStatus === "en_tienda") {
+                                    badgeText = "En Tienda";
+                                    badgeVariant = "default";
+                                  } else if (product.locationStatus === "mandar_a_fabricar") {
+                                    if (product.manufacturingStatus === "fabricado") {
+                                      badgeText = "Fabricado";
+                                      badgeVariant = "default";
+                                      badgeClassName = "text-sm bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+                                    } else if (product.manufacturingStatus === "fabricando") {
+                                      badgeText = "En Fabricación";
+                                      badgeVariant = "secondary";
+                                      badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+                                    } else {
+                                      badgeText = "Mandar a Fabricar";
+                                      badgeVariant = "destructive";
+                                    }
+                                  }
+
+                                  return (
+                                    <Badge 
+                                      variant={badgeVariant}
+                                      className={badgeClassName}
+                                    >
+                                      {badgeText}
+                                    </Badge>
+                                  );
+                                })()}
+                              </div>
+                              
                               <div className="flex justify-between items-start mb-2">
                                 <div className="flex-1">
                                   <p className="font-semibold text-lg">
@@ -1242,9 +1286,11 @@ export default function OrderDetailPage() {
                               </div>
 
                               {/* Ajustes de atributos normales */}
-                              {breakdown.attributeAdjustments.length > 0 && (
+                              {breakdown.attributeAdjustments.filter(adj => adj.adjustmentValue !== 0).length > 0 && (
                                 <>
-                                  {breakdown.attributeAdjustments.map(
+                                  {breakdown.attributeAdjustments
+                                    .filter(adj => adj.adjustmentValue !== 0)
+                                    .map(
                                     (
                                       adj: {
                                         name: string;
@@ -1315,9 +1361,11 @@ export default function OrderDetailPage() {
                                           </span>
                                         </div>
                                         {/* Ajustes de atributos del producto */}
-                                        {prodAttr.adjustments.length > 0 && (
+                                        {prodAttr.adjustments.filter(adj => adj.adjustmentValue !== 0).length > 0 && (
                                           <>
-                                            {prodAttr.adjustments.map(
+                                            {prodAttr.adjustments
+                                              .filter(adj => adj.adjustmentValue !== 0)
+                                              .map(
                                               (
                                                 adj: {
                                                   name: string;
