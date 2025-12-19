@@ -5,6 +5,7 @@ const API_BASE_URLS: Record<string, string> = {
   security: process.env.SECURITY_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8082',
   users: process.env.USERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8083',
   providers: process.env.PROVIDERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8084',
+  orders: process.env.ORDERS_API_URL || process.env.NEXT_PUBLIC_ORDERS_API_URL || 'http://localhost:5093',
 };
 
 async function handleRequest(
@@ -17,7 +18,7 @@ async function handleRequest(
   
   if (!apiBaseUrl) {
     return NextResponse.json(
-      { error: 'Invalid service. Available services: security, users, providers' },
+      { error: 'Invalid service. Available services: security, users, providers, orders' },
       { status: 400 }
     );
   }
@@ -55,7 +56,37 @@ async function handleRequest(
       body,
     });
 
-    // Intentar parsear como JSON, si falla devolver texto
+    // Detectar si es un archivo binario (Excel, PDF, imágenes, etc.)
+    const contentType = response.headers.get('Content-Type') || '';
+    const isBinary = contentType.includes('application/vnd.openxmlformats-officedocument') ||
+                     contentType.includes('application/pdf') ||
+                     contentType.includes('application/octet-stream') ||
+                     contentType.includes('image/') ||
+                     contentType.includes('application/excel') ||
+                     contentType.includes('application/x-excel') ||
+                     contentType.includes('application/x-msexcel');
+
+    if (isBinary) {
+      // Para archivos binarios, devolver el blob directamente
+      const blob = await response.blob();
+      
+      // Copiar headers importantes de la respuesta
+      const responseHeaders = new Headers();
+      responseHeaders.set('Content-Type', contentType);
+      
+      // Copiar content-disposition si existe (para el nombre del archivo)
+      const contentDisposition = response.headers.get('Content-Disposition');
+      if (contentDisposition) {
+        responseHeaders.set('Content-Disposition', contentDisposition);
+      }
+      
+      return new NextResponse(blob, {
+        status: response.status,
+        headers: responseHeaders,
+      });
+    }
+
+    // Para respuestas JSON o texto, manejar como antes
     const data = await response.text();
     let jsonData: any;
     try {
@@ -67,7 +98,6 @@ async function handleRequest(
 
     // Copiar headers importantes de la respuesta
     const responseHeaders = new Headers();
-    const contentType = response.headers.get('Content-Type');
     if (contentType) {
       responseHeaders.set('Content-Type', contentType);
     }

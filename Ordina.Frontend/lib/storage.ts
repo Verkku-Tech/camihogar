@@ -9,6 +9,12 @@ import type {
   CreateProductDto,
   UpdateProductDto,
   UserResponseDto,
+  OrderResponseDto,
+  CreateOrderDto,
+  UpdateOrderDto,
+  OrderProductDto as OrderProductDtoBackend,
+  PaymentDetailsDto,
+  PartialPaymentDto as PartialPaymentDtoBackend,
 } from "./api-client";
 import { syncManager } from "./sync-manager";
 
@@ -212,31 +218,53 @@ export const getCategories = async (): Promise<Category[]> => {
           categoryFromBackendDto
         );
 
-        // Hacer merge: combinar categorías del backend con las locales
-        // Crear un Map usando el ID como clave para evitar duplicados
-        // Las categorías del backend tienen prioridad sobre las locales
-        const categoriesMap = new Map<number, Category>();
+        // Hacer merge: usar nombre como clave única (similar a SKU en productos y orderNumber en órdenes)
+        // El nombre es único según el índice en IndexedDB
+        const categoriesMap = new Map<string, Category>();
 
         // Primero agregar categorías locales
         for (const category of localCategories) {
-          categoriesMap.set(category.id, category);
+          categoriesMap.set(category.name, category);
         }
 
         // Luego agregar/actualizar con categorías del backend (estas tienen prioridad)
-        for (const category of backendCategoriesMapped) {
-          categoriesMap.set(category.id, category);
+        for (let i = 0; i < backendCategories.length; i++) {
+          const backendCategory = backendCategories[i];
+          const mappedCategory = backendCategoriesMapped[i];
+          
+          // Verificar si ya existe una categoría con el mismo nombre
+          const existing = categoriesMap.get(mappedCategory.name);
+          if (existing && existing.id !== mappedCategory.id) {
+            console.warn(
+              `⚠️ Advertencia: Categoría "${mappedCategory.name}" existe con ID diferente. ` +
+              `Local: ${existing.id}, Backend: ${mappedCategory.id}. Usando versión del backend.`
+            );
+          }
+          
+          // Las categorías del backend tienen prioridad
+          categoriesMap.set(mappedCategory.name, mappedCategory);
+          
           // Guardar/actualizar en IndexedDB
           try {
-            await db.update("categories", categoryToDB(category));
+            await db.update("categories", categoryToDB(mappedCategory));
           } catch {
-            await db.add("categories", categoryToDB(category));
+            await db.add("categories", categoryToDB(mappedCategory));
           }
         }
 
         const mergedCategories = Array.from(categoriesMap.values());
         console.log(
-          `✅ Categorías: ${localCategories.length} locales + ${backendCategoriesMapped.length} del backend = ${mergedCategories.length} totales`
+          `✅ Categorías: ${localCategories.length} locales + ${backendCategories.length} del backend = ${mergedCategories.length} totales`
         );
+        
+        // Log de debugging para verificar que todas se cargaron
+        if (mergedCategories.length !== Math.max(localCategories.length, backendCategories.length)) {
+          console.warn(
+            `⚠️ Posible pérdida de categorías: esperadas ${Math.max(localCategories.length, backendCategories.length)}, ` +
+            `obtenidas ${mergedCategories.length}`
+          );
+        }
+        
         return mergedCategories;
       } catch (error) {
         console.warn(
@@ -1218,9 +1246,11 @@ export interface PartialPayment {
     pagomovilReference?: string;
     pagomovilBank?: string;
     pagomovilPhone?: string;
+    pagomovilDate?: string;
     // Transferencia
     transferenciaBank?: string;
     transferenciaReference?: string;
+    transferenciaDate?: string;
     // Efectivo
     cashAmount?: string;
     cashCurrency?: "Bs" | "USD" | "EUR"; // Moneda del pago en efectivo
@@ -1229,6 +1259,12 @@ export interface PartialPayment {
     // Para Pago Móvil y Transferencia
     originalAmount?: number; // Monto original en la moneda del pago
     originalCurrency?: "Bs" | "USD" | "EUR"; // Moneda original del pago
+    // Información de cuenta relacionada
+    accountId?: string; // ID de la cuenta (opcional)
+    accountNumber?: string; // Para cuentas bancarias: número de cuenta completo
+    bank?: string; // Para cuentas bancarias: nombre del banco
+    email?: string; // Para cuentas digitales: correo
+    wallet?: string; // Para cuentas digitales: wallet
   };
 }
 
@@ -1270,6 +1306,15 @@ export interface Order {
     cashCurrency?: "Bs" | "USD" | "EUR"; // Moneda del pago en efectivo
     cashReceived?: number; // Monto recibido del cliente
     exchangeRate?: number; // Tasa de cambio usada al momento del pago
+    // Para Pago Móvil y Transferencia
+    originalAmount?: number; // Monto original en la moneda del pago
+    originalCurrency?: "Bs" | "USD" | "EUR"; // Moneda original del pago
+    // Información de cuenta relacionada
+    accountId?: string; // ID de la cuenta (opcional)
+    accountNumber?: string; // Para cuentas bancarias: número de cuenta completo
+    bank?: string; // Para cuentas bancarias: nombre del banco
+    email?: string; // Para cuentas digitales: correo
+    wallet?: string; // Para cuentas digitales: wallet
   };
   partialPayments?: PartialPayment[]; // Ahora usa la interfaz exportada
   mixedPayments?: PartialPayment[]; // Para pagos mixtos
@@ -1329,6 +1374,20 @@ export interface Store {
   updatedAt: string;
 }
 
+export interface Account {
+  id: string;
+  accountNumber?: string; // Se guarda completo, se enmascara al mostrar (opcional para cuentas digitales)
+  storeId: string; // ID de la tienda asociada
+  responsible: string; // Responsable
+  bank?: string; // Banco (opcional para cuentas digitales)
+  isForeign: boolean; // true = Extranjera, false = Nacional
+  accountType: string; // "Cuentas Digitales", "Ahorro", "Corriente", etc.
+  email?: string; // Correo (solo para cuentas digitales)
+  wallet?: string; // Wallet (solo para cuentas digitales)
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -1353,6 +1412,241 @@ export interface Vendor {
 
 // ===== ORDERS STORAGE (IndexedDB) =====
 
+// Helper functions para mapear orders entre frontend y backend
+const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
+  id: dto.id,
+  orderNumber: dto.orderNumber,
+  clientId: dto.clientId,
+  clientName: dto.clientName,
+  vendorId: dto.vendorId,
+  vendorName: dto.vendorName,
+  referrerId: dto.referrerId,
+  referrerName: dto.referrerName,
+  products: dto.products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    quantity: p.quantity,
+    total: p.total,
+    category: p.category,
+    stock: p.stock,
+    attributes: p.attributes,
+    discount: p.discount,
+    observations: p.observations,
+    availabilityStatus: p.availabilityStatus as "disponible" | "no_disponible" | undefined,
+    manufacturingStatus: p.manufacturingStatus as "debe_fabricar" | "fabricando" | "fabricado" | undefined,
+    manufacturingProviderId: p.manufacturingProviderId,
+    manufacturingProviderName: p.manufacturingProviderName,
+    manufacturingStartedAt: p.manufacturingStartedAt,
+    manufacturingCompletedAt: p.manufacturingCompletedAt,
+    manufacturingNotes: p.manufacturingNotes,
+    locationStatus: p.locationStatus as "en_tienda" | "mandar_a_fabricar" | undefined,
+  })),
+  subtotal: dto.subtotal,
+  taxAmount: dto.taxAmount,
+  deliveryCost: dto.deliveryCost,
+  total: dto.total,
+  subtotalBeforeDiscounts: dto.subtotalBeforeDiscounts,
+  productDiscountTotal: dto.productDiscountTotal,
+  generalDiscountAmount: dto.generalDiscountAmount,
+  paymentType: dto.paymentType as "directo" | "apartado" | "mixto",
+  paymentMethod: dto.paymentMethod,
+  paymentDetails: dto.paymentDetails ? {
+    pagomovilReference: dto.paymentDetails.pagomovilReference,
+    pagomovilBank: dto.paymentDetails.pagomovilBank,
+    pagomovilPhone: dto.paymentDetails.pagomovilPhone,
+    pagomovilDate: dto.paymentDetails.pagomovilDate,
+    transferenciaBank: dto.paymentDetails.transferenciaBank,
+    transferenciaReference: dto.paymentDetails.transferenciaReference,
+    transferenciaDate: dto.paymentDetails.transferenciaDate,
+    cashAmount: dto.paymentDetails.cashAmount,
+    cashCurrency: dto.paymentDetails.cashCurrency,
+    cashReceived: dto.paymentDetails.cashReceived,
+    exchangeRate: dto.paymentDetails.exchangeRate,
+    originalAmount: dto.paymentDetails.originalAmount,
+    originalCurrency: dto.paymentDetails.originalCurrency,
+    accountId: dto.paymentDetails.accountId,
+    accountNumber: dto.paymentDetails.accountNumber,
+    bank: dto.paymentDetails.bank,
+    email: dto.paymentDetails.email,
+    wallet: dto.paymentDetails.wallet,
+  } : undefined,
+  partialPayments: dto.partialPayments?.map((p) => ({
+    id: p.id,
+    amount: p.amount,
+    method: p.method,
+    date: p.date,
+    currency: undefined, // Se puede ajustar según necesidades
+    paymentDetails: p.paymentDetails ? {
+      pagomovilReference: p.paymentDetails.pagomovilReference,
+      pagomovilBank: p.paymentDetails.pagomovilBank,
+      pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      transferenciaBank: p.paymentDetails.transferenciaBank,
+      transferenciaReference: p.paymentDetails.transferenciaReference,
+      transferenciaDate: p.paymentDetails.transferenciaDate,
+      cashAmount: p.paymentDetails.cashAmount,
+      cashCurrency: p.paymentDetails.cashCurrency,
+      cashReceived: p.paymentDetails.cashReceived,
+      exchangeRate: p.paymentDetails.exchangeRate,
+      originalAmount: p.paymentDetails.originalAmount,
+      originalCurrency: p.paymentDetails.originalCurrency,
+      accountId: p.paymentDetails.accountId,
+      accountNumber: p.paymentDetails.accountNumber,
+      bank: p.paymentDetails.bank,
+      email: p.paymentDetails.email,
+      wallet: p.paymentDetails.wallet,
+    } : undefined,
+  })),
+  mixedPayments: dto.mixedPayments?.map((p) => ({
+    id: p.id,
+    amount: p.amount,
+    method: p.method,
+    date: p.date,
+    currency: undefined,
+    paymentDetails: p.paymentDetails ? {
+      pagomovilReference: p.paymentDetails.pagomovilReference,
+      pagomovilBank: p.paymentDetails.pagomovilBank,
+      pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      transferenciaBank: p.paymentDetails.transferenciaBank,
+      transferenciaReference: p.paymentDetails.transferenciaReference,
+      transferenciaDate: p.paymentDetails.transferenciaDate,
+      cashAmount: p.paymentDetails.cashAmount,
+      cashCurrency: p.paymentDetails.cashCurrency,
+      cashReceived: p.paymentDetails.cashReceived,
+      exchangeRate: p.paymentDetails.exchangeRate,
+      originalAmount: p.paymentDetails.originalAmount,
+      originalCurrency: p.paymentDetails.originalCurrency,
+      accountId: p.paymentDetails.accountId,
+      accountNumber: p.paymentDetails.accountNumber,
+      bank: p.paymentDetails.bank,
+      email: p.paymentDetails.email,
+      wallet: p.paymentDetails.wallet,
+    } : undefined,
+  })),
+  deliveryAddress: dto.deliveryAddress,
+  hasDelivery: dto.hasDelivery,
+  status: dto.status as Order["status"],
+  createdAt: dto.createdAt,
+  updatedAt: dto.updatedAt,
+  productMarkups: dto.productMarkups,
+  createSupplierOrder: dto.createSupplierOrder,
+  observations: dto.observations,
+});
+
+export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">): CreateOrderDto => ({
+  clientId: order.clientId,
+  clientName: order.clientName,
+  vendorId: order.vendorId,
+  vendorName: order.vendorName,
+  referrerId: order.referrerId,
+  referrerName: order.referrerName,
+  products: order.products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    quantity: p.quantity,
+    total: p.total,
+    category: p.category,
+    stock: p.stock,
+    attributes: p.attributes,
+    discount: p.discount,
+    observations: p.observations,
+    availabilityStatus: p.availabilityStatus,
+    manufacturingStatus: p.manufacturingStatus,
+    manufacturingProviderId: p.manufacturingProviderId,
+    manufacturingProviderName: p.manufacturingProviderName,
+    manufacturingStartedAt: p.manufacturingStartedAt,
+    manufacturingCompletedAt: p.manufacturingCompletedAt,
+    manufacturingNotes: p.manufacturingNotes,
+    locationStatus: p.locationStatus,
+  })),
+  subtotal: order.subtotal,
+  taxAmount: order.taxAmount,
+  deliveryCost: order.deliveryCost,
+  total: order.total,
+  subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
+  productDiscountTotal: order.productDiscountTotal,
+  generalDiscountAmount: order.generalDiscountAmount,
+  paymentType: order.paymentType,
+  paymentMethod: order.paymentMethod,
+  paymentDetails: order.paymentDetails ? {
+    pagomovilReference: order.paymentDetails.pagomovilReference,
+    pagomovilBank: order.paymentDetails.pagomovilBank,
+    pagomovilPhone: order.paymentDetails.pagomovilPhone,
+    pagomovilDate: order.paymentDetails.pagomovilDate,
+    transferenciaBank: order.paymentDetails.transferenciaBank,
+    transferenciaReference: order.paymentDetails.transferenciaReference,
+    transferenciaDate: order.paymentDetails.transferenciaDate,
+    cashAmount: order.paymentDetails.cashAmount,
+    cashCurrency: order.paymentDetails.cashCurrency,
+    cashReceived: order.paymentDetails.cashReceived,
+    exchangeRate: order.paymentDetails.exchangeRate,
+    originalAmount: order.paymentDetails.originalAmount,
+    originalCurrency: order.paymentDetails.originalCurrency,
+    accountId: order.paymentDetails.accountId,
+    accountNumber: order.paymentDetails.accountNumber,
+    bank: order.paymentDetails.bank,
+    email: order.paymentDetails.email,
+    wallet: order.paymentDetails.wallet,
+  } : undefined,
+  partialPayments: order.partialPayments?.map((p) => ({
+    id: p.id,
+    amount: p.amount,
+    method: p.method,
+    date: p.date,
+    paymentDetails: p.paymentDetails ? {
+      pagomovilReference: p.paymentDetails.pagomovilReference,
+      pagomovilBank: p.paymentDetails.pagomovilBank,
+      pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      transferenciaBank: p.paymentDetails.transferenciaBank,
+      transferenciaReference: p.paymentDetails.transferenciaReference,
+      transferenciaDate: p.paymentDetails.transferenciaDate,
+      cashAmount: p.paymentDetails.cashAmount,
+      cashCurrency: p.paymentDetails.cashCurrency,
+      cashReceived: p.paymentDetails.cashReceived,
+      exchangeRate: p.paymentDetails.exchangeRate,
+      originalAmount: p.paymentDetails.originalAmount,
+      originalCurrency: p.paymentDetails.originalCurrency,
+      accountId: p.paymentDetails.accountId,
+      accountNumber: p.paymentDetails.accountNumber,
+      bank: p.paymentDetails.bank,
+      email: p.paymentDetails.email,
+      wallet: p.paymentDetails.wallet,
+    } : undefined,
+  })),
+  mixedPayments: order.mixedPayments?.map((p) => ({
+    id: p.id,
+    amount: p.amount,
+    method: p.method,
+    date: p.date,
+    paymentDetails: p.paymentDetails ? {
+      pagomovilReference: p.paymentDetails.pagomovilReference,
+      pagomovilBank: p.paymentDetails.pagomovilBank,
+      pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      transferenciaBank: p.paymentDetails.transferenciaBank,
+      transferenciaReference: p.paymentDetails.transferenciaReference,
+      transferenciaDate: p.paymentDetails.transferenciaDate,
+      cashAmount: p.paymentDetails.cashAmount,
+      cashCurrency: p.paymentDetails.cashCurrency,
+      cashReceived: p.paymentDetails.cashReceived,
+      exchangeRate: p.paymentDetails.exchangeRate,
+      originalAmount: p.paymentDetails.originalAmount,
+      originalCurrency: p.paymentDetails.originalCurrency,
+      accountId: p.paymentDetails.accountId,
+      accountNumber: p.paymentDetails.accountNumber,
+      bank: p.paymentDetails.bank,
+      email: p.paymentDetails.email,
+      wallet: p.paymentDetails.wallet,
+    } : undefined,
+  })),
+  deliveryAddress: order.deliveryAddress,
+  hasDelivery: order.hasDelivery,
+  status: order.status,
+  productMarkups: order.productMarkups,
+  createSupplierOrder: order.createSupplierOrder,
+  observations: order.observations,
+});
+
 export const getOrders = async (): Promise<Order[]> => {
   try {
     // Cargar siempre órdenes locales desde IndexedDB primero (offline-first)
@@ -1361,39 +1655,34 @@ export const getOrders = async (): Promise<Order[]> => {
     // Si hay conexión, intentar sincronizar con backend y hacer merge
     if (isOnline()) {
       try {
-        // TODO: Cuando el backend esté listo, descomentar y adaptar:
-        // const backendOrders = await apiClient.getOrders();
-        // const backendOrdersMapped = backendOrders.map(orderFromBackendDto);
+        const backendOrders = await apiClient.getOrders();
+        const backendOrdersMapped = backendOrders.map(orderFromBackendDto);
 
         // Hacer merge usando orderNumber como clave única para evitar duplicados
         // Los pedidos del backend tienen prioridad sobre los locales
-        // const ordersMap = new Map<string, Order>();
+        const ordersMap = new Map<string, Order>();
 
         // Primero agregar órdenes locales
-        // for (const order of localOrders) {
-        //   ordersMap.set(order.orderNumber, order);
-        // }
+        for (const order of localOrders) {
+          ordersMap.set(order.orderNumber, order);
+        }
 
         // Luego agregar/actualizar con órdenes del backend (estas tienen prioridad)
-        // for (const order of backendOrdersMapped) {
-        //   ordersMap.set(order.orderNumber, order);
-        //   // Guardar/actualizar en IndexedDB
-        //   try {
-        //     await db.update("orders", order);
-        //   } catch {
-        //     await db.add("orders", order);
-        //   }
-        // }
+        for (const order of backendOrdersMapped) {
+          ordersMap.set(order.orderNumber, order);
+          // Guardar/actualizar en IndexedDB
+          try {
+            await db.update("orders", order);
+          } catch {
+            await db.add("orders", order);
+          }
+        }
 
-        // const mergedOrders = Array.from(ordersMap.values());
-        // console.log(
-        //   `✅ Órdenes: ${localOrders.length} locales + ${backendOrdersMapped.length} del backend = ${mergedOrders.length} totales`
-        // );
-        // return mergedOrders;
-
-        // Por ahora, solo retornar órdenes locales
-        console.log(`✅ Órdenes cargadas desde IndexedDB: ${localOrders.length}`);
-        return localOrders;
+        const mergedOrders = Array.from(ordersMap.values());
+        console.log(
+          `✅ Órdenes: ${localOrders.length} locales + ${backendOrdersMapped.length} del backend = ${mergedOrders.length} totales`
+        );
+        return mergedOrders;
       } catch (error) {
         console.warn(
           "⚠️ Error cargando órdenes del backend, usando solo IndexedDB:",
@@ -1443,22 +1732,65 @@ export const getOrdersByStatus = async (status: string): Promise<Order[]> => {
 export const addOrder = async (
   order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">
 ): Promise<Order> => {
+  let newOrder: Order;
+  let syncedToBackend = false;
+
+  // Intentar guardar en el backend primero si hay conexión
+  if (isOnline()) {
+    try {
+      const createDto = orderToBackendDto(order);
+      const backendOrder = await apiClient.createOrder(createDto);
+      newOrder = orderFromBackendDto(backendOrder);
+
+      // Guardar también en IndexedDB
+      await db.add("orders", newOrder);
+      console.log("✅ Pedido guardado en backend y IndexedDB:", newOrder.orderNumber);
+      syncedToBackend = true;
+      return newOrder;
+    } catch (error) {
+      console.warn(
+        "⚠️ Error guardando pedido en backend, guardando localmente:",
+        error
+      );
+      // Continuar para guardar localmente y encolar para sincronización
+    }
+  }
+
+  // Guardar en IndexedDB (offline o falló el backend)
   try {
     // Obtener el número de pedidos para generar el siguiente número
     const orders = await getOrders();
     const orderNumber = `ORD-${String(orders.length + 1).padStart(3, "0")}`;
 
-    const newOrder: Order = {
+    newOrder = {
       ...order,
       id: Date.now().toString(),
       orderNumber,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      status: "Generado", // Estado inicial para pedidos normales
+      status: order.status || "Generado", // Estado inicial para pedidos normales
     };
 
     await db.add("orders", newOrder);
     console.log("✅ Pedido guardado en IndexedDB:", newOrder.orderNumber);
+
+    // Encolar para sincronización si NO se sincronizó con el backend
+    if (!syncedToBackend) {
+      try {
+        const createDto = orderToBackendDto(newOrder);
+        await syncManager.addToQueue({
+          type: "create",
+          entity: "order",
+          entityId: newOrder.id,
+          data: createDto,
+        });
+        console.log("✅ Pedido encolado para sincronización:", newOrder.orderNumber);
+      } catch (error) {
+        console.warn("⚠️ Error encolando pedido para sincronización:", error);
+        // No lanzar error, el pedido ya está guardado localmente
+      }
+    }
+
     return newOrder;
   } catch (error) {
     console.error("Error adding order to IndexedDB:", error);
@@ -1482,7 +1814,138 @@ export const updateOrder = async (
       updatedAt: new Date().toISOString(),
     };
 
+    // Intentar actualizar en el backend si hay conexión
+    if (isOnline()) {
+      try {
+        // Buscar el pedido en el backend por orderNumber para obtener su ObjectId
+        let backendOrderId: string | null = null;
+        try {
+          const backendOrder = await apiClient.getOrderByOrderNumber(existingOrder.orderNumber);
+          if (backendOrder) {
+            backendOrderId = backendOrder.id;
+          }
+        } catch (error) {
+          // El pedido no existe en el backend todavía
+          console.warn(
+            "⚠️ Pedido no encontrado en backend por orderNumber, actualizando solo localmente"
+          );
+        }
+
+        // Si encontramos el pedido en el backend, actualizarlo
+        if (backendOrderId) {
+          const updateDto: UpdateOrderDto = {
+            clientId: updatedOrder.clientId !== existingOrder.clientId ? updatedOrder.clientId : undefined,
+            clientName: updatedOrder.clientName !== existingOrder.clientName ? updatedOrder.clientName : undefined,
+            vendorId: updatedOrder.vendorId !== existingOrder.vendorId ? updatedOrder.vendorId : undefined,
+            vendorName: updatedOrder.vendorName !== existingOrder.vendorName ? updatedOrder.vendorName : undefined,
+            referrerId: updatedOrder.referrerId !== existingOrder.referrerId ? updatedOrder.referrerId : undefined,
+            referrerName: updatedOrder.referrerName !== existingOrder.referrerName ? updatedOrder.referrerName : undefined,
+            products: updatedOrder.products !== existingOrder.products ? updatedOrder.products.map((p) => ({
+              id: p.id,
+              name: p.name,
+              price: p.price,
+              quantity: p.quantity,
+              total: p.total,
+              category: p.category,
+              stock: p.stock,
+              attributes: p.attributes,
+              discount: p.discount,
+              observations: p.observations,
+              availabilityStatus: p.availabilityStatus,
+              manufacturingStatus: p.manufacturingStatus,
+              manufacturingProviderId: p.manufacturingProviderId,
+              manufacturingProviderName: p.manufacturingProviderName,
+              manufacturingStartedAt: p.manufacturingStartedAt,
+              manufacturingCompletedAt: p.manufacturingCompletedAt,
+              manufacturingNotes: p.manufacturingNotes,
+              locationStatus: p.locationStatus,
+            })) : undefined,
+            subtotal: updatedOrder.subtotal !== existingOrder.subtotal ? updatedOrder.subtotal : undefined,
+            taxAmount: updatedOrder.taxAmount !== existingOrder.taxAmount ? updatedOrder.taxAmount : undefined,
+            deliveryCost: updatedOrder.deliveryCost !== existingOrder.deliveryCost ? updatedOrder.deliveryCost : undefined,
+            total: updatedOrder.total !== existingOrder.total ? updatedOrder.total : undefined,
+            subtotalBeforeDiscounts: updatedOrder.subtotalBeforeDiscounts !== existingOrder.subtotalBeforeDiscounts ? updatedOrder.subtotalBeforeDiscounts : undefined,
+            productDiscountTotal: updatedOrder.productDiscountTotal !== existingOrder.productDiscountTotal ? updatedOrder.productDiscountTotal : undefined,
+            generalDiscountAmount: updatedOrder.generalDiscountAmount !== existingOrder.generalDiscountAmount ? updatedOrder.generalDiscountAmount : undefined,
+            paymentType: updatedOrder.paymentType !== existingOrder.paymentType ? updatedOrder.paymentType : undefined,
+            paymentMethod: updatedOrder.paymentMethod !== existingOrder.paymentMethod ? updatedOrder.paymentMethod : undefined,
+            deliveryAddress: updatedOrder.deliveryAddress !== existingOrder.deliveryAddress ? updatedOrder.deliveryAddress : undefined,
+            hasDelivery: updatedOrder.hasDelivery !== existingOrder.hasDelivery ? updatedOrder.hasDelivery : undefined,
+            status: updatedOrder.status !== existingOrder.status ? updatedOrder.status : undefined,
+            observations: updatedOrder.observations !== existingOrder.observations ? updatedOrder.observations : undefined,
+          };
+
+          // Remover campos undefined
+          Object.keys(updateDto).forEach(key => {
+            if (updateDto[key as keyof UpdateOrderDto] === undefined) {
+              delete updateDto[key as keyof UpdateOrderDto];
+            }
+          });
+
+          const backendOrder = await apiClient.updateOrder(backendOrderId, updateDto);
+          const syncedOrder = orderFromBackendDto(backendOrder);
+
+          // Actualizar también en IndexedDB con los datos del backend
+          await db.update("orders", syncedOrder);
+          console.log("✅ Pedido actualizado en backend y IndexedDB:", syncedOrder.orderNumber);
+          return syncedOrder;
+        } else {
+          // El pedido no existe en el backend, actualizar localmente y encolar para sincronización
+          console.log(
+            "⚠️ Pedido no existe en backend, actualizando localmente y encolando para sincronización"
+          );
+          // Continuar para guardar localmente y encolar
+        }
+      } catch (error) {
+        console.warn(
+          "⚠️ Error actualizando pedido en backend, guardando localmente:",
+          error
+        );
+        // Continuar para guardar localmente
+      }
+    }
+
+    // Guardar en IndexedDB
     await db.update("orders", updatedOrder);
+
+    // Encolar para sincronización si el pedido no está en el backend o estamos offline
+    if (!isOnline() || !(await apiClient.getOrderByOrderNumber(existingOrder.orderNumber).then(() => true).catch(() => false))) {
+      try {
+        const updateDto: UpdateOrderDto = {
+          products: updatedOrder.products.map((p) => ({
+            id: p.id,
+            name: p.name,
+            price: p.price,
+            quantity: p.quantity,
+            total: p.total,
+            category: p.category,
+            stock: p.stock,
+            attributes: p.attributes,
+            discount: p.discount,
+            observations: p.observations,
+            availabilityStatus: p.availabilityStatus,
+            manufacturingStatus: p.manufacturingStatus,
+            manufacturingProviderId: p.manufacturingProviderId,
+            manufacturingProviderName: p.manufacturingProviderName,
+            manufacturingStartedAt: p.manufacturingStartedAt,
+            manufacturingCompletedAt: p.manufacturingCompletedAt,
+            manufacturingNotes: p.manufacturingNotes,
+            locationStatus: p.locationStatus,
+          })),
+          status: updatedOrder.status,
+        };
+        await syncManager.addToQueue({
+          type: "update",
+          entity: "order",
+          entityId: id,
+          data: updateDto,
+        });
+        console.log("✅ Pedido encolado para sincronización");
+      } catch (error) {
+        console.warn("⚠️ Error encolando pedido para sincronización:", error);
+      }
+    }
+
     return updatedOrder;
   } catch (error) {
     console.error("Error updating order in IndexedDB:", error);
@@ -1492,7 +1955,69 @@ export const updateOrder = async (
 
 export const deleteOrder = async (id: string): Promise<void> => {
   try {
+    const existingOrder = await getOrder(id);
+    if (!existingOrder) {
+      throw new Error(`Order with id ${id} not found`);
+    }
+
+    let deletedFromBackend = false;
+    let shouldEnqueue = false;
+
+    // Intentar eliminar en el backend primero si hay conexión
+    if (isOnline()) {
+      try {
+        // Buscar el pedido en el backend por orderNumber para obtener su ObjectId
+        let backendOrderId: string | null = null;
+        try {
+          const backendOrder = await apiClient.getOrderByOrderNumber(existingOrder.orderNumber);
+          if (backendOrder) {
+            backendOrderId = backendOrder.id;
+          }
+        } catch (error) {
+          // El pedido no existe en el backend
+          console.warn(
+            "⚠️ Pedido no encontrado en backend por orderNumber, eliminando solo localmente"
+          );
+        }
+
+        // Si encontramos el pedido en el backend, eliminarlo
+        if (backendOrderId) {
+          await apiClient.deleteOrder(backendOrderId);
+          console.log("✅ Pedido eliminado del backend:", existingOrder.orderNumber);
+          deletedFromBackend = true;
+        }
+      } catch (error) {
+        console.warn(
+          "⚠️ Error eliminando pedido en backend, eliminando localmente y encolando:",
+          error
+        );
+        // Si hay un error, necesitamos encolar para sincronización
+        shouldEnqueue = true;
+      }
+    } else {
+      // Si estamos offline, encolar para sincronización
+      shouldEnqueue = true;
+    }
+
+    // Eliminar de IndexedDB
     await db.remove("orders", id);
+    console.log("✅ Pedido eliminado de IndexedDB:", existingOrder.orderNumber);
+
+    // Encolar para sincronización si NO se eliminó del backend
+    if (shouldEnqueue) {
+      try {
+        await syncManager.addToQueue({
+          type: "delete",
+          entity: "order",
+          entityId: id,
+          data: null, // Para delete no necesitamos datos
+        });
+        console.log("✅ Eliminación de pedido encolada para sincronización:", existingOrder.orderNumber);
+      } catch (error) {
+        console.warn("⚠️ Error encolando eliminación de pedido para sincronización:", error);
+        // No lanzar error, el pedido ya fue eliminado localmente
+      }
+    }
   } catch (error) {
     console.error("Error deleting order from IndexedDB:", error);
     throw error;
@@ -2123,6 +2648,94 @@ export const deleteStore = async (id: string): Promise<void> => {
   }
 };
 
+// ===== ACCOUNTS STORAGE (IndexedDB) =====
+
+export const getAccounts = async (): Promise<Account[]> => {
+  try {
+    return await db.getAll<Account>("accounts");
+  } catch (error) {
+    console.error("Error loading accounts from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const getAccount = async (id: string): Promise<Account | undefined> => {
+  try {
+    return await db.get<Account>("accounts", id);
+  } catch (error) {
+    console.error("Error loading account from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const addAccount = async (
+  account: Omit<Account, "id" | "createdAt" | "updatedAt">
+): Promise<Account> => {
+  try {
+    const now = new Date().toISOString();
+    const newAccount: Account = {
+      ...account,
+      id: Date.now().toString(),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.add("accounts", newAccount);
+    const displayInfo = newAccount.accountType === "Cuentas Digitales" 
+      ? newAccount.email || "Cuenta Digital"
+      : maskAccountNumber(newAccount.accountNumber || "");
+    console.log("✅ Cuenta guardada en IndexedDB:", displayInfo);
+    return newAccount;
+  } catch (error) {
+    console.error("Error adding account to IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const updateAccount = async (
+  id: string,
+  updates: Partial<Account>
+): Promise<Account> => {
+  try {
+    const existingAccount = await getAccount(id);
+    if (!existingAccount) {
+      throw new Error(`Account with id ${id} not found`);
+    }
+
+    const updatedAccount: Account = {
+      ...existingAccount,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await db.update("accounts", updatedAccount);
+    return updatedAccount;
+  } catch (error) {
+    console.error("Error updating account in IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const deleteAccount = async (id: string): Promise<void> => {
+  try {
+    await db.remove("accounts", id);
+  } catch (error) {
+    console.error("Error deleting account from IndexedDB:", error);
+    throw error;
+  }
+};
+
+// Helper para enmascarar número de cuenta
+export const maskAccountNumber = (accountNumber: string): string => {
+  if (!accountNumber || accountNumber.length < 8) {
+    return accountNumber; // Si es muy corto, retornar tal cual
+  }
+  const first4 = accountNumber.substring(0, 4);
+  const last4 = accountNumber.substring(accountNumber.length - 4);
+  const middle = "*".repeat(Math.max(4, accountNumber.length - 8));
+  return `${first4}${middle}${last4}`;
+};
+
 // ===== HELPER FUNCTIONS =====
 
 /**
@@ -2507,6 +3120,87 @@ export const getReferrers = async (): Promise<Vendor[]> => {
   } catch (error) {
     console.error("Error loading referrers from users:", error);
     return [];
+  }
+};
+
+// ===== COMMISSIONS STORAGE (IndexedDB) =====
+
+export interface Commission {
+  id: string;
+  commissionType: "role" | "user"; // Por rol o por usuario
+  role?: string; // Solo si commissionType === "role"
+  userId?: string; // Solo si commissionType === "user"
+  userName?: string; // Nombre del usuario (para display)
+  commissionKind: "percentage" | "net"; // Porcentual o neta
+  value: number; // Valor o cantidad
+  currency: "Bs" | "USD" | "EUR";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getCommissions = async (): Promise<Commission[]> => {
+  try {
+    return await db.getAll<Commission>("commissions");
+  } catch (error) {
+    console.error("Error loading commissions from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const getCommission = async (id: string): Promise<Commission | undefined> => {
+  try {
+    return await db.get<Commission>("commissions", id);
+  } catch (error) {
+    console.error("Error loading commission from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const addCommission = async (commission: Omit<Commission, "id" | "createdAt" | "updatedAt">): Promise<Commission> => {
+  try {
+    const newCommission: Commission = {
+      ...commission,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await db.add("commissions", newCommission);
+    console.log("✅ Comisión guardada en IndexedDB:", newCommission.id);
+    return newCommission;
+  } catch (error) {
+    console.error("Error adding commission to IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const updateCommission = async (id: string, updates: Partial<Commission>): Promise<Commission> => {
+  try {
+    const existing = await db.get<Commission>("commissions", id);
+    if (!existing) {
+      throw new Error("Commission not found");
+    }
+    const updated: Commission = {
+      ...existing,
+      ...updates,
+      id, // Asegurar que el ID no cambie
+      updatedAt: new Date().toISOString(),
+    };
+    await db.update("commissions", updated);
+    console.log("✅ Comisión actualizada en IndexedDB:", id);
+    return updated;
+  } catch (error) {
+    console.error("Error updating commission in IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const deleteCommission = async (id: string): Promise<void> => {
+  try {
+    await db.remove("commissions", id);
+    console.log("✅ Comisión eliminada de IndexedDB:", id);
+  } catch (error) {
+    console.error("Error deleting commission from IndexedDB:", error);
+    throw error;
   }
 };
 

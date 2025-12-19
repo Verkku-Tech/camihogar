@@ -69,6 +69,14 @@ const defaultNavigationItems: NavigationItem[] = [
     description: "Gestión de tiendas",
   },
   {
+    id: "cuentas",
+    name: "Cuentas",
+    href: "/cuentas",
+    category: "main",
+    active: true,
+    description: "Gestión de cuentas bancarias",
+  },
+  {
     id: "reportes",
     name: "Reportes",
     href: "/reportes",
@@ -115,6 +123,14 @@ const defaultNavigationItems: NavigationItem[] = [
     category: "configuration",
     active: true,
     description: "Gestión de tasas de cambio para monedas (USD, EUR)",
+  },
+  {
+    id: "comisiones",
+    name: "Comisiones",
+    href: "/configuracion/comisiones",
+    category: "configuration",
+    active: true,
+    description: "Gestión de comisiones por rol o por usuario",
   },
 ]
 
