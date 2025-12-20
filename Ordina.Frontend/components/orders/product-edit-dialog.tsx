@@ -44,8 +44,9 @@ interface ProductEditDialogProps {
 }
 
 // Helper functions to normalize attribute values
+// IMPORTANTE: Ahora priorizamos label sobre id para guardar el nombre directamente
 const getValueString = (value: string | AttributeValue): string => {
-  return typeof value === "string" ? value : value.id || value.label;
+  return typeof value === "string" ? value : value.label || value.id;
 };
 
 const getValueLabel = (value: string | AttributeValue): string => {
@@ -236,10 +237,12 @@ function ProductAttributesEditor({
       for (const attribute of category.attributes) {
         if (attribute.valueType === "Product" || !attribute.values) continue;
 
-        const attrKey = attribute.id?.toString() || attribute.title;
+        // IMPORTANTE: Usar título como clave
+        const attrKey = attribute.title || attribute.id?.toString();
         if (!attrKey) continue;
 
-        const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+        // Buscar por título primero, luego por ID (compatibilidad)
+        const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
 
         // Calcular ajuste total
         let totalAdjustment = 0;
@@ -280,7 +283,8 @@ function ProductAttributesEditor({
   };
 
   const renderAttributeInput = (attribute: any, attrKey: string) => {
-    const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+    // Buscar por título primero (clave actual), luego por ID (compatibilidad)
+    const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
 
     switch (attribute.valueType) {
       case "Number":
@@ -363,7 +367,8 @@ function ProductAttributesEditor({
               </SelectTrigger>
               <SelectContent>
                 {attribute.values?.map((option: string | AttributeValue) => {
-                  const optionValue = typeof option === "string" ? option : option.id || option.label;
+                  // IMPORTANTE: Guardar label directamente en lugar de ID
+                  const optionValue = typeof option === "string" ? option : option.label || option.id;
                   const optionLabel = typeof option === "string" ? option : option.label || option.id;
                   return (
                     <SelectItem key={optionValue} value={optionValue}>
@@ -543,7 +548,8 @@ function ProductAttributesEditor({
         <div className="space-y-3">
           <Label className="text-sm font-medium">Atributos del Producto</Label>
           {category.attributes.map((attribute: any) => {
-            const attrKey = attribute.id?.toString() || attribute.title;
+            // IMPORTANTE: Usar título como clave, no ID
+            const attrKey = attribute.title || attribute.id?.toString();
             if (!attrKey) return null;
 
             return (
@@ -563,7 +569,8 @@ function ProductAttributesEditor({
                 
                 {/* Mostrar mensaje de advertencia si el atributo está vacío */}
                 {(() => {
-                  const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+                  // Buscar por título primero (clave actual), luego por ID (compatibilidad)
+    const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
                   const isEmpty = 
                     (attribute.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null)) ||
                     (attribute.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0));
@@ -598,10 +605,12 @@ function ProductAttributesEditor({
             
             if (category.attributes && category.attributes.length > 0) {
               for (const attribute of category.attributes) {
-                const attrKey = attribute.id?.toString() || attribute.title;
+                // IMPORTANTE: Usar título como clave
+                const attrKey = attribute.title || attribute.id?.toString();
                 if (!attrKey) continue;
                 
-                const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+                // Buscar por título primero, luego por ID (compatibilidad)
+                const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
                 
                 // Validar atributos de tipo "Select" (selección única)
                 if (attribute.valueType === "Select") {
@@ -743,17 +752,19 @@ export function ProductEditDialog({
 
     const normalizedAttributes: Record<string, string | number | string[]> = {};
     currentCategory.attributes?.forEach((attr: any) => {
-      const attrKey =
-        attr?.id !== undefined ? attr.id.toString() : attr.title ?? "";
-      if (!attrKey) return;
+      // IMPORTANTE: Usar título como clave, no ID (para compatibilidad, buscar por ambos)
+      const attrTitle = attr.title || "";
+      const attrId = attr?.id?.toString();
+      if (!attrTitle && !attrId) return;
 
+      // Buscar valor por título primero, luego por ID (compatibilidad con datos antiguos)
       const value =
-        product.attributes?.[attrKey] ??
-        (attr.title ? product.attributes?.[attr.title] : undefined);
+        product.attributes?.[attrTitle] ??
+        (attrId ? product.attributes?.[attrId] : undefined);
 
-      if (value !== undefined) {
-        // Asegurar que los arrays se mantengan como arrays
-        normalizedAttributes[attrKey] = value;
+      if (value !== undefined && attrTitle) {
+        // Guardar usando el título como clave
+        normalizedAttributes[attrTitle] = value;
       }
     });
 
@@ -967,10 +978,12 @@ export function ProductEditDialog({
       const formatted: Record<string, string> = {};
 
       for (const attribute of currentCategory.attributes) {
-        const attrKey = attribute.id?.toString() || attribute.title;
+        // IMPORTANTE: Usar título como clave
+        const attrKey = attribute.title || attribute.id?.toString();
         if (!attrKey || attribute.valueType === "Product") continue;
 
-        const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+        // Buscar por título primero (clave actual), luego por ID (compatibilidad)
+    const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
         if (!attrValue) continue;
 
         // Función helper para convertir ajuste a Bs
@@ -1229,9 +1242,9 @@ export function ProductEditDialog({
       const newAttributes = { ...prev };
       const productAttributeKey = `${attributeId}_${editingProductId}`;
       
-      // Guardar los atributos editados con las claves correctas
+      // Guardar los atributos editados con las claves correctas (usar título)
       productCategoryForEdit.attributes.forEach((attr: any) => {
-        const attrKey = attr.id?.toString() || attr.title;
+        const attrKey = attr.title || attr.id?.toString();
         if (attrKey && editedAttributes[attrKey] !== undefined) {
           if (!newAttributes[productAttributeKey]) {
             newAttributes[productAttributeKey] = {};
@@ -1298,10 +1311,12 @@ export function ProductEditDialog({
       const missingAttributes: string[] = [];
       
       for (const attribute of currentCategory.attributes) {
-        const attrKey = attribute.id?.toString() || attribute.title;
+        // IMPORTANTE: Usar título como clave
+        const attrKey = attribute.title || attribute.id?.toString();
         if (!attrKey) continue;
         
-        const attrValue = attributes[attrKey] ?? (attribute.title ? attributes[attribute.title] : undefined);
+        // Buscar por título primero (clave actual), luego por ID (compatibilidad)
+    const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
         
         // Validar atributos de tipo "Select" (selección única)
         if (attribute.valueType === "Select") {
@@ -1442,23 +1457,35 @@ export function ProductEditDialog({
     const unitPrice = basePriceWithAdjustments + productAttributesTotal;
     const total = unitPrice * quantity;
 
-    // Asegurar que los atributos editados de productos-atributos estén incluidos en attributes
-    // Los atributos editados se guardan con la clave `${attrId}_${productId}`
-    const finalAttributes = { ...attributes };
+    // IMPORTANTE: Normalizar atributos para usar títulos como claves en lugar de IDs
+    const finalAttributes: Record<string, any> = {};
+    
+    // Primero, normalizar los atributos existentes usando títulos
     if (currentCategory) {
       for (const attribute of currentCategory.attributes || []) {
+        const attrTitle = attribute.title || "";
+        const attrId = attribute.id?.toString();
+        
+        if (!attrTitle) continue;
+        
+        // Buscar el valor por título o por ID (compatibilidad)
+        const value = attributes[attrTitle] ?? (attrId ? attributes[attrId] : undefined);
+        
+        if (value !== undefined) {
+          finalAttributes[attrTitle] = value;
+        }
+        
+        // Manejar atributos tipo Product
         if (attribute.valueType === "Product") {
-          const attrId = attribute.id?.toString() || attribute.title;
-          const productsForAttr = productAttributes[attrId] || [];
+          const productsForAttr = productAttributes[attrTitle] ?? (attrId ? productAttributes[attrId] : []);
           
-          // IMPORTANTE: Guardar el array de IDs de productos seleccionados
-          // Esto permite que la vista de detalle pueda reconstruir el desglose correctamente
+          // IMPORTANTE: Guardar el array de IDs de productos seleccionados usando título como clave
           if (productsForAttr.length > 0) {
-            finalAttributes[attrId] = productsForAttr.map(entry => entry.productId);
+            finalAttributes[attrTitle] = productsForAttr.map(entry => entry.productId);
           }
           
           for (const productEntry of productsForAttr) {
-            const productAttributeKey = `${attrId}_${productEntry.productId}`;
+            const productAttributeKey = `${attrTitle}_${productEntry.productId}`;
             // Si hay atributos editados, incluirlos en finalAttributes
             if (productEntry.attributes && Object.keys(productEntry.attributes).length > 0) {
               finalAttributes[productAttributeKey] = productEntry.attributes;
@@ -1467,6 +1494,13 @@ export function ProductEditDialog({
         }
       }
     }
+    
+    // Agregar cualquier atributo que no esté en la categoría (por compatibilidad)
+    Object.entries(attributes).forEach(([key, value]) => {
+      if (!finalAttributes[key] && !key.includes("_")) {
+        finalAttributes[key] = value;
+      }
+    });
 
     // Asegurar que stock tenga un valor por defecto si no está presente
     const updatedProduct: OrderProduct = {
@@ -1561,15 +1595,16 @@ export function ProductEditDialog({
                 Atributos Personalizados
               </Label>
               {categoryAttrs.map((attr: any) => {
-                const attrKey =
-                  attr?.id !== undefined ? attr.id.toString() : attr.title;
+                // IMPORTANTE: Usar título como clave
+                const attrKey = attr.title || attr?.id?.toString();
                 if (!attrKey) {
                   return null;
                 }
                 const inputId = `attr-${attrKey}`;
+                // Buscar por título primero, luego por ID (compatibilidad)
                 const attrValue =
                   attributes[attrKey] ??
-                  (attr.title ? attributes[attr.title] : undefined);
+                  (attr.id ? attributes[attr.id.toString()] : undefined);
 
                 // Función helper para convertir ajuste a Bs
                 const convertAdjustmentToBs = (adjustment: number, currency?: string): number => {
@@ -1632,7 +1667,8 @@ export function ProductEditDialog({
                     
                     {/* Mostrar mensaje de advertencia si el atributo está vacío */}
                     {(() => {
-                      const attrValue = attributes[attrKey] ?? (attr.title ? attributes[attr.title] : undefined);
+                      // Buscar por título primero (clave actual), luego por ID (compatibilidad)
+                      const attrValue = attributes[attrKey] ?? (attr.id ? attributes[attr.id.toString()] : undefined);
                       const isEmpty = 
                         (attr.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null)) ||
                         (attr.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0)) ||

@@ -175,7 +175,58 @@ class SyncManager {
         return
       }
 
-      // Para otras entidades (orders, clients, etc.)
+      if (operation.entity === 'order') {
+        switch (operation.type) {
+          case 'create':
+            await apiClient.createOrder(operation.data as any)
+            break
+          case 'update':
+            // Para update, necesitamos el ID del backend, intentar obtenerlo por orderNumber
+            try {
+              const orderId = operation.entityId
+              // Intentar obtener el pedido local para obtener el orderNumber
+              const { getOrder } = await import('./storage')
+              const localOrder = await getOrder(orderId)
+              if (localOrder) {
+                // Buscar el pedido en el backend por orderNumber
+                const backendOrder = await apiClient.getOrderByOrderNumber(localOrder.orderNumber)
+                if (backendOrder) {
+                  await apiClient.updateOrder(backendOrder.id, operation.data as any)
+                } else {
+                  // Si no existe en el backend, intentar crear uno nuevo con los datos del update
+                  // Esto puede pasar si el pedido se creó offline y luego se actualizó
+                  throw new Error(`Pedido ${localOrder.orderNumber} no encontrado en el backend. Debe crearse primero.`)
+                }
+              } else {
+                throw new Error(`Pedido con ID ${orderId} no encontrado localmente`)
+              }
+            } catch (error) {
+              console.error('Error en sincronización de actualización de pedido:', error)
+              throw error
+            }
+            break
+          case 'delete':
+            // Para delete, necesitamos el ID del backend
+            const deleteOrderId = operation.entityId
+            try {
+              const { getOrder } = await import('./storage')
+              const localOrder = await getOrder(deleteOrderId)
+              if (localOrder) {
+                const backendOrder = await apiClient.getOrderByOrderNumber(localOrder.orderNumber)
+                if (backendOrder) {
+                  await apiClient.deleteOrder(backendOrder.id)
+                }
+              }
+            } catch (error) {
+              console.error('Error en sincronización de eliminación de pedido:', error)
+              // No lanzar error, el pedido ya fue eliminado localmente
+            }
+            break
+        }
+        return
+      }
+
+      // Para otras entidades (clients, etc.)
       // No hacer nada todavía - se implementará cuando el backend esté listo
       console.log(`⚠️ Sincronización de ${operation.entity} no implementada aún - se guardará para cuando el backend esté listo`)
       // No lanzar error, solo loggear - la app sigue funcionando offline

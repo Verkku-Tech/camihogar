@@ -9,6 +9,9 @@ const USERS_API_URL_DIRECT =
 const PROVIDERS_API_URL_DIRECT =
   process.env.PROVIDERS_API_URL ||
   "http://camihogar.eastus.cloudapp.azure.com:8084";
+const ORDERS_API_URL_DIRECT =
+  process.env.NEXT_PUBLIC_ORDERS_API_URL ||
+  "http://camihogar.eastus.cloudapp.azure.com:8085";
 
 export interface ApiError {
   message: string;
@@ -25,7 +28,7 @@ interface CachedApiResponse {
 export class ApiClient {
   private getBaseUrl(endpoint: string): string {
     // Determinar qué servicio usar según el endpoint
-    let service: "security" | "users" | "providers" = "security";
+    let service: "security" | "users" | "providers" | "orders" = "security";
 
     if (endpoint.startsWith("/api/Auth")) {
       service = "security";
@@ -40,6 +43,12 @@ export class ApiClient {
       endpoint.startsWith("/api/providers")
     ) {
       service = "providers";
+    } else if (
+      endpoint.startsWith("/api/orders") ||
+      endpoint.startsWith("/api/Orders") ||
+      endpoint.startsWith("/api/Reports")
+    ) {
+      service = "orders";
     }
 
     // Si estamos en el cliente (navegador) y la página está en HTTPS, usar proxy
@@ -59,6 +68,8 @@ export class ApiClient {
         return USERS_API_URL_DIRECT;
       case "providers":
         return PROVIDERS_API_URL_DIRECT;
+      case "orders":
+        return ORDERS_API_URL_DIRECT;
       default:
         return SECURITY_API_URL_DIRECT;
     }
@@ -73,6 +84,9 @@ export class ApiClient {
       "/api/Users",
       "/api/categories",
       "/api/products",
+      "/api/orders",
+      "/api/Orders",
+      "/api/Reports",
     ];
 
     return availableEndpoints.some((path) => endpoint.startsWith(path));
@@ -582,6 +596,53 @@ export class ApiClient {
       method: "DELETE",
     });
   }
+
+  // Orders endpoints
+  async getOrders() {
+    return this.request<OrderResponseDto[]>("/api/Orders");
+  }
+
+  async getOrderById(id: string) {
+    return this.request<OrderResponseDto>(`/api/Orders/${id}`);
+  }
+
+  async getOrderByOrderNumber(orderNumber: string) {
+    return this.request<OrderResponseDto>(
+      `/api/Orders/number/${encodeURIComponent(orderNumber)}`
+    );
+  }
+
+  async getOrdersByClient(clientId: string) {
+    return this.request<OrderResponseDto[]>(
+      `/api/Orders/client/${clientId}`
+    );
+  }
+
+  async getOrdersByStatus(status: string) {
+    return this.request<OrderResponseDto[]>(
+      `/api/Orders/status/${encodeURIComponent(status)}`
+    );
+  }
+
+  async createOrder(order: CreateOrderDto) {
+    return this.request<OrderResponseDto>("/api/Orders", {
+      method: "POST",
+      body: JSON.stringify(order),
+    });
+  }
+
+  async updateOrder(id: string, order: UpdateOrderDto) {
+    return this.request<OrderResponseDto>(`/api/Orders/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(order),
+    });
+  }
+
+  async deleteOrder(id: string) {
+    return this.request<void>(`/api/Orders/${id}`, {
+      method: "DELETE",
+    });
+  }
 }
 
 // Types
@@ -761,6 +822,146 @@ export interface UpdateProductDto {
   status?: string;
   attributes?: { [key: string]: any };
   providerId?: string;
+}
+
+// Order Types
+export interface OrderProductDto {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  total: number;
+  category: string;
+  stock: number;
+  attributes?: { [key: string]: any };
+  discount?: number;
+  observations?: string;
+  availabilityStatus?: string;
+  manufacturingStatus?: string;
+  manufacturingProviderId?: string;
+  manufacturingProviderName?: string;
+  manufacturingStartedAt?: string;
+  manufacturingCompletedAt?: string;
+  manufacturingNotes?: string;
+  locationStatus?: string;
+}
+
+export interface PaymentDetailsDto {
+  pagomovilReference?: string;
+  pagomovilBank?: string;
+  pagomovilPhone?: string;
+  pagomovilDate?: string;
+  transferenciaBank?: string;
+  transferenciaReference?: string;
+  transferenciaDate?: string;
+  cashAmount?: string;
+  cashCurrency?: "Bs" | "USD" | "EUR";
+  cashReceived?: number;
+  exchangeRate?: number;
+  originalAmount?: number;
+  originalCurrency?: "Bs" | "USD" | "EUR";
+  // Información de cuenta relacionada
+  accountId?: string;
+  accountNumber?: string; // Para cuentas bancarias
+  bank?: string; // Para cuentas bancarias
+  email?: string; // Para cuentas digitales
+  wallet?: string; // Para cuentas digitales
+}
+
+export interface PartialPaymentDto {
+  id: string;
+  amount: number;
+  method: string;
+  date: string;
+  paymentDetails?: PaymentDetailsDto;
+}
+
+export interface OrderResponseDto {
+  id: string;
+  orderNumber: string;
+  clientId: string;
+  clientName: string;
+  vendorId: string;
+  vendorName: string;
+  referrerId?: string;
+  referrerName?: string;
+  products: OrderProductDto[];
+  subtotal: number;
+  taxAmount: number;
+  deliveryCost: number;
+  total: number;
+  subtotalBeforeDiscounts?: number;
+  productDiscountTotal?: number;
+  generalDiscountAmount?: number;
+  paymentType: string;
+  paymentMethod: string;
+  paymentDetails?: PaymentDetailsDto;
+  partialPayments?: PartialPaymentDto[];
+  mixedPayments?: PartialPaymentDto[];
+  deliveryAddress?: string;
+  hasDelivery: boolean;
+  status: string;
+  productMarkups?: { [key: string]: number };
+  createSupplierOrder?: boolean;
+  observations?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOrderDto {
+  clientId: string;
+  clientName: string;
+  vendorId: string;
+  vendorName: string;
+  referrerId?: string;
+  referrerName?: string;
+  products: OrderProductDto[];
+  subtotal: number;
+  taxAmount: number;
+  deliveryCost: number;
+  total: number;
+  subtotalBeforeDiscounts?: number;
+  productDiscountTotal?: number;
+  generalDiscountAmount?: number;
+  paymentType: string;
+  paymentMethod: string;
+  paymentDetails?: PaymentDetailsDto;
+  partialPayments?: PartialPaymentDto[];
+  mixedPayments?: PartialPaymentDto[];
+  deliveryAddress?: string;
+  hasDelivery: boolean;
+  status?: string;
+  productMarkups?: { [key: string]: number };
+  createSupplierOrder?: boolean;
+  observations?: string;
+}
+
+export interface UpdateOrderDto {
+  clientId?: string;
+  clientName?: string;
+  vendorId?: string;
+  vendorName?: string;
+  referrerId?: string;
+  referrerName?: string;
+  products?: OrderProductDto[];
+  subtotal?: number;
+  taxAmount?: number;
+  deliveryCost?: number;
+  total?: number;
+  subtotalBeforeDiscounts?: number;
+  productDiscountTotal?: number;
+  generalDiscountAmount?: number;
+  paymentType?: string;
+  paymentMethod?: string;
+  paymentDetails?: PaymentDetailsDto;
+  partialPayments?: PartialPaymentDto[];
+  mixedPayments?: PartialPaymentDto[];
+  deliveryAddress?: string;
+  hasDelivery?: boolean;
+  status?: string;
+  productMarkups?: { [key: string]: number };
+  createSupplierOrder?: boolean;
+  observations?: string;
 }
 
 export const apiClient = new ApiClient();

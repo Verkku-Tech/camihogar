@@ -19,6 +19,8 @@ import {
   Box,
   DollarSign,
   Truck,
+  CreditCard,
+  Percent,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -35,6 +37,7 @@ const navigation = [
   { id: "proveedores", name: "Proveedores", href: "/proveedores", icon: Users },
   { id: "clientes", name: "Clientes", href: "/clientes", icon: UserCheck },
   { id: "tiendas", name: "Tiendas", href: "/tiendas", icon: Building2 },
+  { id: "cuentas", name: "Cuentas", href: "/cuentas", icon: CreditCard },
   { id: "reportes", name: "Reportes", href: "/reportes", icon: BarChart3 },
 ]
 
@@ -53,6 +56,7 @@ const configurationSubmenu = [
   { id: "usuarios", name: "Usuarios", href: "/configuracion/usuarios", icon: Users },
   { id: "navegacion", name: "Navegación", href: "/configuracion/navegacion", icon: Navigation },
   { id: "tasas", name: "Tasas de Cambio", href: "/configuracion/tasas", icon: DollarSign },
+  { id: "comisiones", name: "Comisiones", href: "/configuracion/comisiones", icon: Percent },
 ]
 
 export function Sidebar({ open, onOpenChange }: SidebarProps) {
@@ -90,7 +94,7 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
 
         <nav className="mt-6 px-3">
           <ul className="space-y-1">
-            {visibleNavigation.map((item) => {
+            {visibleNavigation.filter((item) => item.id !== "reportes").map((item) => {
               const isCurrent = pathname === item.href
 
               return (
@@ -110,6 +114,53 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
                 </li>
               )
             })}
+
+            {visibleInventorySubmenu.length > 0 && (
+              <li>
+                <button
+                  onClick={() => setInventoryOpen(!inventoryOpen)}
+                  className={cn(
+                    "flex items-center w-full px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                    pathname.startsWith("/inventario")
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  )}
+                >
+                  <Package className="w-5 h-5 mr-3" />
+                  Inventario
+                  {inventoryOpen ? (
+                    <ChevronDown className="w-4 h-4 ml-auto" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 ml-auto" />
+                  )}
+                </button>
+
+                {inventoryOpen && (
+                  <ul className="mt-1 ml-6 space-y-1">
+                    {visibleInventorySubmenu.map((item) => {
+                      const isCurrent = pathname === item.href
+
+                      return (
+                        <li key={item.name}>
+                          <Link
+                            href={item.href}
+                            className={cn(
+                              "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                              isCurrent
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                            )}
+                          >
+                            <item.icon className="w-4 h-4 mr-3" />
+                            {item.name}
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </li>
+            )}
 
             {visibleOrdersSubmenu.length > 0 && (
               <li>
@@ -158,52 +209,27 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
               </li>
             )}
 
-            {visibleInventorySubmenu.length > 0 && (
-              <li>
-                <button
-                  onClick={() => setInventoryOpen(!inventoryOpen)}
-                  className={cn(
-                    "flex items-center w-full px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                    pathname.startsWith("/inventario")
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  )}
-                >
-                  <Package className="w-5 h-5 mr-3" />
-                  Inventario
-                  {inventoryOpen ? (
-                    <ChevronDown className="w-4 h-4 ml-auto" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 ml-auto" />
-                  )}
-                </button>
+            {visibleNavigation.filter((item) => item.id === "reportes").map((item) => {
+              const isCurrent = pathname === item.href
 
-                {inventoryOpen && (
-                  <ul className="mt-1 ml-6 space-y-1">
-                    {visibleInventorySubmenu.map((item) => {
-                      const isCurrent = pathname === item.href
+              return (
+                <li key={item.name}>
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      isCurrent
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    )}
+                  >
+                    <item.icon className="w-5 h-5 mr-3" />
+                    {item.name}
+                  </Link>
+                </li>
+              )
+            })}
 
-                      return (
-                        <li key={item.name}>
-                          <Link
-                            href={item.href}
-                            className={cn(
-                              "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                              isCurrent
-                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                            )}
-                          >
-                            <item.icon className="w-4 h-4 mr-3" />
-                            {item.name}
-                          </Link>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </li>
-            )}
 
             {visibleConfigurationSubmenu.length > 0 && (
               <li>

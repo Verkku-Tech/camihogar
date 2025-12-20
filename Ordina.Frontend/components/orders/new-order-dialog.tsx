@@ -56,6 +56,8 @@ import {
   calculateProductTotalWithAttributes,
   calculateProductUnitPriceWithAttributes,
   getProducts,
+  getAccounts,
+  maskAccountNumber,
   type Order,
   type OrderProduct,
   type PartialPayment,
@@ -63,6 +65,7 @@ import {
   type Category,
   type Product,
   type AttributeValue,
+  type Account,
 } from "@/lib/storage";
 import {
   Currency,
@@ -186,6 +189,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [referrers, setReferrers] = useState<Vendor[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [exchangeRates, setExchangeRates] = useState<{
     USD?: ExchangeRate;
     EUR?: ExchangeRate;
@@ -268,11 +272,20 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         console.error("Error loading products:", error);
       }
     };
+    const loadAccounts = async () => {
+      try {
+        const loadedAccounts = await getAccounts();
+        setAccounts(loadedAccounts);
+      } catch (error) {
+        console.error("Error loading accounts:", error);
+      }
+    };
     if (open) {
       loadVendorsAndReferrers();
       loadCategories();
       loadExchangeRates();
       loadProducts();
+      loadAccounts();
     }
   }, [open]);
 
@@ -1280,22 +1293,72 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const updatePaymentDetails = (
     id: string,
     field: string,
-    value: string | number
+    value: string | number | boolean | undefined
   ) => {
     setPayments((paymentsList) =>
       paymentsList.map((payment) => {
         if (payment.id === id) {
+          const updatedDetails = { ...payment.paymentDetails } as any;
+          if (value === undefined) {
+            delete updatedDetails[field];
+          } else {
+            updatedDetails[field] = value;
+          }
           return {
             ...payment,
-            paymentDetails: {
-              ...payment.paymentDetails,
-              [field]: value,
-            },
+            paymentDetails: updatedDetails,
           };
         }
         return payment;
       })
     );
+  };
+
+  // Helper para obtener cuentas según el método de pago
+  const getAccountsForPaymentMethod = (method: string): Account[] => {
+    if (["Binance", "Paypal"].includes(method)) {
+      // Solo cuentas digitales
+      return accounts.filter(acc => acc.accountType === "Cuentas Digitales");
+    } else if (["Banesco Panamá", "Mercantil Panamá", "Pago Móvil", "Transferencia", "Facebank"].includes(method)) {
+      // Solo cuentas bancarias (Ahorro y Corriente)
+      return accounts.filter(acc => acc.accountType === "Ahorro" || acc.accountType === "Corriente");
+    }
+    return [];
+  };
+
+  // Función para guardar información de cuenta en el pago
+  const saveAccountInfoToPayment = (
+    paymentId: string,
+    account: Account
+  ): void => {
+    // Guardar ID (opcional, para referencia)
+    updatePaymentDetails(paymentId, "accountId", account.id);
+    
+    if (account.accountType === "Cuentas Digitales") {
+      // Cuenta digital: guardar email y wallet
+      updatePaymentDetails(paymentId, "email", account.email || undefined);
+      updatePaymentDetails(paymentId, "wallet", account.wallet || undefined);
+      // Limpiar campos bancarios
+      updatePaymentDetails(paymentId, "accountNumber", undefined);
+      updatePaymentDetails(paymentId, "bank", undefined);
+    } else {
+      // Cuenta bancaria: guardar número y banco
+      updatePaymentDetails(paymentId, "accountNumber", account.accountNumber || undefined);
+      updatePaymentDetails(paymentId, "bank", account.bank || undefined);
+      // Limpiar campos digitales
+      updatePaymentDetails(paymentId, "email", undefined);
+      updatePaymentDetails(paymentId, "wallet", undefined);
+    }
+    
+    // Mantener compatibilidad con campos antiguos (opcional)
+    if (account.bank) {
+      const currentPayment = payments.find(p => p.id === paymentId);
+      if (currentPayment?.method === "Pago Móvil") {
+        updatePaymentDetails(paymentId, "pagomovilBank", account.bank);
+      } else if (currentPayment?.method === "Transferencia") {
+        updatePaymentDetails(paymentId, "transferenciaBank", account.bank);
+      }
+    }
   };
 
   const removePayment = (id: string) => {
@@ -2938,8 +3001,50 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                             value
                                           );
 
-                                          // Si hay un monto, recalcular el monto original en la nueva moneda
-                                          if (payment.amount > 0) {
+                                          // Si ya hay un originalAmount y originalCurrency guardados, 
+                                          // solo actualizar la moneda y recalcular el amount en Bs
+                                          const currentOriginalAmount = payment.paymentDetails?.originalAmount;
+                                          const currentOriginalCurrency = payment.paymentDetails?.originalCurrency;
+                                          
+                                          if (currentOriginalAmount !== undefined && currentOriginalCurrency) {
+                                            // Actualizar la moneda original
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalCurrency",
+                                              value
+                                            );
+                                            
+                                            // Si el monto original está en otra moneda, mantenerlo pero recalcular Bs
+                                            // Si cambia a la misma moneda que ya tiene el originalAmount, mantenerlo
+                                            if (value !== currentOriginalCurrency) {
+                                              // Si cambia de moneda, mantener el originalAmount actual
+                                              // y recalcular el amount en Bs basado en la nueva moneda
+                                              let valueInBs = currentOriginalAmount;
+                                              if (value !== "Bs") {
+                                                const rate =
+                                                  value === "USD"
+                                                    ? exchangeRates.USD?.rate
+                                                    : exchangeRates.EUR?.rate;
+                                                if (rate && rate > 0) {
+                                                  valueInBs = currentOriginalAmount * rate;
+                                                  updatePaymentDetails(
+                                                    payment.id,
+                                                    "exchangeRate",
+                                                    rate
+                                                  );
+                                                }
+                                              } else {
+                                                // Si cambia a Bs, el originalAmount ya está en Bs
+                                                valueInBs = currentOriginalAmount;
+                                              }
+                                              updatePayment(
+                                                payment.id,
+                                                "amount",
+                                                valueInBs
+                                              );
+                                            }
+                                          } else if (payment.amount > 0) {
+                                            // Si no hay originalAmount guardado pero hay amount, calcular desde amount
                                             let originalAmount = payment.amount;
                                             if (value !== "Bs") {
                                               const rate =
@@ -2947,23 +3052,26 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                                   ? exchangeRates.USD?.rate
                                                   : exchangeRates.EUR?.rate;
                                               if (rate && rate > 0) {
-                                                originalAmount =
-                                                  payment.amount / rate;
+                                                originalAmount = payment.amount / rate;
                                                 updatePaymentDetails(
                                                   payment.id,
                                                   "exchangeRate",
                                                   rate
                                                 );
                                               }
-                                            } else {
-                                              // Si cambia a Bs, el monto original es el amount
-                                              originalAmount = payment.amount;
                                             }
                                             updatePaymentDetails(
                                               payment.id,
                                               "originalAmount",
                                               originalAmount
                                             );
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalCurrency",
+                                              value
+                                            );
+                                          } else {
+                                            // Si no hay monto aún, solo actualizar la moneda
                                             updatePaymentDetails(
                                               payment.id,
                                               "originalCurrency",
@@ -3032,7 +3140,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                           const paymentCurrency =
                                             payment.currency || getDefaultCurrencyFromSelection();
 
-                                          // Guardar el monto original en la moneda del pago
+                                          // SIEMPRE guardar el monto original en la moneda del pago
+                                          // Esto asegura que siempre tengamos el valor original
                                           updatePaymentDetails(
                                             payment.id,
                                             "originalAmount",
@@ -3043,6 +3152,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                             "originalCurrency",
                                             paymentCurrency
                                           );
+
+                                          // También actualizar payment.currency si no está definida
+                                          if (!payment.currency) {
+                                            updatePayment(
+                                              payment.id,
+                                              "currency",
+                                              paymentCurrency
+                                            );
+                                          }
 
                                           // Convertir a Bs según la moneda seleccionada
                                           let valueInBs = inputValue;
@@ -3060,6 +3178,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                                 rate
                                               );
                                             }
+                                          } else {
+                                            // Si es Bs, asegurar que el exchangeRate sea null/undefined
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "exchangeRate",
+                                              undefined
+                                            );
                                           }
                                           updatePayment(
                                             payment.id,
@@ -3095,26 +3220,38 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                     </div>
                                     <div className="space-y-2">
                                       <Label
-                                        htmlFor={`pagomovil-bank-${payment.id}`}
+                                        htmlFor={`pagomovil-account-${payment.id}`}
                                         className="text-xs"
                                       >
-                                        Banco Emisor *
+                                        Cuenta *
                                       </Label>
-                                      <Input
-                                        id={`pagomovil-bank-${payment.id}`}
-                                        value={
-                                          payment.paymentDetails
-                                            ?.pagomovilBank || ""
-                                        }
-                                        onChange={(e) =>
-                                          updatePaymentDetails(
-                                            payment.id,
-                                            "pagomovilBank",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="Ej: Banco de Venezuela"
-                                      />
+                                      <Select
+                                        value={payment.paymentDetails?.accountId || ""}
+                                        onValueChange={(value) => {
+                                          const selectedAccount = accounts.find(acc => acc.id === value);
+                                          if (selectedAccount) {
+                                            saveAccountInfoToPayment(payment.id, selectedAccount);
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Seleccione una cuenta" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {getAccountsForPaymentMethod("Pago Móvil").map((account) => (
+                                            <SelectItem key={account.id} value={account.id}>
+                                              <div className="flex flex-col">
+                                                <span className="font-medium">
+                                                  {maskAccountNumber(account.accountNumber || "")}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {account.bank || ""}
+                                                </span>
+                                              </div>
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
                                     </div>
                                     <div className="space-y-2">
                                       <Label
@@ -3171,8 +3308,50 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                             value
                                           );
 
-                                          // Si hay un monto, recalcular el monto original en la nueva moneda
-                                          if (payment.amount > 0) {
+                                          // Si ya hay un originalAmount y originalCurrency guardados, 
+                                          // solo actualizar la moneda y recalcular el amount en Bs
+                                          const currentOriginalAmount = payment.paymentDetails?.originalAmount;
+                                          const currentOriginalCurrency = payment.paymentDetails?.originalCurrency;
+                                          
+                                          if (currentOriginalAmount !== undefined && currentOriginalCurrency) {
+                                            // Actualizar la moneda original
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalCurrency",
+                                              value
+                                            );
+                                            
+                                            // Si el monto original está en otra moneda, mantenerlo pero recalcular Bs
+                                            // Si cambia a la misma moneda que ya tiene el originalAmount, mantenerlo
+                                            if (value !== currentOriginalCurrency) {
+                                              // Si cambia de moneda, mantener el originalAmount actual
+                                              // y recalcular el amount en Bs basado en la nueva moneda
+                                              let valueInBs = currentOriginalAmount;
+                                              if (value !== "Bs") {
+                                                const rate =
+                                                  value === "USD"
+                                                    ? exchangeRates.USD?.rate
+                                                    : exchangeRates.EUR?.rate;
+                                                if (rate && rate > 0) {
+                                                  valueInBs = currentOriginalAmount * rate;
+                                                  updatePaymentDetails(
+                                                    payment.id,
+                                                    "exchangeRate",
+                                                    rate
+                                                  );
+                                                }
+                                              } else {
+                                                // Si cambia a Bs, el originalAmount ya está en Bs
+                                                valueInBs = currentOriginalAmount;
+                                              }
+                                              updatePayment(
+                                                payment.id,
+                                                "amount",
+                                                valueInBs
+                                              );
+                                            }
+                                          } else if (payment.amount > 0) {
+                                            // Si no hay originalAmount guardado pero hay amount, calcular desde amount
                                             let originalAmount = payment.amount;
                                             if (value !== "Bs") {
                                               const rate =
@@ -3180,23 +3359,26 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                                   ? exchangeRates.USD?.rate
                                                   : exchangeRates.EUR?.rate;
                                               if (rate && rate > 0) {
-                                                originalAmount =
-                                                  payment.amount / rate;
+                                                originalAmount = payment.amount / rate;
                                                 updatePaymentDetails(
                                                   payment.id,
                                                   "exchangeRate",
                                                   rate
                                                 );
                                               }
-                                            } else {
-                                              // Si cambia a Bs, el monto original es el amount
-                                              originalAmount = payment.amount;
                                             }
                                             updatePaymentDetails(
                                               payment.id,
                                               "originalAmount",
                                               originalAmount
                                             );
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalCurrency",
+                                              value
+                                            );
+                                          } else {
+                                            // Si no hay monto aún, solo actualizar la moneda
                                             updatePaymentDetails(
                                               payment.id,
                                               "originalCurrency",
@@ -3265,7 +3447,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                           const paymentCurrency =
                                             payment.currency || getDefaultCurrencyFromSelection();
 
-                                          // Guardar el monto original en la moneda del pago
+                                          // SIEMPRE guardar el monto original en la moneda del pago
+                                          // Esto asegura que siempre tengamos el valor original
                                           updatePaymentDetails(
                                             payment.id,
                                             "originalAmount",
@@ -3276,6 +3459,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                             "originalCurrency",
                                             paymentCurrency
                                           );
+
+                                          // También actualizar payment.currency si no está definida
+                                          if (!payment.currency) {
+                                            updatePayment(
+                                              payment.id,
+                                              "currency",
+                                              paymentCurrency
+                                            );
+                                          }
 
                                           // Convertir a Bs según la moneda seleccionada
                                           let valueInBs = inputValue;
@@ -3293,6 +3485,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                                 rate
                                               );
                                             }
+                                          } else {
+                                            // Si es Bs, asegurar que el exchangeRate sea null/undefined
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "exchangeRate",
+                                              undefined
+                                            );
                                           }
                                           updatePayment(
                                             payment.id,
@@ -3305,26 +3504,38 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                     </div>
                                     <div className="space-y-2">
                                       <Label
-                                        htmlFor={`transferencia-bank-${payment.id}`}
+                                        htmlFor={`transferencia-account-${payment.id}`}
                                         className="text-xs"
                                       >
-                                        Banco *
+                                        Cuenta *
                                       </Label>
-                                      <Input
-                                        id={`transferencia-bank-${payment.id}`}
-                                        value={
-                                          payment.paymentDetails
-                                            ?.transferenciaBank || ""
-                                        }
-                                        onChange={(e) =>
-                                          updatePaymentDetails(
-                                            payment.id,
-                                            "transferenciaBank",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="Ej: Banco de Venezuela"
-                                      />
+                                      <Select
+                                        value={payment.paymentDetails?.accountId || ""}
+                                        onValueChange={(value) => {
+                                          const selectedAccount = accounts.find(acc => acc.id === value);
+                                          if (selectedAccount) {
+                                            saveAccountInfoToPayment(payment.id, selectedAccount);
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Seleccione una cuenta" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {getAccountsForPaymentMethod("Transferencia").map((account) => (
+                                            <SelectItem key={account.id} value={account.id}>
+                                              <div className="flex flex-col">
+                                                <span className="font-medium">
+                                                  {maskAccountNumber(account.accountNumber || "")}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">
+                                                  {account.bank || ""}
+                                                </span>
+                                              </div>
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
                                     </div>
                                     <div className="space-y-2">
                                       <Label
@@ -3383,8 +3594,50 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                             value
                                           );
 
-                                          // Si hay un monto, recalcular el monto original en la nueva moneda
-                                          if (payment.amount > 0) {
+                                          // Si ya hay un originalAmount y originalCurrency guardados, 
+                                          // solo actualizar la moneda y recalcular el amount en Bs
+                                          const currentOriginalAmount = payment.paymentDetails?.originalAmount;
+                                          const currentOriginalCurrency = payment.paymentDetails?.originalCurrency;
+                                          
+                                          if (currentOriginalAmount !== undefined && currentOriginalCurrency) {
+                                            // Actualizar la moneda original
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalCurrency",
+                                              value
+                                            );
+                                            
+                                            // Si el monto original está en otra moneda, mantenerlo pero recalcular Bs
+                                            // Si cambia a la misma moneda que ya tiene el originalAmount, mantenerlo
+                                            if (value !== currentOriginalCurrency) {
+                                              // Si cambia de moneda, mantener el originalAmount actual
+                                              // y recalcular el amount en Bs basado en la nueva moneda
+                                              let valueInBs = currentOriginalAmount;
+                                              if (value !== "Bs") {
+                                                const rate =
+                                                  value === "USD"
+                                                    ? exchangeRates.USD?.rate
+                                                    : exchangeRates.EUR?.rate;
+                                                if (rate && rate > 0) {
+                                                  valueInBs = currentOriginalAmount * rate;
+                                                  updatePaymentDetails(
+                                                    payment.id,
+                                                    "exchangeRate",
+                                                    rate
+                                                  );
+                                                }
+                                              } else {
+                                                // Si cambia a Bs, el originalAmount ya está en Bs
+                                                valueInBs = currentOriginalAmount;
+                                              }
+                                              updatePayment(
+                                                payment.id,
+                                                "amount",
+                                                valueInBs
+                                              );
+                                            }
+                                          } else if (payment.amount > 0) {
+                                            // Si no hay originalAmount guardado pero hay amount, calcular desde amount
                                             let originalAmount = payment.amount;
                                             if (value !== "Bs") {
                                               const rate =
@@ -3392,23 +3645,26 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                                   ? exchangeRates.USD?.rate
                                                   : exchangeRates.EUR?.rate;
                                               if (rate && rate > 0) {
-                                                originalAmount =
-                                                  payment.amount / rate;
+                                                originalAmount = payment.amount / rate;
                                                 updatePaymentDetails(
                                                   payment.id,
                                                   "exchangeRate",
                                                   rate
                                                 );
                                               }
-                                            } else {
-                                              // Si cambia a Bs, el monto original es el amount
-                                              originalAmount = payment.amount;
                                             }
                                             updatePaymentDetails(
                                               payment.id,
                                               "originalAmount",
                                               originalAmount
                                             );
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "originalCurrency",
+                                              value
+                                            );
+                                          } else {
+                                            // Si no hay monto aún, solo actualizar la moneda
                                             updatePaymentDetails(
                                               payment.id,
                                               "originalCurrency",
@@ -3476,7 +3732,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                           const paymentCurrency =
                                             payment.currency || getDefaultCurrencyFromSelection();
 
-                                          // Guardar el monto original en la moneda del pago
+                                          // SIEMPRE guardar el monto original en la moneda del pago
+                                          // Esto asegura que siempre tengamos el valor original
                                           updatePaymentDetails(
                                             payment.id,
                                             "originalAmount",
@@ -3487,6 +3744,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                             "originalCurrency",
                                             paymentCurrency
                                           );
+
+                                          // También actualizar payment.currency si no está definida
+                                          if (!payment.currency) {
+                                            updatePayment(
+                                              payment.id,
+                                              "currency",
+                                              paymentCurrency
+                                            );
+                                          }
 
                                           // Convertir a Bs según la moneda seleccionada
                                           let valueInBs = inputValue;
@@ -3504,6 +3770,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                                 rate
                                               );
                                             }
+                                          } else {
+                                            // Si es Bs, asegurar que el exchangeRate sea null/undefined
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "exchangeRate",
+                                              undefined
+                                            );
                                           }
                                           updatePayment(
                                             payment.id,
@@ -3514,6 +3787,61 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         placeholder="0.00"
                                       />
                                     </div>
+                                    {/* Campo de cuenta para métodos bancarios y digitales */}
+                                    {["Banesco Panamá", "Mercantil Panamá", "Facebank", "Binance", "Paypal"].includes(payment.method) && (
+                                      <div className="space-y-2">
+                                        <Label
+                                          htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-account-${payment.id}`}
+                                          className="text-xs"
+                                        >
+                                          Cuenta {["Binance", "Paypal"].includes(payment.method) ? "(Digital)" : "(Bancaria)"} *
+                                        </Label>
+                                        <Select
+                                          value={payment.paymentDetails?.accountId || ""}
+                                          onValueChange={(value) => {
+                                            const selectedAccount = accounts.find(acc => acc.id === value);
+                                            if (selectedAccount) {
+                                              saveAccountInfoToPayment(payment.id, selectedAccount);
+                                            }
+                                          }}
+                                        >
+                                          <SelectTrigger>
+                                            <SelectValue
+                                              placeholder={
+                                                ["Binance", "Paypal"].includes(payment.method)
+                                                  ? "Seleccione cuenta digital"
+                                                  : "Seleccione cuenta bancaria"
+                                              }
+                                            />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {getAccountsForPaymentMethod(payment.method).map((account) => (
+                                              <SelectItem key={account.id} value={account.id}>
+                                                {account.accountType === "Cuentas Digitales" ? (
+                                                  <div className="flex flex-col">
+                                                    <span className="font-medium">
+                                                      {account.email || "Sin correo"}
+                                                    </span>
+                                                    <span className="text-xs text-muted-foreground">
+                                                      {account.wallet || "Sin wallet"}
+                                                    </span>
+                                                  </div>
+                                                ) : (
+                                                  <div className="flex flex-col">
+                                                    <span className="font-medium">
+                                                      {maskAccountNumber(account.accountNumber || "")}
+                                                    </span>
+                                                    <span className="text-xs text-muted-foreground">
+                                                      {account.bank || ""}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               )}
