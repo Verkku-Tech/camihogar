@@ -11,8 +11,7 @@ const PROVIDERS_API_URL_DIRECT =
   "http://camihogar.eastus.cloudapp.azure.com:8084";
 const ORDERS_API_URL_DIRECT =
   process.env.NEXT_PUBLIC_ORDERS_API_URL ||
-  "http://localhost:5093";
-//http://camihogar.eastus.cloudapp.azure.com:8085
+  "http://camihogar.eastus.cloudapp.azure.com:8085";
 export interface ApiError {
   message: string;
   status?: number;
