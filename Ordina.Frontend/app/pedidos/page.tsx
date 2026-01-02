@@ -112,7 +112,7 @@ export default function PedidosPage() {
   const uniqueVendors = Array.from(new Set(orders.map((o) => o.vendorName))).sort()
   const uniqueStatuses = Array.from(new Set(orders.map((o) => o.status))).sort()
   const uniquePaymentMethods = Array.from(
-    new Set(orders.map((o) => o.paymentMethod).filter(Boolean))
+    new Set(orders.map((o) => o.paymentMethod).filter((m): m is string => !!m))
   ).sort()
 
   const filteredOrders = orders.filter((order) => {

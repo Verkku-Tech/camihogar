@@ -1018,10 +1018,10 @@ export function OrderConfirmationDialog({
                           let badgeVariant: "default" | "destructive" | "secondary" = "secondary";
                           let badgeClassName = "text-sm";
 
-                          if (product.locationStatus === "en_tienda" || product.locationStatus === "EN TIENDA") {
+                          if (product.locationStatus === "EN TIENDA") {
                             badgeText = "En Tienda";
                             badgeVariant = "default";
-                          } else if (product.locationStatus === "mandar_a_fabricar" || product.locationStatus === "FABRICACION") {
+                          } else if (product.locationStatus === "FABRICACION") {
                             if (product.manufacturingStatus === "fabricado") {
                               badgeText = "Fabricado";
                               badgeVariant = "default";

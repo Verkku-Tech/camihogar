@@ -68,7 +68,7 @@ const isOrderReadyForDispatch = (order: UnifiedOrder): boolean => {
   // Verificar que todos los productos estén listos
   return order.products.every((product) => {
     // Si no tiene locationStatus, considerarlo listo para despacho
-    if (!product.locationStatus || product.locationStatus === "") {
+    if (!product.locationStatus) {
       return true
     }
 

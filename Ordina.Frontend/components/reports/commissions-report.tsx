@@ -147,25 +147,33 @@ export function CommissionsReport() {
         const attributeStrings: string[] = []
 
         for (const [key, value] of Object.entries(product.attributes)) {
-          const attr = category.attributes.find((a) => a.id === key)
+          const attr = category.attributes.find((a) => a.id?.toString() === key || a.title === key)
           if (attr) {
             let valueLabel = ""
             if (Array.isArray(value)) {
               const labels = value
                 .map((v) => {
-                  const attrValue = attr.values?.find((av) => av.id === v || av.label === v)
-                  return attrValue?.label || v
+                  const attrValue = attr.values?.find((av) => {
+                    if (typeof av === "string") {
+                      return av === v
+                    }
+                    return av.id === v || av.label === v
+                  })
+                  return typeof attrValue === "string" ? attrValue : (attrValue?.label || v)
                 })
                 .filter(Boolean)
               valueLabel = labels.join(", ")
             } else {
-              const attrValue = attr.values?.find(
-                (av) => av.id === value || av.label === value
-              )
-              valueLabel = attrValue?.label || String(value)
+              const attrValue = attr.values?.find((av) => {
+                if (typeof av === "string") {
+                  return av === value
+                }
+                return av.id === value || av.label === value
+              })
+              valueLabel = typeof attrValue === "string" ? attrValue : (attrValue?.label || String(value))
             }
             if (valueLabel) {
-              attributeStrings.push(`${attr.name}: ${valueLabel}`)
+              attributeStrings.push(`${attr.title || attr.id}: ${valueLabel}`)
             }
           }
         }

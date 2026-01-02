@@ -178,6 +178,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     name: string;
     address?: string;
     telefono?: string;
+    telefono2?: string;
     email?: string;
     rutId?: string;
   } | null>(null);
