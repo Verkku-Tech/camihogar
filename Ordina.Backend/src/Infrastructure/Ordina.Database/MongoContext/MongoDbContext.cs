@@ -1,6 +1,7 @@
 ﻿using MongoDB.Driver;
 using Ordina.Database.Entities.Category;
 using Ordina.Database.Entities.Client;
+using Ordina.Database.Entities.Commission;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.Entities.Payment;
 using Ordina.Database.Entities.Product;
@@ -54,4 +55,7 @@ public class MongoDbContext
 
     public IMongoCollection<RefreshToken> RefreshTokens =>
         _database.GetCollection<RefreshToken>("refreshTokens");
+
+    public IMongoCollection<Commission> Commissions =>
+        _database.GetCollection<Commission>("commissions");
 }

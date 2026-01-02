@@ -5,6 +5,8 @@ using Microsoft.Extensions.Logging;
 using SpreadsheetLight;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.Entities.Category;
+using Ordina.Database.Entities.Commission;
+using Ordina.Database.Entities.User;
 using Ordina.Database.Repositories;
 using Ordina.Orders.Application.DTOs;
 
@@ -39,6 +41,31 @@ public interface IReportService
         DateTime? endDate = null,
         string? paymentMethod = null,
         string? accountId = null);
+    
+    Task<Stream> GenerateCommissionsReportAsync(
+        DateTime startDate,
+        DateTime endDate,
+        string? vendorId = null,
+        string? team = null);
+    
+    Task<Stream> GenerateCommissionsReportFromDataAsync(
+        List<CommissionReportRowDto> reportData);
+    
+    Task<List<CommissionReportRowDto>> GetCommissionsReportDataAsync(
+        DateTime startDate,
+        DateTime endDate,
+        string? vendorId = null,
+        string? team = null);
+    
+    Task<Stream> GenerateDispatchReportAsync(
+        string? deliveryZone = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null);
+    
+    Task<List<DispatchReportRowDto>> GetDispatchReportDataAsync(
+        string? deliveryZone = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null);
 }
 
 public class ReportService : IReportService
@@ -46,17 +73,26 @@ public class ReportService : IReportService
     private readonly IOrderRepository _orderRepository;
     private readonly IProviderRepository _providerRepository;
     private readonly ICategoryRepository _categoryRepository;
+    private readonly ICommissionRepository _commissionRepository;
+    private readonly IUserRepository _userRepository;
+    private readonly IClientRepository _clientRepository;
     private readonly ILogger<ReportService> _logger;
 
     public ReportService(
         IOrderRepository orderRepository,
         IProviderRepository providerRepository,
         ICategoryRepository categoryRepository,
+        ICommissionRepository commissionRepository,
+        IUserRepository userRepository,
+        IClientRepository clientRepository,
         ILogger<ReportService> logger)
     {
         _orderRepository = orderRepository;
         _providerRepository = providerRepository;
         _categoryRepository = categoryRepository;
+        _commissionRepository = commissionRepository;
+        _userRepository = userRepository;
+        _clientRepository = clientRepository;
         _logger = logger;
     }
 
@@ -949,6 +985,325 @@ public class ReportService : IReportService
         return $"{first4}****{last4}";
     }
 
+    // ================================================================
+    // COMMISSIONS REPORT METHODS
+    // ================================================================
+
+    public async Task<Stream> GenerateCommissionsReportAsync(
+        DateTime startDate,
+        DateTime endDate,
+        string? vendorId = null,
+        string? team = null)
+    {
+        try
+        {
+            _logger.LogInformation("Iniciando generación de reporte de comisiones");
+            
+            var reportData = await GetFilteredCommissionsDataAsync(
+                startDate,
+                endDate,
+                vendorId,
+                team);
+
+            // Convertir de CommissionReportRow (clase interna) a CommissionReportRowDto
+            var dtoData = reportData.Select(row => new CommissionReportRowDto
+            {
+                Fecha = row.Fecha,
+                Cliente = row.Cliente,
+                Vendedor = row.Vendedor,
+                Descripcion = row.Descripcion,
+                CantidadArticulos = row.CantidadArticulos,
+                TipoCompra = row.TipoCompra,
+                Comision = row.Comision,
+                VendedorSecundario = row.VendedorSecundario,
+                ComisionSecundaria = row.ComisionSecundaria
+            }).ToList();
+
+            return await GenerateCommissionsReportFromDataAsync(dtoData);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al generar reporte de comisiones");
+            throw;
+        }
+    }
+
+    public Task<Stream> GenerateCommissionsReportFromDataAsync(
+        List<CommissionReportRowDto> reportData)
+    {
+        try
+        {
+            _logger.LogInformation("Generando Excel de comisiones con {Count} registros", reportData.Count);
+
+            // Ordenar por fecha (más reciente primero)
+            var sortedData = reportData
+                .OrderByDescending(r => r.Fecha)
+                .ThenBy(r => r.Cliente)
+                .ToList();
+
+            // Generar Excel con SpreadsheetLight
+            var stream = new MemoryStream();
+            
+            using (var sl = new SLDocument())
+            {
+                // Headers en la fila 1
+                sl.SetCellValue(1, 1, "Fecha");
+                sl.SetCellValue(1, 2, "Cliente");
+                sl.SetCellValue(1, 3, "Vendedor");
+                sl.SetCellValue(1, 4, "Descripción");
+                sl.SetCellValue(1, 5, "Cant. Artículos");
+                sl.SetCellValue(1, 6, "Tipo de compra");
+                sl.SetCellValue(1, 7, "Comisión");
+
+                // Estilo de headers
+                var headerStyle = sl.CreateStyle();
+                headerStyle.Font.Bold = true;
+
+                // Aplicar estilo a las celdas de headers
+                for (int col = 1; col <= 7; col++)
+                {
+                    sl.SetCellStyle(1, col, headerStyle);
+                }
+
+                // Llenar datos desde la fila 2
+                int row = 2;
+                foreach (var item in sortedData)
+                {
+                    sl.SetCellValue(row, 1, item.Fecha);
+                    sl.SetCellValue(row, 2, item.Cliente);
+                    sl.SetCellValue(row, 3, item.Vendedor);
+                    sl.SetCellValue(row, 4, item.Descripcion);
+                    sl.SetCellValue(row, 5, item.CantidadArticulos);
+                    sl.SetCellValue(row, 6, item.TipoCompra);
+                    sl.SetCellValue(row, 7, item.Comision);
+                    row++;
+                }
+
+                // Ajustar ancho de columnas
+                sl.SetColumnWidth(1, 20);  // Fecha
+                sl.SetColumnWidth(2, 30);  // Cliente
+                sl.SetColumnWidth(3, 30);  // Vendedor
+                sl.SetColumnWidth(4, 50);  // Descripción
+                sl.SetColumnWidth(5, 15);  // Cant. Artículos
+                sl.SetColumnWidth(6, 20);  // Tipo de compra
+                sl.SetColumnWidth(7, 15);  // Comisión
+
+                // Guardar en el stream antes de que se cierre el SLDocument
+                sl.SaveAs(stream);
+            }
+
+            stream.Position = 0;
+            return Task.FromResult<Stream>(stream);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al generar Excel de comisiones");
+            throw;
+        }
+    }
+
+    public async Task<List<CommissionReportRowDto>> GetCommissionsReportDataAsync(
+        DateTime startDate,
+        DateTime endDate,
+        string? vendorId = null,
+        string? team = null)
+    {
+        try
+        {
+            _logger.LogInformation("Obteniendo datos del reporte de comisiones");
+            
+            var reportData = await GetFilteredCommissionsDataAsync(
+                startDate,
+                endDate,
+                vendorId,
+                team);
+
+            // Ordenar por fecha (más reciente primero)
+            reportData = reportData
+                .OrderByDescending(r => r.Fecha)
+                .ThenBy(r => r.Cliente)
+                .ToList();
+
+            return reportData.Select(row => new CommissionReportRowDto
+            {
+                Fecha = row.Fecha,
+                Cliente = row.Cliente,
+                Vendedor = row.Vendedor,
+                Descripcion = row.Descripcion,
+                CantidadArticulos = row.CantidadArticulos,
+                TipoCompra = row.TipoCompra,
+                Comision = row.Comision,
+                VendedorSecundario = row.VendedorSecundario,
+                ComisionSecundaria = row.ComisionSecundaria
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener datos del reporte de comisiones");
+            throw;
+        }
+    }
+
+    private async Task<List<CommissionReportRow>> GetFilteredCommissionsDataAsync(
+        DateTime startDate,
+        DateTime endDate,
+        string? vendorId = null,
+        string? team = null)
+    {
+        var orders = await _orderRepository.GetAllAsync();
+        var commissions = await _commissionRepository.GetAllAsync();
+        var users = await _userRepository.GetAllAsync();
+        var reportData = new List<CommissionReportRow>();
+
+        // Ajustar rango de fechas según el equipo si es necesario
+        var (adjustedStartDate, adjustedEndDate) = AdjustDateRangeForTeam(startDate, endDate, team);
+
+        foreach (var order in orders)
+        {
+            // Filtrar por fecha (OBLIGATORIO)
+            if (order.CreatedAt < adjustedStartDate || order.CreatedAt > adjustedEndDate)
+                continue;
+
+            // Filtrar por vendedor si se especifica
+            if (!string.IsNullOrWhiteSpace(vendorId) && order.VendorId != vendorId)
+                continue;
+
+            // Procesar cada producto del pedido (una fila por producto)
+            foreach (var product in order.Products)
+            {
+                var isSharedSale = !string.IsNullOrWhiteSpace(order.ReferrerId);
+                
+                if (isSharedSale)
+                {
+                    // VENTA COMPARTIDA: Dividir comisión 50/50
+                    var vendorCommission = await CalculateCommissionAsync(product, order, order.VendorId, commissions, users, isShared: true);
+                    var referrerCommission = await CalculateCommissionAsync(product, order, order.ReferrerId, commissions, users, isShared: true);
+                    
+                    // Fila para vendedor de tienda
+                    reportData.Add(new CommissionReportRow
+                    {
+                        Fecha = order.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                        Cliente = order.ClientName,
+                        Vendedor = order.VendorName,
+                        Descripcion = await FormatProductDescriptionAsync(product),
+                        CantidadArticulos = product.Quantity,
+                        TipoCompra = GetPurchaseType(order),
+                        Comision = vendorCommission,
+                        VendedorSecundario = order.ReferrerName,
+                        ComisionSecundaria = referrerCommission
+                    });
+                }
+                else
+                {
+                    // VENTA NORMAL: Comisión completa
+                    var commission = await CalculateCommissionAsync(product, order, order.VendorId, commissions, users, isShared: false);
+                    
+                    reportData.Add(new CommissionReportRow
+                    {
+                        Fecha = order.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                        Cliente = order.ClientName,
+                        Vendedor = order.VendorName,
+                        Descripcion = await FormatProductDescriptionAsync(product),
+                        CantidadArticulos = product.Quantity,
+                        TipoCompra = GetPurchaseType(order),
+                        Comision = commission
+                    });
+                }
+            }
+        }
+
+        return reportData;
+    }
+
+    private Task<decimal> CalculateCommissionAsync(
+        OrderProduct product,
+        Order order,
+        string? sellerId,
+        IEnumerable<Commission> commissions,
+        IEnumerable<User> users,
+        bool isShared = false)
+    {
+        if (string.IsNullOrWhiteSpace(sellerId))
+            return Task.FromResult(0m);
+
+        // Obtener usuario para determinar su rol
+        var user = users.FirstOrDefault(u => u.Id == sellerId);
+        if (user == null)
+            return Task.FromResult(0m);
+
+        // Buscar comisión por usuario primero, luego por rol
+        var commission = commissions.FirstOrDefault(c =>
+            (c.CommissionType == "user" && c.UserId == sellerId)) ??
+            commissions.FirstOrDefault(c =>
+                (c.CommissionType == "role" && c.Role == user.Role));
+
+        if (commission == null)
+            return Task.FromResult(0m);
+
+        // Calcular monto base (precio del producto después de descuentos)
+        var productTotal = product.Total; // Ya incluye descuentos si los hay
+        
+        decimal calculatedCommission = 0;
+        
+        if (commission.CommissionKind == "percentage")
+        {
+            calculatedCommission = productTotal * (commission.Value / 100);
+        }
+        else // "net"
+        {
+            calculatedCommission = commission.Value; // Comisión fija por artículo
+        }
+
+        // Si es venta compartida, dividir la comisión 50/50
+        if (isShared)
+        {
+            calculatedCommission = calculatedCommission / 2;
+        }
+
+        return Task.FromResult(calculatedCommission);
+    }
+
+    private string GetPurchaseType(Order order)
+    {
+        // Mapear deliveryType a tipo de compra
+        if (!string.IsNullOrWhiteSpace(order.DeliveryType))
+        {
+            return order.DeliveryType switch
+            {
+                "entrega_programada" => "Entrega",
+                "delivery_express" => "Delivery express",
+                "retiro_tienda" => "Retiro por tienda",
+                "retiro_almacen" => "Retiro por almacén",
+                _ => order.DeliveryType
+            };
+        }
+
+        // Fallback a saleType
+        if (!string.IsNullOrWhiteSpace(order.SaleType))
+        {
+            return order.SaleType switch
+            {
+                "encargo" => "Encargo",
+                "entrega" => "Entrega",
+                "sistema_apartado" => "Sistema Apartado",
+                _ => order.SaleType
+            };
+        }
+
+        return "-";
+    }
+
+    private (DateTime start, DateTime end) AdjustDateRangeForTeam(DateTime startDate, DateTime endDate, string? team)
+    {
+        // Si no se especifica equipo, usar las fechas tal cual
+        if (string.IsNullOrWhiteSpace(team))
+            return (startDate, endDate);
+
+        // Los ajustes por equipo se pueden hacer aquí si es necesario
+        // Por ahora, retornamos las fechas tal cual
+        return (startDate, endDate);
+    }
+
     private class PaymentReportRow
     {
         public string Fecha { get; set; } = string.Empty;
@@ -960,6 +1315,482 @@ public class ReportService : IReportService
         public decimal MontoBs { get; set; }
         public string Cuenta { get; set; } = string.Empty;
         public string Referencia { get; set; } = string.Empty;
+    }
+
+    // ================================================================
+    // DISPATCH REPORT METHODS
+    // ================================================================
+
+    public async Task<Stream> GenerateDispatchReportAsync(
+        string? deliveryZone = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null)
+    {
+        try
+        {
+            _logger.LogInformation("Iniciando generación de reporte de despacho");
+            
+            var reportData = await GetFilteredDispatchDataAsync(
+                deliveryZone,
+                startDate,
+                endDate);
+
+            // Ordenar por zona y luego por fecha
+            reportData = reportData
+                .OrderBy(r => string.IsNullOrWhiteSpace(r.Zona) ? "ZZZ" : r.Zona)
+                .ThenBy(r => r.Fecha)
+                .ThenBy(r => r.NotaDespacho)
+                .ToList();
+
+            // Generar Excel con SpreadsheetLight
+            var stream = new MemoryStream();
+            
+            using (var sl = new SLDocument())
+            {
+                // Headers en la fila 1
+                sl.SetCellValue(1, 1, "Fecha");
+                sl.SetCellValue(1, 2, "Nota de despacho");
+                sl.SetCellValue(1, 3, "Cliente");
+                sl.SetCellValue(1, 4, "Telefono1");
+                sl.SetCellValue(1, 5, "Telefono2");
+                sl.SetCellValue(1, 6, "Cantidad");
+                sl.SetCellValue(1, 7, "Descripcion");
+                sl.SetCellValue(1, 8, "Zona");
+                sl.SetCellValue(1, 9, "Direccion");
+                sl.SetCellValue(1, 10, "Observaciones");
+                sl.SetCellValue(1, 11, "Estado de Pago");
+                sl.SetCellValue(1, 12, "Importe Total");
+
+                // Estilo de headers
+                var headerStyle = sl.CreateStyle();
+                headerStyle.Font.Bold = true;
+
+                // Aplicar estilo a las celdas de headers
+                for (int col = 1; col <= 12; col++)
+                {
+                    sl.SetCellStyle(1, col, headerStyle);
+                }
+
+                // Llenar datos desde la fila 2
+                int row = 2;
+                foreach (var item in reportData)
+                {
+                    sl.SetCellValue(row, 1, item.Fecha);
+                    sl.SetCellValue(row, 2, item.NotaDespacho);
+                    sl.SetCellValue(row, 3, item.Cliente);
+                    sl.SetCellValue(row, 4, item.Telefono1);
+                    sl.SetCellValue(row, 5, item.Telefono2);
+                    sl.SetCellValue(row, 6, item.CantidadTotal);
+                    sl.SetCellValue(row, 7, item.Descripcion);
+                    sl.SetCellValue(row, 8, item.Zona);
+                    sl.SetCellValue(row, 9, item.Direccion);
+                    sl.SetCellValue(row, 10, item.Observaciones);
+                    sl.SetCellValue(row, 11, item.EstadoPago);
+                    sl.SetCellValue(row, 12, item.ImporteTotal);
+                    row++;
+                }
+
+                // Ajustar ancho de columnas
+                sl.SetColumnWidth(1, 12);  // Fecha
+                sl.SetColumnWidth(2, 18);  // Nota de despacho
+                sl.SetColumnWidth(3, 25);  // Cliente
+                sl.SetColumnWidth(4, 15);  // Telefono1
+                sl.SetColumnWidth(5, 15);  // Telefono2
+                sl.SetColumnWidth(6, 10);  // Cantidad
+                sl.SetColumnWidth(7, 60);  // Descripcion
+                sl.SetColumnWidth(8, 20);  // Zona
+                sl.SetColumnWidth(9, 40);  // Direccion
+                sl.SetColumnWidth(10, 40); // Observaciones
+                sl.SetColumnWidth(11, 15); // Estado de Pago
+                sl.SetColumnWidth(12, 15); // Importe Total
+
+                // Guardar en el stream antes de que se cierre el SLDocument
+                sl.SaveAs(stream);
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al generar reporte de despacho");
+            throw;
+        }
+    }
+
+    public async Task<List<DispatchReportRowDto>> GetDispatchReportDataAsync(
+        string? deliveryZone = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null)
+    {
+        try
+        {
+            _logger.LogInformation("Obteniendo datos del reporte de despacho");
+            
+            var reportData = await GetFilteredDispatchDataAsync(
+                deliveryZone,
+                startDate,
+                endDate);
+
+            // Ordenar por zona y luego por fecha
+            reportData = reportData
+                .OrderBy(r => string.IsNullOrWhiteSpace(r.Zona) ? "ZZZ" : r.Zona)
+                .ThenBy(r => r.Fecha)
+                .ThenBy(r => r.NotaDespacho)
+                .ToList();
+
+            return reportData.Select(row => new DispatchReportRowDto
+            {
+                Fecha = row.Fecha,
+                NotaDespacho = row.NotaDespacho,
+                Cliente = row.Cliente,
+                Telefono1 = row.Telefono1,
+                Telefono2 = row.Telefono2,
+                CantidadTotal = row.CantidadTotal,
+                Descripcion = row.Descripcion,
+                Zona = row.Zona,
+                Direccion = row.Direccion,
+                Observaciones = row.Observaciones,
+                EstadoPago = row.EstadoPago,
+                ImporteTotal = row.ImporteTotal
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener datos del reporte de despacho");
+            throw;
+        }
+    }
+
+    private async Task<List<DispatchReportRow>> GetFilteredDispatchDataAsync(
+        string? deliveryZone = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null)
+    {
+        var orders = await _orderRepository.GetAllAsync();
+        var clients = await _clientRepository.GetAllAsync();
+        var reportData = new List<DispatchReportRow>();
+
+        foreach (var order in orders)
+        {
+            // Solo pedidos completados (listos para despacho)
+            if (order.Status != "Completado" && order.Status != "Completada")
+                continue;
+
+            // Filtrar por zona (FILTRO PRINCIPAL)
+            if (!string.IsNullOrWhiteSpace(deliveryZone) && 
+                order.DeliveryZone != deliveryZone)
+                continue;
+
+            // Filtrar por fecha (opcional)
+            if (startDate.HasValue && order.CreatedAt < startDate.Value)
+                continue;
+            if (endDate.HasValue && order.CreatedAt > endDate.Value.AddDays(1).AddSeconds(-1))
+                continue;
+
+            // Obtener datos del cliente
+            var client = clients.FirstOrDefault(c => c.Id == order.ClientId);
+            
+            // Agrupar productos: concatenar descripciones
+            var productDescriptions = new List<string>();
+            if (order.Products != null && order.Products.Count > 0)
+            {
+                foreach (var product in order.Products)
+                {
+                    try
+                    {
+                        var productDesc = await FormatProductDescriptionAsync(product);
+                        productDescriptions.Add($"{product.Quantity}x {productDesc}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error al formatear descripción del producto {ProductName} en pedido {OrderNumber}", 
+                            product?.Name ?? "desconocido", order.OrderNumber);
+                        productDescriptions.Add($"{product?.Quantity ?? 0}x {product?.Name ?? "Producto desconocido"}");
+                    }
+                }
+            }
+            var descripcionCompleta = productDescriptions.Count > 0 
+                ? string.Join(" | ", productDescriptions) 
+                : "Sin productos";
+            
+            // Calcular cantidad total
+            var cantidadTotal = order.Products?.Sum(p => p.Quantity) ?? 0;
+
+            // Obtener tasa de cambio USD (usar la del pedido guardada al crear)
+            decimal usdRate;
+            decimal importeTotalUsd;
+            string estadoPago;
+            
+            try
+            {
+                usdRate = GetUsdExchangeRate(order);
+                
+                // Convertir total a USD
+                importeTotalUsd = order.Total / usdRate;
+
+                // Determinar estado de pago (en USD)
+                estadoPago = DeterminePaymentStatusInUsd(order, usdRate);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Si no hay tasa de cambio, omitir este pedido del reporte
+                _logger.LogWarning("Omitiendo pedido {OrderNumber} del reporte de despacho: {Error}", 
+                    order.OrderNumber, ex.Message);
+                continue; // Saltar este pedido y continuar con el siguiente
+            }
+
+            // Mapear zona
+            var zonaDisplay = MapDeliveryZone(order.DeliveryZone);
+
+            reportData.Add(new DispatchReportRow
+            {
+                Fecha = order.CreatedAt.ToString("yyyy-MM-dd"),
+                NotaDespacho = order.OrderNumber,
+                Cliente = order.ClientName,
+                Telefono1 = client?.Telefono ?? "",
+                Telefono2 = client?.Telefono2 ?? "",
+                CantidadTotal = cantidadTotal,
+                Descripcion = descripcionCompleta,
+                Zona = zonaDisplay,
+                Direccion = order.DeliveryAddress ?? "",
+                Observaciones = order.Observations ?? "",
+                EstadoPago = estadoPago,
+                ImporteTotal = importeTotalUsd
+            });
+        }
+
+        return reportData;
+    }
+
+    private string MapDeliveryZone(string? zone)
+    {
+        if (string.IsNullOrWhiteSpace(zone))
+            return "-";
+
+        return zone switch
+        {
+            "caracas" => "Caracas",
+            "g_g" => "G&G",
+            "san_antonio_los_teques" => "San Antonio Los Teques",
+            "caucagua_higuerote" => "Caucagua/Higuerote",
+            "la_guaira" => "La Guaira",
+            "charallave_cua" => "Charallave/Cua",
+            "interior_pais" => "Interior País",
+            _ => zone
+        };
+    }
+
+    private string DeterminePaymentStatus(Order order)
+    {
+        try
+        {
+            // Calcular total pagado
+            var totalPagado = CalculateTotalPaid(order);
+            var total = order.Total;
+            
+            if (total <= 0)
+                return "Pendiente";
+            
+            if (totalPagado >= total)
+                return "Pagado";
+            
+            if (totalPagado > 0)
+                return $"Parcial ({totalPagado:C})";
+            
+            return "Pendiente";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error al determinar estado de pago para pedido {OrderNumber}", order.OrderNumber);
+            return "Pendiente";
+        }
+    }
+
+    private string DeterminePaymentStatusInUsd(Order order, decimal usdRate)
+    {
+        try
+        {
+            // Calcular total pagado en Bs
+            var totalPagadoBs = CalculateTotalPaid(order);
+            var totalBs = order.Total;
+            
+            // Convertir a USD
+            var totalPagadoUsd = totalPagadoBs / usdRate;
+            var totalUsd = totalBs / usdRate;
+            
+            if (totalUsd <= 0)
+                return "Pendiente";
+            
+            if (totalPagadoUsd >= totalUsd)
+                return "Pagado";
+            
+            if (totalPagadoUsd > 0)
+                return $"Parcial (${totalPagadoUsd:F2})";
+            
+            return "Pendiente";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error al determinar estado de pago en USD para pedido {OrderNumber}", order.OrderNumber);
+            return "Pendiente";
+        }
+    }
+
+    private decimal GetUsdExchangeRate(Order order)
+    {
+        // PRIORIDAD 1: Usar la tasa guardada al crear el pedido (más confiable)
+        if (order.ExchangeRatesAtCreation?.Usd != null && 
+            order.ExchangeRatesAtCreation.Usd.Rate > 0)
+        {
+            _logger.LogInformation("Usando tasa USD del día de creación del pedido {OrderNumber}: {Rate}", 
+                order.OrderNumber, order.ExchangeRatesAtCreation.Usd.Rate);
+            return order.ExchangeRatesAtCreation.Usd.Rate;
+        }
+
+        // PRIORIDAD 2: Intentar obtener de PaymentDetails del pedido principal
+        if (order.PaymentDetails?.ExchangeRate.HasValue == true && 
+            order.PaymentDetails.ExchangeRate > 0)
+        {
+            _logger.LogInformation("Usando tasa USD de PaymentDetails del pedido {OrderNumber}: {Rate}", 
+                order.OrderNumber, order.PaymentDetails.ExchangeRate.Value);
+            return order.PaymentDetails.ExchangeRate.Value;
+        }
+
+        // PRIORIDAD 3: Buscar en pagos parciales
+        if (order.PartialPayments != null && order.PartialPayments.Count > 0)
+        {
+            var rate = order.PartialPayments
+                .FirstOrDefault(p => p.PaymentDetails?.ExchangeRate.HasValue == true && 
+                                    p.PaymentDetails.ExchangeRate > 0)
+                ?.PaymentDetails?.ExchangeRate;
+            if (rate.HasValue)
+            {
+                _logger.LogInformation("Usando tasa USD de un pago parcial del pedido {OrderNumber}: {Rate}", 
+                    order.OrderNumber, rate.Value);
+                return rate.Value;
+            }
+        }
+
+        // PRIORIDAD 4: Buscar en pagos mixtos
+        if (order.MixedPayments != null && order.MixedPayments.Count > 0)
+        {
+            var rate = order.MixedPayments
+                .FirstOrDefault(p => p.PaymentDetails?.ExchangeRate.HasValue == true && 
+                                    p.PaymentDetails.ExchangeRate > 0)
+                ?.PaymentDetails?.ExchangeRate;
+            if (rate.HasValue)
+            {
+                _logger.LogInformation("Usando tasa USD de un pago mixto del pedido {OrderNumber}: {Rate}", 
+                    order.OrderNumber, rate.Value);
+                return rate.Value;
+            }
+        }
+
+        // Si no se encuentra ninguna tasa, lanzar excepción en lugar de usar un valor fijo
+        _logger.LogError("No se encontró tasa de cambio USD para pedido {OrderNumber}. El pedido no tiene tasa guardada ni en pagos.", order.OrderNumber);
+        throw new InvalidOperationException($"No se encontró tasa de cambio USD para el pedido {order.OrderNumber}. Es necesario que el pedido tenga una tasa de cambio registrada para generar el reporte en dólares.");
+    }
+
+    private decimal CalculateTotalPaid(Order order)
+    {
+        decimal totalPagado = 0;
+
+        // Sumar pagos mixtos
+        if (order.MixedPayments != null && order.MixedPayments.Count > 0)
+        {
+            foreach (var payment in order.MixedPayments)
+            {
+                var monto = payment.PaymentDetails?.OriginalAmount ?? 
+                           payment.PaymentDetails?.CashReceived ?? 
+                           payment.Amount;
+                var moneda = payment.PaymentDetails?.OriginalCurrency ?? 
+                            payment.PaymentDetails?.CashCurrency ?? 
+                            "Bs";
+                
+                // Convertir a Bs si es necesario
+                if (moneda != "Bs")
+                {
+                    monto = monto * (payment.PaymentDetails?.ExchangeRate ?? 1);
+                }
+                
+                totalPagado += monto;
+            }
+        }
+
+        // Sumar pagos parciales
+        if (order.PartialPayments != null && order.PartialPayments.Count > 0)
+        {
+            foreach (var payment in order.PartialPayments)
+            {
+                var monto = payment.PaymentDetails?.OriginalAmount ?? 
+                           payment.PaymentDetails?.CashReceived ?? 
+                           payment.Amount;
+                var moneda = payment.PaymentDetails?.OriginalCurrency ?? 
+                            payment.PaymentDetails?.CashCurrency ?? 
+                            "Bs";
+                
+                // Convertir a Bs si es necesario
+                if (moneda != "Bs")
+                {
+                    monto = monto * (payment.PaymentDetails?.ExchangeRate ?? 1);
+                }
+                
+                totalPagado += monto;
+            }
+        }
+
+        // Si no hay pagos parciales ni mixtos, verificar pago principal
+        if ((order.MixedPayments == null || order.MixedPayments.Count == 0) &&
+            (order.PartialPayments == null || order.PartialPayments.Count == 0) &&
+            !string.IsNullOrWhiteSpace(order.PaymentMethod))
+        {
+            var monto = order.PaymentDetails?.OriginalAmount ?? 
+                       order.PaymentDetails?.CashReceived ?? 
+                       order.Total;
+            var moneda = order.PaymentDetails?.OriginalCurrency ?? 
+                        order.PaymentDetails?.CashCurrency ?? 
+                        "Bs";
+            
+            // Convertir a Bs si es necesario
+            if (moneda != "Bs")
+            {
+                monto = monto * (order.PaymentDetails?.ExchangeRate ?? 1);
+            }
+            
+            totalPagado += monto;
+        }
+
+        return totalPagado;
+    }
+
+    private class CommissionReportRow
+    {
+        public string Fecha { get; set; } = string.Empty;
+        public string Cliente { get; set; } = string.Empty;
+        public string Vendedor { get; set; } = string.Empty;
+        public string Descripcion { get; set; } = string.Empty;
+        public int CantidadArticulos { get; set; }
+        public string TipoCompra { get; set; } = string.Empty;
+        public decimal Comision { get; set; }
+        public string? VendedorSecundario { get; set; }
+        public decimal? ComisionSecundaria { get; set; }
+    }
+
+    private class DispatchReportRow
+    {
+        public string Fecha { get; set; } = string.Empty;
+        public string NotaDespacho { get; set; } = string.Empty;
+        public string Cliente { get; set; } = string.Empty;
+        public string Telefono1 { get; set; } = string.Empty;
+        public string Telefono2 { get; set; } = string.Empty;
+        public int CantidadTotal { get; set; }
+        public string Descripcion { get; set; } = string.Empty;
+        public string Zona { get; set; } = string.Empty;
+        public string Direccion { get; set; } = string.Empty;
+        public string Observaciones { get; set; } = string.Empty;
+        public string EstadoPago { get; set; } = string.Empty;
+        public decimal ImporteTotal { get; set; }
     }
 }
 

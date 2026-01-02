@@ -12,7 +12,6 @@ const PROVIDERS_API_URL_DIRECT =
 const ORDERS_API_URL_DIRECT =
   process.env.NEXT_PUBLIC_ORDERS_API_URL ||
   "http://camihogar.eastus.cloudapp.azure.com:8085";
-
 export interface ApiError {
   message: string;
   status?: number;
@@ -26,7 +25,7 @@ interface CachedApiResponse {
 }
 
 export class ApiClient {
-  private getBaseUrl(endpoint: string): string {
+  getBaseUrl(endpoint: string): string {
     // Determinar qué servicio usar según el endpoint
     let service: "security" | "users" | "providers" | "orders" = "security";
 
@@ -866,6 +865,8 @@ export interface PaymentDetailsDto {
   bank?: string; // Para cuentas bancarias
   email?: string; // Para cuentas digitales
   wallet?: string; // Para cuentas digitales
+  // Zelle
+  envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
 }
 
 export interface PartialPaymentDto {
@@ -900,10 +901,30 @@ export interface OrderResponseDto {
   mixedPayments?: PartialPaymentDto[];
   deliveryAddress?: string;
   hasDelivery: boolean;
+  deliveryServices?: {
+    deliveryExpress?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioAcarreo?: {
+      enabled: boolean;
+      cost?: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioArmado?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+  };
   status: string;
   productMarkups?: { [key: string]: number };
   createSupplierOrder?: boolean;
   observations?: string;
+  saleType?: string;
+  deliveryType?: string;
+  deliveryZone?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -930,10 +951,30 @@ export interface CreateOrderDto {
   mixedPayments?: PartialPaymentDto[];
   deliveryAddress?: string;
   hasDelivery: boolean;
+  deliveryServices?: {
+    deliveryExpress?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioAcarreo?: {
+      enabled: boolean;
+      cost?: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioArmado?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+  };
   status?: string;
   productMarkups?: { [key: string]: number };
   createSupplierOrder?: boolean;
   observations?: string;
+  saleType?: string;
+  deliveryType?: string;
+  deliveryZone?: string;
 }
 
 export interface UpdateOrderDto {
@@ -958,10 +999,30 @@ export interface UpdateOrderDto {
   mixedPayments?: PartialPaymentDto[];
   deliveryAddress?: string;
   hasDelivery?: boolean;
+  deliveryServices?: {
+    deliveryExpress?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioAcarreo?: {
+      enabled: boolean;
+      cost?: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioArmado?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+  };
   status?: string;
   productMarkups?: { [key: string]: number };
   createSupplierOrder?: boolean;
   observations?: string;
+  saleType?: string;
+  deliveryType?: string;
+  deliveryZone?: string;
 }
 
 export const apiClient = new ApiClient();

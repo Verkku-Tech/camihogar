@@ -558,13 +558,15 @@ export function PaymentsReport() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Todos">Todos</SelectItem>
-                  {accounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.accountType === "Cuentas Digitales"
-                        ? account.email || "Cuenta Digital"
-                        : `${maskAccountNumber(account.accountNumber || "")} - ${account.bank || ""}`}
-                    </SelectItem>
-                  ))}
+                  {accounts
+                    .filter((account) => account.id && account.id.trim() !== "")
+                    .map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.accountType === "Cuentas Digitales"
+                          ? account.email || "Cuenta Digital"
+                          : `${maskAccountNumber(account.accountNumber || "")} - ${account.bank || ""}`}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

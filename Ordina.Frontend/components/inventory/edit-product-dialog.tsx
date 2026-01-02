@@ -133,15 +133,21 @@ function ProductAttributesEditor({
               <SelectValue placeholder={`Seleccione ${attribute.title?.toLowerCase() || "opción"}`} />
             </SelectTrigger>
             <SelectContent>
-              {attribute.values?.map((option: string | AttributeValue) => {
-                const optionValue = typeof option === "string" ? option : option.id || option.label;
-                const optionLabel = typeof option === "string" ? option : option.label || option.id;
-                return (
-                  <SelectItem key={optionValue} value={optionValue}>
-                    {optionLabel}
-                  </SelectItem>
-                );
-              })}
+              {attribute.values
+                ?.filter((option: string | AttributeValue) => {
+                  // Filtrar opciones con valores vacíos ANTES de mapear
+                  const optionValue = typeof option === "string" ? option : option.id || option.label;
+                  return optionValue && optionValue.trim() !== "";
+                })
+                .map((option: string | AttributeValue) => {
+                  const optionValue = typeof option === "string" ? option : option.id || option.label || "unknown";
+                  const optionLabel = typeof option === "string" ? option : option.label || option.id || "Sin nombre";
+                  return (
+                    <SelectItem key={optionValue} value={optionValue}>
+                      {optionLabel}
+                    </SelectItem>
+                  );
+                })}
             </SelectContent>
           </Select>
         );
@@ -178,7 +184,11 @@ function ProductAttributesEditor({
               <SelectContent>
                 {attribute.values
                   ?.map((v: string | AttributeValue) => typeof v === "string" ? v : v.id || v.label)
-                  .filter((optionValue: string) => !selectedValues.includes(optionValue))
+                  .filter((optionValue: string) => {
+                    // Filtrar valores vacíos
+                    if (!optionValue || optionValue.trim() === "") return false;
+                    return !selectedValues.includes(optionValue);
+                  })
                   .map((optionValue: string) => {
                     const option = attribute.values?.find(
                       (v: string | AttributeValue) => {
@@ -187,7 +197,7 @@ function ProductAttributesEditor({
                       }
                     );
                     const optionLabel = option 
-                      ? (typeof option === "string" ? option : option.label || option.id)
+                      ? (typeof option === "string" ? option : option.label || option.id || "Sin nombre")
                       : optionValue;
                     return (
                       <SelectItem key={optionValue} value={optionValue}>
@@ -520,11 +530,17 @@ export function EditProductDialog({
 
   // Helper functions para manejar AttributeValue
   const getValueString = (value: string | AttributeValue): string => {
-    return typeof value === "string" ? value : value.id || value.label;
+    if (typeof value === "string") {
+      return value || "unknown"; // Si es cadena vacía, usar "unknown"
+    }
+    return value.id || value.label || "unknown"; // Si ambos son undefined/vacíos, usar "unknown"
   };
 
   const getValueLabel = (value: string | AttributeValue): string => {
-    return typeof value === "string" ? value : value.label || value.id;
+    if (typeof value === "string") {
+      return value || "Sin nombre"; // Si es cadena vacía, usar "Sin nombre"
+    }
+    return value.label || value.id || "Sin nombre"; // Si ambos son undefined/vacíos, usar "Sin nombre"
   };
 
   const handleSave = async () => {
@@ -782,11 +798,13 @@ export function EditProductDialog({
                   <SelectValue placeholder="Seleccionar categoría" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map((category) => (
-                    <SelectItem key={category.id} value={category.name}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
+                  {categories
+                    .filter((category) => category.name && category.name.trim() !== "")
+                    .map((category) => (
+                      <SelectItem key={category.id} value={category.name}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -811,8 +829,8 @@ export function EditProductDialog({
 
                     {(attribute.valueType === "Select" || attribute.valueType === "select") && (
                       <Select
-                        value={typeof currentValue === "string" ? currentValue : getValueString(currentValue)}
-                        onValueChange={(value) => handleAttributeChange(attrKey, value)}
+                        value={currentValue ? (typeof currentValue === "string" ? currentValue : getValueString(currentValue)) : "vacio"}
+                        onValueChange={(value) => handleAttributeChange(attrKey, value === "vacio" ? undefined : value)}
                       >
                         <SelectTrigger>
                           <SelectValue
@@ -820,18 +838,24 @@ export function EditProductDialog({
                           />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="vacio">Seleccione una opción</SelectItem>
                           {attribute.values && attribute.values.length > 0 ? (
-                            attribute.values.map((value) => {
-                              const valueStr = getValueString(value);
-                              const valueLabel = getValueLabel(value);
-                              return (
-                                <SelectItem key={valueStr} value={valueStr}>
-                                  {valueLabel}
-                                </SelectItem>
-                              );
-                            })
+                            attribute.values
+                              .filter((value) => {
+                                const valueStr = getValueString(value);
+                                return valueStr && valueStr.trim() !== "" && valueStr !== "unknown";
+                              })
+                              .map((value) => {
+                                const valueStr = getValueString(value);
+                                const valueLabel = getValueLabel(value);
+                                return (
+                                  <SelectItem key={valueStr} value={valueStr}>
+                                    {valueLabel}
+                                  </SelectItem>
+                                );
+                              })
                           ) : (
-                            <SelectItem value="" disabled>
+                            <SelectItem value="no-values" disabled>
                               No hay valores disponibles
                             </SelectItem>
                           )}

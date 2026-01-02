@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent } from "@/components/ui/card"
 import { getOrders, Order } from "@/lib/storage"
-import { formatCurrency } from "@/lib/currency-utils"
+import { formatCurrency, formatCurrencyWithUsdPrimaryFromOrder, getActiveExchangeRates } from "@/lib/currency-utils"
 
 interface OrdersTableProps {
   limit?: number
@@ -15,6 +15,7 @@ export function OrdersTable({ limit = 10 }: OrdersTableProps) {
   const router = useRouter()
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -34,6 +35,36 @@ export function OrdersTable({ limit = 10 }: OrdersTableProps) {
 
     loadOrders()
   }, [limit])
+
+  // Formatear montos en USD cuando cambien las órdenes
+  useEffect(() => {
+    const formatAmounts = async () => {
+      if (orders.length === 0) {
+        setFormattedAmounts({})
+        return
+      }
+
+      try {
+        const formatted: Record<string, string> = {}
+        const fallbackRates = await getActiveExchangeRates()
+        
+        for (const order of orders) {
+          const formattedAmount = await formatCurrencyWithUsdPrimaryFromOrder(
+            order.subtotal,
+            order,
+            fallbackRates
+          )
+          formatted[order.id] = formattedAmount
+        }
+        
+        setFormattedAmounts(formatted)
+      } catch (error) {
+        console.error("Error formatting amounts:", error)
+      }
+    }
+    
+    formatAmounts()
+  }, [orders])
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -107,7 +138,7 @@ export function OrdersTable({ limit = 10 }: OrdersTableProps) {
                 >
                   <TableCell className="font-medium text-green-600">{order.orderNumber}</TableCell>
                   <TableCell className="font-medium">
-                    {formatCurrency(order.subtotal, order.baseCurrency || "Bs")}
+                    {formattedAmounts[order.id] || formatCurrency(order.subtotal, order.baseCurrency || "Bs")}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(order.createdAt)}</TableCell>
                   <TableCell className="text-green-600 font-medium">{order.clientName}</TableCell>

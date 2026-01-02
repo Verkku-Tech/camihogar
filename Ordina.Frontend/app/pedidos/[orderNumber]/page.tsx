@@ -1201,10 +1201,26 @@ export default function OrderDetailPage() {
                                   let badgeVariant: "default" | "destructive" | "secondary" = "secondary";
                                   let badgeClassName = "text-sm";
 
-                                  if (product.locationStatus === "en_tienda") {
+                                  // Normalizar locationStatus para comparación (trim y manejar ambos formatos)
+                                  const locationStatus = product.locationStatus?.trim();
+                                  
+                                  // Debug temporal: descomentar para ver qué valor está llegando
+                                  // if (product.name) console.log(`Product: ${product.name}, locationStatus: "${locationStatus}", raw: "${product.locationStatus}"`);
+                                  
+                                  // Verificar si es "EN TIENDA" (ambos formatos)
+                                  if (locationStatus === "en_tienda" || locationStatus === "EN TIENDA") {
                                     badgeText = "En Tienda";
                                     badgeVariant = "default";
-                                  } else if (product.locationStatus === "mandar_a_fabricar") {
+                                  } 
+                                  // Verificar si es "FABRICACION" o "mandar_a_fabricar" (ambos formatos)
+                                  // También verificar variaciones con espacios o mayúsculas/minúsculas
+                                  else if (
+                                    locationStatus === "mandar_a_fabricar" || 
+                                    locationStatus === "FABRICACION" ||
+                                    locationStatus?.toUpperCase() === "FABRICACION" ||
+                                    locationStatus?.toUpperCase() === "MANDAR_A_FABRICAR" ||
+                                    (locationStatus && locationStatus.toLowerCase().includes("fabric"))
+                                  ) {
                                     if (product.manufacturingStatus === "fabricado") {
                                       badgeText = "Fabricado";
                                       badgeVariant = "default";
@@ -1286,10 +1302,9 @@ export default function OrderDetailPage() {
                               </div>
 
                               {/* Ajustes de atributos normales */}
-                              {breakdown.attributeAdjustments.filter(adj => adj.adjustmentValue !== 0).length > 0 && (
+                              {breakdown.attributeAdjustments.length > 0 && (
                                 <>
                                   {breakdown.attributeAdjustments
-                                    .filter(adj => adj.adjustmentValue !== 0)
                                     .map(
                                     (
                                       adj: {
@@ -1361,10 +1376,9 @@ export default function OrderDetailPage() {
                                           </span>
                                         </div>
                                         {/* Ajustes de atributos del producto */}
-                                        {prodAttr.adjustments.filter(adj => adj.adjustmentValue !== 0).length > 0 && (
+                                        {prodAttr.adjustments.length > 0 && (
                                           <>
                                             {prodAttr.adjustments
-                                              .filter(adj => adj.adjustmentValue !== 0)
                                               .map(
                                               (
                                                 adj: {
@@ -1387,8 +1401,10 @@ export default function OrderDetailPage() {
                                                     :
                                                   </span>
                                                   <span className={
-                                                    adj.adjustmentValue !== 0
+                                                    adj.adjustmentValue > 0
                                                       ? "text-green-600 dark:text-green-400"
+                                                      : adj.adjustmentValue < 0
+                                                      ? "text-red-600 dark:text-red-400"
                                                       : "text-muted-foreground"
                                                   }>
                                                     {adj.adjustmentValue > 0 ? "+" : ""}

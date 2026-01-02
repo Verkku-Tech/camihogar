@@ -25,10 +25,14 @@ public class OrderResponseDto
     public List<PartialPaymentDto>? MixedPayments { get; set; }
     public string? DeliveryAddress { get; set; }
     public bool HasDelivery { get; set; }
+    public DeliveryServicesDto? DeliveryServices { get; set; }
     public string Status { get; set; } = string.Empty;
     public Dictionary<string, decimal>? ProductMarkups { get; set; }
     public bool? CreateSupplierOrder { get; set; }
     public string? Observations { get; set; }
+    public string? SaleType { get; set; }
+    public string? DeliveryType { get; set; }
+    public string? DeliveryZone { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

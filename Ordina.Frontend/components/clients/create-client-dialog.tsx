@@ -24,9 +24,11 @@ interface CreateClientDialogProps {
 export function CreateClientDialog({ open, onOpenChange, onClientCreated }: CreateClientDialogProps) {
   const [formData, setFormData] = useState({
     nombreRazonSocial: "",
+    apodo: "",
     rutId: "",
     direccion: "",
     telefono: "",
+    telefono2: "",
     email: "",
     tipoCliente: "particular" as Client["tipoCliente"],
   })
@@ -79,9 +81,11 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
   const resetForm = () => {
     setFormData({
       nombreRazonSocial: "",
+      apodo: "",
       rutId: "",
       direccion: "",
       telefono: "",
+      telefono2: "",
       email: "",
       tipoCliente: "particular",
     })
@@ -109,6 +113,19 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
               onChange={(e) => setFormData({ ...formData, nombreRazonSocial: e.target.value })}
               placeholder="Nombre completo o razón social de la empresa"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="apodo">Apodo (Código RRSS)</Label>
+            <Input
+              id="apodo"
+              value={formData.apodo}
+              onChange={(e) => setFormData({ ...formData, apodo: e.target.value })}
+              placeholder="Código identificador para herramientas de RRSS (opcional)"
+            />
+            <p className="text-xs text-muted-foreground">
+              Código identificador usado en herramientas de manejo de conversaciones de redes sociales
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -142,15 +159,25 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Correo Electrónico (opcional)</Label>
+              <Label htmlFor="telefono2">Teléfono de Contacto 2 (opcional)</Label>
               <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="cliente@email.com"
+                id="telefono2"
+                value={formData.telefono2}
+                onChange={(e) => setFormData({ ...formData, telefono2: e.target.value })}
+                placeholder="+58 424 555-0123"
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="email">Correo Electrónico (opcional)</Label>
+            <Input
+              id="email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="cliente@email.com"
+            />
           </div>
 
           <div className="space-y-2">

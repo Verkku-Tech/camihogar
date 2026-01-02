@@ -1232,7 +1232,7 @@ export interface OrderProduct {
   manufacturingCompletedAt?: string; // Fecha de finalización de fabricación
   manufacturingNotes?: string; // Notas de fabricación
   // Estado de ubicación del producto
-  locationStatus?: "en_tienda" | "mandar_a_fabricar"; // Estado de ubicación: en tienda o mandar a fabricar
+  locationStatus?: "EN TIENDA" | "FABRICACION" | ""; // Estado de ubicación: EN TIENDA, FABRICACION o en blanco
 }
 
 export interface PartialPayment {
@@ -1265,6 +1265,8 @@ export interface PartialPayment {
     bank?: string; // Para cuentas bancarias: nombre del banco
     email?: string; // Para cuentas digitales: correo
     wallet?: string; // Para cuentas digitales: wallet
+    // Zelle
+    envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
   };
 }
 
@@ -1290,7 +1292,9 @@ export interface Order {
   paymentMethod: string;
   // Nuevos campos opcionales para compatibilidad hacia atrás
   paymentCondition?: "cashea" | "pagara_en_tienda" | "pago_a_entrega" | "pago_parcial" | "todo_pago";
-  saleType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sa";
+  saleType?: "encargo" | "entrega" | "sistema_apartado";
+  deliveryType?: "entrega_programada" | "delivery_express" | "retiro_tienda" | "retiro_almacen";
+  deliveryZone?: "caracas" | "g_g" | "san_antonio_los_teques" | "caucagua_higuerote" | "la_guaira" | "charallave_cua" | "interior_pais";
   paymentDetails?: {
     // Pago Móvil
     pagomovilReference?: string;
@@ -1315,11 +1319,31 @@ export interface Order {
     bank?: string; // Para cuentas bancarias: nombre del banco
     email?: string; // Para cuentas digitales: correo
     wallet?: string; // Para cuentas digitales: wallet
+    // Zelle
+    envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
   };
   partialPayments?: PartialPayment[]; // Ahora usa la interfaz exportada
   mixedPayments?: PartialPayment[]; // Para pagos mixtos
   deliveryAddress?: string;
   hasDelivery: boolean;
+  // Nueva estructura de servicios de delivery
+  deliveryServices?: {
+    deliveryExpress?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioAcarreo?: {
+      enabled: boolean;
+      cost?: number; // Opcional
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioArmado?: {
+      enabled: boolean;
+      cost: number; // Obligatorio si enabled
+      currency: "Bs" | "USD" | "EUR";
+    };
+  };
   status: "Presupuesto" | "Generado" | "Generada" | "Fabricación" | "Por despachar" | "Completada" | "Cancelado";
   createdAt: string;
   updatedAt: string;
@@ -1338,9 +1362,11 @@ export interface Order {
 export interface Client {
   id: string;
   nombreRazonSocial: string;
+  apodo?: string;
   rutId: string;
   direccion: string;
   telefono: string;
+  telefono2?: string;
   email?: string;
   tipoCliente: "empresa" | "particular";
   estado: "activo" | "inactivo";
@@ -1440,7 +1466,12 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     manufacturingStartedAt: p.manufacturingStartedAt,
     manufacturingCompletedAt: p.manufacturingCompletedAt,
     manufacturingNotes: p.manufacturingNotes,
-    locationStatus: p.locationStatus as "en_tienda" | "mandar_a_fabricar" | undefined,
+    locationStatus: (() => {
+      // Normalizar valores antiguos a nuevos
+      if (p.locationStatus === "en_tienda") return "EN TIENDA" as const
+      if (p.locationStatus === "mandar_a_fabricar") return "FABRICACION" as const
+      return (p.locationStatus as "EN TIENDA" | "FABRICACION" | "" | undefined) ?? undefined
+    })(),
   })),
   subtotal: dto.subtotal,
   taxAmount: dto.taxAmount,
@@ -1531,6 +1562,9 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   productMarkups: dto.productMarkups,
   createSupplierOrder: dto.createSupplierOrder,
   observations: dto.observations,
+  saleType: dto.saleType as Order["saleType"],
+  deliveryType: dto.deliveryType as Order["deliveryType"],
+  deliveryZone: dto.deliveryZone as Order["deliveryZone"],
 });
 
 export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">): CreateOrderDto => ({
@@ -1645,6 +1679,9 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   productMarkups: order.productMarkups,
   createSupplierOrder: order.createSupplierOrder,
   observations: order.observations,
+  saleType: order.saleType,
+  deliveryType: order.deliveryType,
+  deliveryZone: order.deliveryZone,
 });
 
 export const getOrders = async (): Promise<Order[]> => {
@@ -2059,6 +2096,11 @@ export interface UnifiedOrder {
   expiresAt?: string; // Solo para presupuestos
   validForDays?: number; // Solo para presupuestos
   paymentMethod?: string; // Solo para pedidos
+  saleType?: "encargo" | "entrega" | "sistema_apartado";
+  deliveryType?: "entrega_programada" | "delivery_express" | "retiro_tienda" | "retiro_almacen";
+  deliveryZone?: "caracas" | "g_g" | "san_antonio_los_teques" | "caucagua_higuerote" | "la_guaira" | "charallave_cua" | "interior_pais";
+  dispatchDate?: string; // Fecha de despacho
+  completedAt?: string; // Fecha de completado
 }
 
 // Función para obtener pedidos y presupuestos unificados
@@ -2097,6 +2139,11 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       exchangeRatesAtCreation: order.exchangeRatesAtCreation,
       type: "order",
       paymentMethod: order.paymentMethod,
+      saleType: order.saleType,
+      deliveryType: order.deliveryType,
+      deliveryZone: order.deliveryZone,
+      dispatchDate: order.dispatchDate,
+      completedAt: order.completedAt,
     }));
 
     // Convertir presupuestos a formato unificado
@@ -2248,7 +2295,7 @@ export const calculateDashboardMetrics = async (
       count +
       order.products.filter(
         (product) =>
-          product.locationStatus === "mandar_a_fabricar" &&
+          product.locationStatus === "FABRICACION" &&
           product.manufacturingStatus !== "fabricado"
       ).length
     );
@@ -3164,8 +3211,25 @@ export const addCommission = async (commission: Omit<Commission, "id" | "created
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    
+    // 1. Guardar en IndexedDB (fuente de verdad)
     await db.add("commissions", newCommission);
     console.log("✅ Comisión guardada en IndexedDB:", newCommission.id);
+    
+    // 2. Sincronizar con backend (importante, pero no bloquea si falla)
+    try {
+      const { syncManager } = await import("./sync-manager");
+      await syncManager.addToQueue({
+        type: "create",
+        entity: "commission",
+        entityId: newCommission.id,
+        data: newCommission,
+      });
+    } catch (syncError) {
+      console.warn("⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):", syncError);
+      // No fallar, IndexedDB es la fuente de verdad
+    }
+    
     return newCommission;
   } catch (error) {
     console.error("Error adding commission to IndexedDB:", error);
@@ -3185,8 +3249,25 @@ export const updateCommission = async (id: string, updates: Partial<Commission>)
       id, // Asegurar que el ID no cambie
       updatedAt: new Date().toISOString(),
     };
+    
+    // 1. Actualizar en IndexedDB (fuente de verdad)
     await db.update("commissions", updated);
     console.log("✅ Comisión actualizada en IndexedDB:", id);
+    
+    // 2. Sincronizar con backend (importante, pero no bloquea si falla)
+    try {
+      const { syncManager } = await import("./sync-manager");
+      await syncManager.addToQueue({
+        type: "update",
+        entity: "commission",
+        entityId: id,
+        data: updated,
+      });
+    } catch (syncError) {
+      console.warn("⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):", syncError);
+      // No fallar, IndexedDB es la fuente de verdad
+    }
+    
     return updated;
   } catch (error) {
     console.error("Error updating commission in IndexedDB:", error);
@@ -3196,12 +3277,176 @@ export const updateCommission = async (id: string, updates: Partial<Commission>)
 
 export const deleteCommission = async (id: string): Promise<void> => {
   try {
+    // 1. Eliminar de IndexedDB (fuente de verdad)
     await db.remove("commissions", id);
     console.log("✅ Comisión eliminada de IndexedDB:", id);
+    
+    // 2. Sincronizar con backend (importante, pero no bloquea si falla)
+    try {
+      const { syncManager } = await import("./sync-manager");
+      await syncManager.addToQueue({
+        type: "delete",
+        entity: "commission",
+        entityId: id,
+        data: { id },
+      });
+    } catch (syncError) {
+      console.warn("⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):", syncError);
+      // No fallar, IndexedDB es la fuente de verdad
+    }
   } catch (error) {
     console.error("Error deleting commission from IndexedDB:", error);
     throw error;
   }
+};
+
+// ===== COMMISSION CALCULATION FUNCTIONS =====
+
+/**
+ * Calcula la comisión de un producto para un vendedor específico
+ * Basado en las comisiones configuradas en IndexedDB
+ */
+export const calculateProductCommission = async (
+  product: OrderProduct,
+  order: Order,
+  sellerId: string | null
+): Promise<number> => {
+  if (!sellerId) return 0;
+
+  try {
+    // Obtener comisiones y usuarios desde IndexedDB
+    const [commissions, users] = await Promise.all([
+      getCommissions(),
+      getUsers(),
+    ]);
+
+    // Obtener usuario para determinar su rol
+    const user = users.find((u) => u.id === sellerId);
+    if (!user) return 0;
+
+    // Buscar comisión por usuario primero, luego por rol
+    const commission =
+      commissions.find(
+        (c) => c.commissionType === "user" && c.userId === sellerId
+      ) ||
+      commissions.find(
+        (c) => c.commissionType === "role" && c.role === user.role
+      );
+
+    if (!commission) return 0;
+
+    // Calcular monto base (precio del producto después de descuentos)
+    const productTotal = product.total;
+
+    if (commission.commissionKind === "percentage") {
+      return productTotal * (commission.value / 100);
+    } else {
+      // Comisión neta (fija por artículo)
+      return commission.value;
+    }
+  } catch (error) {
+    console.error("Error calculating product commission:", error);
+    return 0;
+  }
+};
+
+/**
+ * Calcula todas las comisiones de un pedido
+ * Retorna un array con las comisiones por producto y vendedor
+ */
+export const calculateOrderCommissions = async (
+  order: Order
+): Promise<
+  Array<{
+    sellerId: string;
+    sellerName: string;
+    productId: string;
+    productName: string;
+    commission: number;
+    isShared: boolean;
+  }>
+> => {
+  const results: Array<{
+    sellerId: string;
+    sellerName: string;
+    productId: string;
+    productName: string;
+    commission: number;
+    isShared: boolean;
+  }> = [];
+
+  const isSharedSale = !!order.referrerId;
+
+  try {
+    // Procesar cada producto del pedido
+    for (const product of order.products) {
+      // Comisión del vendedor principal
+      const vendorCommission = await calculateProductCommission(
+        product,
+        order,
+        order.vendorId
+      );
+
+      results.push({
+        sellerId: order.vendorId,
+        sellerName: order.vendorName,
+        productId: product.id,
+        productName: product.name,
+        commission: isSharedSale ? vendorCommission / 2 : vendorCommission,
+        isShared: isSharedSale,
+      });
+
+      // Si es venta compartida, agregar comisión del referrer
+      if (isSharedSale && order.referrerId) {
+        const referrerCommission = await calculateProductCommission(
+          product,
+          order,
+          order.referrerId
+        );
+
+        results.push({
+          sellerId: order.referrerId,
+          sellerName: order.referrerName || "",
+          productId: product.id,
+          productName: product.name,
+          commission: referrerCommission / 2,
+          isShared: true,
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error calculating order commissions:", error);
+  }
+
+  return results;
+};
+
+/**
+ * Obtiene el tipo de compra de un pedido para el reporte
+ */
+export const getPurchaseType = (order: Order): string => {
+  // Mapear deliveryType a tipo de compra
+  if (order.deliveryType) {
+    const typeMap: Record<string, string> = {
+      entrega_programada: "Entrega",
+      delivery_express: "Delivery express",
+      retiro_tienda: "Retiro por tienda",
+      retiro_almacen: "Retiro por almacén",
+    };
+    return typeMap[order.deliveryType] || order.deliveryType;
+  }
+
+  // Fallback a saleType
+  if (order.saleType) {
+    const typeMap: Record<string, string> = {
+      encargo: "Encargo",
+      entrega: "Entrega",
+      sistema_apartado: "Sistema Apartado",
+    };
+    return typeMap[order.saleType] || order.saleType;
+  }
+
+  return "-";
 };
 
 export const getVendor = async (id: string): Promise<Vendor | undefined> => {

@@ -178,7 +178,7 @@ export function ManufacturingReport() {
           const ordersWithPendingManufacturing = loadedOrders.filter(order => {
             return order.products.some(product => {
               // Solo productos que deben mandarse a fabricar
-              if (product.locationStatus !== "mandar_a_fabricar") {
+              if (product.locationStatus !== "mandar_a_fabricar" && product.locationStatus !== "FABRICACION") {
                 return false
               }
               // Determinar el estado real del producto
@@ -191,7 +191,7 @@ export function ManufacturingReport() {
           console.log("✅ Pedidos con productos 'Por fabricar':", ordersWithPendingManufacturing.length)
           console.log("📋 Productos encontrados:", ordersWithPendingManufacturing.flatMap(o => 
             o.products.filter(p => {
-              if (p.locationStatus !== "mandar_a_fabricar") return false
+              if (p.locationStatus !== "mandar_a_fabricar" && p.locationStatus !== "FABRICACION") return false
               const status = p.manufacturingStatus || "debe_fabricar"
               return status === "debe_fabricar"
             }).map(p => ({
@@ -390,7 +390,7 @@ export function ManufacturingReport() {
 
       order.products.forEach(product => {
         // Solo productos que deben mandarse a fabricar
-        if (product.locationStatus !== "mandar_a_fabricar") {
+        if (product.locationStatus !== "mandar_a_fabricar" && product.locationStatus !== "FABRICACION") {
           return
         }
 
@@ -633,11 +633,13 @@ export function ManufacturingReport() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todos los fabricantes</SelectItem>
-                        {providers.map((provider) => (
-                          <SelectItem key={provider.id} value={provider.id}>
-                            {provider.razonSocial}
-                          </SelectItem>
-                        ))}
+                        {providers
+                          .filter((provider) => provider.id && provider.id.trim() !== "")
+                          .map((provider) => (
+                            <SelectItem key={provider.id} value={provider.id}>
+                              {provider.razonSocial}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>

@@ -65,7 +65,7 @@ export default function FabricacionPage() {
     orders.forEach(order => {
       order.products.forEach(product => {
         // SOLO procesar productos que deben mandarse a fabricar
-        if (product.locationStatus !== "mandar_a_fabricar") {
+        if (product.locationStatus !== "mandar_a_fabricar" && product.locationStatus !== "FABRICACION") {
           return // Saltar productos en tienda
         }
 

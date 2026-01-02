@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { getBudgets, Budget } from "@/lib/storage"
-import { formatCurrency } from "@/lib/currency-utils"
+import { formatCurrency, formatCurrencyWithUsdPrimaryFromOrder, getActiveExchangeRates } from "@/lib/currency-utils"
 import { FileText, Calendar, Clock } from "lucide-react"
 
 function getStatusColor(status: string) {
@@ -30,6 +30,7 @@ export function BudgetsTable() {
   const router = useRouter()
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const loadBudgets = async () => {
@@ -49,6 +50,36 @@ export function BudgetsTable() {
 
     loadBudgets()
   }, [])
+
+  // Formatear montos en USD cuando cambien los presupuestos
+  useEffect(() => {
+    const formatAmounts = async () => {
+      if (budgets.length === 0) {
+        setFormattedAmounts({})
+        return
+      }
+
+      try {
+        const formatted: Record<string, string> = {}
+        const fallbackRates = await getActiveExchangeRates()
+        
+        for (const budget of budgets) {
+          const formattedAmount = await formatCurrencyWithUsdPrimaryFromOrder(
+            budget.total,
+            budget,
+            fallbackRates
+          )
+          formatted[budget.id] = formattedAmount
+        }
+        
+        setFormattedAmounts(formatted)
+      } catch (error) {
+        console.error("Error formatting amounts:", error)
+      }
+    }
+    
+    formatAmounts()
+  }, [budgets])
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -143,7 +174,7 @@ export function BudgetsTable() {
                     <TableCell className="font-medium text-green-600">{budget.budgetNumber}</TableCell>
                     <TableCell className="font-medium">{budget.clientName}</TableCell>
                     <TableCell className="font-medium">
-                      {formatCurrency(budget.total, budget.baseCurrency || "Bs")}
+                      {formattedAmounts[budget.id] || formatCurrency(budget.total, budget.baseCurrency || "Bs")}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       <div className="flex items-center gap-1">

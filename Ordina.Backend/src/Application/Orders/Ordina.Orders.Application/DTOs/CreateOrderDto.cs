@@ -47,9 +47,13 @@ public class CreateOrderDto
     
     public string? DeliveryAddress { get; set; }
     public bool HasDelivery { get; set; }
+    public DeliveryServicesDto? DeliveryServices { get; set; }
     public string Status { get; set; } = "Generado";
     public Dictionary<string, decimal>? ProductMarkups { get; set; }
     public bool? CreateSupplierOrder { get; set; }
     public string? Observations { get; set; }
+    public string? SaleType { get; set; }
+    public string? DeliveryType { get; set; }
+    public string? DeliveryZone { get; set; }
 }
 

@@ -21,5 +21,7 @@ public class PaymentDetailsDto
     public string? Bank { get; set; }
     public string? Email { get; set; }
     public string? Wallet { get; set; }
+    // Zelle
+    public string? Envia { get; set; }
 }
 
