@@ -305,5 +305,277 @@ public class ReportsController : ControllerBase
             return StatusCode(500, new { message = "Error interno del servidor al obtener los datos del reporte" });
         }
     }
+
+    /// <summary>
+    /// Genera el reporte de comisiones en formato Excel desde datos calculados en el frontend
+    /// </summary>
+    /// <param name="request">Datos del reporte calculados en el frontend</param>
+    /// <returns>Archivo Excel con el reporte</returns>
+    [HttpPost("Commissions/Excel")]
+    [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GenerateCommissionsReportFromData(
+        [FromBody] GenerateCommissionReportRequestDto request)
+    {
+        try
+        {
+            if (request.Data == null || request.Data.Count == 0)
+            {
+                return BadRequest(new { message = "Los datos del reporte son requeridos" });
+            }
+
+            var stream = await _reportService.GenerateCommissionsReportFromDataAsync(request.Data);
+            
+            var fileName = $"Reporte_Comisiones_{DateTime.UtcNow:yyyyMMdd}.xlsx";
+            
+            return File(stream, 
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                fileName);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al generar reporte de comisiones");
+            return StatusCode(500, new { message = "Error interno del servidor al generar el reporte" });
+        }
+    }
+
+    /// <summary>
+    /// Genera el reporte de comisiones en formato Excel (método legacy - calcula desde backend)
+    /// </summary>
+    /// <param name="startDate">Fecha de inicio OBLIGATORIA para filtrar (formato: yyyy-MM-dd)</param>
+    /// <param name="endDate">Fecha de fin OBLIGATORIA para filtrar (formato: yyyy-MM-dd)</param>
+    /// <param name="vendorId">ID opcional del vendedor para filtrar</param>
+    /// <param name="team">Equipo opcional para ajustar rango de fechas: "guatire", "caracas", "rrss"</param>
+    /// <returns>Archivo Excel con el reporte</returns>
+    [HttpGet("Commissions/Excel")]
+    [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetCommissionsReport(
+        [FromQuery] string startDate,
+        [FromQuery] string endDate,
+        [FromQuery] string? vendorId = null,
+        [FromQuery] string? team = null)
+    {
+        try
+        {
+            // Validar fechas obligatorias
+            if (string.IsNullOrWhiteSpace(startDate) || string.IsNullOrWhiteSpace(endDate))
+            {
+                return BadRequest(new { message = "Las fechas de inicio y fin son obligatorias" });
+            }
+
+            if (!DateTime.TryParse(startDate, out var parsedStartDate))
+            {
+                return BadRequest(new { message = "Formato de fecha de inicio inválido. Use yyyy-MM-dd" });
+            }
+
+            if (!DateTime.TryParse(endDate, out var parsedEndDate))
+            {
+                return BadRequest(new { message = "Formato de fecha de fin inválido. Use yyyy-MM-dd" });
+            }
+
+            var stream = await _reportService.GenerateCommissionsReportAsync(
+                parsedStartDate,
+                parsedEndDate,
+                vendorId,
+                team);
+            
+            var fileName = $"Reporte_Comisiones_{DateTime.UtcNow:yyyyMMdd}.xlsx";
+            
+            return File(stream, 
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                fileName);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al generar reporte de comisiones");
+            return StatusCode(500, new { message = "Error interno del servidor al generar el reporte" });
+        }
+    }
+
+    /// <summary>
+    /// Obtiene los datos del reporte de comisiones para vista previa (formato JSON)
+    /// </summary>
+    /// <param name="startDate">Fecha de inicio OBLIGATORIA para filtrar (formato: yyyy-MM-dd)</param>
+    /// <param name="endDate">Fecha de fin OBLIGATORIA para filtrar (formato: yyyy-MM-dd)</param>
+    /// <param name="vendorId">ID opcional del vendedor para filtrar</param>
+    /// <param name="team">Equipo opcional para ajustar rango de fechas: "guatire", "caracas", "rrss"</param>
+    /// <returns>Lista de datos del reporte en formato JSON</returns>
+    [HttpGet("Commissions/Preview")]
+    [ProducesResponseType(typeof(List<CommissionReportRowDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetCommissionsReportPreview(
+        [FromQuery] string startDate,
+        [FromQuery] string endDate,
+        [FromQuery] string? vendorId = null,
+        [FromQuery] string? team = null)
+    {
+        try
+        {
+            // Validar fechas obligatorias
+            if (string.IsNullOrWhiteSpace(startDate) || string.IsNullOrWhiteSpace(endDate))
+            {
+                return BadRequest(new { message = "Las fechas de inicio y fin son obligatorias" });
+            }
+
+            if (!DateTime.TryParse(startDate, out var parsedStartDate))
+            {
+                return BadRequest(new { message = "Formato de fecha de inicio inválido. Use yyyy-MM-dd" });
+            }
+
+            if (!DateTime.TryParse(endDate, out var parsedEndDate))
+            {
+                return BadRequest(new { message = "Formato de fecha de fin inválido. Use yyyy-MM-dd" });
+            }
+
+            var reportData = await _reportService.GetCommissionsReportDataAsync(
+                parsedStartDate,
+                parsedEndDate,
+                vendorId,
+                team);
+            
+            return Ok(reportData);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener datos del reporte de comisiones");
+            return StatusCode(500, new { message = "Error interno del servidor al obtener los datos del reporte" });
+        }
+    }
+
+    /// <summary>
+    /// Genera el reporte de despacho en formato Excel
+    /// </summary>
+    /// <param name="deliveryZone">Zona de entrega para filtrar (filtro principal). Valores: "caracas", "g_g", "san_antonio_los_teques", "caucagua_higuerote", "la_guaira", "charallave_cua", "interior_pais"</param>
+    /// <param name="startDate">Fecha de inicio opcional para filtrar (formato: yyyy-MM-dd)</param>
+    /// <param name="endDate">Fecha de fin opcional para filtrar (formato: yyyy-MM-dd)</param>
+    /// <returns>Archivo Excel con el reporte</returns>
+    [HttpGet("Dispatch/Excel")]
+    [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetDispatchReport(
+        [FromQuery] string? deliveryZone = null,
+        [FromQuery] string? startDate = null,
+        [FromQuery] string? endDate = null)
+    {
+        try
+        {
+            // Parsear fechas opcionales
+            DateTime? parsedStartDate = null;
+            DateTime? parsedEndDate = null;
+            
+            if (!string.IsNullOrWhiteSpace(startDate))
+            {
+                if (!DateTime.TryParse(startDate, out var start))
+                {
+                    return BadRequest(new { message = "Formato de fecha de inicio inválido. Use yyyy-MM-dd" });
+                }
+                parsedStartDate = start;
+            }
+            
+            if (!string.IsNullOrWhiteSpace(endDate))
+            {
+                if (!DateTime.TryParse(endDate, out var end))
+                {
+                    return BadRequest(new { message = "Formato de fecha de fin inválido. Use yyyy-MM-dd" });
+                }
+                parsedEndDate = end;
+            }
+
+            var stream = await _reportService.GenerateDispatchReportAsync(
+                deliveryZone,
+                parsedStartDate,
+                parsedEndDate);
+            
+            var fileName = $"Reporte_Despacho_{DateTime.UtcNow:yyyyMMdd}.xlsx";
+            
+            return File(stream, 
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                fileName);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al generar reporte de despacho");
+            return StatusCode(500, new { message = "Error interno del servidor al generar el reporte" });
+        }
+    }
+
+    /// <summary>
+    /// Obtiene los datos del reporte de despacho para vista previa (formato JSON)
+    /// </summary>
+    /// <param name="deliveryZone">Zona de entrega para filtrar (filtro principal). Valores: "caracas", "g_g", "san_antonio_los_teques", "caucagua_higuerote", "la_guaira", "charallave_cua", "interior_pais"</param>
+    /// <param name="startDate">Fecha de inicio opcional para filtrar (formato: yyyy-MM-dd)</param>
+    /// <param name="endDate">Fecha de fin opcional para filtrar (formato: yyyy-MM-dd)</param>
+    /// <returns>Lista de datos del reporte en formato JSON</returns>
+    [HttpGet("Dispatch/Preview")]
+    [ProducesResponseType(typeof(List<DispatchReportRowDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetDispatchReportPreview(
+        [FromQuery] string? deliveryZone = null,
+        [FromQuery] string? startDate = null,
+        [FromQuery] string? endDate = null)
+    {
+        try
+        {
+            // Parsear fechas opcionales
+            DateTime? parsedStartDate = null;
+            DateTime? parsedEndDate = null;
+            
+            if (!string.IsNullOrWhiteSpace(startDate))
+            {
+                if (!DateTime.TryParse(startDate, out var start))
+                {
+                    return BadRequest(new { message = "Formato de fecha de inicio inválido. Use yyyy-MM-dd" });
+                }
+                parsedStartDate = start;
+            }
+            
+            if (!string.IsNullOrWhiteSpace(endDate))
+            {
+                if (!DateTime.TryParse(endDate, out var end))
+                {
+                    return BadRequest(new { message = "Formato de fecha de fin inválido. Use yyyy-MM-dd" });
+                }
+                parsedEndDate = end;
+            }
+
+            var reportData = await _reportService.GetDispatchReportDataAsync(
+                deliveryZone,
+                parsedStartDate,
+                parsedEndDate);
+            
+            return Ok(reportData);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener datos del reporte de despacho");
+            return StatusCode(500, new { message = "Error interno del servidor al obtener los datos del reporte" });
+        }
+    }
 }
 

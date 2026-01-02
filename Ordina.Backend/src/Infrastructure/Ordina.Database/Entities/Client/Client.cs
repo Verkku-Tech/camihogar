@@ -12,6 +12,9 @@ public class Client
     [BsonElement("nombreRazonSocial")]
     public string NombreRazonSocial { get; set; } = string.Empty;
 
+    [BsonElement("apodo")]
+    public string? Apodo { get; set; }
+
     [BsonElement("rutId")]
     public string RutId { get; set; } = string.Empty;
 
@@ -20,6 +23,9 @@ public class Client
 
     [BsonElement("telefono")]
     public string Telefono { get; set; } = string.Empty;
+
+    [BsonElement("telefono2")]
+    public string? Telefono2 { get; set; }
 
     [BsonElement("email")]
     public string? Email { get; set; }

@@ -82,6 +82,9 @@ public class Order
     [BsonElement("hasDelivery")]
     public bool HasDelivery { get; set; }
 
+    [BsonElement("deliveryServices")]
+    public DeliveryServices? DeliveryServices { get; set; }
+
     [BsonElement("status")]
     public string Status { get; set; } = "Pendiente"; // "Pendiente", "Apartado", "Completado", "Cancelado"
 
@@ -93,6 +96,18 @@ public class Order
 
     [BsonElement("observations")]
     public string? Observations { get; set; } // Observaciones generales del pedido
+
+    [BsonElement("saleType")]
+    public string? SaleType { get; set; } // "encargo", "entrega", "sistema_apartado"
+
+    [BsonElement("deliveryType")]
+    public string? DeliveryType { get; set; } // "entrega_programada", "delivery_express", "retiro_tienda", "retiro_almacen"
+
+    [BsonElement("deliveryZone")]
+    public string? DeliveryZone { get; set; } // "caracas", "g_g", "san_antonio_los_teques", "caucagua_higuerote", "la_guaira", "charallave_cua", "interior_pais"
+
+    [BsonElement("exchangeRatesAtCreation")]
+    public ExchangeRatesAtCreation? ExchangeRatesAtCreation { get; set; } // Tasas de cambio del día en que se creó el pedido
 
     [BsonElement("createdAt")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -62,5 +62,5 @@ public class OrderProduct
     public string? ManufacturingNotes { get; set; }
 
     [BsonElement("locationStatus")]
-    public string? LocationStatus { get; set; } // "en_tienda" | "mandar_a_fabricar"
+    public string? LocationStatus { get; set; } // "EN TIENDA" | "FABRICACION" | null/empty
 }
