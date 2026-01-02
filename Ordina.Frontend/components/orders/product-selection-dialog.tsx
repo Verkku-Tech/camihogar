@@ -160,6 +160,7 @@ export function ProductSelectionDialog({
       stock: 0, // Los productos se crean bajo demanda, no hay stock
       attributes: mergedAttributes,
       discount: 0, // Inicializar sin descuento
+      locationStatus: "EN TIENDA", // Establecer por defecto "EN TIENDA"
     }
     
     setProductToEdit(newProduct)
@@ -233,11 +234,13 @@ export function ProductSelectionDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas las categorías</SelectItem>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.name}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
+                    {categories
+                      .filter((category) => category.name && category.name.trim() !== "")
+                      .map((category) => (
+                        <SelectItem key={category.id} value={category.name}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

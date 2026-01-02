@@ -42,7 +42,6 @@ import {
   Plus,
   Edit,
   Trash2,
-  Search,
   AlertTriangle,
   Package,
   FileText,
@@ -66,6 +65,7 @@ import {
   type Product,
   type AttributeValue,
   type Account,
+  type Client,
 } from "@/lib/storage";
 import {
   Currency,
@@ -89,15 +89,30 @@ export const PAYMENT_CONDITIONS = [
   { value: "todo_pago", label: "Todo Pago" },
 ] as const;
 
-// Constantes para Tipo de Compra
+// Constantes para Tipo de Venta
 export const PURCHASE_TYPES = [
-  { value: "delivery_express", label: "Delivery Express" },
   { value: "encargo", label: "Encargo" },
-  { value: "encargo_entrega", label: "Encargo/Entrega" },
   { value: "entrega", label: "Entrega" },
-  { value: "retiro_almacen", label: "Retiro x almacén" },
-  { value: "retiro_tienda", label: "Retiro x tienda" },
-  { value: "sa", label: "SA" },
+  { value: "sistema_apartado", label: "Sistema de Apartado" },
+] as const;
+
+// Constantes para Tipo de Entrega
+export const DELIVERY_TYPES = [
+  { value: "entrega_programada", label: "Entrega programada" },
+  { value: "delivery_express", label: "Delivery Express" },
+  { value: "retiro_tienda", label: "Retiro por Tienda" },
+  { value: "retiro_almacen", label: "Retiro por almacén" },
+] as const;
+
+// Constantes para Zona de Entrega
+export const DELIVERY_ZONES = [
+  { value: "caracas", label: "Caracas" },
+  { value: "g_g", label: "G&G" },
+  { value: "san_antonio_los_teques", label: "San Antonio-Los Teques" },
+  { value: "caucagua_higuerote", label: "Caucagua-Higuerote" },
+  { value: "la_guaira", label: "La Guaira" },
+  { value: "charallave_cua", label: "Charallave-Cua" },
+  { value: "interior_pais", label: "Interior del País" },
 ] as const;
 
 // Lista ampliada de métodos de pago
@@ -113,6 +128,16 @@ const paymentMethods = [
   "Tarjeta de débito",
   "Tarjeta de Crédito",
   "Transferencia",
+  "Zelle",
+];
+
+// Métodos de pago digitales en divisas (USD) que no requieren campo de moneda
+const digitalPaymentMethods = [
+  "Mercantil Panamá",
+  "Banesco Panamá",
+  "Paypal",
+  "Bonace",
+  "Facebank",
   "Zelle",
 ];
 
@@ -171,19 +196,42 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     "cashea" | "pagara_en_tienda" | "pago_a_entrega" | "pago_parcial" | "todo_pago" | ""
   >("");
   const [saleType, setSaleType] = useState<
-    | "delivery_express"
     | "encargo"
-    | "encargo_entrega"
     | "entrega"
-    | "retiro_almacen"
+    | "sistema_apartado"
+    | ""
+  >("");
+  const [deliveryType, setDeliveryType] = useState<
+    | "entrega_programada"
+    | "delivery_express"
     | "retiro_tienda"
-    | "sa"
+    | "retiro_almacen"
+    | ""
+  >("");
+  const [deliveryZone, setDeliveryZone] = useState<
+    | "caracas"
+    | "g_g"
+    | "san_antonio_los_teques"
+    | "caucagua_higuerote"
+    | "la_guaira"
+    | "charallave_cua"
+    | "interior_pais"
     | ""
   >("");
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
   const [payments, setPayments] = useState<PartialPayment[]>([]);
   const [deliveryExpenses, setDeliveryExpenses] = useState(0);
+  // Nueva estructura de servicios de delivery
+  const [deliveryServices, setDeliveryServices] = useState<{
+    deliveryExpress?: { enabled: boolean; cost: number; currency: Currency };
+    servicioAcarreo?: { enabled: boolean; cost?: number; currency: Currency };
+    servicioArmado?: { enabled: boolean; cost: number; currency: Currency };
+  }>({
+    deliveryExpress: { enabled: false, cost: 0, currency: "Bs" },
+    servicioAcarreo: { enabled: false, cost: undefined, currency: "Bs" },
+    servicioArmado: { enabled: false, cost: 0, currency: "Bs" },
+  });
   const [createSupplierOrder, setCreateSupplierOrder] = useState(false); // Added supplier order flag
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [referrers, setReferrers] = useState<Vendor[]>([]);
@@ -288,6 +336,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       loadAccounts();
     }
   }, [open]);
+
 
   // Mantener compatibilidad con código existente usando vendors y referrers separados
   const mockVendors = vendors;
@@ -582,6 +631,26 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     );
   };
 
+  // Helper para convertir valores entre monedas
+  const convertCurrencyValue = (value: number, fromCurrency: Currency, toCurrency: Currency): number => {
+    if (fromCurrency === toCurrency) return value;
+    if (fromCurrency === "Bs") {
+      const rate = toCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+      return rate && rate > 0 ? value / rate : value;
+    }
+    if (toCurrency === "Bs") {
+      const rate = fromCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+      return rate && rate > 0 ? value * rate : value;
+    }
+    // Entre USD y EUR
+    const fromRate = fromCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+    const toRate = toCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+    if (fromRate && toRate && fromRate > 0) {
+      return (value * fromRate) / toRate;
+    }
+    return value;
+  };
+
   const getProductBaseTotal = (product: OrderProduct) => {
     const markup = productMarkups[product.id] || 0;
     const category = categories.find((cat) => cat.name === product.category);
@@ -708,7 +777,23 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const subtotal = subtotalAfterProductDiscounts;
 
   const taxAmount = subtotal * 0.16; // Impuesto fijo del 16%
-  const deliveryCost = hasDelivery ? deliveryExpenses : 0;
+  
+  // Calcular deliveryCost desde los servicios habilitados
+  const calculateDeliveryCost = (): number => {
+    let total = 0;
+    if (deliveryServices.deliveryExpress?.enabled && deliveryServices.deliveryExpress.cost) {
+      total += deliveryServices.deliveryExpress.cost;
+    }
+    if (deliveryServices.servicioAcarreo?.enabled && deliveryServices.servicioAcarreo.cost) {
+      total += deliveryServices.servicioAcarreo.cost;
+    }
+    if (deliveryServices.servicioArmado?.enabled && deliveryServices.servicioArmado.cost) {
+      total += deliveryServices.servicioArmado.cost;
+    }
+    return total;
+  };
+  
+  const deliveryCost = calculateDeliveryCost();
   
   // Calcular el total antes del descuento general
   const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
@@ -739,13 +824,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     // Limitar el descuento general al total antes del descuento
     const subtotal = subtotalAfterProductDiscounts;
     const taxAmount = subtotal * 0.16;
-    const deliveryCost = hasDelivery ? deliveryExpenses : 0;
+    const deliveryCost = calculateDeliveryCost();
     const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
     
     setGeneralDiscount((prev) =>
       Math.min(Math.max(prev, 0), totalBeforeGeneralDiscount)
     );
-  }, [subtotalAfterProductDiscounts, hasDelivery, deliveryExpenses]);
+  }, [subtotalAfterProductDiscounts, deliveryServices]);
 
   // Cargar dirección del cliente cuando se activa delivery y hay un cliente seleccionado
   useEffect(() => {
@@ -790,6 +875,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       products.map((product) => ({
         ...product,
         discount: product.discount ?? 0,
+        locationStatus: product.locationStatus ?? "EN TIENDA",
       }))
     );
     // Inicializar tipos de descuento como "monto" por defecto
@@ -914,7 +1000,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     // Calcular el total antes del descuento general
     const subtotal = subtotalAfterProductDiscounts;
     const taxAmount = subtotal * 0.16;
-    const deliveryCost = hasDelivery ? deliveryExpenses : 0;
+    const deliveryCost = calculateDeliveryCost();
     const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
 
     if (generalDiscountType === "porcentaje") {
@@ -938,7 +1024,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     // Calcular el total antes del descuento general
     const subtotal = subtotalAfterProductDiscounts;
     const taxAmount = subtotal * 0.16;
-    const deliveryCost = hasDelivery ? deliveryExpenses : 0;
+    const deliveryCost = calculateDeliveryCost();
     const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
 
     if (type === "porcentaje") {
@@ -975,16 +1061,18 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         }
       }
 
-      // Validación del paso 2
-      if (currentStep === 2) {
-        const productsWithoutLocation = selectedProducts.filter(p => !p.locationStatus);
-        if (productsWithoutLocation.length > 0) {
-          toast.error("Por favor indica el estado de ubicación para todos los productos");
-          return;
-        }
-      }
+      // Validación del paso 2 - locationStatus siempre tiene un valor por defecto ("EN TIENDA")
+      // No se requiere validación adicional
 
       setCurrentStep(currentStep + 1);
+      
+      // Scroll al inicio del diálogo cuando se cambia de paso
+      setTimeout(() => {
+        const dialogContent = document.querySelector('[role="dialog"]');
+        if (dialogContent) {
+          dialogContent.scrollTop = 0;
+        }
+      }, 0);
     }
   };
 
@@ -996,7 +1084,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     currentStep === 1
       ? formData.vendor && selectedClient && selectedProducts.length > 0
       : currentStep === 2
-      ? selectedProducts.every(p => p.locationStatus) && selectedProducts.length > 0
+      ? selectedProducts.length > 0 // locationStatus siempre tiene valor por defecto
       : true;
 
   // Validación para habilitar botón de presupuesto (misma que siguiente en paso 1)
@@ -1032,6 +1120,23 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         total,
         hasDelivery,
         deliveryAddress: hasDelivery ? formData.deliveryAddress : undefined,
+        deliveryServices: hasDelivery ? {
+          deliveryExpress: deliveryServices.deliveryExpress?.enabled ? {
+            enabled: true,
+            cost: deliveryServices.deliveryExpress.cost,
+            currency: deliveryServices.deliveryExpress.currency,
+          } : undefined,
+          servicioAcarreo: deliveryServices.servicioAcarreo?.enabled ? {
+            enabled: true,
+            cost: deliveryServices.servicioAcarreo.cost,
+            currency: deliveryServices.servicioAcarreo.currency,
+          } : undefined,
+          servicioArmado: deliveryServices.servicioArmado?.enabled ? {
+            enabled: true,
+            cost: deliveryServices.servicioArmado.cost,
+            currency: deliveryServices.servicioArmado.currency,
+          } : undefined,
+        } : undefined,
         observations: generalObservations.trim() || undefined,
         baseCurrency: preferredCurrency,
         exchangeRatesAtCreation: exchangeRates,
@@ -1068,6 +1173,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
+      // Validar servicio de armado si está habilitado
+      if (hasDelivery && deliveryServices.servicioArmado?.enabled) {
+        if (!deliveryServices.servicioArmado.cost || deliveryServices.servicioArmado.cost <= 0) {
+          toast.error("El precio del Servicio de Armado es obligatorio");
+          return;
+        }
+      }
+
       if (selectedProducts.length === 0) {
         toast.error("Por favor agrega al menos un producto");
         return;
@@ -1091,11 +1204,24 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
+      // Validar tipo de entrega (obligatorio)
+      if (!deliveryType) {
+        toast.error("Por favor selecciona el tipo de entrega");
+        return;
+      }
+
+      // Validar zona de entrega (obligatorio)
+      if (!deliveryZone) {
+        toast.error("Por favor selecciona la zona de entrega");
+        return;
+      }
+
 
       // Preparar datos para confirmación
       const orderDataForConfirmation = {
         clientName: selectedClient.name,
         clientTelefono: selectedClient.telefono,
+        clientTelefono2: selectedClient.telefono2,
         clientEmail: selectedClient.email,
         clientRutId: selectedClient.rutId,
         clientDireccion: selectedClient.address,
@@ -1106,7 +1232,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           : undefined,
         products: selectedProducts.map(product => ({
           ...product,
-          discount: product.discount && product.discount > 0 ? product.discount : undefined
+          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          locationStatus: product.locationStatus ?? "EN TIENDA", // Asegurar que siempre tenga locationStatus
         })),
         subtotal,
         productDiscountTotal: productDiscountTotal > 0 ? productDiscountTotal : undefined,
@@ -1117,8 +1244,27 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         payments,
         paymentCondition,
         saleType,
+        deliveryType,
+        deliveryZone,
         hasDelivery,
         deliveryAddress: formData.deliveryAddress,
+        deliveryServices: hasDelivery ? {
+          deliveryExpress: deliveryServices.deliveryExpress?.enabled ? {
+            enabled: true,
+            cost: deliveryServices.deliveryExpress.cost,
+            currency: deliveryServices.deliveryExpress.currency,
+          } : undefined,
+          servicioAcarreo: deliveryServices.servicioAcarreo?.enabled ? {
+            enabled: true,
+            cost: deliveryServices.servicioAcarreo.cost,
+            currency: deliveryServices.servicioAcarreo.currency,
+          } : undefined,
+          servicioArmado: deliveryServices.servicioArmado?.enabled ? {
+            enabled: true,
+            cost: deliveryServices.servicioArmado.cost,
+            currency: deliveryServices.servicioArmado.currency,
+          } : undefined,
+        } : undefined,
         observations: generalObservations.trim() || undefined,
       };
 
@@ -1151,7 +1297,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           : undefined,
         products: selectedProducts.map(product => ({
           ...product,
-          discount: product.discount && product.discount > 0 ? product.discount : undefined
+          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          locationStatus: product.locationStatus ?? "EN TIENDA", // Asegurar que siempre tenga locationStatus
         })),
         subtotalBeforeDiscounts: productSubtotal,
         productDiscountTotal: productDiscountTotal > 0 ? productDiscountTotal : undefined,
@@ -1173,13 +1320,22 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           | "pago_parcial"
           | "todo_pago",
         saleType: saleType as
-          | "delivery_express"
           | "encargo"
-          | "encargo_entrega"
           | "entrega"
-          | "retiro_almacen"
+          | "sistema_apartado",
+        deliveryType: deliveryType as
+          | "entrega_programada"
+          | "delivery_express"
           | "retiro_tienda"
-          | "sa",
+          | "retiro_almacen",
+        deliveryZone: deliveryZone as
+          | "caracas"
+          | "g_g"
+          | "san_antonio_los_teques"
+          | "caucagua_higuerote"
+          | "la_guaira"
+          | "charallave_cua"
+          | "interior_pais",
         paymentMethod:
           payments.length > 1 ? "Mixto" : payments[0]?.method || "",
         paymentDetails:
@@ -1188,6 +1344,23 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         mixedPayments: payments.length > 1 ? payments : undefined,
         deliveryAddress: hasDelivery ? formData.deliveryAddress : undefined,
         hasDelivery,
+        deliveryServices: hasDelivery ? {
+          deliveryExpress: deliveryServices.deliveryExpress?.enabled ? {
+            enabled: true,
+            cost: deliveryServices.deliveryExpress.cost,
+            currency: deliveryServices.deliveryExpress.currency,
+          } : undefined,
+          servicioAcarreo: deliveryServices.servicioAcarreo?.enabled ? {
+            enabled: true,
+            cost: deliveryServices.servicioAcarreo.cost,
+            currency: deliveryServices.servicioAcarreo.currency,
+          } : undefined,
+          servicioArmado: deliveryServices.servicioArmado?.enabled ? {
+            enabled: true,
+            cost: deliveryServices.servicioArmado.cost,
+            currency: deliveryServices.servicioArmado.currency,
+          } : undefined,
+        } : undefined,
         status: "Generado", // Estado inicial para pedidos normales
         productMarkups,
         createSupplierOrder,
@@ -1226,6 +1399,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       setPayments([]);
       setDeliveryExpenses(0);
       setHasDelivery(false);
+      setDeliveryServices({
+        deliveryExpress: { enabled: false, cost: 0, currency: "Bs" },
+        servicioAcarreo: { enabled: false, cost: undefined, currency: "Bs" },
+        servicioArmado: { enabled: false, cost: 0, currency: "Bs" },
+      });
       setProductMarkups({});
       setGeneralDiscount(0);
       setGeneralDiscountType("monto");
@@ -1236,6 +1414,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       setCreateSupplierOrder(false);
       setGeneralObservations("");
       setSaleType(""); // Reset tipo de venta
+      setDeliveryType(""); // Reset tipo de entrega
+      setDeliveryZone(""); // Reset zona de entrega
       setPaymentCondition("");
       setFormData({
         vendor: "",
@@ -1319,7 +1499,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     if (["Binance", "Paypal"].includes(method)) {
       // Solo cuentas digitales
       return accounts.filter(acc => acc.accountType === "Cuentas Digitales");
-    } else if (["Banesco Panamá", "Mercantil Panamá", "Pago Móvil", "Transferencia", "Facebank"].includes(method)) {
+    } else if (["Banesco Panamá", "Mercantil Panamá", "Pago Móvil", "Transferencia", "Facebank", "Zelle"].includes(method)) {
       // Solo cuentas bancarias (Ahorro y Corriente)
       return accounts.filter(acc => acc.accountType === "Ahorro" || acc.accountType === "Corriente");
     }
@@ -1374,7 +1554,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
   const handleUpdateProduct = (updatedProduct: OrderProduct) => {
     setSelectedProducts((products) =>
-      products.map((p) => (p.id === updatedProduct.id ? updatedProduct : p))
+      products.map((p) => 
+        p.id === updatedProduct.id 
+          ? { ...updatedProduct, locationStatus: updatedProduct.locationStatus ?? "EN TIENDA" }
+          : p
+      )
     );
     setIsProductEditOpen(false);
     setEditingProduct(null);
@@ -1430,11 +1614,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           <SelectValue placeholder="Seleccionar vendedor" />
                         </SelectTrigger>
                         <SelectContent>
-                          {mockVendors.map((vendor) => (
-                            <SelectItem key={vendor.id} value={vendor.id}>
-                              {vendor.name}
-                            </SelectItem>
-                          ))}
+                          {mockVendors
+                            .filter((vendor) => vendor.id && vendor.id.trim() !== "")
+                            .map((vendor) => (
+                              <SelectItem key={vendor.id} value={vendor.id}>
+                                {vendor.name}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1451,11 +1637,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           <SelectValue placeholder="Seleccionar referidor" />
                         </SelectTrigger>
                         <SelectContent>
-                          {mockReferrers.map((referrer) => (
-                            <SelectItem key={referrer.id} value={referrer.id}>
-                              {referrer.name}
-                            </SelectItem>
-                          ))}
+                          {mockReferrers
+                            .filter((referrer) => referrer.id && referrer.id.trim() !== "")
+                            .map((referrer) => (
+                              <SelectItem key={referrer.id} value={referrer.id}>
+                                {referrer.name}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1464,21 +1652,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                   {/* Client Selection */}
                   <div className="space-y-2">
                     <Label>Cliente</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        value={selectedClient?.name || ""}
-                        placeholder="Seleccionar cliente"
-                        readOnly
-                        className="flex-1"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setIsClientLookupOpen(true)}
-                      >
-                        <Search className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    <Input
+                      readOnly
+                      value={selectedClient?.name || ""}
+                      placeholder="Seleccionar cliente..."
+                      onClick={() => setIsClientLookupOpen(true)}
+                      className="cursor-pointer"
+                    />
                   </div>
 
                   {/* Products Table */}
@@ -2300,8 +2480,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                             <div className="w-full sm:w-48">
                               <Label>Estado de Ubicación *</Label>
                               <Select
-                                value={product.locationStatus || ""}
-                                onValueChange={(value: "en_tienda" | "mandar_a_fabricar") => {
+                                value={product.locationStatus ?? "EN TIENDA"}
+                                onValueChange={(value: "EN TIENDA" | "FABRICACION") => {
                                   setSelectedProducts(products =>
                                     products.map(p =>
                                       p.id === product.id
@@ -2315,8 +2495,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                   <SelectValue placeholder="Seleccionar estado" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="en_tienda">En Tienda</SelectItem>
-                                  <SelectItem value="mandar_a_fabricar">Mandar a Fabricar</SelectItem>
+                                  <SelectItem value="EN TIENDA">EN TIENDA</SelectItem>
+                                  <SelectItem value="FABRICACION">FABRICACION</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
@@ -2326,22 +2506,17 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           {product.attributes && Object.keys(product.attributes).length > 0 && (
                             <div className="space-y-2 pt-4 border-t">
                               <p className="text-sm font-medium">Atributos</p>
-                              <div className="space-y-2">
-                                {Object.entries(product.attributes).map(([key, value]) => {
-                                  const categoryAttribute = category?.attributes?.find(
-                                    attr => attr.id?.toString() === key || attr.title === key
-                                  )
-                                  const valueLabel = getAttributeValueLabel(value, categoryAttribute)
-                                  
-                                  return (
-                                    <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
-                                      <span className="text-muted-foreground min-w-[120px] font-medium">
-                                        {categoryAttribute?.title || key}:
-                                      </span>
-                                      <Badge variant="secondary">{valueLabel || "-"}</Badge>
-                                    </div>
-                                  )
-                                })}
+                              <div className="text-sm">
+                                {Object.entries(product.attributes)
+                                  .map(([key, value]) => {
+                                    const categoryAttribute = category?.attributes?.find(
+                                      attr => attr.id?.toString() === key || attr.title === key
+                                    )
+                                    const valueLabel = getAttributeValueLabel(value, categoryAttribute)
+                                    return valueLabel || "-"
+                                  })
+                                  .filter(label => label !== "-")
+                                  .join(" + ")}
                               </div>
                             </div>
                           )}
@@ -2373,15 +2548,23 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5 sm:space-y-6 p-4 sm:p-6">
-                  {/* 1. DELIVERY */}
+                  {/* 1. REQUIERE DELIVERY */}
                   <div className="space-y-4">
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="hasDelivery"
                         checked={hasDelivery}
-                        onCheckedChange={(checked) =>
-                          setHasDelivery(checked as boolean)
-                        }
+                        onCheckedChange={(checked) => {
+                          setHasDelivery(checked as boolean);
+                          if (!checked) {
+                            // Resetear servicios cuando se desactiva delivery
+                            setDeliveryServices({
+                              deliveryExpress: { enabled: false, cost: 0, currency: "Bs" },
+                              servicioAcarreo: { enabled: false, cost: undefined, currency: "Bs" },
+                              servicioArmado: { enabled: false, cost: 0, currency: "Bs" },
+                            });
+                          }
+                        }}
                       />
                       <Label
                         htmlFor="hasDelivery"
@@ -2392,130 +2575,294 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                     </div>
 
                     {hasDelivery && (
-                      <div className="space-y-2 pl-4 sm:pl-6">
-                        <Label
-                          htmlFor="deliveryAddress"
-                          className="text-sm sm:text-base"
-                        >
-                          Dirección de Entrega
-                        </Label>
-                        <Textarea
-                          id="deliveryAddress"
-                          value={formData.deliveryAddress}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              deliveryAddress: e.target.value,
-                            }))
-                          }
-                          placeholder="Ingrese la dirección de entrega"
-                          rows={3}
-                          className="w-full"
-                        />
+                      <div className="space-y-4 pl-4 sm:pl-6">
                         <div className="space-y-2">
-                          <Label
-                            htmlFor="deliveryExpenses"
-                            className="text-sm sm:text-base"
-                          >
-                            Gastos de Entrega
+                          <Label className="text-sm sm:text-base font-medium">
+                            Dirección de Entrega
                           </Label>
-                          <div className="flex gap-2">
-                            <Select
-                              value={deliveryCurrency}
-                              onValueChange={(value: Currency) => {
-                                setDeliveryCurrency(value);
-                                // Convertir el valor actual a la nueva moneda
-                                if (deliveryExpenses > 0) {
-                                  let newValue = deliveryExpenses;
-                                  if (deliveryCurrency === "Bs") {
-                                    // De Bs a otra moneda
-                                    const rate =
-                                      value === "USD"
-                                        ? exchangeRates.USD?.rate
-                                        : exchangeRates.EUR?.rate;
-                                    if (rate && rate > 0) {
-                                      newValue = deliveryExpenses / rate;
-                                    }
-                                  } else if (value === "Bs") {
-                                    // De otra moneda a Bs
-                                    const rate =
-                                      deliveryCurrency === "USD"
-                                        ? exchangeRates.USD?.rate
-                                        : exchangeRates.EUR?.rate;
-                                    if (rate && rate > 0) {
-                                      newValue = deliveryExpenses * rate;
-                                    }
-                                  } else {
-                                    // Entre USD y EUR
-                                    const currentRate =
-                                      deliveryCurrency === "USD"
-                                        ? exchangeRates.USD?.rate
-                                        : exchangeRates.EUR?.rate;
-                                    const newRate =
-                                      value === "USD"
-                                        ? exchangeRates.USD?.rate
-                                        : exchangeRates.EUR?.rate;
-                                    if (
-                                      currentRate &&
-                                      newRate &&
-                                      currentRate > 0
-                                    ) {
-                                      newValue =
-                                        (deliveryExpenses * currentRate) /
-                                        newRate;
-                                    }
-                                  }
-                                  setDeliveryExpenses(newValue);
-                                }
+                          <Textarea
+                            id="deliveryAddress"
+                            value={formData.deliveryAddress}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                deliveryAddress: e.target.value,
+                              }))
+                            }
+                            placeholder="Ingrese la dirección de entrega"
+                            rows={3}
+                            className="w-full"
+                          />
+                        </div>
+
+                        {/* DELIVERY EXPRESS */}
+                        <div className="space-y-2 border-l-2 pl-4 border-primary/20">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="deliveryExpress"
+                              checked={deliveryServices.deliveryExpress?.enabled || false}
+                              onCheckedChange={(checked) => {
+                                setDeliveryServices((prev) => ({
+                                  ...prev,
+                                  deliveryExpress: {
+                                    enabled: checked as boolean,
+                                    cost: checked ? (prev.deliveryExpress?.cost || 0) : 0,
+                                    currency: prev.deliveryExpress?.currency || "Bs",
+                                  },
+                                }));
                               }}
-                            >
-                              <SelectTrigger className="w-24">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Bs">Bs</SelectItem>
-                                <SelectItem value="USD">USD</SelectItem>
-                                <SelectItem value="EUR">EUR</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Input
-                              id="deliveryExpenses"
-                              type="number"
-                              step="0.01"
-                              value={(() => {
-                                if (deliveryExpenses === 0) return "";
-                                if (deliveryCurrency === "Bs") {
-                                  return deliveryExpenses;
-                                }
-                                const rate =
-                                  deliveryCurrency === "USD"
-                                    ? exchangeRates.USD?.rate
-                                    : exchangeRates.EUR?.rate;
-                                if (rate && rate > 0) {
-                                  return deliveryExpenses / rate;
-                                }
-                                return deliveryExpenses;
-                              })()}
-                              onChange={(e) => {
-                                const inputValue =
-                                  Number.parseFloat(e.target.value) || 0;
-                                // Convertir a Bs según la moneda seleccionada
-                                let valueInBs = inputValue;
-                                if (deliveryCurrency !== "Bs") {
-                                  const rate =
-                                    deliveryCurrency === "USD"
-                                      ? exchangeRates.USD?.rate
-                                      : exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    valueInBs = inputValue * rate;
-                                  }
-                                }
-                                setDeliveryExpenses(valueInBs);
-                              }}
-                              placeholder="0.00"
-                              className="flex-1"
                             />
+                            <Label htmlFor="deliveryExpress" className="text-sm sm:text-base font-medium">
+                              DELIVERY EXPRESS
+                            </Label>
                           </div>
+                          {deliveryServices.deliveryExpress?.enabled && (
+                            <div className="space-y-2 pl-6">
+                              <Label className="text-xs text-muted-foreground">Gastos de Entrega</Label>
+                              <div className="flex gap-2">
+                                <Select
+                                  value={deliveryServices.deliveryExpress.currency}
+                                  onValueChange={(value: Currency) => {
+                                    setDeliveryServices((prev) => ({
+                                      ...prev,
+                                      deliveryExpress: prev.deliveryExpress
+                                        ? {
+                                            ...prev.deliveryExpress,
+                                            currency: value,
+                                            cost: convertCurrencyValue(
+                                              prev.deliveryExpress.cost || 0,
+                                              prev.deliveryExpress.currency,
+                                              value
+                                            ),
+                                          }
+                                        : { enabled: true, cost: 0, currency: value },
+                                    }));
+                                  }}
+                                >
+                                  <SelectTrigger className="w-24">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Bs">Bs</SelectItem>
+                                    <SelectItem value="USD">USD</SelectItem>
+                                    <SelectItem value="EUR">EUR</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={(() => {
+                                    const cost = deliveryServices.deliveryExpress?.cost || 0;
+                                    const currency = deliveryServices.deliveryExpress?.currency || "Bs";
+                                    if (cost === 0) return "";
+                                    if (currency === "Bs") return cost;
+                                    const rate = currency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+                                    return rate && rate > 0 ? cost / rate : cost;
+                                  })()}
+                                  onChange={(e) => {
+                                    const inputValue = Number.parseFloat(e.target.value) || 0;
+                                    const currency = deliveryServices.deliveryExpress?.currency || "Bs";
+                                    let valueInBs = inputValue;
+                                    if (currency !== "Bs") {
+                                      const rate = currency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+                                      if (rate && rate > 0) {
+                                        valueInBs = inputValue * rate;
+                                      }
+                                    }
+                                    setDeliveryServices((prev) => ({
+                                      ...prev,
+                                      deliveryExpress: prev.deliveryExpress
+                                        ? { ...prev.deliveryExpress, cost: valueInBs }
+                                        : { enabled: true, cost: valueInBs, currency: "Bs" },
+                                    }));
+                                  }}
+                                  placeholder="0.00"
+                                  className="flex-1"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* SERVICIO DE ACARREO */}
+                        <div className="space-y-2 border-l-2 pl-4 border-primary/20">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="servicioAcarreo"
+                              checked={deliveryServices.servicioAcarreo?.enabled || false}
+                              onCheckedChange={(checked) => {
+                                setDeliveryServices((prev) => ({
+                                  ...prev,
+                                  servicioAcarreo: {
+                                    enabled: checked as boolean,
+                                    cost: checked ? (prev.servicioAcarreo?.cost || undefined) : undefined,
+                                    currency: prev.servicioAcarreo?.currency || "Bs",
+                                  },
+                                }));
+                              }}
+                            />
+                            <Label htmlFor="servicioAcarreo" className="text-sm sm:text-base font-medium">
+                              SERVICIO DE ACARREO
+                            </Label>
+                          </div>
+                          {deliveryServices.servicioAcarreo?.enabled && (
+                            <div className="space-y-2 pl-6">
+                              <Label className="text-xs text-muted-foreground">Precio (opcional)</Label>
+                              <div className="flex gap-2">
+                                <Select
+                                  value={deliveryServices.servicioAcarreo.currency}
+                                  onValueChange={(value: Currency) => {
+                                    setDeliveryServices((prev) => ({
+                                      ...prev,
+                                      servicioAcarreo: prev.servicioAcarreo
+                                        ? {
+                                            ...prev.servicioAcarreo,
+                                            currency: value,
+                                            cost: prev.servicioAcarreo.cost
+                                              ? convertCurrencyValue(
+                                                  prev.servicioAcarreo.cost,
+                                                  prev.servicioAcarreo.currency,
+                                                  value
+                                                )
+                                              : undefined,
+                                          }
+                                        : { enabled: true, cost: undefined, currency: value },
+                                    }));
+                                  }}
+                                >
+                                  <SelectTrigger className="w-24">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Bs">Bs</SelectItem>
+                                    <SelectItem value="USD">USD</SelectItem>
+                                    <SelectItem value="EUR">EUR</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={(() => {
+                                    const cost = deliveryServices.servicioAcarreo?.cost;
+                                    if (cost === undefined || cost === 0) return "";
+                                    const currency = deliveryServices.servicioAcarreo?.currency || "Bs";
+                                    if (currency === "Bs") return cost;
+                                    const rate = currency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+                                    return rate && rate > 0 ? cost / rate : cost;
+                                  })()}
+                                  onChange={(e) => {
+                                    const inputValue = e.target.value === "" ? undefined : Number.parseFloat(e.target.value) || 0;
+                                    const currency = deliveryServices.servicioAcarreo?.currency || "Bs";
+                                    let valueInBs: number | undefined = inputValue;
+                                    if (inputValue !== undefined && currency !== "Bs") {
+                                      const rate = currency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+                                      if (rate && rate > 0) {
+                                        valueInBs = inputValue * rate;
+                                      }
+                                    }
+                                    setDeliveryServices((prev) => ({
+                                      ...prev,
+                                      servicioAcarreo: prev.servicioAcarreo
+                                        ? { ...prev.servicioAcarreo, cost: valueInBs }
+                                        : { enabled: true, cost: valueInBs, currency: "Bs" },
+                                    }));
+                                  }}
+                                  placeholder="0.00 (opcional)"
+                                  className="flex-1"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* SERVICIO DE ARMADO */}
+                        <div className="space-y-2 border-l-2 pl-4 border-primary/20">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="servicioArmado"
+                              checked={deliveryServices.servicioArmado?.enabled || false}
+                              onCheckedChange={(checked) => {
+                                setDeliveryServices((prev) => ({
+                                  ...prev,
+                                  servicioArmado: {
+                                    enabled: checked as boolean,
+                                    cost: checked ? (prev.servicioArmado?.cost || 0) : 0,
+                                    currency: prev.servicioArmado?.currency || "Bs",
+                                  },
+                                }));
+                              }}
+                            />
+                            <Label htmlFor="servicioArmado" className="text-sm sm:text-base font-medium">
+                              SERVICIO DE ARMADO <span className="text-red-500">*</span>
+                            </Label>
+                          </div>
+                          {deliveryServices.servicioArmado?.enabled && (
+                            <div className="space-y-2 pl-6">
+                              <Label className="text-xs text-muted-foreground">Precio (obligatorio)</Label>
+                              <div className="flex gap-2">
+                                <Select
+                                  value={deliveryServices.servicioArmado.currency}
+                                  onValueChange={(value: Currency) => {
+                                    setDeliveryServices((prev) => ({
+                                      ...prev,
+                                      servicioArmado: prev.servicioArmado
+                                        ? {
+                                            ...prev.servicioArmado,
+                                            currency: value,
+                                            cost: convertCurrencyValue(
+                                              prev.servicioArmado.cost || 0,
+                                              prev.servicioArmado.currency,
+                                              value
+                                            ),
+                                          }
+                                        : { enabled: true, cost: 0, currency: value },
+                                    }));
+                                  }}
+                                >
+                                  <SelectTrigger className="w-24">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Bs">Bs</SelectItem>
+                                    <SelectItem value="USD">USD</SelectItem>
+                                    <SelectItem value="EUR">EUR</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  required
+                                  value={(() => {
+                                    const cost = deliveryServices.servicioArmado?.cost || 0;
+                                    const currency = deliveryServices.servicioArmado?.currency || "Bs";
+                                    if (cost === 0) return "";
+                                    if (currency === "Bs") return cost;
+                                    const rate = currency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+                                    return rate && rate > 0 ? cost / rate : cost;
+                                  })()}
+                                  onChange={(e) => {
+                                    const inputValue = Number.parseFloat(e.target.value) || 0;
+                                    const currency = deliveryServices.servicioArmado?.currency || "Bs";
+                                    let valueInBs = inputValue;
+                                    if (currency !== "Bs") {
+                                      const rate = currency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+                                      if (rate && rate > 0) {
+                                        valueInBs = inputValue * rate;
+                                      }
+                                    }
+                                    setDeliveryServices((prev) => ({
+                                      ...prev,
+                                      servicioArmado: prev.servicioArmado
+                                        ? { ...prev.servicioArmado, cost: valueInBs }
+                                        : { enabled: true, cost: valueInBs, currency: "Bs" },
+                                    }));
+                                  }}
+                                  placeholder="0.00"
+                                  className="flex-1"
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -2537,54 +2884,23 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {/* Subtotal productos */}
+                            {/* Base imponible (descuentos por producto + express + acarreo + armada) */}
                             <TableRow>
                               <TableCell className="text-xs sm:text-sm">
-                                Subtotal productos:
+                                Base imponible (descuentos por producto + express + acarreo + armada):
                               </TableCell>
-                              {renderCurrencyCell(productSubtotal)}
-                            </TableRow>
-
-                            {/* Descuentos individuales */}
-                            {productDiscountTotal > 0 && (
-                              <TableRow>
-                                <TableCell className="text-xs sm:text-sm text-red-600">
-                                  Descuentos individuales:
-                                </TableCell>
-                                {renderCurrencyCellNegative(
-                                  productDiscountTotal,
-                                  "text-red-600"
-                                )}
-                              </TableRow>
-                            )}
-
-                            {/* Subtotal después de descuentos individuales */}
-                            <TableRow className="font-medium border-t">
-                              <TableCell className="text-xs sm:text-sm">
-                                Subtotal después de descuentos:
-                              </TableCell>
-                              {renderCurrencyCell(subtotal)}
+                              {renderCurrencyCell(subtotal + deliveryCost)}
                             </TableRow>
 
                             {/* Impuesto */}
                             <TableRow>
                               <TableCell className="text-xs sm:text-sm">
-                                Impuesto (16%):
+                                Impuesto:
                               </TableCell>
                               {renderCurrencyCell(taxAmount)}
                             </TableRow>
 
-                            {/* Gastos de entrega */}
-                            {hasDelivery && (
-                              <TableRow>
-                                <TableCell className="text-xs sm:text-sm">
-                                  Gastos de entrega:
-                                </TableCell>
-                                {renderCurrencyCell(deliveryCost)}
-                              </TableRow>
-                            )}
-
-                            {/* Total antes del descuento general */}
+                            {/* Total */}
                             <TableRow className="font-medium border-t">
                               <TableCell className="text-xs sm:text-sm">
                                 Total:
@@ -2592,11 +2908,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               {renderCurrencyCell(totalBeforeGeneralDiscount)}
                             </TableRow>
 
-                            {/* Descuento general */}
+                            {/* Descuento General */}
                             {generalDiscountAmount > 0 && (
                               <TableRow>
                                 <TableCell className="text-xs sm:text-sm text-red-600">
-                                  Descuento general:
+                                  Descuento General:
                                 </TableCell>
                                 {renderCurrencyCellNegative(
                                   generalDiscountAmount,
@@ -2605,10 +2921,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                               </TableRow>
                             )}
 
-                            {/* Total final */}
+                            {/* Total Final */}
                             <TableRow className="font-semibold border-t-2">
                               <TableCell className="text-base sm:text-lg">
-                                Total final:
+                                Total Final:
                               </TableCell>
                               {renderCurrencyCell(
                                 total,
@@ -2714,7 +3030,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                             : (() => {
                                 const subtotal = subtotalAfterProductDiscounts;
                                 const taxAmount = subtotal * 0.16;
-                                const deliveryCost = hasDelivery ? deliveryExpenses : 0;
+                                const deliveryCost = calculateDeliveryCost();
                                 const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
                                 return totalBeforeGeneralDiscount;
                               })()
@@ -2726,7 +3042,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                             ? (() => {
                                 const subtotal = subtotalAfterProductDiscounts;
                                 const taxAmount = subtotal * 0.16;
-                                const deliveryCost = hasDelivery ? deliveryExpenses : 0;
+                                const deliveryCost = calculateDeliveryCost();
                                 const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
                                 return totalBeforeGeneralDiscount > 0
                                   ? Math.round(
@@ -2831,13 +3147,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                         onValueChange={(value) =>
                           setSaleType(
                             value as
-                              | "delivery_express"
                               | "encargo"
-                              | "encargo_entrega"
                               | "entrega"
-                              | "retiro_almacen"
-                              | "retiro_tienda"
-                              | "sa"
+                              | "sistema_apartado"
                               | ""
                           )
                         }
@@ -2849,6 +3161,71 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           {PURCHASE_TYPES.map((type) => (
                             <SelectItem key={type.value} value={type.value}>
                               {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      </div>
+
+                    {/* Tipo de Entrega */}
+                    <div className="space-y-2">
+                      <Label htmlFor="deliveryType" className="text-sm sm:text-base">
+                        Tipo de Entrega <span className="text-red-500">*</span>
+                        </Label>
+                      <Select
+                        value={deliveryType}
+                        onValueChange={(value) =>
+                          setDeliveryType(
+                            value as
+                              | "entrega_programada"
+                              | "delivery_express"
+                              | "retiro_tienda"
+                              | "retiro_almacen"
+                              | ""
+                          )
+                        }
+                      >
+                        <SelectTrigger id="deliveryType">
+                          <SelectValue placeholder="Seleccione el tipo de entrega" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DELIVERY_TYPES.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      </div>
+
+                    {/* Zona de Entrega */}
+                    <div className="space-y-2">
+                      <Label htmlFor="deliveryZone" className="text-sm sm:text-base">
+                        Zona de Entrega <span className="text-red-500">*</span>
+                        </Label>
+                      <Select
+                        value={deliveryZone}
+                        onValueChange={(value) =>
+                          setDeliveryZone(
+                            value as
+                              | "caracas"
+                              | "g_g"
+                              | "san_antonio_los_teques"
+                              | "caucagua_higuerote"
+                              | "la_guaira"
+                              | "charallave_cua"
+                              | "interior_pais"
+                              | ""
+                          )
+                        }
+                      >
+                        <SelectTrigger id="deliveryZone">
+                          <SelectValue placeholder="Seleccione la zona de entrega" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DELIVERY_ZONES.map((zone) => (
+                            <SelectItem key={zone.value} value={zone.value}>
+                              {zone.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -2892,6 +3269,19 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         "method",
                                         value
                                       );
+                                      // Si se cambia a método digital, establecer automáticamente USD
+                                      if (digitalPaymentMethods.includes(value)) {
+                                        updatePayment(
+                                          payment.id,
+                                          "currency",
+                                          "USD"
+                                        );
+                                        updatePaymentDetails(
+                                          payment.id,
+                                          "originalCurrency",
+                                          "USD"
+                                        );
+                                      }
                                       // Si se cambia a Efectivo, inicializar cashCurrency con la moneda del pago
                                       if (value === "Efectivo") {
                                         const currentCurrency = payment.currency || getDefaultCurrencyFromSelection();
@@ -2935,11 +3325,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                       <SelectValue placeholder="Método" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {paymentMethods.map((method) => (
-                                        <SelectItem key={method} value={method}>
-                                          {method}
-                                        </SelectItem>
-                                      ))}
+                                      {paymentMethods
+                                        .filter((method) => method && method.trim() !== "")
+                                        .map((method) => (
+                                          <SelectItem key={method} value={method}>
+                                            {method}
+                                          </SelectItem>
+                                        ))}
                                     </SelectContent>
                                   </Select>
                                 </div>
@@ -3223,10 +3615,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         htmlFor={`pagomovil-account-${payment.id}`}
                                         className="text-xs"
                                       >
-                                        Cuenta *
+                                        Banco Receptor *
                                       </Label>
                                       <Select
-                                        value={payment.paymentDetails?.accountId || ""}
+                                        value={payment.paymentDetails?.accountId || undefined}
                                         onValueChange={(value) => {
                                           const selectedAccount = accounts.find(acc => acc.id === value);
                                           if (selectedAccount) {
@@ -3235,47 +3627,25 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         }}
                                       >
                                         <SelectTrigger>
-                                          <SelectValue placeholder="Seleccione una cuenta" />
+                                          <SelectValue placeholder="Seleccione un banco receptor" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          {getAccountsForPaymentMethod("Pago Móvil").map((account) => (
-                                            <SelectItem key={account.id} value={account.id}>
-                                              <div className="flex flex-col">
-                                                <span className="font-medium">
-                                                  {maskAccountNumber(account.accountNumber || "")}
-                                                </span>
-                                                <span className="text-xs text-muted-foreground">
-                                                  {account.bank || ""}
-                                                </span>
-                                              </div>
-                                            </SelectItem>
-                                          ))}
+                                          {getAccountsForPaymentMethod("Pago Móvil")
+                                            .filter((account) => account.id && account.id.trim() !== "")
+                                            .map((account) => (
+                                              <SelectItem key={account.id} value={account.id}>
+                                                <div className="flex flex-col">
+                                                  <span className="font-medium">
+                                                    {maskAccountNumber(account.accountNumber || "")}
+                                                  </span>
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {account.bank || ""}
+                                                  </span>
+                                                </div>
+                                              </SelectItem>
+                                            ))}
                                         </SelectContent>
                                       </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`pagomovil-phone-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        Teléfono *
-                                      </Label>
-                                      <Input
-                                        id={`pagomovil-phone-${payment.id}`}
-                                        type="tel"
-                                        value={
-                                          payment.paymentDetails
-                                            ?.pagomovilPhone || ""
-                                        }
-                                        onChange={(e) =>
-                                          updatePaymentDetails(
-                                            payment.id,
-                                            "pagomovilPhone",
-                                            e.target.value
-                                          )
-                                        }
-                                        placeholder="0412-1234567"
-                                      />
                                     </div>
                                   </div>
                                 </div>
@@ -3507,10 +3877,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         htmlFor={`transferencia-account-${payment.id}`}
                                         className="text-xs"
                                       >
-                                        Cuenta *
+                                        Banco Receptor *
                                       </Label>
                                       <Select
-                                        value={payment.paymentDetails?.accountId || ""}
+                                        value={payment.paymentDetails?.accountId || undefined}
                                         onValueChange={(value) => {
                                           const selectedAccount = accounts.find(acc => acc.id === value);
                                           if (selectedAccount) {
@@ -3519,21 +3889,23 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         }}
                                       >
                                         <SelectTrigger>
-                                          <SelectValue placeholder="Seleccione una cuenta" />
+                                          <SelectValue placeholder="Seleccione un banco receptor" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          {getAccountsForPaymentMethod("Transferencia").map((account) => (
-                                            <SelectItem key={account.id} value={account.id}>
-                                              <div className="flex flex-col">
-                                                <span className="font-medium">
-                                                  {maskAccountNumber(account.accountNumber || "")}
-                                                </span>
-                                                <span className="text-xs text-muted-foreground">
-                                                  {account.bank || ""}
-                                                </span>
-                                              </div>
-                                            </SelectItem>
-                                          ))}
+                                          {getAccountsForPaymentMethod("Transferencia")
+                                            .filter((account) => account.id && account.id.trim() !== "")
+                                            .map((account) => (
+                                              <SelectItem key={account.id} value={account.id}>
+                                                <div className="flex flex-col">
+                                                  <span className="font-medium">
+                                                    {maskAccountNumber(account.accountNumber || "")}
+                                                  </span>
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {account.bank || ""}
+                                                  </span>
+                                                </div>
+                                              </SelectItem>
+                                            ))}
                                         </SelectContent>
                                       </Select>
                                     </div>
@@ -3573,20 +3945,22 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                     Información de {payment.method}
                                   </Label>
                                   <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="space-y-2">
-                                      <Label
-                                        htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-currency-${payment.id}`}
-                                        className="text-xs"
-                                      >
-                                        Moneda *
-                                      </Label>
-                                      <Select
-                                        value={
-                                          (payment.currency && selectedCurrencies.includes(payment.currency))
-                                            ? payment.currency
-                                            : getDefaultCurrencyFromSelection()
-                                        }
-                                        onValueChange={(value: Currency) => {
+                                    {/* Campo Moneda - Oculto para métodos digitales */}
+                                    {!digitalPaymentMethods.includes(payment.method) && (
+                                      <div className="space-y-2">
+                                        <Label
+                                          htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-currency-${payment.id}`}
+                                          className="text-xs"
+                                        >
+                                          Moneda *
+                                        </Label>
+                                        <Select
+                                          value={
+                                            (payment.currency && selectedCurrencies.includes(payment.currency))
+                                              ? payment.currency
+                                              : getDefaultCurrencyFromSelection()
+                                          }
+                                          onValueChange={(value: Currency) => {
                                           // Actualizar la moneda registrada
                                           updatePayment(
                                             payment.id,
@@ -3689,6 +4063,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                         </SelectContent>
                                       </Select>
                                     </div>
+                                    )}
                                     <div className="space-y-2">
                                       <Label
                                         htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-amount-${payment.id}`}
@@ -3711,8 +4086,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                               .originalAmount;
                                           }
                                           // Fallback: calcular desde payment.amount
-                                          const paymentCurrency =
-                                            payment.currency || getDefaultCurrencyFromSelection();
+                                          // Para métodos digitales, siempre usar USD
+                                          const paymentCurrency = digitalPaymentMethods.includes(payment.method)
+                                            ? "USD"
+                                            : (payment.currency || getDefaultCurrencyFromSelection());
                                           if (paymentCurrency === "Bs") {
                                             return payment.amount;
                                           }
@@ -3729,8 +4106,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                           const inputValue =
                                             Number.parseFloat(e.target.value) ||
                                             0;
-                                          const paymentCurrency =
-                                            payment.currency || getDefaultCurrencyFromSelection();
+                                          // Para métodos digitales, siempre usar USD
+                                          const paymentCurrency = digitalPaymentMethods.includes(payment.method)
+                                            ? "USD"
+                                            : (payment.currency || getDefaultCurrencyFromSelection());
 
                                           // SIEMPRE guardar el monto original en la moneda del pago
                                           // Esto asegura que siempre tengamos el valor original
@@ -3788,7 +4167,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                       />
                                     </div>
                                     {/* Campo de cuenta para métodos bancarios y digitales */}
-                                    {["Banesco Panamá", "Mercantil Panamá", "Facebank", "Binance", "Paypal"].includes(payment.method) && (
+                                    {["Banesco Panamá", "Mercantil Panamá", "Facebank", "Binance", "Paypal", "Zelle"].includes(payment.method) && (
                                       <div className="space-y-2">
                                         <Label
                                           htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-account-${payment.id}`}
@@ -3797,7 +4176,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                           Cuenta {["Binance", "Paypal"].includes(payment.method) ? "(Digital)" : "(Bancaria)"} *
                                         </Label>
                                         <Select
-                                          value={payment.paymentDetails?.accountId || ""}
+                                          value={payment.paymentDetails?.accountId || undefined}
                                           onValueChange={(value) => {
                                             const selectedAccount = accounts.find(acc => acc.id === value);
                                             if (selectedAccount) {
@@ -3815,31 +4194,57 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                                             />
                                           </SelectTrigger>
                                           <SelectContent>
-                                            {getAccountsForPaymentMethod(payment.method).map((account) => (
-                                              <SelectItem key={account.id} value={account.id}>
-                                                {account.accountType === "Cuentas Digitales" ? (
-                                                  <div className="flex flex-col">
-                                                    <span className="font-medium">
-                                                      {account.email || "Sin correo"}
-                                                    </span>
-                                                    <span className="text-xs text-muted-foreground">
-                                                      {account.wallet || "Sin wallet"}
-                                                    </span>
-                                                  </div>
-                                                ) : (
-                                                  <div className="flex flex-col">
-                                                    <span className="font-medium">
-                                                      {maskAccountNumber(account.accountNumber || "")}
-                                                    </span>
-                                                    <span className="text-xs text-muted-foreground">
-                                                      {account.bank || ""}
-                                                    </span>
-                                                  </div>
-                                                )}
-                                              </SelectItem>
-                                            ))}
+                                            {getAccountsForPaymentMethod(payment.method)
+                                              .filter((account) => account.id && account.id.trim() !== "")
+                                              .map((account) => (
+                                                <SelectItem key={account.id} value={account.id}>
+                                                  {account.accountType === "Cuentas Digitales" ? (
+                                                    <div className="flex flex-col">
+                                                      <span className="font-medium">
+                                                        {account.email || "Sin correo"}
+                                                      </span>
+                                                      <span className="text-xs text-muted-foreground">
+                                                        {account.wallet || "Sin wallet"}
+                                                      </span>
+                                                    </div>
+                                                  ) : (
+                                                    <div className="flex flex-col">
+                                                      <span className="font-medium">
+                                                        {maskAccountNumber(account.accountNumber || "")}
+                                                      </span>
+                                                      <span className="text-xs text-muted-foreground">
+                                                        {account.bank || ""}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                </SelectItem>
+                                              ))}
                                           </SelectContent>
                                         </Select>
+                                      </div>
+                                    )}
+                                    {/* Campo ENVIA para Zelle */}
+                                    {payment.method === "Zelle" && (
+                                      <div className="space-y-2">
+                                        <Label
+                                          htmlFor={`zelle-envia-${payment.id}`}
+                                          className="text-xs"
+                                        >
+                                          ENVIA *
+                                        </Label>
+                                        <Input
+                                          id={`zelle-envia-${payment.id}`}
+                                          type="text"
+                                          value={payment.paymentDetails?.envia || ""}
+                                          onChange={(e) =>
+                                            updatePaymentDetails(
+                                              payment.id,
+                                              "envia",
+                                              e.target.value
+                                            )
+                                          }
+                                          placeholder="Nombre del titular de la cuenta que paga"
+                                        />
                                       </div>
                                     )}
                                   </div>
@@ -4291,6 +4696,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           }
         }}
       />
+
 
       <ProductSelectionDialog
         open={isProductSelectionOpen}

@@ -72,11 +72,17 @@ interface CategoryAttribute {
 
 // Helper functions to normalize attribute values
 const getValueString = (value: string | AttributeValue): string => {
-  return typeof value === "string" ? value : value.id || value.label;
+  if (typeof value === "string") {
+    return value || "unknown"; // Si es cadena vacía, usar "unknown"
+  }
+  return value.id || value.label || "unknown"; // Si ambos son undefined/vacíos, usar "unknown"
 };
 
 const getValueLabel = (value: string | AttributeValue): string => {
-  return typeof value === "string" ? value : value.label || value.id;
+  if (typeof value === "string") {
+    return value || "Sin nombre"; // Si es cadena vacía, usar "Sin nombre"
+  }
+  return value.label || value.id || "Sin nombre"; // Si ambos son undefined/vacíos, usar "Sin nombre"
 };
 
 // Componente para editar atributos del producto seleccionado
@@ -174,8 +180,8 @@ function ProductAttributesEditor({
       case "Select":
         return (
           <Select
-            value={attrValue || ""}
-            onValueChange={(val) => handleAttributeChange(attrKey, val)}
+            value={attrValue || "vacio"}
+            onValueChange={(val) => handleAttributeChange(attrKey, val === "vacio" ? undefined : val)}
           >
             <SelectTrigger>
               <SelectValue
@@ -185,15 +191,21 @@ function ProductAttributesEditor({
               />
             </SelectTrigger>
             <SelectContent>
-              {attribute.values?.map((option: string | AttributeValue) => {
-                const optionValue = getValueString(option);
-                const optionLabel = getValueLabel(option);
-                return (
-                  <SelectItem key={optionValue} value={optionValue}>
-                    {optionLabel}
-                  </SelectItem>
-                );
-              })}
+              <SelectItem value="vacio">Seleccione una opción</SelectItem>
+              {attribute.values
+                ?.filter((option: string | AttributeValue) => {
+                  const optionValue = getValueString(option);
+                  return optionValue && optionValue.trim() !== "" && optionValue !== "unknown";
+                })
+                .map((option: string | AttributeValue) => {
+                  const optionValue = getValueString(option);
+                  const optionLabel = getValueLabel(option);
+                  return (
+                    <SelectItem key={optionValue} value={optionValue}>
+                      {optionLabel}
+                    </SelectItem>
+                  );
+                })}
             </SelectContent>
           </Select>
         );
@@ -243,10 +255,11 @@ function ProductAttributesEditor({
               <SelectContent>
                 {attribute.values
                   ?.map(getValueString)
-                  .filter(
-                    (optionValue: string) =>
-                      !selectedValues.includes(optionValue)
-                  )
+                  .filter((optionValue: string) => {
+                    // Filtrar valores vacíos
+                    if (!optionValue || optionValue.trim() === "" || optionValue === "unknown") return false;
+                    return !selectedValues.includes(optionValue);
+                  })
                   .map((optionValue: string) => {
                     const option = attribute.values?.find(
                       (v: string | AttributeValue) =>
@@ -814,22 +827,28 @@ export function ProductWizardDialog({
       case "Select":
         return (
           <Select
-            value={value || ""}
-            onValueChange={(val) => handleAttributeChange(attribute.id, val)}
+            value={value || "vacio"}
+            onValueChange={(val) => handleAttributeChange(attribute.id, val === "vacio" ? undefined : val)}
           >
             <SelectTrigger>
               <SelectValue placeholder="Seleccione una opción" />
             </SelectTrigger>
             <SelectContent>
-              {attribute.values.map((option) => {
-                const optionValue = getValueString(option);
-                const optionLabel = getValueLabel(option);
-                return (
-                  <SelectItem key={optionValue} value={optionValue}>
-                    {optionLabel}
-                  </SelectItem>
-                );
-              })}
+              <SelectItem value="vacio">Seleccione una opción</SelectItem>
+              {attribute.values
+                .filter((option) => {
+                  const optionValue = getValueString(option);
+                  return optionValue && optionValue.trim() !== "" && optionValue !== "unknown";
+                })
+                .map((option) => {
+                  const optionValue = getValueString(option);
+                  const optionLabel = getValueLabel(option);
+                  return (
+                    <SelectItem key={optionValue} value={optionValue}>
+                      {optionLabel}
+                    </SelectItem>
+                  );
+                })}
             </SelectContent>
           </Select>
         );
@@ -879,9 +898,11 @@ export function ProductWizardDialog({
               <SelectContent>
                 {attribute.values
                   .map(getValueString)
-                  .filter(
-                    (optionValue) => !selectedValues.includes(optionValue)
-                  )
+                  .filter((optionValue) => {
+                    // Filtrar valores vacíos
+                    if (!optionValue || optionValue.trim() === "" || optionValue === "unknown") return false;
+                    return !selectedValues.includes(optionValue);
+                  })
                   .map((optionValue) => {
                     const option = attribute.values.find(
                       (v) => getValueString(v) === optionValue
@@ -1248,16 +1269,18 @@ export function ProductWizardDialog({
                       </SelectTrigger>
                       <SelectContent>
                         {categories.length > 0 ? (
-                          categories.map((category) => (
-                            <SelectItem
-                              key={category.id}
-                              value={category.id.toString()}
-                            >
-                              {category.name}
-                            </SelectItem>
-                          ))
+                          categories
+                            .filter((category) => category.id && category.id.toString().trim() !== "")
+                            .map((category) => (
+                              <SelectItem
+                                key={category.id}
+                                value={category.id.toString()}
+                              >
+                                {category.name}
+                              </SelectItem>
+                            ))
                         ) : (
-                          <SelectItem value="" disabled>
+                          <SelectItem value="no-categories" disabled>
                             No hay categorías disponibles
                           </SelectItem>
                         )}

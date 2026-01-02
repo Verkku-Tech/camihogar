@@ -7,6 +7,7 @@ import { MetricsCards } from "./metrics-cards"
 import { OrdersTable } from "./orders-table"
 import { ManufacturingProductsTable } from "./manufacturing-products-table"
 import { BudgetsTable } from "./budgets-table"
+import { DispatchesTable } from "./dispatches-table"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import { calculateDashboardMetrics, DashboardMetrics } from "@/lib/storage"
@@ -150,9 +151,7 @@ export function Dashboard() {
             {activeTab === "pedidos" && <OrdersTable />}
             {activeTab === "presupuestos" && <BudgetsTable />}
             {activeTab === "fabricacion" && <ManufacturingProductsTable />}
-            {activeTab === "despachos" && (
-              <EmptyState message="Las notas de despacho estarán disponibles próximamente" />
-            )}
+            {activeTab === "despachos" && <DispatchesTable />}
           </div>
         </main>
       </div>

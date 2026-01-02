@@ -5,7 +5,7 @@ import { Sidebar } from "@/components/dashboard/sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { FileText, Package, CreditCard } from "lucide-react"
+import { FileText, Package, CreditCard, Percent, Truck } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 interface ReportCard {
@@ -35,6 +35,24 @@ const reports: ReportCard[] = [
     href: "/reportes/pagos",
     icon: CreditCard,
     color: "bg-green-500",
+    available: true,
+  },
+  {
+    id: "comisiones",
+    title: "Reporte de Comisiones de Ventas",
+    description: "Comisiones por factura con división automática para ventas compartidas. Filtros obligatorios por fecha.",
+    href: "/reportes/comisiones",
+    icon: Percent,
+    color: "bg-purple-500",
+    available: true,
+  },
+  {
+    id: "despacho",
+    title: "Reporte de Despacho",
+    description: "Pedidos listos para despacho agrupados por pedido. Filtro principal por Zona para organizar por ruta.",
+    href: "/reportes/despacho",
+    icon: Truck,
+    color: "bg-orange-500",
     available: true,
   },
 ]

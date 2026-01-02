@@ -25,6 +25,15 @@ import { toast } from "sonner"
 import { getUnifiedOrders, updateOrder, type UnifiedOrder } from "@/lib/storage"
 import { useCurrency } from "@/contexts/currency-context"
 import { useRouter } from "next/navigation"
+import { DELIVERY_TYPES, DELIVERY_ZONES } from "@/components/orders/new-order-dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -58,18 +67,23 @@ const isOrderReadyForDispatch = (order: UnifiedOrder): boolean => {
 
   // Verificar que todos los productos estén listos
   return order.products.every((product) => {
+    // Si no tiene locationStatus, considerarlo listo para despacho
+    if (!product.locationStatus || product.locationStatus === "") {
+      return true
+    }
+
     // Si está en tienda, está listo
-    if (product.locationStatus === "en_tienda") {
+    if (product.locationStatus === "EN TIENDA") {
       return true
     }
 
     // Si debe fabricarse, debe estar fabricado
-    if (product.locationStatus === "mandar_a_fabricar") {
+    if (product.locationStatus === "FABRICACION") {
       return product.manufacturingStatus === "fabricado"
     }
 
-    // Si no tiene locationStatus definido, asumir que no está listo
-    return false
+    // Por defecto, considerar listo
+    return true
   })
 }
 
@@ -78,6 +92,8 @@ export default function DespachosPage() {
   const router = useRouter()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [deliveryTypeFilter, setDeliveryTypeFilter] = useState<string>("all")
+  const [deliveryZoneFilter, setDeliveryZoneFilter] = useState<string>("all")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
@@ -121,12 +137,25 @@ export default function DespachosPage() {
     }
   }, [orders, preferredCurrency, formatWithPreference])
 
-  const filteredOrders = orders.filter(
-    (order) =>
+  const filteredOrders = orders.filter((order) => {
+    // Filtro de búsqueda
+    const matchesSearch =
       order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
+
+    // Filtro por tipo de entrega
+    const matchesDeliveryType =
+      deliveryTypeFilter === "all" ||
+      order.deliveryType === deliveryTypeFilter
+
+    // Filtro por zona de entrega
+    const matchesDeliveryZone =
+      deliveryZoneFilter === "all" ||
+      order.deliveryZone === deliveryZoneFilter
+
+    return matchesSearch && matchesDeliveryType && matchesDeliveryZone
+  })
 
   // Manejar selección individual
   const handleToggleSelect = (orderId: string) => {
@@ -257,25 +286,67 @@ export default function DespachosPage() {
             </nav>
 
             <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row gap-4 justify-between">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                  <Input
-                    placeholder="Buscar pedidos..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row gap-4 justify-between">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                    <Input
+                      placeholder="Buscar pedidos..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  {selectedOrders.size > 0 && (
+                    <Button
+                      onClick={() => setIsBulkDispatchDialogOpen(true)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <PackageCheck className="w-4 h-4 mr-2" />
+                      Despachar Seleccionados ({selectedOrders.size})
+                    </Button>
+                  )}
                 </div>
-                {selectedOrders.size > 0 && (
-                  <Button
-                    onClick={() => setIsBulkDispatchDialogOpen(true)}
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    <PackageCheck className="w-4 h-4 mr-2" />
-                    Despachar Seleccionados ({selectedOrders.size})
-                  </Button>
-                )}
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="space-y-2 flex-1 max-w-xs">
+                    <Label htmlFor="deliveryTypeFilter">Tipo de Entrega</Label>
+                    <Select
+                      value={deliveryTypeFilter}
+                      onValueChange={setDeliveryTypeFilter}
+                    >
+                      <SelectTrigger id="deliveryTypeFilter">
+                        <SelectValue placeholder="Todos los tipos" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos los tipos</SelectItem>
+                        {DELIVERY_TYPES.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 flex-1 max-w-xs">
+                    <Label htmlFor="deliveryZoneFilter">Zona de Entrega</Label>
+                    <Select
+                      value={deliveryZoneFilter}
+                      onValueChange={setDeliveryZoneFilter}
+                    >
+                      <SelectTrigger id="deliveryZoneFilter">
+                        <SelectValue placeholder="Todas las zonas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas las zonas</SelectItem>
+                        {DELIVERY_ZONES.map((zone) => (
+                          <SelectItem key={zone.value} value={zone.value}>
+                            {zone.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
 
               <Card>

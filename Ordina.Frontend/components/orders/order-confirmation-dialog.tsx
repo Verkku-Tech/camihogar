@@ -311,6 +311,7 @@ interface OrderConfirmationDialogProps {
   orderData: {
     clientName: string;
     clientTelefono?: string;
+    clientTelefono2?: string;
     clientEmail?: string;
     clientRutId?: string;
     clientDireccion?: string;
@@ -331,15 +332,29 @@ interface OrderConfirmationDialogProps {
       | "pago_parcial"
       | "todo_pago";
     saleType?:
-      | "delivery_express"
       | "encargo"
-      | "encargo_entrega"
       | "entrega"
-      | "retiro_almacen"
+      | "sistema_apartado";
+    deliveryType?:
+      | "entrega_programada"
+      | "delivery_express"
       | "retiro_tienda"
-      | "sa";
+      | "retiro_almacen";
+    deliveryZone?:
+      | "caracas"
+      | "g_g"
+      | "san_antonio_los_teques"
+      | "caucagua_higuerote"
+      | "la_guaira"
+      | "charallave_cua"
+      | "interior_pais";
     hasDelivery: boolean;
     deliveryAddress?: string;
+    deliveryServices?: {
+      deliveryExpress?: { enabled: boolean; cost: number; currency: Currency };
+      servicioAcarreo?: { enabled: boolean; cost?: number; currency: Currency };
+      servicioArmado?: { enabled: boolean; cost: number; currency: Currency };
+    };
     observations?: string;
   };
 }
@@ -836,6 +851,9 @@ export function OrderConfirmationDialog({
                         Teléfono del cliente:
                       </span>
                       <p className="font-medium">{orderData.clientTelefono}</p>
+                      {orderData.clientTelefono2 && (
+                        <p className="font-medium text-sm mt-1">{orderData.clientTelefono2}</p>
+                      )}
                     </div>
                   )}
                   {orderData.clientEmail && (
@@ -897,21 +915,77 @@ export function OrderConfirmationDialog({
                         Tipo de Venta:
                       </span>
                       <p className="font-medium">
-                        {orderData.saleType === "delivery_express"
-                          ? "Delivery Express"
-                          : orderData.saleType === "encargo"
+                        {orderData.saleType === "encargo"
                           ? "Encargo"
-                          : orderData.saleType === "encargo_entrega"
-                          ? "Encargo/Entrega"
                           : orderData.saleType === "entrega"
                           ? "Entrega"
-                          : orderData.saleType === "retiro_almacen"
-                          ? "Retiro x almacén"
-                          : orderData.saleType === "retiro_tienda"
-                          ? "Retiro x tienda"
-                          : orderData.saleType === "sa"
-                          ? "SA"
+                          : orderData.saleType === "sistema_apartado"
+                          ? "Sistema de Apartado"
                           : orderData.saleType}
+                      </p>
+                    </div>
+                  )}
+                  {orderData.deliveryType && (
+                    <div>
+                      <span className="text-sm text-muted-foreground">
+                        Tipo de Entrega:
+                      </span>
+                      <p className="font-medium">
+                        {orderData.deliveryType === "entrega_programada"
+                          ? "Entrega programada"
+                          : orderData.deliveryType === "delivery_express"
+                          ? "Delivery Express"
+                          : orderData.deliveryType === "retiro_tienda"
+                          ? "Retiro por Tienda"
+                          : orderData.deliveryType === "retiro_almacen"
+                          ? "Retiro por almacén"
+                          : orderData.deliveryType}
+                      </p>
+                    </div>
+                  )}
+                  {orderData.deliveryZone && (
+                    <div>
+                      <span className="text-sm text-muted-foreground">
+                        Zona de Entrega:
+                      </span>
+                      <p className="font-medium">
+                        {orderData.deliveryZone === "caracas"
+                          ? "Caracas"
+                          : orderData.deliveryZone === "g_g"
+                          ? "G&G"
+                          : orderData.deliveryZone === "san_antonio_los_teques"
+                          ? "San Antonio-Los Teques"
+                          : orderData.deliveryZone === "caucagua_higuerote"
+                          ? "Caucagua-Higuerote"
+                          : orderData.deliveryZone === "la_guaira"
+                          ? "La Guaira"
+                          : orderData.deliveryZone === "charallave_cua"
+                          ? "Charallave-Cua"
+                          : orderData.deliveryZone === "interior_pais"
+                          ? "Interior del País"
+                          : orderData.deliveryZone}
+                      </p>
+                    </div>
+                  )}
+                  {orderData.hasDelivery && orderData.deliveryServices && (
+                    <div>
+                      <span className="text-sm text-muted-foreground">
+                        Servicios de Delivery:
+                      </span>
+                      <p className="font-medium">
+                        {(() => {
+                            const services: string[] = [];
+                            if (orderData.deliveryServices.deliveryExpress?.enabled) {
+                              services.push("Delivery Express");
+                            }
+                            if (orderData.deliveryServices.servicioAcarreo?.enabled) {
+                              services.push("Servicio de Acarreo");
+                            }
+                            if (orderData.deliveryServices.servicioArmado?.enabled) {
+                              services.push("Servicio de Armado");
+                            }
+                            return services.length > 0 ? services.join(", ") : "Sin servicios específicos";
+                          })()}
                       </p>
                     </div>
                   )}
@@ -944,10 +1018,10 @@ export function OrderConfirmationDialog({
                           let badgeVariant: "default" | "destructive" | "secondary" = "secondary";
                           let badgeClassName = "text-sm";
 
-                          if (product.locationStatus === "en_tienda") {
+                          if (product.locationStatus === "en_tienda" || product.locationStatus === "EN TIENDA") {
                             badgeText = "En Tienda";
                             badgeVariant = "default";
-                          } else if (product.locationStatus === "mandar_a_fabricar") {
+                          } else if (product.locationStatus === "mandar_a_fabricar" || product.locationStatus === "FABRICACION") {
                             if (product.manufacturingStatus === "fabricado") {
                               badgeText = "Fabricado";
                               badgeVariant = "default";
@@ -988,13 +1062,10 @@ export function OrderConfirmationDialog({
                       {product.attributes && Object.keys(product.attributes).length > 0 && (
                         <div className="mt-3 pt-3 border-t">
                           <p className="text-sm font-medium mb-2">Atributos:</p>
-                          <div className="space-y-1">
-                            {Object.entries(product.attributes).map(([key, value]) => {
+                          <div className="text-sm">
+                            {(() => {
                               const category = categories.find(c => 
                                 c.name === product.category
-                              );
-                              const categoryAttribute = category?.attributes?.find(
-                                attr => attr.id?.toString() === key || attr.title === key
                               );
                               
                               // Función helper para obtener el label del valor desde los values del atributo
@@ -1058,17 +1129,48 @@ export function OrderConfirmationDialog({
                                 }
                               };
                               
-                              const valueLabel = getAttributeValueLabel(value, categoryAttribute);
+                              // Recopilar todos los valores de atributos en una sola línea
+                              const attributeValues: string[] = [];
                               
-                              return (
-                                <div key={key} className="flex items-center gap-2 text-sm">
-                                  <span className="text-muted-foreground font-medium">
-                                    {categoryAttribute?.title || key}:
-                                  </span>
-                                  <Badge variant="secondary">{valueLabel || "-"}</Badge>
-                                </div>
-                              );
-                            })}
+                              // Primero, identificar qué atributos son de tipo Product para excluirlos
+                              const productAttributeKeys = new Set<string>();
+                              category?.attributes?.forEach(attr => {
+                                if (attr.valueType === "Product") {
+                                  const attrId = attr.id?.toString() || attr.title;
+                                  if (attrId) {
+                                    productAttributeKeys.add(attrId);
+                                  }
+                                }
+                              });
+                              
+                              Object.entries(product.attributes).forEach(([key, value]) => {
+                                // Ignorar atributos de tipo Product (se manejan por separado)
+                                if (productAttributeKeys.has(key)) {
+                                  return;
+                                }
+                                
+                                // Ignorar claves que son para atributos editados de productos-atributos (formato: attrId_productId)
+                                if (key.includes("_")) {
+                                  const parts = key.split("_");
+                                  if (parts.length === 2 && !isNaN(Number(parts[1])) && productAttributeKeys.has(parts[0])) {
+                                    return;
+                                  }
+                                }
+                                
+                                const categoryAttribute = category?.attributes?.find(
+                                  attr => (attr.id?.toString() === key || attr.title === key) && attr.valueType !== "Product"
+                                );
+                                
+                                const valueLabel = getAttributeValueLabel(value, categoryAttribute);
+                                if (valueLabel && valueLabel.trim() !== "" && valueLabel !== "-") {
+                                  attributeValues.push(valueLabel.trim());
+                                }
+                              });
+                              
+                              return attributeValues.length > 0 
+                                ? attributeValues.join(" + ")
+                                : "Sin atributos";
+                            })()}
                           </div>
                         </div>
                       )}
@@ -1087,6 +1189,53 @@ export function OrderConfirmationDialog({
                     </div>
                   );
                 })}
+              </div>
+              
+              {/* Resumen del pedido */}
+              <div className="mt-6 pt-6 border-t">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <DollarSign className="w-4 h-4" />
+                      Resumen del Pedido
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableBody>
+                        {/* Total pagado */}
+                        <TableRow>
+                          <TableCell className="text-xs sm:text-sm">
+                            Total pagado:
+                          </TableCell>
+                          {renderCurrencyCell(
+                            orderData.payments.reduce((sum, p) => sum + (p.amount || 0), 0),
+                            "font-semibold"
+                          )}
+                        </TableRow>
+
+                        {/* Total del pedido */}
+                        <TableRow>
+                          <TableCell className="text-xs sm:text-sm">
+                            Total del pedido:
+                          </TableCell>
+                          {renderCurrencyCell(orderData.total)}
+                        </TableRow>
+
+                        {/* Resta por pagar */}
+                        <TableRow className="font-semibold border-t">
+                          <TableCell className="text-xs sm:text-sm">
+                            Falta:
+                          </TableCell>
+                          {renderCurrencyCell(
+                            orderData.total - orderData.payments.reduce((sum, p) => sum + (p.amount || 0), 0),
+                            "text-sm sm:text-base font-semibold"
+                          )}
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
               </div>
             </CardContent>
           </Card>
