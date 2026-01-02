@@ -30,7 +30,7 @@ export function ManufacturingProductsTable() {
         orders.forEach((order) => {
           order.products.forEach((product) => {
             // SOLO procesar productos que deben mandarse a fabricar
-            if (product.locationStatus !== "mandar_a_fabricar" && product.locationStatus !== "FABRICACION") {
+            if (product.locationStatus !== "FABRICACION") {
               return
             }
 

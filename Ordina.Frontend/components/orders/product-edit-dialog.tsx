@@ -381,7 +381,7 @@ function ProductAttributesEditor({
                 <SelectItem value="vacio">Seleccione una opción</SelectItem>
                 {attribute.values
                   ?.slice() // Crear copia para no mutar el array original
-                  .sort((a, b) => {
+                  .sort((a: string | AttributeValue, b: string | AttributeValue) => {
                     // Obtener el label de cada opción
                     const labelA = typeof a === "string" ? a : a.label || a.id || "";
                     const labelB = typeof b === "string" ? b : b.label || b.id || "";
@@ -508,7 +508,7 @@ function ProductAttributesEditor({
                 <SelectContent>
                   {attribute.values
                     ?.slice() // Crear copia para no mutar el array original
-                    .sort((a, b) => {
+                    .sort((a: string | AttributeValue, b: string | AttributeValue) => {
                       // Obtener el label de cada opción
                       const labelA = typeof a === "string" ? a : a.label || a.id || "";
                       const labelB = typeof b === "string" ? b : b.label || b.id || "";
@@ -1871,7 +1871,7 @@ export function ProductEditDialog({
                                     </SelectItem>
                                   );
                                 })
-                                .filter((item) => item !== null)}
+                                .filter((item: string | null): item is string => item !== null)}
                             </SelectContent>
                           </Select>
                           {selectedAdjustment !== 0 && (

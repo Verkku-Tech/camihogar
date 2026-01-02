@@ -1212,13 +1212,11 @@ export default function OrderDetailPage() {
                                     badgeText = "En Tienda";
                                     badgeVariant = "default";
                                   } 
-                                  // Verificar si es "FABRICACION" o "mandar_a_fabricar" (ambos formatos)
+                                  // Verificar si es "FABRICACION"
                                   // También verificar variaciones con espacios o mayúsculas/minúsculas
                                   else if (
-                                    locationStatus === "mandar_a_fabricar" || 
                                     locationStatus === "FABRICACION" ||
                                     locationStatus?.toUpperCase() === "FABRICACION" ||
-                                    locationStatus?.toUpperCase() === "MANDAR_A_FABRICAR" ||
                                     (locationStatus && locationStatus.toLowerCase().includes("fabric"))
                                   ) {
                                     if (product.manufacturingStatus === "fabricado") {
