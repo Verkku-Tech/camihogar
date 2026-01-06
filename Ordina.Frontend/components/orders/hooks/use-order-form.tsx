@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useCurrency } from "@/contexts/currency-context";
 import { toast } from "sonner";
 import {
@@ -196,11 +196,11 @@ export interface UseOrderFormReturn {
   handleGeneralDiscountChange: (value: number) => void;
   handleGeneralDiscountTypeChange: (type: "monto" | "porcentaje") => void;
   calculateDeliveryCost: () => number;
-  renderCurrencyCell: (amountInBs: number, className?: string) => JSX.Element;
+  renderCurrencyCell: (amountInBs: number, className?: string) => React.ReactElement;
   renderCurrencyCellNegative: (
     amountInBs: number,
     className?: string
-  ) => JSX.Element;
+  ) => React.ReactElement;
 
   // Mock data (compatibilidad)
   mockVendors: Vendor[];
@@ -847,20 +847,18 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
   }, [preferredCurrency]);
 
   // Validaciones
-  const canGoToNextStep =
+  const canGoToNextStep: boolean =
     currentStep === 1
-      ? formData.vendor && selectedClient && selectedProducts.length > 0
+      ? !!(formData.vendor && selectedClient && selectedProducts.length > 0)
       : currentStep === 2
       ? selectedProducts.length > 0
       : true;
 
-  const canCreateBudget =
+  const canCreateBudget: boolean =
     currentStep === 1 &&
-    formData.vendor &&
-    selectedClient &&
-    selectedProducts.length > 0;
+    !!(formData.vendor && selectedClient && selectedProducts.length > 0);
 
-  const canAddProduct = formData.vendor && selectedClient;
+  const canAddProduct: boolean = !!(formData.vendor && selectedClient);
 
   // Render helpers
   const renderCurrencyCell = useCallback(

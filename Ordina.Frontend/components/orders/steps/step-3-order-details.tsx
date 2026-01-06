@@ -783,19 +783,19 @@ export function Step3OrderDetails({
                           <Select
                             value={payment.method}
                             onValueChange={(value) => {
-                              updatePayment(
+                              updatePayment?.(
                                 payment.id,
                                 "method",
                                 value
                             );
                               // Si se cambia a método digital, establecer automáticamente USD
                               if (digitalPaymentMethods.includes(value)) {
-                                updatePayment(
+                                updatePayment?.(
                                   payment.id,
                                   "currency",
                                   "USD"
                               );
-                                updatePaymentDetails(
+                                updatePaymentDetails?.(
                                   payment.id,
                                   "originalCurrency",
                                   "USD"
@@ -804,14 +804,14 @@ export function Step3OrderDetails({
                               // Si se cambia a Efectivo, inicializar cashCurrency con la moneda del pago
                               if (value === "Efectivo") {
                                 const currentCurrency = payment.currency || orderForm.getDefaultCurrencyFromSelection();
-                                updatePaymentDetails(
+                                updatePaymentDetails?.(
                                   payment.id,
                                   "cashCurrency",
                                   currentCurrency
                               );
                                 // También actualizar payment.currency si no está definido
                                 if (!payment.currency) {
-                                  updatePayment(
+                                  updatePayment?.(
                                     payment.id,
                                     "currency",
                                     currentCurrency
@@ -819,7 +819,7 @@ export function Step3OrderDetails({
                                 }
                                 // Si hay una tasa de cambio disponible, guardarla
                                 if (currentCurrency !== "Bs" && orderForm.exchangeRates[currentCurrency]?.rate) {
-                                  updatePaymentDetails(
+                                  updatePaymentDetails?.(
                                     payment.id,
                                     "exchangeRate",
                                     orderForm.exchangeRates[currentCurrency].rate
@@ -827,12 +827,12 @@ export function Step3OrderDetails({
                                 }
                               } else {
                                 // Si se cambia a un método diferente a Efectivo y había cashReceived, limpiarlo
-                                updatePaymentDetails(
+                                updatePaymentDetails?.(
                                   payment.id,
                                   "cashReceived",
                                   0
                               );
-                                updatePaymentDetails(
+                                updatePaymentDetails?.(
                                   payment.id,
                                   "cashCurrency",
                                   "Bs"
@@ -861,7 +861,7 @@ export function Step3OrderDetails({
                             type="date"
                             value={payment.date}
                             onChange={(e) =>
-                              updatePayment(
+                              updatePayment?.(
                                 payment.id,
                                 "date",
                                 e.target.value
@@ -874,7 +874,7 @@ export function Step3OrderDetails({
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => removePayment(payment.id)}
+                          onClick={() => removePayment?.(payment.id)}
                           className="w-full sm:w-auto self-end sm:self-auto"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -906,7 +906,7 @@ export function Step3OrderDetails({
                                 }
                                 onValueChange={(value: Currency) => {
                                   // Actualizar la moneda registrada
-                                  updatePayment(
+                                  updatePayment?.(
                                     payment.id,
                                     "currency",
                                     value
@@ -919,7 +919,7 @@ export function Step3OrderDetails({
                                           
                                   if (currentOriginalAmount !== undefined && currentOriginalCurrency) {
                                     // Actualizar la moneda original
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalCurrency",
                                       value
@@ -938,7 +938,7 @@ export function Step3OrderDetails({
                                             : orderForm.exchangeRates.EUR?.rate;
                                         if (rate && rate > 0) {
                                           valueInBs = currentOriginalAmount * rate;
-                                          updatePaymentDetails(
+                                          updatePaymentDetails?.(
                                             payment.id,
                                             "exchangeRate",
                                             rate
@@ -948,7 +948,7 @@ export function Step3OrderDetails({
                                         // Si cambia a Bs, el originalAmount ya está en Bs
                                         valueInBs = currentOriginalAmount;
                                       }
-                                      updatePayment(
+                                      updatePayment?.(
                                         payment.id,
                                         "amount",
                                         valueInBs
@@ -964,26 +964,26 @@ export function Step3OrderDetails({
                                           : orderForm.exchangeRates.EUR?.rate;
                                       if (rate && rate > 0) {
                                         originalAmount = payment.amount / rate;
-                                        updatePaymentDetails(
+                                        updatePaymentDetails?.(
                                           payment.id,
                                           "exchangeRate",
                                           rate
                                       );
                                       }
                                     }
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalAmount",
                                       originalAmount
                                   );
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalCurrency",
                                       value
                                   );
                                   } else {
                                     // Si no hay monto aún, solo actualizar la moneda
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalCurrency",
                                       value
@@ -1053,12 +1053,12 @@ export function Step3OrderDetails({
 
                                   // SIEMPRE guardar el monto original en la moneda del pago
                                   // Esto asegura que siempre tengamos el valor original
-                                  updatePaymentDetails(
+                                  updatePaymentDetails?.(
                                     payment.id,
                                     "originalAmount",
                                     inputValue
                                 );
-                                  updatePaymentDetails(
+                                  updatePaymentDetails?.(
                                     payment.id,
                                     "originalCurrency",
                                     paymentCurrency
@@ -1066,7 +1066,7 @@ export function Step3OrderDetails({
 
                                   // También actualizar payment.currency si no está definida
                                   if (!payment.currency) {
-                                    updatePayment(
+                                    updatePayment?.(
                                       payment.id,
                                       "currency",
                                       paymentCurrency
@@ -1083,7 +1083,7 @@ export function Step3OrderDetails({
                                     if (rate && rate > 0) {
                                       valueInBs = inputValue * rate;
                                       // Guardar la tasa de cambio usada
-                                      updatePaymentDetails(
+                                      updatePaymentDetails?.(
                                         payment.id,
                                         "exchangeRate",
                                         rate
@@ -1091,13 +1091,13 @@ export function Step3OrderDetails({
                                     }
                                   } else {
                                     // Si es Bs, asegurar que el exchangeRate sea null/undefined
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "exchangeRate",
                                       undefined
                                   );
                                   }
-                                  updatePayment(
+                                  updatePayment?.(
                                     payment.id,
                                     "amount",
                                     valueInBs
@@ -1120,7 +1120,7 @@ export function Step3OrderDetails({
                                     ?.pagomovilReference || ""
                                 }
                                 onChange={(e) =>
-                                  updatePaymentDetails(
+                                  updatePaymentDetails?.(
                                     payment.id,
                                     "pagomovilReference",
                                     e.target.value
@@ -1141,7 +1141,7 @@ export function Step3OrderDetails({
                                 onValueChange={(value) => {
                                   const selectedAccount = orderForm.accounts.find(acc => acc.id === value);
                                   if (selectedAccount) {
-                                    saveAccountInfoToPayment(payment.id, selectedAccount);
+                                    saveAccountInfoToPayment?.(payment.id, selectedAccount);
                                   }
                                 }}
                               >
@@ -1149,7 +1149,7 @@ export function Step3OrderDetails({
                                   <SelectValue placeholder="Seleccione un banco receptor" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {getAccountsForPaymentMethod("Pago Móvil")
+                                  {getAccountsForPaymentMethod?.("Pago Móvil")
                                     .filter((account) => account.id && account.id.trim() !== "")
                                     .map((account) => (
                                       <SelectItem key={account.id} value={account.id}>
@@ -1211,7 +1211,7 @@ export function Step3OrderDetails({
                                 }
                                 onValueChange={(value: Currency) => {
                                   // Actualizar la moneda registrada
-                                  updatePayment(
+                                  updatePayment?.(
                                     payment.id,
                                     "currency",
                                     value
@@ -1224,7 +1224,7 @@ export function Step3OrderDetails({
                                           
                                   if (currentOriginalAmount !== undefined && currentOriginalCurrency) {
                                     // Actualizar la moneda original
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalCurrency",
                                       value
@@ -1243,7 +1243,7 @@ export function Step3OrderDetails({
                                             : orderForm.exchangeRates.EUR?.rate;
                                         if (rate && rate > 0) {
                                           valueInBs = currentOriginalAmount * rate;
-                                          updatePaymentDetails(
+                                          updatePaymentDetails?.(
                                             payment.id,
                                             "exchangeRate",
                                             rate
@@ -1253,7 +1253,7 @@ export function Step3OrderDetails({
                                         // Si cambia a Bs, el originalAmount ya está en Bs
                                         valueInBs = currentOriginalAmount;
                                       }
-                                      updatePayment(
+                                      updatePayment?.(
                                         payment.id,
                                         "amount",
                                         valueInBs
@@ -1269,26 +1269,26 @@ export function Step3OrderDetails({
                                           : orderForm.exchangeRates.EUR?.rate;
                                       if (rate && rate > 0) {
                                         originalAmount = payment.amount / rate;
-                                        updatePaymentDetails(
+                                        updatePaymentDetails?.(
                                           payment.id,
                                           "exchangeRate",
                                           rate
                                       );
                                       }
                                     }
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalAmount",
                                       originalAmount
                                   );
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalCurrency",
                                       value
                                   );
                                   } else {
                                     // Si no hay monto aún, solo actualizar la moneda
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalCurrency",
                                       value
@@ -1358,12 +1358,12 @@ export function Step3OrderDetails({
 
                                   // SIEMPRE guardar el monto original en la moneda del pago
                                   // Esto asegura que siempre tengamos el valor original
-                                  updatePaymentDetails(
+                                  updatePaymentDetails?.(
                                     payment.id,
                                     "originalAmount",
                                     inputValue
                                 );
-                                  updatePaymentDetails(
+                                  updatePaymentDetails?.(
                                     payment.id,
                                     "originalCurrency",
                                     paymentCurrency
@@ -1371,7 +1371,7 @@ export function Step3OrderDetails({
 
                                   // También actualizar payment.currency si no está definida
                                   if (!payment.currency) {
-                                    updatePayment(
+                                    updatePayment?.(
                                       payment.id,
                                       "currency",
                                       paymentCurrency
@@ -1388,7 +1388,7 @@ export function Step3OrderDetails({
                                     if (rate && rate > 0) {
                                       valueInBs = inputValue * rate;
                                       // Guardar la tasa de cambio usada
-                                      updatePaymentDetails(
+                                      updatePaymentDetails?.(
                                         payment.id,
                                         "exchangeRate",
                                         rate
@@ -1396,13 +1396,13 @@ export function Step3OrderDetails({
                                     }
                                   } else {
                                     // Si es Bs, asegurar que el exchangeRate sea null/undefined
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "exchangeRate",
                                       undefined
                                   );
                                   }
-                                  updatePayment(
+                                  updatePayment?.(
                                     payment.id,
                                     "amount",
                                     valueInBs
@@ -1423,7 +1423,7 @@ export function Step3OrderDetails({
                                 onValueChange={(value) => {
                                   const selectedAccount = orderForm.accounts.find(acc => acc.id === value);
                                   if (selectedAccount) {
-                                    saveAccountInfoToPayment(payment.id, selectedAccount);
+                                    saveAccountInfoToPayment?.(payment.id, selectedAccount);
                                   }
                                 }}
                               >
@@ -1431,7 +1431,7 @@ export function Step3OrderDetails({
                                   <SelectValue placeholder="Seleccione un banco receptor" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {getAccountsForPaymentMethod("Transferencia")
+                                  {getAccountsForPaymentMethod?.("Transferencia")
                                     .filter((account) => account.id && account.id.trim() !== "")
                                     .map((account) => (
                                       <SelectItem key={account.id} value={account.id}>
@@ -1462,7 +1462,7 @@ export function Step3OrderDetails({
                                     ?.transferenciaReference || ""
                                 }
                                 onChange={(e) =>
-                                  updatePaymentDetails(
+                                  updatePaymentDetails?.(
                                     payment.id,
                                     "transferenciaReference",
                                     e.target.value
@@ -1521,7 +1521,7 @@ export function Step3OrderDetails({
                                   }
                                   onValueChange={(value: Currency) => {
                                   // Actualizar la moneda registrada
-                                  updatePayment(
+                                  updatePayment?.(
                                     payment.id,
                                     "currency",
                                     value
@@ -1534,7 +1534,7 @@ export function Step3OrderDetails({
                                           
                                   if (currentOriginalAmount !== undefined && currentOriginalCurrency) {
                                     // Actualizar la moneda original
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalCurrency",
                                       value
@@ -1553,7 +1553,7 @@ export function Step3OrderDetails({
                                             : orderForm.exchangeRates.EUR?.rate;
                                         if (rate && rate > 0) {
                                           valueInBs = currentOriginalAmount * rate;
-                                          updatePaymentDetails(
+                                          updatePaymentDetails?.(
                                             payment.id,
                                             "exchangeRate",
                                             rate
@@ -1563,7 +1563,7 @@ export function Step3OrderDetails({
                                         // Si cambia a Bs, el originalAmount ya está en Bs
                                         valueInBs = currentOriginalAmount;
                                       }
-                                      updatePayment(
+                                      updatePayment?.(
                                         payment.id,
                                         "amount",
                                         valueInBs
@@ -1579,26 +1579,26 @@ export function Step3OrderDetails({
                                           : orderForm.exchangeRates.EUR?.rate;
                                       if (rate && rate > 0) {
                                         originalAmount = payment.amount / rate;
-                                        updatePaymentDetails(
+                                        updatePaymentDetails?.(
                                           payment.id,
                                           "exchangeRate",
                                           rate
                                       );
                                       }
                                     }
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalAmount",
                                       originalAmount
                                   );
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalCurrency",
                                       value
                                   );
                                   } else {
                                     // Si no hay monto aún, solo actualizar la moneda
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "originalCurrency",
                                       value
@@ -1672,12 +1672,12 @@ export function Step3OrderDetails({
 
                                   // SIEMPRE guardar el monto original en la moneda del pago
                                   // Esto asegura que siempre tengamos el valor original
-                                  updatePaymentDetails(
+                                  updatePaymentDetails?.(
                                     payment.id,
                                     "originalAmount",
                                     inputValue
                                 );
-                                  updatePaymentDetails(
+                                  updatePaymentDetails?.(
                                     payment.id,
                                     "originalCurrency",
                                     paymentCurrency
@@ -1685,7 +1685,7 @@ export function Step3OrderDetails({
 
                                   // También actualizar payment.currency si no está definida
                                   if (!payment.currency) {
-                                    updatePayment(
+                                    updatePayment?.(
                                       payment.id,
                                       "currency",
                                       paymentCurrency
@@ -1702,7 +1702,7 @@ export function Step3OrderDetails({
                                     if (rate && rate > 0) {
                                       valueInBs = inputValue * rate;
                                       // Guardar la tasa de cambio usada
-                                      updatePaymentDetails(
+                                      updatePaymentDetails?.(
                                         payment.id,
                                         "exchangeRate",
                                         rate
@@ -1710,13 +1710,13 @@ export function Step3OrderDetails({
                                     }
                                   } else {
                                     // Si es Bs, asegurar que el exchangeRate sea null/undefined
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "exchangeRate",
                                       undefined
                                   );
                                   }
-                                  updatePayment(
+                                  updatePayment?.(
                                     payment.id,
                                     "amount",
                                     valueInBs
@@ -1739,7 +1739,7 @@ export function Step3OrderDetails({
                                   onValueChange={(value) => {
                                     const selectedAccount = orderForm.accounts.find(acc => acc.id === value);
                                     if (selectedAccount) {
-                                      saveAccountInfoToPayment(payment.id, selectedAccount);
+                                      saveAccountInfoToPayment?.(payment.id, selectedAccount);
                                     }
                                   }}
                                 >
@@ -1753,7 +1753,7 @@ export function Step3OrderDetails({
                                     />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {getAccountsForPaymentMethod(payment.method)
+                                    {getAccountsForPaymentMethod?.(payment.method)
                                       .filter((account) => account.id && account.id.trim() !== "")
                                       .map((account) => (
                                         <SelectItem key={account.id} value={account.id}>
@@ -1796,7 +1796,7 @@ export function Step3OrderDetails({
                                   type="text"
                                   value={payment.paymentDetails?.envia || ""}
                                   onChange={(e) =>
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "envia",
                                       e.target.value
@@ -1852,14 +1852,14 @@ export function Step3OrderDetails({
                                 }
                                 onValueChange={(value: Currency) => {
                                   // Actualizar cashCurrency
-                                  updatePaymentDetails(
+                                  updatePaymentDetails?.(
                                     payment.id,
                                     "cashCurrency",
                                     value
                                 );
 
                                   // ACTUALIZAR payment.currency también
-                                  updatePayment(
+                                  updatePayment?.(
                                     payment.id,
                                     "currency",
                                     value
@@ -1873,7 +1873,7 @@ export function Step3OrderDetails({
                                       : 1;
 
                                   if (value !== "Bs") {
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "exchangeRate",
                                       rate
@@ -1889,7 +1889,7 @@ export function Step3OrderDetails({
                                       value === "Bs"
                                         ? cashReceived
                                         : cashReceived * rate;
-                                    updatePayment(
+                                    updatePayment?.(
                                       payment.id,
                                       "amount",
                                       amountInBs
@@ -1934,7 +1934,7 @@ export function Step3OrderDetails({
                                     parseFloat(e.target.value) || 0;
 
                                   // Guardar el monto recibido
-                                  updatePaymentDetails(
+                                  updatePaymentDetails?.(
                                     payment.id,
                                     "cashReceived",
                                     received
@@ -1958,7 +1958,7 @@ export function Step3OrderDetails({
                                       ? received
                                       : received * rate;
 
-                                  updatePayment(
+                                  updatePayment?.(
                                     payment.id,
                                     "amount",
                                     amountInBs
@@ -1970,7 +1970,7 @@ export function Step3OrderDetails({
                                     !payment.paymentDetails
                                       ?.exchangeRate
                                 ) {
-                                    updatePaymentDetails(
+                                    updatePaymentDetails?.(
                                       payment.id,
                                       "exchangeRate",
                                       orderForm.exchangeRates[currency]?.rate || 1
