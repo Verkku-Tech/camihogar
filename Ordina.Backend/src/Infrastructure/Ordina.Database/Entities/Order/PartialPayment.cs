@@ -19,6 +19,9 @@ public class PartialPayment
     [BsonElement("date")]
     public DateTime Date { get; set; }
 
+    [BsonElement("images")]
+    public List<ProductImage>? Images { get; set; } // Imágenes del comprobante de pago
+
     [BsonElement("paymentDetails")]
     public PaymentDetails? PaymentDetails { get; set; }
 }

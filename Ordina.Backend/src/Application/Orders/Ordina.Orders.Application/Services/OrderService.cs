@@ -362,7 +362,16 @@ public class OrderService : IOrderService
             ManufacturingStartedAt = product.ManufacturingStartedAt,
             ManufacturingCompletedAt = product.ManufacturingCompletedAt,
             ManufacturingNotes = product.ManufacturingNotes,
-            LocationStatus = product.LocationStatus
+            LocationStatus = product.LocationStatus,
+            Images = product.Images?.Select(img => new ProductImageDto
+            {
+                Id = img.Id,
+                Base64 = img.Base64,
+                Filename = img.Filename,
+                Type = img.Type,
+                UploadedAt = img.UploadedAt,
+                Size = img.Size
+            }).ToList()
         };
     }
 
@@ -389,7 +398,16 @@ public class OrderService : IOrderService
             ManufacturingStartedAt = dto.ManufacturingStartedAt,
             ManufacturingCompletedAt = dto.ManufacturingCompletedAt,
             ManufacturingNotes = dto.ManufacturingNotes,
-            LocationStatus = dto.LocationStatus
+            LocationStatus = dto.LocationStatus,
+            Images = dto.Images?.Select(img => new ProductImage
+            {
+                Id = img.Id,
+                Base64 = img.Base64,
+                Filename = img.Filename,
+                Type = img.Type,
+                UploadedAt = img.UploadedAt,
+                Size = img.Size
+            }).ToList()
         };
     }
 
@@ -451,6 +469,15 @@ public class OrderService : IOrderService
             Amount = payment.Amount,
             Method = payment.Method,
             Date = payment.Date,
+            Images = payment.Images?.Select(img => new ProductImageDto
+            {
+                Id = img.Id,
+                Base64 = img.Base64,
+                Filename = img.Filename,
+                Type = img.Type,
+                UploadedAt = img.UploadedAt,
+                Size = img.Size
+            }).ToList(),
             PaymentDetails = payment.PaymentDetails != null ? MapPaymentDetailsToDto(payment.PaymentDetails) : null
         };
     }
@@ -465,6 +492,15 @@ public class OrderService : IOrderService
             Amount = dto.Amount,
             Method = dto.Method,
             Date = dto.Date,
+            Images = dto.Images?.Select(img => new ProductImage
+            {
+                Id = img.Id,
+                Base64 = img.Base64,
+                Filename = img.Filename,
+                Type = img.Type,
+                UploadedAt = img.UploadedAt,
+                Size = img.Size
+            }).ToList(),
             PaymentDetails = dto.PaymentDetails != null ? MapPaymentDetailsFromDto(dto.PaymentDetails) : null
         };
     }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -88,6 +88,9 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
       <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-2xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4">
         <DialogHeader className="pb-2 sm:pb-4">
           <DialogTitle className="text-lg sm:text-xl">Seleccionar Cliente</DialogTitle>
+          <DialogDescription>
+            Busca y selecciona un cliente existente o crea uno nuevo
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 sm:space-y-4">

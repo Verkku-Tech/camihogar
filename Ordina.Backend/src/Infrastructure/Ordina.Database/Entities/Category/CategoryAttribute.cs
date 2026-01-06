@@ -27,4 +27,7 @@ public class CategoryAttribute
 
     [BsonElement("maxValue")]
     public decimal? MaxValue { get; set; } // For "Number" type (REQUIRED when ValueType is "Number")
+
+    [BsonElement("required")]
+    public bool? Required { get; set; } // Indica si el atributo es obligatorio (por defecto true)
 }

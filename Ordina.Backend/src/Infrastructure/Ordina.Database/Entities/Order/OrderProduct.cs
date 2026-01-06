@@ -63,4 +63,7 @@ public class OrderProduct
 
     [BsonElement("locationStatus")]
     public string? LocationStatus { get; set; } // "EN TIENDA" | "FABRICACION" | null/empty
+
+    [BsonElement("images")]
+    public List<ProductImage>? Images { get; set; } // Imágenes del producto
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -24,6 +25,7 @@ import {
   type AttributeValue,
   type OrderProduct,
   type Product,
+  type ProductImage,
   type Category,
   calculateProductTotalWithAttributes,
   calculateProductUnitPriceWithAttributes,
@@ -34,6 +36,7 @@ import { useCurrency } from "@/contexts/currency-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Package, Settings, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { ImageUploader } from "./ImageUploader";
 
 interface ProductEditDialogProps {
   open: boolean;
@@ -634,8 +637,9 @@ function ProductAttributesEditor({
               <div key={attrKey} className="space-y-1.5">
                 <Label htmlFor={`edit-attr-${attrKey}`} className="text-sm">
                   {attribute.title}
-                  {/* Indicador visual de campo obligatorio */}
-                  {(attribute.valueType === "Select" || 
+                  {/* Indicador visual de campo obligatorio - Solo mostrar si required !== false */}
+                  {(attribute.required !== false) && 
+                   (attribute.valueType === "Select" || 
                     attribute.valueType === "Multiple select" ||
                     attribute.valueType === "Number") && (
                     <span className="text-red-500 ml-1">*</span>
@@ -645,13 +649,16 @@ function ProductAttributesEditor({
                   <p className="text-xs text-muted-foreground">{attribute.description}</p>
                 )}
                 
-                {/* Mostrar mensaje de advertencia si el atributo está vacío */}
+                {/* Mostrar mensaje de advertencia si el atributo está vacío - Solo si es obligatorio */}
                 {(() => {
                   // Buscar por título primero (clave actual), luego por ID (compatibilidad)
     const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
                   const isEmpty = 
-                    (attribute.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null || attrValue === "vacio")) ||
-                    (attribute.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0));
+                    (attribute.required !== false) && // Solo validar si es obligatorio
+                    (
+                      (attribute.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null || attrValue === "vacio")) ||
+                      (attribute.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0))
+                    );
                   
                   return isEmpty ? (
                     <p className="text-xs text-red-500 mt-1 font-medium">
@@ -686,6 +693,9 @@ function ProductAttributesEditor({
                 // IMPORTANTE: Usar título como clave
                 const attrKey = attribute.title || attribute.id?.toString();
                 if (!attrKey) continue;
+                
+                // Solo validar si el atributo es obligatorio (required !== false)
+                if (attribute.required === false) continue;
                 
                 // Buscar por título primero, luego por ID (compatibilidad)
                 const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
@@ -742,6 +752,7 @@ export function ProductEditDialog({
     {}
   );
   const [observations, setObservations] = useState("");
+  const [productImages, setProductImages] = useState<ProductImage[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [exchangeRates, setExchangeRates] = useState<{ USD?: any; EUR?: any }>({});
   const [editingAttributeId, setEditingAttributeId] = useState<string | null>(null);
@@ -813,6 +824,7 @@ export function ProductEditDialog({
     if (product) {
       setQuantity(product.quantity);
       setObservations(product.observations || "");
+      setProductImages(product.images || []);
     }
   }, [product]);
 
@@ -1360,8 +1372,9 @@ export function ProductEditDialog({
         const productAttrKey = productAttr.id?.toString() || productAttr.title;
         if (!productAttrKey) continue;
         
-        // Solo validar atributos obligatorios (Select y Multiple select)
-        if (productAttr.valueType === "Select" || productAttr.valueType === "Multiple select") {
+        // Solo validar atributos obligatorios (required !== false) y de tipo Select/Multiple select
+        if ((productAttr.required !== false) && 
+            (productAttr.valueType === "Select" || productAttr.valueType === "Multiple select")) {
           const productAttrValue = editedAttributes[productAttrKey] ?? (productAttr.title ? editedAttributes[productAttr.title] : undefined);
           
           if (productAttr.valueType === "Select") {
@@ -1392,6 +1405,9 @@ export function ProductEditDialog({
         // IMPORTANTE: Usar título como clave
         const attrKey = attribute.title || attribute.id?.toString();
         if (!attrKey) continue;
+        
+        // Solo validar si el atributo es obligatorio (required !== false)
+        if (attribute.required === false) continue;
         
         // Buscar por título primero (clave actual), luego por ID (compatibilidad)
     const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
@@ -1590,6 +1606,7 @@ export function ProductEditDialog({
       stock: product.stock ?? 0, // Usar 0 como valor por defecto si stock no existe
       observations: observations.trim() || undefined,
       locationStatus: product.locationStatus ?? "EN TIENDA", // Preservar locationStatus o establecer por defecto
+      images: productImages.length > 0 ? productImages : undefined, // Agregar imágenes si hay alguna
     };
     onProductUpdate(updatedProduct);
   };
@@ -1614,6 +1631,9 @@ export function ProductEditDialog({
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader className="pb-3">
             <DialogTitle className="text-lg">Editar Atributos de {selectedProductForEdit?.name}</DialogTitle>
+            <DialogDescription>
+              Configura los atributos personalizados para este producto
+            </DialogDescription>
           </DialogHeader>
           {selectedProductForEdit && productCategoryForEdit && editingAttributeId && editingProductId && (
             <ProductAttributesEditor
@@ -1641,6 +1661,11 @@ export function ProductEditDialog({
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader className="pb-3">
           <DialogTitle className="text-lg">{mode === "add" ? "Agregar Producto" : "Editar Producto"}</DialogTitle>
+          <DialogDescription>
+            {mode === "add" 
+              ? "Agrega un nuevo producto al pedido con sus atributos personalizados"
+              : "Modifica los detalles y atributos del producto seleccionado"}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
@@ -1733,8 +1758,9 @@ export function ProductEditDialog({
                   <div key={attr.id ?? attr.title} className="space-y-2">
                     <Label htmlFor={inputId}>
                       {attr.title}
-                      {/* Indicador visual de campo obligatorio */}
-                      {(attr.valueType === "Select" || 
+                      {/* Indicador visual de campo obligatorio - Solo mostrar si required !== false */}
+                      {(attr.required !== false) && 
+                       (attr.valueType === "Select" || 
                         attr.valueType === "Multiple select" || 
                         attr.valueType === "Product" ||
                         attr.valueType === "Number") && (
@@ -1745,14 +1771,17 @@ export function ProductEditDialog({
                       <p className="text-xs text-muted-foreground">{attr.description}</p>
                     )}
                     
-                    {/* Mostrar mensaje de advertencia si el atributo está vacío */}
+                    {/* Mostrar mensaje de advertencia si el atributo está vacío - Solo si es obligatorio */}
                     {(() => {
                       // Buscar por título primero (clave actual), luego por ID (compatibilidad)
                       const attrValue = attributes[attrKey] ?? (attr.id ? attributes[attr.id.toString()] : undefined);
                       const isEmpty = 
-                        (attr.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null || attrValue === "vacio")) ||
-                        (attr.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0)) ||
-                        (attr.valueType === "Product" && (!productAttributes[attrKey] || productAttributes[attrKey].length === 0));
+                        (attr.required !== false) && // Solo validar si es obligatorio
+                        (
+                          (attr.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null || attrValue === "vacio")) ||
+                          (attr.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0)) ||
+                          (attr.valueType === "Product" && (!productAttributes[attrKey] || productAttributes[attrKey].length === 0))
+                        );
                       
                       return isEmpty ? (
                         <p className="text-xs text-red-500 mt-1 font-medium">
@@ -2048,6 +2077,21 @@ export function ProductEditDialog({
             <p className="text-xs text-muted-foreground">
               Notas específicas sobre este producto
             </p>
+          </div>
+          {/* Imagenes de referencia de productos*/}
+          <div className="space-y-2">
+            <Label htmlFor="ProductImages" className="text-sm">Imágenes de referencia</Label>
+            <ImageUploader
+              images={productImages}
+              onImagesChange={setProductImages}
+              maxImages={5}
+              maxSizeMB={1.5}
+              maxTotalSizeMB={5}
+              compressionQuality={0.7}
+              maxWidth={1920}
+              maxHeight={1920}
+              isSensitive={false}
+            />
           </div>
 
           {/* Total */}
