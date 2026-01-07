@@ -43,6 +43,7 @@ export interface Category {
     maxSelections?: number; // For "Multiple select" type
     minValue?: number; // For "Number" type
     maxValue?: number; // For "Number" type (REQUIRED when valueType is "Number")
+    required?: boolean; // Indica si el atributo es obligatorio (por defecto true)
   }[];
 }
 
@@ -77,6 +78,7 @@ interface CategoryDB {
     maxSelections?: number;
     minValue?: number; // For "Number" type
     maxValue?: number; // For "Number" type (REQUIRED when valueType is "Number")
+    required?: boolean; // Indica si el atributo es obligatorio (por defecto true)
   }[];
 }
 
@@ -143,6 +145,13 @@ const categoryToBackendDto = (
     if (attr.maxSelections !== undefined) {
       attrDto.maxSelections = attr.maxSelections;
     }
+    
+    // Incluir required si existe (por defecto true)
+    if (attr.required !== undefined) {
+      attrDto.required = attr.required;
+    } else {
+      attrDto.required = true; // Por defecto obligatorio
+    }
 
     // Para atributos de tipo "Number", siempre incluir minValue y maxValue
     // El backend los requiere cuando valueType es "Number"
@@ -185,6 +194,7 @@ const categoryFromBackendDto = (dto: CategoryResponseDto): Category => ({
     maxSelections: attr.maxSelections,
     minValue: attr.minValue,
     maxValue: attr.maxValue,
+    required: attr.required !== undefined ? attr.required : true, // Por defecto true si no existe
     values: attr.values.map((val) => ({
       id: val.id,
       label: val.label,
@@ -1212,6 +1222,16 @@ export const deleteProduct = async (id: number): Promise<void> => {
 // ===== INTERFACES =====
 
 // Agregar estas interfaces ANTES de Order
+// Interfaz para imágenes de productos
+export interface ProductImage {
+  id: string; // ID único para la imagen
+  base64: string; // Imagen en base64 (data:image/jpeg;base64,...)
+  filename: string; // Nombre original del archivo
+  type: "model" | "reference" | "other"; // Tipo de imagen
+  uploadedAt: string; // Fecha de carga (ISO string)
+  size?: number; // Tamaño del archivo en bytes (opcional)
+}
+
 export interface OrderProduct {
   id: string;
   name: string;
@@ -1223,6 +1243,7 @@ export interface OrderProduct {
   attributes?: Record<string, string | number | string[]>; // Permite arrays para selección múltiple
   discount?: number; // Descuento aplicado al producto (monto)
   observations?: string; // Observaciones específicas del producto
+  images?: ProductImage[]; // Imágenes de referencia del producto
   // Campos de fabricación
   availabilityStatus?: "disponible" | "no_disponible"; // Estado de disponibilidad
   manufacturingStatus?: "debe_fabricar" | "fabricando" | "fabricado"; // Estado de fabricación (solo si no_disponible)
@@ -1241,6 +1262,7 @@ export interface PartialPayment {
   method: string;
   date: string;
   currency?: Currency; // Moneda del pago
+  images?: ProductImage[]; // Imágenes del comprobante de pago
   paymentDetails?: {
     // Pago Móvil
     pagomovilReference?: string;
@@ -1459,6 +1481,14 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     attributes: p.attributes,
     discount: p.discount,
     observations: p.observations,
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
     availabilityStatus: p.availabilityStatus as "disponible" | "no_disponible" | undefined,
     manufacturingStatus: p.manufacturingStatus as "debe_fabricar" | "fabricando" | "fabricado" | undefined,
     manufacturingProviderId: p.manufacturingProviderId,
@@ -1508,6 +1538,14 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     method: p.method,
     date: p.date,
     currency: undefined, // Se puede ajustar según necesidades
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
     paymentDetails: p.paymentDetails ? {
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
@@ -1534,6 +1572,14 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     method: p.method,
     date: p.date,
     currency: undefined,
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
     paymentDetails: p.paymentDetails ? {
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
@@ -1585,6 +1631,14 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
     attributes: p.attributes,
     discount: p.discount,
     observations: p.observations,
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
     availabilityStatus: p.availabilityStatus,
     manufacturingStatus: p.manufacturingStatus,
     manufacturingProviderId: p.manufacturingProviderId,
@@ -1628,6 +1682,14 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
     amount: p.amount,
     method: p.method,
     date: p.date,
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
     paymentDetails: p.paymentDetails ? {
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
@@ -1653,6 +1715,14 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
     amount: p.amount,
     method: p.method,
     date: p.date,
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
     paymentDetails: p.paymentDetails ? {
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
@@ -1808,6 +1878,15 @@ export const addOrder = async (
       status: order.status || "Generado", // Estado inicial para pedidos normales
     };
 
+    // DEBUG: Verificar imágenes antes de guardar
+    newOrder.products.forEach((p, idx) => {
+      if (p.images && p.images.length > 0) {
+        console.log(`💾 Guardando pedido: Producto ${idx} (${p.name}) tiene ${p.images.length} imágenes`);
+      } else {
+        console.log(`⚠️ Guardando pedido: Producto ${idx} (${p.name}) NO tiene imágenes`);
+      }
+    });
+
     await db.add("orders", newOrder);
     console.log("✅ Pedido guardado en IndexedDB:", newOrder.orderNumber);
 
@@ -1888,6 +1967,14 @@ export const updateOrder = async (
               attributes: p.attributes,
               discount: p.discount,
               observations: p.observations,
+              images: p.images?.map((img) => ({
+                id: img.id,
+                base64: img.base64,
+                filename: img.filename,
+                type: img.type,
+                uploadedAt: img.uploadedAt,
+                size: img.size,
+              })),
               availabilityStatus: p.availabilityStatus,
               manufacturingStatus: p.manufacturingStatus,
               manufacturingProviderId: p.manufacturingProviderId,
@@ -1906,6 +1993,72 @@ export const updateOrder = async (
             generalDiscountAmount: updatedOrder.generalDiscountAmount !== existingOrder.generalDiscountAmount ? updatedOrder.generalDiscountAmount : undefined,
             paymentType: updatedOrder.paymentType !== existingOrder.paymentType ? updatedOrder.paymentType : undefined,
             paymentMethod: updatedOrder.paymentMethod !== existingOrder.paymentMethod ? updatedOrder.paymentMethod : undefined,
+            partialPayments: updatedOrder.partialPayments !== existingOrder.partialPayments ? updatedOrder.partialPayments?.map((p) => ({
+              id: p.id,
+              amount: p.amount,
+              method: p.method,
+              date: p.date,
+              images: p.images?.map((img) => ({
+                id: img.id,
+                base64: img.base64,
+                filename: img.filename,
+                type: img.type,
+                uploadedAt: img.uploadedAt,
+                size: img.size,
+              })),
+              paymentDetails: p.paymentDetails ? {
+                pagomovilReference: p.paymentDetails.pagomovilReference,
+                pagomovilBank: p.paymentDetails.pagomovilBank,
+                pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                transferenciaBank: p.paymentDetails.transferenciaBank,
+                transferenciaReference: p.paymentDetails.transferenciaReference,
+                transferenciaDate: p.paymentDetails.transferenciaDate,
+                cashAmount: p.paymentDetails.cashAmount,
+                cashCurrency: p.paymentDetails.cashCurrency,
+                cashReceived: p.paymentDetails.cashReceived,
+                exchangeRate: p.paymentDetails.exchangeRate,
+                originalAmount: p.paymentDetails.originalAmount,
+                originalCurrency: p.paymentDetails.originalCurrency,
+                accountId: p.paymentDetails.accountId,
+                accountNumber: p.paymentDetails.accountNumber,
+                bank: p.paymentDetails.bank,
+                email: p.paymentDetails.email,
+                wallet: p.paymentDetails.wallet,
+              } : undefined,
+            })) : undefined,
+            mixedPayments: updatedOrder.mixedPayments !== existingOrder.mixedPayments ? updatedOrder.mixedPayments?.map((p) => ({
+              id: p.id,
+              amount: p.amount,
+              method: p.method,
+              date: p.date,
+              images: p.images?.map((img) => ({
+                id: img.id,
+                base64: img.base64,
+                filename: img.filename,
+                type: img.type,
+                uploadedAt: img.uploadedAt,
+                size: img.size,
+              })),
+              paymentDetails: p.paymentDetails ? {
+                pagomovilReference: p.paymentDetails.pagomovilReference,
+                pagomovilBank: p.paymentDetails.pagomovilBank,
+                pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                transferenciaBank: p.paymentDetails.transferenciaBank,
+                transferenciaReference: p.paymentDetails.transferenciaReference,
+                transferenciaDate: p.paymentDetails.transferenciaDate,
+                cashAmount: p.paymentDetails.cashAmount,
+                cashCurrency: p.paymentDetails.cashCurrency,
+                cashReceived: p.paymentDetails.cashReceived,
+                exchangeRate: p.paymentDetails.exchangeRate,
+                originalAmount: p.paymentDetails.originalAmount,
+                originalCurrency: p.paymentDetails.originalCurrency,
+                accountId: p.paymentDetails.accountId,
+                accountNumber: p.paymentDetails.accountNumber,
+                bank: p.paymentDetails.bank,
+                email: p.paymentDetails.email,
+                wallet: p.paymentDetails.wallet,
+              } : undefined,
+            })) : undefined,
             deliveryAddress: updatedOrder.deliveryAddress !== existingOrder.deliveryAddress ? updatedOrder.deliveryAddress : undefined,
             hasDelivery: updatedOrder.hasDelivery !== existingOrder.hasDelivery ? updatedOrder.hasDelivery : undefined,
             status: updatedOrder.status !== existingOrder.status ? updatedOrder.status : undefined,
@@ -1960,6 +2113,14 @@ export const updateOrder = async (
             attributes: p.attributes,
             discount: p.discount,
             observations: p.observations,
+            images: p.images?.map((img) => ({
+              id: img.id,
+              base64: img.base64,
+              filename: img.filename,
+              type: img.type,
+              uploadedAt: img.uploadedAt,
+              size: img.size,
+            })),
             availabilityStatus: p.availabilityStatus,
             manufacturingStatus: p.manufacturingStatus,
             manufacturingProviderId: p.manufacturingProviderId,
@@ -1968,6 +2129,72 @@ export const updateOrder = async (
             manufacturingCompletedAt: p.manufacturingCompletedAt,
             manufacturingNotes: p.manufacturingNotes,
             locationStatus: p.locationStatus,
+          })),
+          partialPayments: updatedOrder.partialPayments?.map((p) => ({
+            id: p.id,
+            amount: p.amount,
+            method: p.method,
+            date: p.date,
+            images: p.images?.map((img) => ({
+              id: img.id,
+              base64: img.base64,
+              filename: img.filename,
+              type: img.type,
+              uploadedAt: img.uploadedAt,
+              size: img.size,
+            })),
+            paymentDetails: p.paymentDetails ? {
+              pagomovilReference: p.paymentDetails.pagomovilReference,
+              pagomovilBank: p.paymentDetails.pagomovilBank,
+              pagomovilPhone: p.paymentDetails.pagomovilPhone,
+              transferenciaBank: p.paymentDetails.transferenciaBank,
+              transferenciaReference: p.paymentDetails.transferenciaReference,
+              transferenciaDate: p.paymentDetails.transferenciaDate,
+              cashAmount: p.paymentDetails.cashAmount,
+              cashCurrency: p.paymentDetails.cashCurrency,
+              cashReceived: p.paymentDetails.cashReceived,
+              exchangeRate: p.paymentDetails.exchangeRate,
+              originalAmount: p.paymentDetails.originalAmount,
+              originalCurrency: p.paymentDetails.originalCurrency,
+              accountId: p.paymentDetails.accountId,
+              accountNumber: p.paymentDetails.accountNumber,
+              bank: p.paymentDetails.bank,
+              email: p.paymentDetails.email,
+              wallet: p.paymentDetails.wallet,
+            } : undefined,
+          })),
+          mixedPayments: updatedOrder.mixedPayments?.map((p) => ({
+            id: p.id,
+            amount: p.amount,
+            method: p.method,
+            date: p.date,
+            images: p.images?.map((img) => ({
+              id: img.id,
+              base64: img.base64,
+              filename: img.filename,
+              type: img.type,
+              uploadedAt: img.uploadedAt,
+              size: img.size,
+            })),
+            paymentDetails: p.paymentDetails ? {
+              pagomovilReference: p.paymentDetails.pagomovilReference,
+              pagomovilBank: p.paymentDetails.pagomovilBank,
+              pagomovilPhone: p.paymentDetails.pagomovilPhone,
+              transferenciaBank: p.paymentDetails.transferenciaBank,
+              transferenciaReference: p.paymentDetails.transferenciaReference,
+              transferenciaDate: p.paymentDetails.transferenciaDate,
+              cashAmount: p.paymentDetails.cashAmount,
+              cashCurrency: p.paymentDetails.cashCurrency,
+              cashReceived: p.paymentDetails.cashReceived,
+              exchangeRate: p.paymentDetails.exchangeRate,
+              originalAmount: p.paymentDetails.originalAmount,
+              originalCurrency: p.paymentDetails.originalCurrency,
+              accountId: p.paymentDetails.accountId,
+              accountNumber: p.paymentDetails.accountNumber,
+              bank: p.paymentDetails.bank,
+              email: p.paymentDetails.email,
+              wallet: p.paymentDetails.wallet,
+            } : undefined,
           })),
           status: updatedOrder.status,
         };

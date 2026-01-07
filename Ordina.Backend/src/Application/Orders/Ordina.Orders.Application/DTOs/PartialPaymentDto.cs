@@ -6,6 +6,7 @@ public class PartialPaymentDto
     public decimal Amount { get; set; }
     public string Method { get; set; } = string.Empty;
     public DateTime Date { get; set; }
+    public List<ProductImageDto>? Images { get; set; } // Imágenes del comprobante de pago
     public PaymentDetailsDto? PaymentDetails { get; set; }
 }
 

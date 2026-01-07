@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -1265,6 +1266,9 @@ export function OrderConfirmationDialog({
               Paso {currentStepIndex + 1} de {steps.length}
             </Badge>
           </DialogTitle>
+          <DialogDescription>
+            Revisa los detalles del pedido antes de confirmar su creación
+          </DialogDescription>
         </DialogHeader>
 
         {/* Indicador de progreso */}

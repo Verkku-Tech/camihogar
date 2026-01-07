@@ -48,6 +48,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import { ImageGallery } from "@/components/orders/image-gallery";
 
 // Función helper para obtener el monto original del pago en su moneda
 const getOriginalPaymentAmount = (
@@ -1190,6 +1191,14 @@ export default function OrderDetailPage() {
                   <div className="space-y-4">
                     {order.products.map((product, idx) => {
                       const breakdown = productBreakdowns[product.id];
+                      
+                      // DEBUG: Verificar imágenes de productos
+                      if (product.images && product.images.length > 0) {
+                        console.log(`📸 Producto ${idx} (${product.name}) tiene ${product.images.length} imágenes:`, product.images);
+                      } else {
+                        console.log(`⚠️ Producto ${idx} (${product.name}) NO tiene imágenes:`, product.images);
+                      }
+                      
                       return (
                         <HoverCard key={idx} openDelay={200} closeDelay={100}>
                           <HoverCardTrigger asChild>
@@ -1491,6 +1500,17 @@ export default function OrderDetailPage() {
                               )}
                             </div>
                           </HoverCardContent>
+                          
+                          {/* Imágenes del Producto - FUERA del HoverCardTrigger para mejor visibilidad */}
+                          {product.images && product.images.length > 0 && (
+                            <div className="mt-3 pt-3 border-t">
+                              <ImageGallery 
+                                images={product.images} 
+                                title="Imágenes de referencia"
+                                maxThumbnails={3}
+                              />
+                            </div>
+                          )}
                         </HoverCard>
                       );
                     })}
@@ -1750,6 +1770,17 @@ export default function OrderDetailPage() {
                                     ).toLocaleDateString()}
                                   </div>
                                 )}
+
+                              {/* Comprobante de Pago - Imágenes */}
+                              {payment.images && payment.images.length > 0 && (
+                                <div className="mt-2 pt-2 border-t">
+                                  <ImageGallery 
+                                    images={payment.images} 
+                                    title={`Comprobante de ${payment.method}`}
+                                    maxThumbnails={2}
+                                  />
+                                </div>
+                              )}
                             </div>
                           );
                         }
@@ -1814,6 +1845,17 @@ export default function OrderDetailPage() {
                                   {new Date(payment.date).toLocaleDateString()}
                                 </div>
                               )}
+
+                            {/* Comprobante de Pago - Imágenes */}
+                            {payment.images && payment.images.length > 0 && (
+                              <div className="mt-2 pt-2 border-t">
+                                <ImageGallery 
+                                  images={payment.images} 
+                                  title={`Comprobante de ${payment.method}`}
+                                  maxThumbnails={2}
+                                />
+                              </div>
+                            )}
                           </div>
                         );
                       })}
