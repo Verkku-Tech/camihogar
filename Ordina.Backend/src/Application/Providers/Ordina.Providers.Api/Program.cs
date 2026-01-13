@@ -1,3 +1,4 @@
+using MongoDB.Driver;
 using Ordina.Database.MongoContext;
 using Ordina.Providers.Application;
 
@@ -10,9 +11,18 @@ builder.AddServiceDefaults();
 builder.Services.AddProblemDetails();
 
 // Configure MongoDB
-builder.Services.AddMongoDb(builder.Configuration);
+//builder.Services.AddMongoDb(builder.Configuration);
 
 // Add Application Services
+
+builder.Services.AddMongoDb(builder.Configuration); 
+
+builder.Services.AddScoped<IMongoDatabase>(sp =>
+{
+    var context = sp.GetRequiredService<MongoDbContext>();
+    return context.Database;
+});
+
 builder.Services.AddProviderServices();
 
 // Add CORS

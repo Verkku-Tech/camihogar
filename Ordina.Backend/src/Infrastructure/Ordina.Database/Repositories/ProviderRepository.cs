@@ -1,3 +1,4 @@
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Ordina.Database.Entities.Provider;
 using Ordina.Database.MongoContext;
@@ -13,7 +14,7 @@ public class ProviderRepository : IProviderRepository
         _collection = context.Providers;
     }
 
-    public async Task<Provider?> GetByIdAsync(string id)
+    public async Task<Provider?> GetByIdAsync(ObjectId id)
     {
         return await _collection.Find(p => p.Id == id).FirstOrDefaultAsync();
     }
@@ -51,13 +52,13 @@ public class ProviderRepository : IProviderRepository
         return provider;
     }
 
-    public async Task<bool> DeleteAsync(string id)
+    public async Task<bool> DeleteAsync(ObjectId id)
     {
         var result = await _collection.DeleteOneAsync(p => p.Id == id);
         return result.DeletedCount > 0;
     }
 
-    public async Task<bool> ExistsAsync(string id)
+    public async Task<bool> ExistsAsync(ObjectId id)
     {
         var count = await _collection.CountDocumentsAsync(p => p.Id == id);
         return count > 0;

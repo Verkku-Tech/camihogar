@@ -21,6 +21,8 @@ public class MongoDbContext
         _database = client.GetDatabase(databaseName);
     }
 
+    public IMongoDatabase Database => _database;
+
     // Colecciones
     public IMongoCollection<Category> Categories =>
         _database.GetCollection<Category>("categories");
