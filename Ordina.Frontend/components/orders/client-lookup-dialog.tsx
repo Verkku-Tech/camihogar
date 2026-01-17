@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -18,6 +18,7 @@ interface ClientLookupDialogProps {
     name: string
     address?: string
     telefono?: string
+    telefono2?: string
     email?: string
     rutId?: string
   }) => void
@@ -52,8 +53,10 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
   const filteredClients = clients.filter(
     (client) =>
       client.nombreRazonSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (client.apodo && client.apodo.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (client.email && client.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
       client.telefono.includes(searchTerm) ||
+      (client.telefono2 && client.telefono2.includes(searchTerm)) ||
       client.rutId.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
@@ -63,6 +66,7 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
       name: client.nombreRazonSocial,
       address: client.direccion || undefined,
       telefono: client.telefono,
+      telefono2: client.telefono2,
       email: client.email,
       rutId: client.rutId,
     })
@@ -84,6 +88,9 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
       <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-2xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4">
         <DialogHeader className="pb-2 sm:pb-4">
           <DialogTitle className="text-lg sm:text-xl">Seleccionar Cliente</DialogTitle>
+          <DialogDescription>
+            Busca y selecciona un cliente existente o crea uno nuevo
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 sm:space-y-4">
@@ -91,7 +98,7 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
               <Input
-                placeholder="Buscar cliente por nombre, email o teléfono..."
+                placeholder="Buscar cliente por nombre, apodo, email o teléfono..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 w-full"
@@ -125,6 +132,9 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
                   >
                     <div className="space-y-2">
                       <div className="font-medium text-base">{client.nombreRazonSocial}</div>
+                      {client.apodo && (
+                        <div className="text-xs text-muted-foreground">Apodo: {client.apodo}</div>
+                      )}
                       <div className="space-y-1 text-sm text-muted-foreground">
                         {client.email && (
                           <div className="flex items-center gap-2">
@@ -136,6 +146,12 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
                           <Phone className="w-4 h-4" />
                           <span>{client.telefono}</span>
                         </div>
+                        {client.telefono2 && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="w-4 h-4" />
+                            <span>{client.telefono2}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </Card>
@@ -156,11 +172,25 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
                   <TableBody>
                     {filteredClients.map((client) => (
                       <TableRow key={client.id} className="hover:bg-muted/50">
-                        <TableCell className="font-medium">{client.nombreRazonSocial}</TableCell>
+                        <TableCell className="font-medium">
+                          <div>
+                            <div>{client.nombreRazonSocial}</div>
+                            {client.apodo && (
+                              <div className="text-xs text-muted-foreground">Apodo: {client.apodo}</div>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="break-words max-w-[200px]">
                           {client.email || "-"}
                         </TableCell>
-                        <TableCell>{client.telefono}</TableCell>
+                        <TableCell>
+                          <div>
+                            <div>{client.telefono}</div>
+                            {client.telefono2 && (
+                              <div className="text-sm text-muted-foreground">{client.telefono2}</div>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right">
                           <Button 
                             size="sm" 

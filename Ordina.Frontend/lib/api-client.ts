@@ -7,12 +7,9 @@ const USERS_API_URL_DIRECT =
   process.env.USERS_API_URL ||
   "http://camihogar.eastus.cloudapp.azure.com:8083";
 const PROVIDERS_API_URL_DIRECT =
-  process.env.PROVIDERS_API_URL ||
-  "http://camihogar.eastus.cloudapp.azure.com:8084";
+  process.env.PROVIDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8084";
 const ORDERS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_ORDERS_API_URL ||
-  "http://camihogar.eastus.cloudapp.azure.com:8085";
-
+  process.env.NEXT_PUBLIC_ORDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8085";
 export interface ApiError {
   message: string;
   status?: number;
@@ -26,7 +23,7 @@ interface CachedApiResponse {
 }
 
 export class ApiClient {
-  private getBaseUrl(endpoint: string): string {
+  getBaseUrl(endpoint: string): string {
     // Determinar qué servicio usar según el endpoint
     let service: "security" | "users" | "providers" | "orders" = "security";
 
@@ -701,6 +698,7 @@ export interface CategoryAttributeDto {
   maxSelections?: number;
   minValue?: number;
   maxValue?: number;
+  required?: boolean; // Indica si el atributo es obligatorio (por defecto true)
 }
 
 export interface AttributeValueDto {
@@ -732,6 +730,7 @@ export interface CreateCategoryAttributeDto {
   maxSelections?: number;
   minValue?: number;
   maxValue?: number;
+  required?: boolean; // Indica si el atributo es obligatorio (por defecto true)
 }
 
 export interface CreateAttributeValueDto {
@@ -759,6 +758,7 @@ export interface UpdateCategoryAttributeDto {
   maxSelections?: number;
   minValue?: number;
   maxValue?: number;
+  required?: boolean; // Indica si el atributo es obligatorio (por defecto true)
 }
 
 export interface UpdateAttributeValueDto {
@@ -836,6 +836,7 @@ export interface OrderProductDto {
   attributes?: { [key: string]: any };
   discount?: number;
   observations?: string;
+  images?: ProductImageDto[]; // Imágenes de referencia del producto
   availabilityStatus?: string;
   manufacturingStatus?: string;
   manufacturingProviderId?: string;
@@ -866,6 +867,17 @@ export interface PaymentDetailsDto {
   bank?: string; // Para cuentas bancarias
   email?: string; // Para cuentas digitales
   wallet?: string; // Para cuentas digitales
+  // Zelle
+  envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
+}
+
+export interface ProductImageDto {
+  id: string;
+  base64: string; // Imagen en base64 (data:image/jpeg;base64,...)
+  filename: string; // Nombre original del archivo
+  type: "model" | "reference" | "other"; // Tipo de imagen
+  uploadedAt: string; // Fecha de carga (ISO string)
+  size?: number; // Tamaño del archivo en bytes (opcional)
 }
 
 export interface PartialPaymentDto {
@@ -873,6 +885,7 @@ export interface PartialPaymentDto {
   amount: number;
   method: string;
   date: string;
+  images?: ProductImageDto[]; // Imágenes del comprobante de pago
   paymentDetails?: PaymentDetailsDto;
 }
 
@@ -900,10 +913,30 @@ export interface OrderResponseDto {
   mixedPayments?: PartialPaymentDto[];
   deliveryAddress?: string;
   hasDelivery: boolean;
+  deliveryServices?: {
+    deliveryExpress?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioAcarreo?: {
+      enabled: boolean;
+      cost?: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioArmado?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+  };
   status: string;
   productMarkups?: { [key: string]: number };
   createSupplierOrder?: boolean;
   observations?: string;
+  saleType?: string;
+  deliveryType?: string;
+  deliveryZone?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -930,10 +963,30 @@ export interface CreateOrderDto {
   mixedPayments?: PartialPaymentDto[];
   deliveryAddress?: string;
   hasDelivery: boolean;
+  deliveryServices?: {
+    deliveryExpress?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioAcarreo?: {
+      enabled: boolean;
+      cost?: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioArmado?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+  };
   status?: string;
   productMarkups?: { [key: string]: number };
   createSupplierOrder?: boolean;
   observations?: string;
+  saleType?: string;
+  deliveryType?: string;
+  deliveryZone?: string;
 }
 
 export interface UpdateOrderDto {
@@ -958,10 +1011,30 @@ export interface UpdateOrderDto {
   mixedPayments?: PartialPaymentDto[];
   deliveryAddress?: string;
   hasDelivery?: boolean;
+  deliveryServices?: {
+    deliveryExpress?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioAcarreo?: {
+      enabled: boolean;
+      cost?: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioArmado?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+  };
   status?: string;
   productMarkups?: { [key: string]: number };
   createSupplierOrder?: boolean;
   observations?: string;
+  saleType?: string;
+  deliveryType?: string;
+  deliveryZone?: string;
 }
 
 export const apiClient = new ApiClient();

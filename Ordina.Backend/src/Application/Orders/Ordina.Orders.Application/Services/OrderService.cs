@@ -150,10 +150,14 @@ public class OrderService : IOrderService
                 MixedPayments = createDto.MixedPayments?.Select(MapPartialPaymentFromDto).ToList(),
                 DeliveryAddress = createDto.DeliveryAddress,
                 HasDelivery = createDto.HasDelivery,
+                DeliveryServices = createDto.DeliveryServices != null ? MapDeliveryServicesFromDto(createDto.DeliveryServices) : null,
                 Status = createDto.Status,
                 ProductMarkups = createDto.ProductMarkups,
                 CreateSupplierOrder = createDto.CreateSupplierOrder,
                 Observations = createDto.Observations,
+                SaleType = createDto.SaleType,
+                DeliveryType = createDto.DeliveryType,
+                DeliveryZone = createDto.DeliveryZone,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -226,6 +230,8 @@ public class OrderService : IOrderService
                 existingOrder.DeliveryAddress = updateDto.DeliveryAddress;
             if (updateDto.HasDelivery.HasValue)
                 existingOrder.HasDelivery = updateDto.HasDelivery.Value;
+            if (updateDto.DeliveryServices != null)
+                existingOrder.DeliveryServices = MapDeliveryServicesFromDto(updateDto.DeliveryServices);
             if (!string.IsNullOrEmpty(updateDto.Status))
                 existingOrder.Status = updateDto.Status;
             if (updateDto.ProductMarkups != null)
@@ -234,6 +240,12 @@ public class OrderService : IOrderService
                 existingOrder.CreateSupplierOrder = updateDto.CreateSupplierOrder;
             if (updateDto.Observations != null)
                 existingOrder.Observations = updateDto.Observations;
+            if (!string.IsNullOrEmpty(updateDto.SaleType))
+                existingOrder.SaleType = updateDto.SaleType;
+            if (!string.IsNullOrEmpty(updateDto.DeliveryType))
+                existingOrder.DeliveryType = updateDto.DeliveryType;
+            if (!string.IsNullOrEmpty(updateDto.DeliveryZone))
+                existingOrder.DeliveryZone = updateDto.DeliveryZone;
 
             existingOrder.UpdatedAt = DateTime.UtcNow;
 
@@ -319,6 +331,7 @@ public class OrderService : IOrderService
             MixedPayments = order.MixedPayments?.Select(MapPartialPaymentToDto).ToList(),
             DeliveryAddress = order.DeliveryAddress,
             HasDelivery = order.HasDelivery,
+            DeliveryServices = order.DeliveryServices != null ? MapDeliveryServicesToDto(order.DeliveryServices) : null,
             Status = order.Status,
             ProductMarkups = order.ProductMarkups,
             CreateSupplierOrder = order.CreateSupplierOrder,
@@ -349,7 +362,16 @@ public class OrderService : IOrderService
             ManufacturingStartedAt = product.ManufacturingStartedAt,
             ManufacturingCompletedAt = product.ManufacturingCompletedAt,
             ManufacturingNotes = product.ManufacturingNotes,
-            LocationStatus = product.LocationStatus
+            LocationStatus = product.LocationStatus,
+            Images = product.Images?.Select(img => new ProductImageDto
+            {
+                Id = img.Id,
+                Base64 = img.Base64,
+                Filename = img.Filename,
+                Type = img.Type,
+                UploadedAt = img.UploadedAt,
+                Size = img.Size
+            }).ToList()
         };
     }
 
@@ -376,7 +398,16 @@ public class OrderService : IOrderService
             ManufacturingStartedAt = dto.ManufacturingStartedAt,
             ManufacturingCompletedAt = dto.ManufacturingCompletedAt,
             ManufacturingNotes = dto.ManufacturingNotes,
-            LocationStatus = dto.LocationStatus
+            LocationStatus = dto.LocationStatus,
+            Images = dto.Images?.Select(img => new ProductImage
+            {
+                Id = img.Id,
+                Base64 = img.Base64,
+                Filename = img.Filename,
+                Type = img.Type,
+                UploadedAt = img.UploadedAt,
+                Size = img.Size
+            }).ToList()
         };
     }
 
@@ -438,6 +469,15 @@ public class OrderService : IOrderService
             Amount = payment.Amount,
             Method = payment.Method,
             Date = payment.Date,
+            Images = payment.Images?.Select(img => new ProductImageDto
+            {
+                Id = img.Id,
+                Base64 = img.Base64,
+                Filename = img.Filename,
+                Type = img.Type,
+                UploadedAt = img.UploadedAt,
+                Size = img.Size
+            }).ToList(),
             PaymentDetails = payment.PaymentDetails != null ? MapPaymentDetailsToDto(payment.PaymentDetails) : null
         };
     }
@@ -452,7 +492,56 @@ public class OrderService : IOrderService
             Amount = dto.Amount,
             Method = dto.Method,
             Date = dto.Date,
+            Images = dto.Images?.Select(img => new ProductImage
+            {
+                Id = img.Id,
+                Base64 = img.Base64,
+                Filename = img.Filename,
+                Type = img.Type,
+                UploadedAt = img.UploadedAt,
+                Size = img.Size
+            }).ToList(),
             PaymentDetails = dto.PaymentDetails != null ? MapPaymentDetailsFromDto(dto.PaymentDetails) : null
+        };
+    }
+
+    private DeliveryServicesDto MapDeliveryServicesToDto(DeliveryServices deliveryServices)
+    {
+        return new DeliveryServicesDto
+        {
+            DeliveryExpress = deliveryServices.DeliveryExpress != null ? MapDeliveryServiceToDto(deliveryServices.DeliveryExpress) : null,
+            ServicioAcarreo = deliveryServices.ServicioAcarreo != null ? MapDeliveryServiceToDto(deliveryServices.ServicioAcarreo) : null,
+            ServicioArmado = deliveryServices.ServicioArmado != null ? MapDeliveryServiceToDto(deliveryServices.ServicioArmado) : null
+        };
+    }
+
+    private DeliveryServices MapDeliveryServicesFromDto(DeliveryServicesDto dto)
+    {
+        return new DeliveryServices
+        {
+            DeliveryExpress = dto.DeliveryExpress != null ? MapDeliveryServiceFromDto(dto.DeliveryExpress) : null,
+            ServicioAcarreo = dto.ServicioAcarreo != null ? MapDeliveryServiceFromDto(dto.ServicioAcarreo) : null,
+            ServicioArmado = dto.ServicioArmado != null ? MapDeliveryServiceFromDto(dto.ServicioArmado) : null
+        };
+    }
+
+    private DeliveryServiceDto MapDeliveryServiceToDto(DeliveryService deliveryService)
+    {
+        return new DeliveryServiceDto
+        {
+            Enabled = deliveryService.Enabled,
+            Cost = deliveryService.Cost,
+            Currency = deliveryService.Currency
+        };
+    }
+
+    private DeliveryService MapDeliveryServiceFromDto(DeliveryServiceDto dto)
+    {
+        return new DeliveryService
+        {
+            Enabled = dto.Enabled,
+            Cost = dto.Cost,
+            Currency = dto.Currency
         };
     }
 

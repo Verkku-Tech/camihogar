@@ -1,6 +1,6 @@
 // Wrapper genérico para IndexedDB
 const DB_NAME = "camihogar_db";
-const DB_VERSION = 9; // Incrementar para agregar commissions
+const DB_VERSION = 10; // Incrementar para agregar commissions
 
 interface StoreConfig {
   name: string;
@@ -111,6 +111,15 @@ const STORES: StoreConfig[] = [
       { name: "createdAt", keyPath: "createdAt" },
       { name: "status", keyPath: "status" },
       { name: "expiresAt", keyPath: "expiresAt" },
+    ],
+  },
+  {
+    name: "commissions",
+    keyPath: "id",
+    indexes: [
+      { name: "commissionType", keyPath: "commissionType" },
+      { name: "role", keyPath: "role" },
+      { name: "userId", keyPath: "userId" },
     ],
   },
 ];

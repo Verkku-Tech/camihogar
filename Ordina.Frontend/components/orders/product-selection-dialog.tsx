@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -160,6 +160,7 @@ export function ProductSelectionDialog({
       stock: 0, // Los productos se crean bajo demanda, no hay stock
       attributes: mergedAttributes,
       discount: 0, // Inicializar sin descuento
+      locationStatus: "EN TIENDA", // Establecer por defecto "EN TIENDA"
     }
     
     setProductToEdit(newProduct)
@@ -207,6 +208,9 @@ export function ProductSelectionDialog({
         <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-4xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4">
           <DialogHeader className="pb-2 sm:pb-4">
             <DialogTitle className="text-lg sm:text-xl">Seleccionar Productos</DialogTitle>
+            <DialogDescription>
+              Busca y selecciona los productos que deseas agregar al pedido
+            </DialogDescription>
           </DialogHeader>
 
         <div className="space-y-3 sm:space-y-4">
@@ -233,11 +237,13 @@ export function ProductSelectionDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas las categorías</SelectItem>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.name}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
+                    {categories
+                      .filter((category) => category.name && category.name.trim() !== "")
+                      .map((category) => (
+                        <SelectItem key={category.id} value={category.name}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

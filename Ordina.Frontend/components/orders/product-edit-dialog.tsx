@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -24,6 +25,7 @@ import {
   type AttributeValue,
   type OrderProduct,
   type Product,
+  type ProductImage,
   type Category,
   calculateProductTotalWithAttributes,
   calculateProductUnitPriceWithAttributes,
@@ -34,6 +36,7 @@ import { useCurrency } from "@/contexts/currency-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Package, Settings, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { ImageUploader } from "./ImageUploader";
 
 interface ProductEditDialogProps {
   open: boolean;
@@ -46,11 +49,23 @@ interface ProductEditDialogProps {
 // Helper functions to normalize attribute values
 // IMPORTANTE: Ahora priorizamos label sobre id para guardar el nombre directamente
 const getValueString = (value: string | AttributeValue): string => {
-  return typeof value === "string" ? value : value.label || value.id;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed !== "" ? trimmed : "unknown"; // Si es cadena vacía o solo espacios, usar "unknown"
+  }
+  const label = value.label?.trim() || "";
+  const id = value.id?.trim() || "";
+  return label !== "" ? label : (id !== "" ? id : "unknown"); // Si ambos son undefined/vacíos/solo espacios, usar "unknown"
 };
 
 const getValueLabel = (value: string | AttributeValue): string => {
-  return typeof value === "string" ? value : value.label || value.id;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed !== "" ? trimmed : "Sin nombre"; // Si es cadena vacía o solo espacios, usar "Sin nombre"
+  }
+  const label = value.label?.trim() || "";
+  const id = value.id?.trim() || "";
+  return label !== "" ? label : (id !== "" ? id : "Sin nombre"); // Si ambos son undefined/vacíos/solo espacios, usar "Sin nombre"
 };
 
 // Función para calcular ajustes detallados por atributo
@@ -359,23 +374,62 @@ function ProductAttributesEditor({
         return (
           <div className="flex items-center gap-2">
             <Select
-              value={attrValue || ""}
-              onValueChange={(val) => handleAttributeChange(attrKey, val)}
+              value={attrValue || "vacio"}
+              onValueChange={(val) => handleAttributeChange(attrKey, val === "vacio" ? undefined : val)}
             >
               <SelectTrigger className="flex-1">
                 <SelectValue placeholder={`Seleccione ${attribute.title?.toLowerCase() || "opción"}`} />
               </SelectTrigger>
               <SelectContent>
-                {attribute.values?.map((option: string | AttributeValue) => {
-                  // IMPORTANTE: Guardar label directamente en lugar de ID
-                  const optionValue = typeof option === "string" ? option : option.label || option.id;
-                  const optionLabel = typeof option === "string" ? option : option.label || option.id;
-                  return (
-                    <SelectItem key={optionValue} value={optionValue}>
-                      {optionLabel}
-                    </SelectItem>
-                  );
-                })}
+                <SelectItem value="vacio">Seleccione una opción</SelectItem>
+                {attribute.values
+                  ?.slice() // Crear copia para no mutar el array original
+                  .sort((a: string | AttributeValue, b: string | AttributeValue) => {
+                    // Obtener el label de cada opción
+                    const labelA = typeof a === "string" ? a : a.label || a.id || "";
+                    const labelB = typeof b === "string" ? b : b.label || b.id || "";
+                    // Ordenar alfabéticamente (case-insensitive)
+                    return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
+                  })
+                  .filter((option: string | AttributeValue) => {
+                    // Filtrar opciones con valores vacíos
+                    if (typeof option === "string") {
+                      return option && option.trim() !== "";
+                    }
+                    const optionValue = option.label || option.id;
+                    return optionValue && optionValue.trim() !== "";
+                  })
+                  .map((option: string | AttributeValue) => {
+                    // IMPORTANTE: Guardar label directamente en lugar de ID
+                    let optionValue: string;
+                    let optionLabel: string;
+                    
+                    if (typeof option === "string") {
+                      optionValue = option.trim() !== "" ? option : "unknown";
+                      optionLabel = option.trim() !== "" ? option : "Sin nombre";
+                    } else {
+                      optionValue = (option.label || option.id || "unknown").trim() !== "" 
+                        ? (option.label || option.id || "unknown")
+                        : "unknown";
+                      optionLabel = (option.label || option.id || "Sin nombre").trim() !== ""
+                        ? (option.label || option.id || "Sin nombre")
+                        : "Sin nombre";
+                    }
+                    
+                    // Asegurar que nunca sea cadena vacía
+                    if (!optionValue || optionValue.trim() === "") {
+                      optionValue = "unknown";
+                    }
+                    if (!optionLabel || optionLabel.trim() === "") {
+                      optionLabel = "Sin nombre";
+                    }
+                    
+                    return (
+                      <SelectItem key={optionValue} value={optionValue}>
+                        {optionLabel}
+                      </SelectItem>
+                    );
+                  })}
               </SelectContent>
             </Select>
             {selectedAdjustment !== 0 && (
@@ -456,21 +510,48 @@ function ProductAttributesEditor({
                 </SelectTrigger>
                 <SelectContent>
                   {attribute.values
-                    ?.map((v: string | AttributeValue) => typeof v === "string" ? v : v.id || v.label)
-                    .filter((optionValue: string) => !selectedValues.includes(optionValue))
+                    ?.slice() // Crear copia para no mutar el array original
+                    .sort((a: string | AttributeValue, b: string | AttributeValue) => {
+                      // Obtener el label de cada opción
+                      const labelA = typeof a === "string" ? a : a.label || a.id || "";
+                      const labelB = typeof b === "string" ? b : b.label || b.id || "";
+                      // Ordenar alfabéticamente (case-insensitive)
+                      return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
+                    })
+                    .map((v: string | AttributeValue) => {
+                      if (typeof v === "string") {
+                        return v && v.trim() !== "" ? v : null;
+                      }
+                      const val = v.id || v.label;
+                      return val && val.trim() !== "" ? val : null;
+                    })
+                    .filter((optionValue: string | null): optionValue is string => {
+                      // Filtrar valores null y vacíos
+                      return optionValue !== null && optionValue.trim() !== "";
+                    })
+                    .filter((optionValue: string) => {
+                      // Filtrar valores ya seleccionados
+                      return !selectedValues.includes(optionValue);
+                    })
                     .map((optionValue: string) => {
                       const option = attribute.values?.find(
                         (v: string | AttributeValue) => {
-                          const valStr = typeof v === "string" ? v : v.id || v.label;
+                          if (typeof v === "string") {
+                            return v === optionValue;
+                          }
+                          const valStr = v.id || v.label;
                           return valStr === optionValue;
                         }
                       );
                       const optionLabel = option 
-                        ? (typeof option === "string" ? option : option.label || option.id)
+                        ? (typeof option === "string" ? option : option.label || option.id || "Sin nombre")
                         : optionValue;
+                      // Asegurar que nunca sea cadena vacía
+                      const finalValue = optionValue && optionValue.trim() !== "" ? optionValue : "unknown";
+                      const finalLabel = optionLabel && optionLabel.trim() !== "" ? optionLabel : "Sin nombre";
                       return (
-                        <SelectItem key={optionValue} value={optionValue}>
-                          {optionLabel}
+                        <SelectItem key={finalValue} value={finalValue}>
+                          {finalLabel}
                         </SelectItem>
                       );
                     })}
@@ -556,8 +637,9 @@ function ProductAttributesEditor({
               <div key={attrKey} className="space-y-1.5">
                 <Label htmlFor={`edit-attr-${attrKey}`} className="text-sm">
                   {attribute.title}
-                  {/* Indicador visual de campo obligatorio */}
-                  {(attribute.valueType === "Select" || 
+                  {/* Indicador visual de campo obligatorio - Solo mostrar si required !== false */}
+                  {(attribute.required !== false) && 
+                   (attribute.valueType === "Select" || 
                     attribute.valueType === "Multiple select" ||
                     attribute.valueType === "Number") && (
                     <span className="text-red-500 ml-1">*</span>
@@ -567,13 +649,16 @@ function ProductAttributesEditor({
                   <p className="text-xs text-muted-foreground">{attribute.description}</p>
                 )}
                 
-                {/* Mostrar mensaje de advertencia si el atributo está vacío */}
+                {/* Mostrar mensaje de advertencia si el atributo está vacío - Solo si es obligatorio */}
                 {(() => {
                   // Buscar por título primero (clave actual), luego por ID (compatibilidad)
     const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
                   const isEmpty = 
-                    (attribute.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null)) ||
-                    (attribute.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0));
+                    (attribute.required !== false) && // Solo validar si es obligatorio
+                    (
+                      (attribute.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null || attrValue === "vacio")) ||
+                      (attribute.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0))
+                    );
                   
                   return isEmpty ? (
                     <p className="text-xs text-red-500 mt-1 font-medium">
@@ -609,12 +694,15 @@ function ProductAttributesEditor({
                 const attrKey = attribute.title || attribute.id?.toString();
                 if (!attrKey) continue;
                 
+                // Solo validar si el atributo es obligatorio (required !== false)
+                if (attribute.required === false) continue;
+                
                 // Buscar por título primero, luego por ID (compatibilidad)
                 const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
                 
                 // Validar atributos de tipo "Select" (selección única)
                 if (attribute.valueType === "Select") {
-                  if (attrValue === undefined || attrValue === "" || attrValue === null) {
+                  if (attrValue === undefined || attrValue === "" || attrValue === null || attrValue === "vacio") {
                     missingAttributes.push(attribute.title || attrKey);
                   }
                 }
@@ -664,6 +752,7 @@ export function ProductEditDialog({
     {}
   );
   const [observations, setObservations] = useState("");
+  const [productImages, setProductImages] = useState<ProductImage[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [exchangeRates, setExchangeRates] = useState<{ USD?: any; EUR?: any }>({});
   const [editingAttributeId, setEditingAttributeId] = useState<string | null>(null);
@@ -735,6 +824,7 @@ export function ProductEditDialog({
     if (product) {
       setQuantity(product.quantity);
       setObservations(product.observations || "");
+      setProductImages(product.images || []);
     }
   }, [product]);
 
@@ -1282,8 +1372,9 @@ export function ProductEditDialog({
         const productAttrKey = productAttr.id?.toString() || productAttr.title;
         if (!productAttrKey) continue;
         
-        // Solo validar atributos obligatorios (Select y Multiple select)
-        if (productAttr.valueType === "Select" || productAttr.valueType === "Multiple select") {
+        // Solo validar atributos obligatorios (required !== false) y de tipo Select/Multiple select
+        if ((productAttr.required !== false) && 
+            (productAttr.valueType === "Select" || productAttr.valueType === "Multiple select")) {
           const productAttrValue = editedAttributes[productAttrKey] ?? (productAttr.title ? editedAttributes[productAttr.title] : undefined);
           
           if (productAttr.valueType === "Select") {
@@ -1315,12 +1406,15 @@ export function ProductEditDialog({
         const attrKey = attribute.title || attribute.id?.toString();
         if (!attrKey) continue;
         
+        // Solo validar si el atributo es obligatorio (required !== false)
+        if (attribute.required === false) continue;
+        
         // Buscar por título primero (clave actual), luego por ID (compatibilidad)
     const attrValue = attributes[attrKey] ?? (attribute.id ? attributes[attribute.id.toString()] : undefined);
         
         // Validar atributos de tipo "Select" (selección única)
         if (attribute.valueType === "Select") {
-          if (attrValue === undefined || attrValue === "" || attrValue === null) {
+          if (attrValue === undefined || attrValue === "" || attrValue === null || attrValue === "vacio") {
             missingAttributes.push(attribute.title || attrKey);
           }
         }
@@ -1503,6 +1597,7 @@ export function ProductEditDialog({
     });
 
     // Asegurar que stock tenga un valor por defecto si no está presente
+    // Preservar locationStatus del producto original o establecer por defecto "EN TIENDA"
     const updatedProduct: OrderProduct = {
       ...product,
       quantity,
@@ -1510,6 +1605,8 @@ export function ProductEditDialog({
       attributes: finalAttributes,
       stock: product.stock ?? 0, // Usar 0 como valor por defecto si stock no existe
       observations: observations.trim() || undefined,
+      locationStatus: product.locationStatus ?? "EN TIENDA", // Preservar locationStatus o establecer por defecto
+      images: productImages.length > 0 ? productImages : undefined, // Agregar imágenes si hay alguna
     };
     onProductUpdate(updatedProduct);
   };
@@ -1534,6 +1631,9 @@ export function ProductEditDialog({
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader className="pb-3">
             <DialogTitle className="text-lg">Editar Atributos de {selectedProductForEdit?.name}</DialogTitle>
+            <DialogDescription>
+              Configura los atributos personalizados para este producto
+            </DialogDescription>
           </DialogHeader>
           {selectedProductForEdit && productCategoryForEdit && editingAttributeId && editingProductId && (
             <ProductAttributesEditor
@@ -1561,6 +1661,11 @@ export function ProductEditDialog({
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader className="pb-3">
           <DialogTitle className="text-lg">{mode === "add" ? "Agregar Producto" : "Editar Producto"}</DialogTitle>
+          <DialogDescription>
+            {mode === "add" 
+              ? "Agrega un nuevo producto al pedido con sus atributos personalizados"
+              : "Modifica los detalles y atributos del producto seleccionado"}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
@@ -1653,8 +1758,9 @@ export function ProductEditDialog({
                   <div key={attr.id ?? attr.title} className="space-y-2">
                     <Label htmlFor={inputId}>
                       {attr.title}
-                      {/* Indicador visual de campo obligatorio */}
-                      {(attr.valueType === "Select" || 
+                      {/* Indicador visual de campo obligatorio - Solo mostrar si required !== false */}
+                      {(attr.required !== false) && 
+                       (attr.valueType === "Select" || 
                         attr.valueType === "Multiple select" || 
                         attr.valueType === "Product" ||
                         attr.valueType === "Number") && (
@@ -1665,14 +1771,17 @@ export function ProductEditDialog({
                       <p className="text-xs text-muted-foreground">{attr.description}</p>
                     )}
                     
-                    {/* Mostrar mensaje de advertencia si el atributo está vacío */}
+                    {/* Mostrar mensaje de advertencia si el atributo está vacío - Solo si es obligatorio */}
                     {(() => {
                       // Buscar por título primero (clave actual), luego por ID (compatibilidad)
                       const attrValue = attributes[attrKey] ?? (attr.id ? attributes[attr.id.toString()] : undefined);
                       const isEmpty = 
-                        (attr.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null)) ||
-                        (attr.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0)) ||
-                        (attr.valueType === "Product" && (!productAttributes[attrKey] || productAttributes[attrKey].length === 0));
+                        (attr.required !== false) && // Solo validar si es obligatorio
+                        (
+                          (attr.valueType === "Select" && (attrValue === undefined || attrValue === "" || attrValue === null || attrValue === "vacio")) ||
+                          (attr.valueType === "Multiple select" && (!Array.isArray(attrValue) || attrValue.length === 0)) ||
+                          (attr.valueType === "Product" && (!productAttributes[attrKey] || productAttributes[attrKey].length === 0))
+                        );
                       
                       return isEmpty ? (
                         <p className="text-xs text-red-500 mt-1 font-medium">
@@ -1685,10 +1794,10 @@ export function ProductEditDialog({
                       <div className="flex items-center gap-2">
                         <Select
                           value={
-                            attrValue !== undefined && !Array.isArray(attrValue) ? attrValue.toString() : ""
+                            attrValue !== undefined && !Array.isArray(attrValue) ? attrValue.toString() : "vacio"
                           }
                           onValueChange={(value) =>
-                            handleAttributeChange(attrKey, value)
+                            handleAttributeChange(attrKey, value === "vacio" ? undefined : value)
                           }
                         >
                           <SelectTrigger className="flex-1">
@@ -1699,15 +1808,21 @@ export function ProductEditDialog({
                             />
                           </SelectTrigger>
                           <SelectContent>
-                            {attr.values?.map((value: string | AttributeValue) => {
-                              const optionValue = getValueString(value);
-                              const optionLabel = getValueLabel(value);
-                              return (
-                                <SelectItem key={optionValue} value={optionValue}>
-                                  {optionLabel}
-                                </SelectItem>
-                              );
-                            })}
+                            <SelectItem value="vacio">Seleccione una opción</SelectItem>
+                            {attr.values
+                              ?.filter((value: string | AttributeValue) => {
+                                const optionValue = getValueString(value);
+                                return optionValue && optionValue.trim() !== "" && optionValue !== "unknown";
+                              })
+                              .map((value: string | AttributeValue) => {
+                                const optionValue = getValueString(value);
+                                const optionLabel = getValueLabel(value);
+                                return (
+                                  <SelectItem key={optionValue} value={optionValue}>
+                                    {optionLabel}
+                                  </SelectItem>
+                                );
+                              })}
                           </SelectContent>
                         </Select>
                         {selectedAdjustment !== 0 && (
@@ -1765,18 +1880,27 @@ export function ProductEditDialog({
                               {attr.values
                                 ?.map(getValueString)
                                 .filter((optionValue: string) => {
+                                  // Filtrar valores vacíos
+                                  if (!optionValue || optionValue.trim() === "" || optionValue === "unknown") return false;
                                   const currentArray = Array.isArray(attrValue) ? attrValue : [];
                                   return !currentArray.includes(optionValue);
                                 })
                                 .map((optionValue: string) => {
+                                  // Asegurar que nunca sea cadena vacía
+                                  if (!optionValue || optionValue.trim() === "") {
+                                    return null;
+                                  }
                                   const option = attr.values?.find((v: string | AttributeValue) => getValueString(v) === optionValue);
                                   const optionLabel = option ? getValueLabel(option) : optionValue;
+                                  const finalValue = optionValue.trim() !== "" ? optionValue : "unknown";
+                                  const finalLabel = optionLabel && optionLabel.trim() !== "" ? optionLabel : "Sin nombre";
                                   return (
-                                    <SelectItem key={optionValue} value={optionValue}>
-                                      {optionLabel}
+                                    <SelectItem key={finalValue} value={finalValue}>
+                                      {finalLabel}
                                     </SelectItem>
                                   );
-                                })}
+                                })
+                                .filter((item: string | null): item is string => item !== null)}
                             </SelectContent>
                           </Select>
                           {selectedAdjustment !== 0 && (
@@ -1954,6 +2078,21 @@ export function ProductEditDialog({
               Notas específicas sobre este producto
             </p>
           </div>
+          {/* Imagenes de referencia de productos*/}
+          <div className="space-y-2">
+            <Label htmlFor="ProductImages" className="text-sm">Imágenes de referencia</Label>
+            <ImageUploader
+              images={productImages}
+              onImagesChange={setProductImages}
+              maxImages={5}
+              maxSizeMB={1.5}
+              maxTotalSizeMB={5}
+              compressionQuality={0.7}
+              maxWidth={1920}
+              maxHeight={1920}
+              isSensitive={false}
+            />
+          </div>
 
           {/* Total */}
           <div className="p-3 bg-muted rounded-lg space-y-1.5">
@@ -1988,9 +2127,12 @@ export function ProductEditDialog({
                       </span>
                     </div>
                     {/* Mostrar cada atributo individualmente con su ajuste y valor seleccionado */}
-                    {detailedAttributeAdjustments.length > 0 && (
+                    {/* Solo mostrar atributos que tengan precio diferente de cero */}
+                    {detailedAttributeAdjustments.filter(adj => adj.adjustment !== 0).length > 0 && (
                       <>
-                        {detailedAttributeAdjustments.map((adj, idx) => (
+                        {detailedAttributeAdjustments
+                          .filter(adj => adj.adjustment !== 0)
+                          .map((adj, idx) => (
                           <div key={idx} className="flex justify-between">
                             <span>
                               {adj.attributeName}

@@ -257,6 +257,7 @@ public class CategoryService : ICategoryService
                 MaxSelections = a.MaxSelections,
                 MinValue = a.MinValue,
                 MaxValue = a.MaxValue,
+                Required = a.Required,
                 Values = a.Values.Select(v => new AttributeValueDto
                 {
                     Id = v.Id,
@@ -283,6 +284,7 @@ public class CategoryService : ICategoryService
             MaxSelections = dto.MaxSelections,
             MinValue = dto.MinValue,
             MaxValue = dto.MaxValue,
+            Required = dto.Required ?? true, // Por defecto true si no se especifica
             Values = dto.Values.Select(v => new AttributeValue
             {
                 Id = Guid.NewGuid().ToString(),
@@ -308,6 +310,7 @@ public class CategoryService : ICategoryService
             MaxSelections = dto.MaxSelections ?? existing?.MaxSelections,
             MinValue = dto.MinValue ?? existing?.MinValue,
             MaxValue = dto.MaxValue ?? existing?.MaxValue,
+            Required = dto.Required ?? existing?.Required ?? true, // Por defecto true si no se especifica
             Values = dto.Values?.Select(v => new AttributeValue
             {
                 Id = v.Id ?? Guid.NewGuid().ToString(),

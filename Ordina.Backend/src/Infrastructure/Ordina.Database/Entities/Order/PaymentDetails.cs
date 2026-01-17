@@ -64,4 +64,8 @@ public class PaymentDetails
 
     [BsonElement("wallet")]
     public string? Wallet { get; set; }
+
+    // Zelle
+    [BsonElement("envia")]
+    public string? Envia { get; set; }
 }

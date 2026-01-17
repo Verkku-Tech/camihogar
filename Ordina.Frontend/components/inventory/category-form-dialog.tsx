@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Plus, Trash2, Settings } from "lucide-react"
 import { toast } from "sonner"
 import { AttributeValuesDialog } from "./attribute-values-dialog"
@@ -28,6 +29,7 @@ interface Attribute {
   maxSelections?: number
   minValue?: number
   maxValue?: number
+  required?: boolean // Indica si el atributo es obligatorio (por defecto true)
 }
 
 interface CategoryFormDialogProps {
@@ -67,6 +69,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
         maxSelections: attr.maxSelections !== undefined ? attr.maxSelections : undefined,
         minValue: attr.minValue !== undefined ? attr.minValue : undefined,
         maxValue: attr.maxValue !== undefined ? attr.maxValue : undefined,
+        required: attr.required !== undefined ? attr.required : true, // Por defecto true si no existe
       }))
       setAttributes(loadedAttributes)
     } else {
@@ -84,6 +87,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
       description: newAttribute.description,
       valueType: newAttribute.valueType,
       values: [],
+      required: true, // Por defecto obligatorio
     }
 
     setAttributes([...attributes, attribute])
@@ -291,6 +295,7 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
                           <TableHead>Descripción</TableHead>
                           <TableHead>Tipo</TableHead>
                           <TableHead>Valores</TableHead>
+                          <TableHead className="w-[120px]">Obligatorio</TableHead>
                           <TableHead className="w-[100px]">Acciones</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -312,6 +317,27 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
                               ) : (
                                 <span className="text-sm text-muted-foreground">{attribute.values.length} valor(es)</span>
                               )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  id={`required-${attribute.id}`}
+                                  checked={attribute.required !== false}
+                                  onCheckedChange={(checked) => {
+                                    setAttributes(attributes.map(a => 
+                                      a.id === attribute.id 
+                                        ? { ...a, required: checked !== false }
+                                        : a
+                                    ))
+                                  }}
+                                />
+                                <Label 
+                                  htmlFor={`required-${attribute.id}`} 
+                                  className="text-sm font-normal cursor-pointer"
+                                >
+                                  Obligatorio
+                                </Label>
+                              </div>
                             </TableCell>
                             <TableCell>
                               <div className="flex space-x-1">

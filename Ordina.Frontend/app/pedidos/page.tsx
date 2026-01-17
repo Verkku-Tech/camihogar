@@ -20,7 +20,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Search, Plus, Eye, Edit, Trash2 } from "lucide-react"
+import { Search, Plus, Eye, Edit, Trash2, X } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { getUnifiedOrders, deleteOrder, deleteBudget, type UnifiedOrder } from "@/lib/storage"
 import { useCurrency } from "@/contexts/currency-context"
@@ -50,6 +51,11 @@ export default function PedidosPage() {
   const { formatWithPreference, preferredCurrency } = useCurrency()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [filters, setFilters] = useState({
+    vendor: "all",
+    status: "all",
+    paymentMethod: "all",
+  })
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -102,12 +108,28 @@ export default function PedidosPage() {
     return orderTotals[orderToDelete.id] || `Bs.${orderToDelete.total.toFixed(2)}`
   }
 
-  const filteredOrders = orders.filter(
-    (order) =>
+  // Obtener valores únicos para los filtros
+  const uniqueVendors = Array.from(new Set(orders.map((o) => o.vendorName))).sort()
+  const uniqueStatuses = Array.from(new Set(orders.map((o) => o.status))).sort()
+  const uniquePaymentMethods = Array.from(
+    new Set(orders.map((o) => o.paymentMethod).filter((m): m is string => !!m))
+  ).sort()
+
+  const filteredOrders = orders.filter((order) => {
+    // Filtro de búsqueda general (existente)
+    const matchesSearch =
       order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
+
+    // Filtros por columna
+    const matchesVendor = filters.vendor === "all" || order.vendorName === filters.vendor
+    const matchesStatus = filters.status === "all" || order.status === filters.status
+    const matchesPaymentMethod =
+      filters.paymentMethod === "all" || order.paymentMethod === filters.paymentMethod
+
+    return matchesSearch && matchesVendor && matchesStatus && matchesPaymentMethod
+  })
 
   const handleDelete = async () => {
     if (!orderToDelete) return
@@ -183,6 +205,80 @@ export default function PedidosPage() {
                   <Plus className="w-4 h-4 mr-2" />
                   Nuevo Pedido
                 </Button>
+              </div>
+
+              {/* Filtros por columna */}
+              <div className="flex flex-wrap gap-2 items-center">
+                <Select
+                  value={filters.vendor}
+                  onValueChange={(value) =>
+                    setFilters((prev) => ({ ...prev, vendor: value }))
+                  }
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Todos los vendedores" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los vendedores</SelectItem>
+                    {uniqueVendors.map((vendor) => (
+                      <SelectItem key={vendor} value={vendor}>
+                        {vendor}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={filters.status}
+                  onValueChange={(value) =>
+                    setFilters((prev) => ({ ...prev, status: value }))
+                  }
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Todos los estados" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los estados</SelectItem>
+                    {uniqueStatuses.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={filters.paymentMethod}
+                  onValueChange={(value) =>
+                    setFilters((prev) => ({ ...prev, paymentMethod: value }))
+                  }
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Todos los métodos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los métodos</SelectItem>
+                    {uniquePaymentMethods.map((method) => (
+                      <SelectItem key={method} value={method}>
+                        {method}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {(filters.vendor !== "all" || filters.status !== "all" || filters.paymentMethod !== "all") && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setFilters({ vendor: "all", status: "all", paymentMethod: "all" })
+                    }
+                    className="gap-2"
+                  >
+                    <X className="w-4 h-4" />
+                    Limpiar filtros
+                  </Button>
+                )}
               </div>
 
               <Card>

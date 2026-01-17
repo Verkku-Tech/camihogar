@@ -100,11 +100,13 @@ export function SelectProviderDialog({
                     No hay proveedores disponibles
                   </SelectItem>
                 ) : (
-                  providers.map((provider) => (
-                    <SelectItem key={provider.id} value={provider.id}>
-                      {provider.razonSocial} ({provider.tipo})
-                    </SelectItem>
-                  ))
+                  providers
+                    .filter((provider) => provider.id && provider.id.trim() !== "")
+                    .map((provider) => (
+                      <SelectItem key={provider.id} value={provider.id}>
+                        {provider.razonSocial} ({provider.tipo})
+                      </SelectItem>
+                    ))
                 )}
               </SelectContent>
             </Select>

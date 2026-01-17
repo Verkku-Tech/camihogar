@@ -3,7 +3,7 @@ import * as db from "./indexeddb"
 export interface SyncOperation {
   id: string
   type: 'create' | 'update' | 'delete'
-  entity: 'user' | 'order' | 'product' | 'category' | 'client' | 'provider' | 'store'
+  entity: 'user' | 'order' | 'product' | 'category' | 'client' | 'provider' | 'store' | 'commission'
   entityId: string
   data: any
   timestamp: number
@@ -222,6 +222,61 @@ class SyncManager {
               // No lanzar error, el pedido ya fue eliminado localmente
             }
             break
+        }
+        return
+      }
+
+      if (operation.entity === 'commission') {
+        // Sincronizar comisiones con el backend
+        // Nota: El backend debe tener endpoints para recibir comisiones
+        // Por ahora, intentamos sincronizar pero no fallamos si no existe el endpoint
+        try {
+          const token = typeof window !== "undefined" 
+            ? localStorage.getItem("auth_token") 
+            : null
+
+          if (!token) {
+            throw new Error("No hay token de autenticación")
+          }
+
+          // Determinar URL base según el servicio (orders para comisiones)
+          const isHttps = typeof window !== "undefined" && window.location.protocol === "https:"
+          const baseUrl = isHttps 
+            ? "/api/proxy/orders"
+            : "http://localhost:5093" // URL directa para desarrollo
+
+          const url = operation.type === 'delete' 
+            ? `${baseUrl}/api/Commissions/${operation.entityId}`
+            : `${baseUrl}/api/Commissions`
+
+          const method = operation.type === 'create' ? 'POST' 
+            : operation.type === 'update' ? 'PUT' 
+            : 'DELETE'
+
+          const response = await fetch(url, {
+            method,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: operation.type !== 'delete' ? JSON.stringify(operation.data) : undefined,
+          })
+
+          if (!response.ok) {
+            // Si el endpoint no existe (404), no es crítico - la app funciona offline
+            if (response.status === 404) {
+              console.log(`⚠️ Endpoint de comisiones no disponible en backend - se sincronizará cuando esté disponible`)
+              return // No lanzar error, solo loggear
+            }
+            throw new Error(`Error sincronizando comisión: ${response.statusText}`)
+          }
+        } catch (error: any) {
+          // Si el error es porque el endpoint no existe, no es crítico
+          if (error.message?.includes('404') || error.message?.includes('not found') || error.message?.includes('Failed to fetch')) {
+            console.log(`⚠️ Endpoint de comisiones no disponible - se sincronizará cuando esté disponible`)
+            return
+          }
+          throw error
         }
         return
       }
