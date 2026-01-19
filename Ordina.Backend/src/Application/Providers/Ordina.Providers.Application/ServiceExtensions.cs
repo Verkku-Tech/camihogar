@@ -9,6 +9,7 @@ public static class ServiceExtensions
     {
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IProductService, ProductService>();
+        services.AddScoped<IProviderService, ProviderService>();
         return services;
     }
 }

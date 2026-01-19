@@ -28,7 +28,6 @@ import {
   type PartialPayment,
   type ProductImage,
   type Account,
-  maskAccountNumber,
 } from "@/lib/storage";
 import { Currency } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
@@ -220,18 +219,25 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       updatePaymentDetails(paymentId, "accountNumber", undefined);
       updatePaymentDetails(paymentId, "bank", undefined);
     } else {
-      updatePaymentDetails(paymentId, "accountNumber", account.accountNumber || undefined);
-      updatePaymentDetails(paymentId, "bank", account.bank || undefined);
+      // Para cuentas tradicionales, usar el código como referencia y el label puede contener el banco
+      updatePaymentDetails(paymentId, "accountNumber", account.code || undefined);
+      updatePaymentDetails(paymentId, "bank", account.label || undefined);
       updatePaymentDetails(paymentId, "email", undefined);
       updatePaymentDetails(paymentId, "wallet", undefined);
     }
 
-    if (account.bank) {
-      const currentPayment = orderForm.payments.find((p) => p.id === paymentId);
-      if (currentPayment?.method === "Pago Móvil") {
-        updatePaymentDetails(paymentId, "pagomovilBank", account.bank);
-      } else if (currentPayment?.method === "Transferencia") {
-        updatePaymentDetails(paymentId, "transferenciaBank", account.bank);
+    // Si la etiqueta contiene información del banco, intentar extraerla para Pago Móvil/Transferencia
+    const currentPayment = orderForm.payments.find((p) => p.id === paymentId);
+    if (account.label && (currentPayment?.method === "Pago Móvil" || currentPayment?.method === "Transferencia")) {
+      // Intentar extraer el banco del label si es posible (ej: "Punto de Venta Banesco" -> "Banesco")
+      const bankMatch = account.label.match(/\b(Banesco|Mercantil|Venezuela|Provincial|BOD|100% Banco|Banco del Tesoro|Banco de Venezuela)\b/i);
+      if (bankMatch) {
+        const bankName = bankMatch[1];
+        if (currentPayment?.method === "Pago Móvil") {
+          updatePaymentDetails(paymentId, "pagomovilBank", bankName);
+        } else if (currentPayment?.method === "Transferencia") {
+          updatePaymentDetails(paymentId, "transferenciaBank", bankName);
+        }
       }
     }
   };
@@ -355,13 +361,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
-      if (orderForm.payments.length === 0) {
-        toast.error("Por favor agrega al menos un pago");
+      if (!orderForm.paymentCondition) {
+        toast.error("Por favor selecciona la condición de pago");
         return;
       }
 
-      if (!orderForm.paymentCondition) {
-        toast.error("Por favor selecciona la condición de pago");
+      // Solo validar pagos si NO es "Pago a la entrega"
+      if (orderForm.paymentCondition !== "pago_a_entrega" && orderForm.payments.length === 0) {
+        toast.error("Por favor agrega al menos un pago");
         return;
       }
 
@@ -479,7 +486,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         deliveryCost: orderForm.deliveryCost,
         total: orderForm.total,
         paymentType:
-          orderForm.paymentCondition === "todo_pago"
+          orderForm.paymentCondition === "pago_a_entrega"
+            ? "directo"
+            : orderForm.paymentCondition === "todo_pago"
             ? "directo"
             : orderForm.paymentCondition === "pago_parcial"
             ? "apartado"
@@ -505,11 +514,19 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           | "charallave_cua"
           | "interior_pais",
         paymentMethod:
-          orderForm.payments.length > 1 ? "Mixto" : orderForm.payments[0]?.method || "",
+          orderForm.paymentCondition === "pago_a_entrega"
+            ? "Pago a la entrega"
+            : orderForm.payments.length > 1
+            ? "Mixto"
+            : orderForm.payments[0]?.method || "",
         paymentDetails:
-          orderForm.payments.length === 1 ? orderForm.payments[0]?.paymentDetails : undefined,
-        partialPayments: orderForm.payments,
-        mixedPayments: orderForm.payments.length > 1 ? orderForm.payments : undefined,
+          orderForm.paymentCondition === "pago_a_entrega" || orderForm.payments.length === 0
+            ? undefined
+            : orderForm.payments.length === 1
+            ? orderForm.payments[0]?.paymentDetails
+            : undefined,
+        partialPayments: orderForm.paymentCondition === "pago_a_entrega" ? undefined : orderForm.payments,
+        mixedPayments: orderForm.paymentCondition === "pago_a_entrega" ? undefined : (orderForm.payments.length > 1 ? orderForm.payments : undefined),
         deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
         hasDelivery: orderForm.hasDelivery,
         deliveryServices: orderForm.hasDelivery

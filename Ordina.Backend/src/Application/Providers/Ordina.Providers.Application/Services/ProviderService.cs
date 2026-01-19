@@ -1,137 +1,265 @@
 ﻿using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
-using MongoDB.Driver;
 using Ordina.Database.Entities.Provider;
-using Ordina.Database.MongoContext;
 using Ordina.Database.Repositories;
 using Ordina.Providers.Application.DTOs;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Ordina.Providers.Application.Services;
 
 public class ProviderService : IProviderService
 {
     private readonly IProviderRepository _providerRepository;
-    private readonly IMongoCollection<Provider> _collection;
     private readonly ILogger<ProviderService> _logger;
 
     public ProviderService(
         IProviderRepository providerRepository,
-        ILogger<ProviderService> logger,
-        IMongoDatabase database)
+        ILogger<ProviderService> logger)
     {
         _providerRepository = providerRepository;
         _logger = logger;
-        _collection = database.GetCollection<Provider>("providers");
-
-    }
-
-    private void CreateIndexes()
-    {
-        var indexKeys = Builders<Provider>.IndexKeys.Ascending(p => p.Rif);
-        var indexOptions = new CreateIndexOptions { Unique = true };
-        var indexModel = new CreateIndexModel<Provider>(indexKeys, indexOptions);
     }
 
     public async Task<IEnumerable<ProviderResponseDto>> GetAllAsync()
     {
-        var providers = await _collection.Find(_ => true).ToListAsync();
-        return providers.Select(MapToDto).ToList();
+        try
+        {
+            var providers = await _providerRepository.GetAllAsync();
+            return providers.Select(MapToDto);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener proveedores");
+            throw;
+        }
     }
 
-    public async Task<ProviderResponseDto?> GetByIdAsync(ObjectId id)
+    public async Task<ProviderResponseDto?> GetByIdAsync(string id)
     {
-        
-        var provider = await _collection.Find(p => p.Id == id).FirstOrDefaultAsync();
-        return provider == null ? null : MapToDto(provider);
+        try
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                throw new ArgumentException("El ID del proveedor es requerido", nameof(id));
+            }
+
+            if (!ObjectId.TryParse(id, out var objectId))
+            {
+                throw new ArgumentException("El ID del proveedor no es válido", nameof(id));
+            }
+
+            var provider = await _providerRepository.GetByIdAsync(objectId);
+            return provider == null ? null : MapToDto(provider);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener proveedor con ID {ProviderId}", id);
+            throw;
+        }
     }
 
     public async Task<ProviderResponseDto?> GetByRifAsync(string rif)
     {
-        var provider = await _collection.Find(p => p.Rif == rif).FirstOrDefaultAsync();
-        return provider == null ? null : MapToDto(provider);
+        try
+        {
+            if (string.IsNullOrWhiteSpace(rif))
+            {
+                throw new ArgumentException("El RIF es requerido", nameof(rif));
+            }
+
+            var provider = await _providerRepository.GetByRifAsync(rif);
+            return provider == null ? null : MapToDto(provider);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener proveedor con RIF {Rif}", rif);
+            throw;
+        }
+    }
+
+    public async Task<ProviderResponseDto?> GetByEmailAsync(string email)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                throw new ArgumentException("El email es requerido", nameof(email));
+            }
+
+            var provider = await _providerRepository.GetByEmailAsync(email);
+            return provider == null ? null : MapToDto(provider);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener proveedor con email {Email}", email);
+            throw;
+        }
     }
 
     public async Task<ProviderResponseDto> CreateAsync(CreateProviderDto createProviderDto)
     {
-        // Validación del DTO
-        if (createProviderDto == null)
-            throw new ArgumentNullException(nameof(createProviderDto));
-
-        if (string.IsNullOrWhiteSpace(createProviderDto.Rif))
-            throw new ArgumentException("El RIF no puede estar vacío", nameof(createProviderDto.Rif));
-
-        // Verificar RIF único (case insensitive)
-        var existing = await _collection
-            .Find(p => p.Rif.ToLower() == createProviderDto.Rif.Trim().ToLower())
-            .FirstOrDefaultAsync();
-
-        if (existing != null)
-            throw new InvalidOperationException($"Ya existe un proveedor con el RIF {createProviderDto.Rif}");
-
-        // Mapear y asignar valores
-        var provider = MapFromCreateDto(createProviderDto);
-        //provider.Id = ObjectId.GenerateNewId();
-        provider.FechaCreacion = DateTime.UtcNow;
-        provider.Estado = "Activo";  // Ejemplo de valor por defecto
-
-        // Insertar
-        await _collection.InsertOneAsync(provider);
-
-        // Retornar DTO
-        return MapToDto(provider);
-    }
-
-    public async Task<ProviderResponseDto?> UpdateAsync(ObjectId id, UpdateProviderDto updateProviderDto)
-    {
-        // Validaciones iniciales
-        if (updateProviderDto == null)
-            throw new ArgumentNullException(nameof(updateProviderDto));
-
-        
-        var provider = await _collection.Find(p => p.Id == id).FirstOrDefaultAsync();
-        if (provider == null) return null;
-
-        
-        if (!string.IsNullOrWhiteSpace(updateProviderDto.Rif) &&
-            !string.Equals(provider.Rif, updateProviderDto.Rif, StringComparison.OrdinalIgnoreCase))
+        try
         {
-            var existing = await _collection
-                .Find(p => p.Rif.ToLower() == updateProviderDto.Rif.Trim().ToLower())
-                .FirstOrDefaultAsync();
+            if (createProviderDto == null)
+            {
+                throw new ArgumentNullException(nameof(createProviderDto));
+            }
 
-            if (existing != null && existing.Id != id)  // Excluir el propio proveedor
-                throw new InvalidOperationException($"Ya existe un proveedor con el RIF {updateProviderDto.Rif}");
+            if (string.IsNullOrWhiteSpace(createProviderDto.Rif))
+            {
+                throw new ArgumentException("El RIF no puede estar vacío", nameof(createProviderDto.Rif));
+            }
+
+            // Verificar RIF único (case insensitive)
+            var existingByRif = await _providerRepository.GetByRifAsync(createProviderDto.Rif.Trim());
+            if (existingByRif != null)
+            {
+                throw new InvalidOperationException($"Ya existe un proveedor con el RIF '{createProviderDto.Rif}'");
+            }
+
+            // Verificar email único si se proporciona
+            if (!string.IsNullOrWhiteSpace(createProviderDto.Email))
+            {
+                var existingByEmail = await _providerRepository.GetByEmailAsync(createProviderDto.Email.Trim());
+                if (existingByEmail != null)
+                {
+                    throw new InvalidOperationException($"Ya existe un proveedor con el email '{createProviderDto.Email}'");
+                }
+            }
+
+            // Mapear y asignar valores
+            var provider = MapFromCreateDto(createProviderDto);
+            provider.FechaCreacion = DateTime.UtcNow;
+            provider.Estado = createProviderDto.Estado ?? "Activo";
+
+            // Crear proveedor
+            var createdProvider = await _providerRepository.CreateAsync(provider);
+
+            // Retornar DTO
+            return MapToDto(createdProvider);
         }
-
-        // 3. Actualizar propiedades
-        MapFromUpdateDto(updateProviderDto, provider);
-
-        // 4. Actualizar metadatos
-        provider.FechaActualizacion = DateTime.UtcNow;
-
-        // 5. Reemplazar en BD con filtro por Guid
-        var result = await _collection.ReplaceOneAsync(p => p.Id == id, provider);
-
-        // 6. Verificar que se actualizó
-        if (result.ModifiedCount == 0)
-            throw new InvalidOperationException("No se pudo actualizar el proveedor");
-
-        return MapToDto(provider);
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al crear proveedor");
+            throw;
+        }
     }
 
-    public async Task<bool> DeleteAsync(ObjectId id)
+    public async Task<ProviderResponseDto> UpdateAsync(string id, UpdateProviderDto updateProviderDto)
     {
-        // Verificar que existe
-        var exists = await _collection.Find(p => p.Id == id).AnyAsync();
-        if (!exists) return false;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                throw new ArgumentException("El ID del proveedor es requerido", nameof(id));
+            }
 
-        // Eliminar
-        var result = await _collection.DeleteOneAsync(p => p.Id == id);
-        return result.DeletedCount > 0;
+            if (!ObjectId.TryParse(id, out var objectId))
+            {
+                throw new ArgumentException("El ID del proveedor no es válido", nameof(id));
+            }
+
+            if (updateProviderDto == null)
+            {
+                throw new ArgumentNullException(nameof(updateProviderDto));
+            }
+
+            // Obtener proveedor existente
+            var existingProvider = await _providerRepository.GetByIdAsync(objectId);
+            if (existingProvider == null)
+            {
+                throw new KeyNotFoundException($"Proveedor con ID {id} no encontrado");
+            }
+
+            // Verificar RIF único si se está cambiando
+            if (!string.IsNullOrWhiteSpace(updateProviderDto.Rif) &&
+                !string.Equals(existingProvider.Rif, updateProviderDto.Rif, StringComparison.OrdinalIgnoreCase))
+            {
+                var existingByRif = await _providerRepository.GetByRifAsync(updateProviderDto.Rif.Trim());
+                if (existingByRif != null && existingByRif.Id != objectId)
+                {
+                    throw new InvalidOperationException($"Ya existe un proveedor con el RIF '{updateProviderDto.Rif}'");
+                }
+            }
+
+            // Verificar email único si se está cambiando
+            if (!string.IsNullOrWhiteSpace(updateProviderDto.Email) &&
+                !string.Equals(existingProvider.Email, updateProviderDto.Email, StringComparison.OrdinalIgnoreCase))
+            {
+                var existingByEmail = await _providerRepository.GetByEmailAsync(updateProviderDto.Email.Trim());
+                if (existingByEmail != null && existingByEmail.Id != objectId)
+                {
+                    throw new InvalidOperationException($"Ya existe un proveedor con el email '{updateProviderDto.Email}'");
+                }
+            }
+
+            // Actualizar propiedades
+            MapFromUpdateDto(updateProviderDto, existingProvider);
+
+            // Actualizar metadatos
+            existingProvider.FechaActualizacion = DateTime.UtcNow;
+
+            // Actualizar proveedor
+            var updatedProvider = await _providerRepository.UpdateAsync(existingProvider);
+
+            return MapToDto(updatedProvider);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al actualizar proveedor con ID {ProviderId}", id);
+            throw;
+        }
+    }
+
+    public async Task<bool> DeleteAsync(string id)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                throw new ArgumentException("El ID del proveedor es requerido", nameof(id));
+            }
+
+            if (!ObjectId.TryParse(id, out var objectId))
+            {
+                throw new ArgumentException("El ID del proveedor no es válido", nameof(id));
+            }
+
+            var exists = await _providerRepository.ExistsAsync(objectId);
+            if (!exists)
+            {
+                return false;
+            }
+
+            return await _providerRepository.DeleteAsync(objectId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al eliminar proveedor con ID {ProviderId}", id);
+            throw;
+        }
+    }
+
+    public async Task<bool> ProviderExistsAsync(string id)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                throw new ArgumentException("El ID del proveedor es requerido", nameof(id));
+            }
+
+            if (!ObjectId.TryParse(id, out var objectId))
+            {
+                throw new ArgumentException("El ID del proveedor no es válido", nameof(id));
+            }
+
+            return await _providerRepository.ExistsAsync(objectId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al verificar existencia del proveedor con ID {ProviderId}", id);
+            throw;
+        }
     }
 
     // Métodos de mapeo
@@ -139,7 +267,7 @@ public class ProviderService : IProviderService
     {
         return new ProviderResponseDto
         {
-            Id = provider.Id,
+            Id = provider.Id.ToString(),
             RazonSocial = provider.RazonSocial,
             Nombre = provider.Nombre,
             Rif = provider.Rif,
@@ -150,7 +278,7 @@ public class ProviderService : IProviderService
             Tipo = provider.Tipo,
             Estado = provider.Estado,
             CreatedAt = provider.FechaCreacion,
-            UpdatedAt = provider.FechaActualizacion,  // Cambié de null a propiedad real
+            UpdatedAt = provider.FechaActualizacion,
             ProductsCount = 0  // Considera calcular esto realmente
         };
     }
@@ -161,13 +289,13 @@ public class ProviderService : IProviderService
         {
             RazonSocial = dto.RazonSocial,
             Nombre = dto.Nombre,
-            Rif = dto.Rif,
+            Rif = dto.Rif.Trim(),
             Direccion = dto.Direccion ?? string.Empty,
             Telefono = dto.Telefono ?? string.Empty,
-            Email = dto.Email,
+            Email = dto.Email?.Trim() ?? string.Empty,
             Contacto = dto.Contacto ?? string.Empty,
             Tipo = dto.Tipo ?? string.Empty,
-            Estado = dto.Estado
+            Estado = dto.Estado ?? "Activo"
         };
     }
 
@@ -180,10 +308,10 @@ public class ProviderService : IProviderService
             provider.Nombre = dto.Nombre;
 
         if (!string.IsNullOrWhiteSpace(dto.Rif))
-            provider.Rif = dto.Rif;
+            provider.Rif = dto.Rif.Trim();
 
         if (!string.IsNullOrWhiteSpace(dto.Email))
-            provider.Email = dto.Email;
+            provider.Email = dto.Email.Trim();
 
         if (dto.Telefono != null)
             provider.Telefono = dto.Telefono;

@@ -145,6 +145,7 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
               value={formData.direccion}
               onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
               placeholder="Dirección completa"
+              required
             />
           </div>
 
@@ -156,6 +157,7 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
                 value={formData.telefono}
                 onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
                 placeholder="+58 412 555-0123"
+                required
               />
             </div>
             <div className="space-y-2">

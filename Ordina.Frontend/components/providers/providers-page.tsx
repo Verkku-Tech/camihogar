@@ -79,10 +79,12 @@ export function ProvidersPage() {
 
   const handleCreateProvider = async () => {
     // Validate RIF is not duplicated
-    const rifExists = providers.some((p) => p.rif === formData.rif)
-    if (rifExists) {
-      toast.error("El RIF ya existe en el sistema")
-      return
+    if (formData.rif.trim() !== "") {
+      const rifExists = providers.some((p) => p.rif === formData.rif)
+      if (rifExists) {
+        toast.error("El RIF ya existe en el sistema")
+        return
+      }
     }
 
     try {
@@ -104,10 +106,12 @@ export function ProvidersPage() {
     if (!selectedProvider) return
 
     // Validate RIF is not duplicated (excluding current provider)
-    const rifExists = providers.some((p) => p.rif === formData.rif && p.id !== selectedProvider.id)
-    if (rifExists) {
-      toast.error("El RIF ya existe en el sistema")
-      return
+    if (formData.rif.trim() !== "") {
+      const rifExists = providers.some((p) => p.rif === formData.rif && p.id !== selectedProvider.id)
+      if (rifExists) {
+        toast.error("El RIF ya existe en el sistema")
+        return
+      }
     }
 
     try {
@@ -197,7 +201,7 @@ export function ProvidersPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="rif">RIF *</Label>
+                  <Label htmlFor="rif">RIF </Label>
                   <Input
                     id="rif"
                     value={formData.rif}
@@ -276,7 +280,7 @@ export function ProvidersPage() {
               </Button>
               <Button
                 onClick={handleCreateProvider}
-                disabled={!formData.razonSocial || !formData.rif}
+                disabled={!formData.razonSocial}
                 className="bg-indigo-600 hover:bg-indigo-700"
               >
                 Crear Proveedor
@@ -430,7 +434,7 @@ export function ProvidersPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-rif">RIF *</Label>
+                <Label htmlFor="edit-rif">RIF </Label>
                 <Input
                   id="edit-rif"
                   value={formData.rif}
@@ -509,7 +513,7 @@ export function ProvidersPage() {
             </Button>
             <Button
               onClick={handleEditProvider}
-              disabled={!formData.razonSocial || !formData.rif}
+              disabled={!formData.razonSocial}
               className="bg-indigo-600 hover:bg-indigo-700"
             >
               Guardar Cambios

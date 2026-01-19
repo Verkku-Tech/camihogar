@@ -18,14 +18,14 @@ const formatCurrencyWithUsdPrimary = (
 ): string => {
   // Intentar convertir a USD si hay tasa disponible
   const usdRate = exchangeRates?.USD?.rate
-  
+
   if (usdRate && usdRate > 0) {
     const amountInUsd = amountInBs / usdRate
     const usdFormatted = formatCurrency(amountInUsd, "USD")
     const bsFormatted = formatCurrency(amountInBs, "Bs")
     return `${usdFormatted} (${bsFormatted})`
   }
-  
+
   // Si no hay tasa USD, mostrar solo en Bs
   return formatCurrency(amountInBs, "Bs")
 }
@@ -50,38 +50,61 @@ export function MetricsCards({ metrics, isLoading = false }: MetricsCardsProps) 
     setFormattedAverageOrderValue(formatCurrencyWithUsdPrimary(metrics.averageOrderValue, exchangeRates))
   }, [metrics.pendingPayments, metrics.averageOrderValue, exchangeRates])
 
+  const formatAmount = (amount: number) => formatCurrencyWithUsdPrimary(amount, exchangeRates)
+
   const metricsData = [
     {
-      title: "Pedidos completados",
+      title: "Total Ventas",
       value: metrics.completedOrders.toString(),
-      subtitle: "items",
+      subtitle: "facturas generadas",
       change: metrics.completedOrdersChange,
-      icon: AlertTriangle,
-      iconColor: "text-yellow-500",
+      icon: TrendingUp,
+      iconColor: "text-green-500",
+    },
+    {
+      title: "Total Facturado",
+      subtitle: "(base imponible)",
+      value: formatAmount(metrics.totalInvoiced || 0),
+      change: null, // TODO: Calcular histórico
+    },
+    {
+      title: "Total Cobrado",
+      subtitle: "(ingresos reales)",
+      value: formatAmount(metrics.totalCollected || 0),
+      change: null, // TODO: Calcular histórico
+      icon: TrendingUp,
+      iconColor: "text-green-500",
+    },
+    {
+      title: "Ticket Promedio",
+      value: formattedAverageOrderValue || formatCurrency(metrics.averageOrderValue, "Bs"),
+      change: null,
     },
     {
       title: "Abonos por recaudar",
-      subtitle: "(total)",
+      subtitle: "(total pendiente)",
       value: formattedPendingPayments || formatCurrency(metrics.pendingPayments, "Bs"),
       change: metrics.pendingPaymentsChange,
+    },
+    {
+      title: "SA Vencidos",
+      subtitle: `${metrics.expiredLayawaysCount || 0} apartados vencidos`,
+      value: formatAmount(metrics.expiredLayawaysAmount || 0),
+      change: null,
+      icon: AlertTriangle,
+      iconColor: "text-red-500",
     },
     {
       title: "Productos por fabricar",
       value: metrics.productsToManufacture.toString(),
       change: metrics.productsToManufactureChange,
     },
-    {
-      title: "Pedidos completados",
-      subtitle: "(promedio)",
-      value: formattedAverageOrderValue || formatCurrency(metrics.averageOrderValue, "Bs"),
-      change: null,
-    },
   ]
 
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[1, 2, 3, 4].map((index) => (
+        {Array.from({ length: 8 }).map((_, index) => (
           <Card key={index} className="relative">
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
