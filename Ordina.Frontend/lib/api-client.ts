@@ -229,11 +229,11 @@ export class ApiClient {
     }
 
     // Construir la URL final
-    // Si baseUrl es un proxy (/api/proxy/security), agregar el endpoint sin el / inicial
+    // Si baseUrl es un proxy (/api/proxy/security), agregar el endpoint sin el /api inicial
     // Si baseUrl es una URL directa (http://...), agregar el endpoint completo
     const isProxy = baseUrl.startsWith("/api/proxy/");
     const finalUrl = isProxy
-      ? `${baseUrl}${endpoint}` // Proxy: /api/proxy/security/api/Auth/login
+      ? `${baseUrl}${endpoint.replace(/^\/api\//, "/")}` // Proxy: /api/proxy/security/Auth/login
       : `${baseUrl}${endpoint}`; // Directo: http://.../api/Auth/login
 
     try {
@@ -490,6 +490,42 @@ export class ApiClient {
 
   async getUserByUsername(username: string) {
     return this.request<UserResponseDto>(`/api/users/username/${username}`);
+  }
+
+  async getUserByEmail(email: string) {
+    return this.request<UserResponseDto>(`/api/users/email/${encodeURIComponent(email)}`);
+  }
+
+  async checkUserExistsByEmail(email: string): Promise<boolean> {
+    try {
+      await this.getUserByEmail(email);
+      return true; // Si no lanza error, el usuario existe
+    } catch (error: any) {
+      const errorMessage = error?.message || "";
+      // Si es 404 o contiene "no encontrado", el usuario no existe
+      if (errorMessage.includes("404") || errorMessage.includes("no encontrado") || errorMessage.includes("NotFound")) {
+        return false;
+      }
+      // Para otros errores, asumimos que no existe para no bloquear la creación
+      console.warn("Error verificando correo, asumiendo que no existe:", error);
+      return false;
+    }
+  }
+
+  async checkUserExistsByUsername(username: string): Promise<boolean> {
+    try {
+      await this.getUserByUsername(username);
+      return true; // Si no lanza error, el usuario existe
+    } catch (error: any) {
+      const errorMessage = error?.message || "";
+      // Si es 404 o contiene "no encontrado", el usuario no existe
+      if (errorMessage.includes("404") || errorMessage.includes("no encontrado") || errorMessage.includes("NotFound")) {
+        return false;
+      }
+      // Para otros errores, asumimos que no existe para no bloquear la creación
+      console.warn("Error verificando username, asumiendo que no existe:", error);
+      return false;
+    }
   }
 
   async createUser(user: CreateUserDto) {

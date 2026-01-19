@@ -22,13 +22,13 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Plus, Search, Edit, Trash2, CreditCard } from "lucide-react"
 import { toast } from "sonner"
+import { Switch } from "@/components/ui/switch"
 import { 
   getAccounts, 
   addAccount, 
   updateAccount, 
   deleteAccount, 
   getStores,
-  maskAccountNumber,
   type Account,
   type Store 
 } from "@/lib/storage"
@@ -42,14 +42,14 @@ export function AccountsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
   const [formData, setFormData] = useState({
-    accountNumber: "",
+    code: "",
+    label: "",
     storeId: "",
-    responsible: "",
-    bank: "",
     isForeign: false,
     accountType: "",
     email: "",
     wallet: "",
+    isActive: true,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -76,15 +76,15 @@ export function AccountsPage() {
 
   // Filtrar cuentas
   const filteredAccounts = accounts.filter((account) => {
-    const store = stores.find(s => s.id === account.storeId)
+    const store = account.storeId === "all" ? null : stores.find(s => s.id === account.storeId)
     const searchLower = searchTerm.toLowerCase()
     const matchesSearch =
-      (account.accountNumber ? maskAccountNumber(account.accountNumber).toLowerCase().includes(searchLower) : false) ||
-      (account.bank ? account.bank.toLowerCase().includes(searchLower) : false) ||
-      account.responsible.toLowerCase().includes(searchLower) ||
+      account.code.toLowerCase().includes(searchLower) ||
+      account.label.toLowerCase().includes(searchLower) ||
       (account.email ? account.email.toLowerCase().includes(searchLower) : false) ||
       (account.wallet ? account.wallet.toLowerCase().includes(searchLower) : false) ||
-      (store?.name.toLowerCase().includes(searchLower) ?? false)
+      (store?.name.toLowerCase().includes(searchLower) ?? false) ||
+      (account.storeId === "all" && "todas las tiendas".includes(searchLower))
     return matchesSearch
   })
 
@@ -92,6 +92,23 @@ export function AccountsPage() {
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
     const isDigital = formData.accountType === "Cuentas Digitales"
+
+    // Validaciones comunes
+    if (!formData.code.trim()) {
+      newErrors.code = "El código es requerido"
+    }
+
+    if (!formData.label.trim()) {
+      newErrors.label = "La etiqueta o nombre es requerido"
+    }
+
+    if (!formData.storeId) {
+      newErrors.storeId = "La tienda asociada es requerida"
+    }
+
+    if (!formData.accountType) {
+      newErrors.accountType = "El tipo de cuenta es requerido"
+    }
 
     if (isDigital) {
       // Validaciones para cuentas digitales
@@ -104,29 +121,6 @@ export function AccountsPage() {
       if (!formData.wallet.trim()) {
         newErrors.wallet = "El wallet es requerido"
       }
-    } else {
-      // Validaciones para cuentas tradicionales
-      if (!formData.accountNumber.trim()) {
-        newErrors.accountNumber = "El número de cuenta es requerido"
-      } else if (formData.accountNumber.length < 8) {
-        newErrors.accountNumber = "El número de cuenta debe tener al menos 8 dígitos"
-      }
-
-      if (!formData.bank.trim()) {
-        newErrors.bank = "El banco es requerido"
-      }
-    }
-
-    if (!formData.storeId) {
-      newErrors.storeId = "La tienda asociada es requerida"
-    }
-
-    if (!formData.responsible.trim()) {
-      newErrors.responsible = "El responsable es requerido"
-    }
-
-    if (!formData.accountType) {
-      newErrors.accountType = "El tipo de cuenta es requerido"
     }
 
     setErrors(newErrors)
@@ -141,9 +135,6 @@ export function AccountsPage() {
       const isDigital = formData.accountType === "Cuentas Digitales"
       const accountData = {
         ...formData,
-        // Si es digital, limpiar campos tradicionales
-        accountNumber: isDigital ? undefined : formData.accountNumber || undefined,
-        bank: isDigital ? undefined : formData.bank || undefined,
         // Si no es digital, limpiar campos digitales
         email: isDigital ? formData.email : undefined,
         wallet: isDigital ? formData.wallet : undefined,
@@ -167,9 +158,6 @@ export function AccountsPage() {
       const isDigital = formData.accountType === "Cuentas Digitales"
       const accountData = {
         ...formData,
-        // Si es digital, limpiar campos tradicionales
-        accountNumber: isDigital ? undefined : formData.accountNumber || undefined,
-        bank: isDigital ? undefined : formData.bank || undefined,
         // Si no es digital, limpiar campos digitales
         email: isDigital ? formData.email : undefined,
         wallet: isDigital ? formData.wallet : undefined,
@@ -201,14 +189,14 @@ export function AccountsPage() {
   // Resetear formulario
   const resetForm = () => {
     setFormData({
-      accountNumber: "",
+      code: "",
+      label: "",
       storeId: "",
-      responsible: "",
-      bank: "",
       isForeign: false,
       accountType: "",
       email: "",
       wallet: "",
+      isActive: true,
     })
     setErrors({})
   }
@@ -217,20 +205,23 @@ export function AccountsPage() {
   const openEditDialog = (account: Account) => {
     setEditingAccount(account)
     setFormData({
-      accountNumber: account.accountNumber || "",
+      code: account.code,
+      label: account.label,
       storeId: account.storeId,
-      responsible: account.responsible,
-      bank: account.bank || "",
       isForeign: account.isForeign,
       accountType: account.accountType,
       email: account.email || "",
       wallet: account.wallet || "",
+      isActive: account.isActive,
     })
     setIsEditDialogOpen(true)
   }
 
   // Obtener nombre de tienda
-  const getStoreName = (storeId: string): string => {
+  const getStoreName = (storeId: string | "all"): string => {
+    if (storeId === "all") {
+      return "Todas las tiendas"
+    }
     const store = stores.find(s => s.id === storeId)
     return store?.name ?? "N/A"
   }
@@ -241,7 +232,33 @@ export function AccountsPage() {
     
     return (
       <div className="grid gap-4 py-4">
-        {/* Tipo de Cuenta - Primero */}
+        {/* Código - Siempre visible */}
+        <div className="space-y-2">
+          <Label htmlFor="code">Código *</Label>
+          <Input
+            id="code"
+            value={formData.code}
+            onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+            placeholder="Ej: Banesco_POS"
+            className={errors.code ? "border-red-500" : ""}
+          />
+          {errors.code && <p className="text-sm text-red-500">{errors.code}</p>}
+        </div>
+
+        {/* Etiqueta o Nombre - Siempre visible */}
+        <div className="space-y-2">
+          <Label htmlFor="label">Etiqueta o Nombre *</Label>
+          <Input
+            id="label"
+            value={formData.label}
+            onChange={(e) => setFormData({ ...formData, label: e.target.value })}
+            placeholder="Ej: Punto de Venta Banesco"
+            className={errors.label ? "border-red-500" : ""}
+          />
+          {errors.label && <p className="text-sm text-red-500">{errors.label}</p>}
+        </div>
+
+        {/* Tipo de Cuenta */}
         <div className="space-y-2">
           <Label htmlFor="accountType">Tipo de Cuenta *</Label>
           <Select
@@ -251,8 +268,6 @@ export function AccountsPage() {
               setFormData({ 
                 ...formData, 
                 accountType: value,
-                accountNumber: "",
-                bank: "",
                 email: "",
                 wallet: "",
               })
@@ -268,6 +283,28 @@ export function AccountsPage() {
             </SelectContent>
           </Select>
           {errors.accountType && <p className="text-sm text-red-500">{errors.accountType}</p>}
+        </div>
+
+        {/* Tienda Asociada - Siempre visible con opción "Todas las tiendas" */}
+        <div className="space-y-2">
+          <Label htmlFor="storeId">Tienda Asociada *</Label>
+          <Select
+            value={formData.storeId}
+            onValueChange={(value) => setFormData({ ...formData, storeId: value })}
+          >
+            <SelectTrigger className={errors.storeId ? "border-red-500" : ""}>
+              <SelectValue placeholder="Seleccione una tienda" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las tiendas</SelectItem>
+              {stores.map((store) => (
+                <SelectItem key={store.id} value={store.id}>
+                  {store.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {errors.storeId && <p className="text-sm text-red-500">{errors.storeId}</p>}
         </div>
 
         {/* Campos condicionales según tipo de cuenta */}
@@ -287,39 +324,6 @@ export function AccountsPage() {
               {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
             </div>
 
-            {/* Responsable */}
-            <div className="space-y-2">
-              <Label htmlFor="responsible">Responsable *</Label>
-              <Input
-                id="responsible"
-                value={formData.responsible}
-                onChange={(e) => setFormData({ ...formData, responsible: e.target.value })}
-                className={errors.responsible ? "border-red-500" : ""}
-              />
-              {errors.responsible && <p className="text-sm text-red-500">{errors.responsible}</p>}
-            </div>
-
-            {/* Tienda Asociada */}
-            <div className="space-y-2">
-              <Label htmlFor="storeId">Tienda Asociada *</Label>
-              <Select
-                value={formData.storeId}
-                onValueChange={(value) => setFormData({ ...formData, storeId: value })}
-              >
-                <SelectTrigger className={errors.storeId ? "border-red-500" : ""}>
-                  <SelectValue placeholder="Seleccione una tienda" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stores.map((store) => (
-                    <SelectItem key={store.id} value={store.id}>
-                      {store.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.storeId && <p className="text-sm text-red-500">{errors.storeId}</p>}
-            </div>
-
             {/* Wallet */}
             <div className="space-y-2">
               <Label htmlFor="wallet">Wallet *</Label>
@@ -335,65 +339,7 @@ export function AccountsPage() {
           </>
         ) : (
           <>
-            {/* Para cuentas tradicionales: Número de Cuenta */}
-            <div className="space-y-2">
-              <Label htmlFor="accountNumber">Número de Cuenta *</Label>
-              <Input
-                id="accountNumber"
-                value={formData.accountNumber}
-                onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value.replace(/\D/g, "") })}
-                placeholder="Solo números"
-                className={errors.accountNumber ? "border-red-500" : ""}
-              />
-              {errors.accountNumber && <p className="text-sm text-red-500">{errors.accountNumber}</p>}
-            </div>
-
-            {/* Tienda Asociada */}
-            <div className="space-y-2">
-              <Label htmlFor="storeId">Tienda Asociada *</Label>
-              <Select
-                value={formData.storeId}
-                onValueChange={(value) => setFormData({ ...formData, storeId: value })}
-              >
-                <SelectTrigger className={errors.storeId ? "border-red-500" : ""}>
-                  <SelectValue placeholder="Seleccione una tienda" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stores.map((store) => (
-                    <SelectItem key={store.id} value={store.id}>
-                      {store.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.storeId && <p className="text-sm text-red-500">{errors.storeId}</p>}
-            </div>
-
-            {/* Responsable */}
-            <div className="space-y-2">
-              <Label htmlFor="responsible">Responsable *</Label>
-              <Input
-                id="responsible"
-                value={formData.responsible}
-                onChange={(e) => setFormData({ ...formData, responsible: e.target.value })}
-                className={errors.responsible ? "border-red-500" : ""}
-              />
-              {errors.responsible && <p className="text-sm text-red-500">{errors.responsible}</p>}
-            </div>
-
-            {/* Banco */}
-            <div className="space-y-2">
-              <Label htmlFor="bank">Banco *</Label>
-              <Input
-                id="bank"
-                value={formData.bank}
-                onChange={(e) => setFormData({ ...formData, bank: e.target.value })}
-                className={errors.bank ? "border-red-500" : ""}
-              />
-              {errors.bank && <p className="text-sm text-red-500">{errors.bank}</p>}
-            </div>
-
-            {/* Nacional / Extranjera */}
+            {/* Para cuentas tradicionales: Nacional / Extranjera */}
             <div className="space-y-2">
               <Label htmlFor="isForeign">Nacional / Extranjera *</Label>
               <Select
@@ -411,6 +357,21 @@ export function AccountsPage() {
             </div>
           </>
         )}
+
+        {/* Activar/Desactivar cuenta */}
+        <div className="flex items-center justify-between space-x-2 py-2">
+          <div className="space-y-0.5">
+            <Label htmlFor="isActive">Estado de la cuenta</Label>
+            <p className="text-sm text-muted-foreground">
+              {formData.isActive ? "La cuenta está activa" : "La cuenta está inactiva"}
+            </p>
+          </div>
+          <Switch
+            id="isActive"
+            checked={formData.isActive}
+            onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+          />
+        </div>
       </div>
     )
   }
@@ -457,7 +418,7 @@ export function AccountsPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
-              placeholder="Buscar por número de cuenta, correo, wallet, banco, responsable o tienda..."
+              placeholder="Buscar por código, etiqueta, correo, wallet o tienda..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -483,35 +444,32 @@ export function AccountsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{accounts.some(a => a.accountType === "Cuentas Digitales") ? "Cuenta/Correo" : "Número de Cuenta"}</TableHead>
+                    <TableHead>Código</TableHead>
+                    <TableHead>Etiqueta/Nombre</TableHead>
                     <TableHead>Tienda Asociada</TableHead>
-                    <TableHead>Responsable</TableHead>
-                    <TableHead>{accounts.some(a => a.accountType === "Cuentas Digitales") ? "Wallet/Banco" : "Banco"}</TableHead>
-                    <TableHead>Nacional / Extranjera</TableHead>
+                    <TableHead>{accounts.some(a => a.accountType === "Cuentas Digitales") ? "Correo/Wallet" : "Nacional/Extranjera"}</TableHead>
                     <TableHead>Tipo de Cuenta</TableHead>
+                    <TableHead>Estado</TableHead>
                     <TableHead>Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredAccounts.map((account) => (
                     <TableRow key={account.id}>
-                      <TableCell className={account.accountType === "Cuentas Digitales" ? "" : "font-mono"}>
-                        {account.accountType === "Cuentas Digitales" 
-                          ? account.email || "-" 
-                          : account.accountNumber 
-                            ? maskAccountNumber(account.accountNumber) 
-                            : "-"}
+                      <TableCell className="font-mono font-medium">
+                        {account.code}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {account.label}
                       </TableCell>
                       <TableCell>{getStoreName(account.storeId)}</TableCell>
-                      <TableCell>{account.responsible}</TableCell>
-                      <TableCell>
-                        {account.accountType === "Cuentas Digitales" 
-                          ? account.wallet || "-" 
-                          : account.bank || "-"}
-                      </TableCell>
                       <TableCell>
                         {account.accountType === "Cuentas Digitales" ? (
-                          <Badge variant="secondary">N/A</Badge>
+                          <div className="space-y-1">
+                            {account.email && <div className="text-sm">{account.email}</div>}
+                            {account.wallet && <div className="text-xs text-muted-foreground font-mono">{account.wallet}</div>}
+                            {!account.email && !account.wallet && "-"}
+                          </div>
                         ) : (
                           <Badge variant={account.isForeign ? "secondary" : "default"}>
                             {account.isForeign ? "Extranjera" : "Nacional"}
@@ -520,6 +478,11 @@ export function AccountsPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{account.accountType}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={account.isActive ? "default" : "secondary"}>
+                          {account.isActive ? "Activa" : "Inactiva"}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -536,11 +499,7 @@ export function AccountsPage() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Eliminar Cuenta</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  ¿Está seguro que desea eliminar la cuenta {account.accountType === "Cuentas Digitales" 
-                                    ? account.email || "digital"
-                                    : account.accountNumber 
-                                      ? maskAccountNumber(account.accountNumber) 
-                                      : "N/A"}?
+                                  ¿Está seguro que desea eliminar la cuenta "{account.label}" ({account.code})?
                                   Esta acción no se puede deshacer.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>

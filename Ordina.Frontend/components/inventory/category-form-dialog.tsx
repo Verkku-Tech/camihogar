@@ -99,15 +99,15 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
   }
 
   const handleUpdateAttributeValues = (
-    attributeId: string, 
-    values: any[], 
+    attributeId: string,
+    values: any[],
     maxSelections?: number,
     minValue?: number,
     maxValue?: number
   ) => {
-    setAttributes(attributes.map((attr) => 
-      attr.id === attributeId 
-        ? { ...attr, values, maxSelections, minValue, maxValue } 
+    setAttributes(attributes.map((attr) =>
+      attr.id === attributeId
+        ? { ...attr, values, maxSelections, minValue, maxValue }
         : attr
     ))
   }
@@ -137,9 +137,8 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
       }
     }
 
-    const categoryData = {
-      ...formData,
-      name: trimmedName,
+    const categoryData: any = {
+      description: formData.description,
       maxDiscount: formData.maxDiscount === "" ? 0 : parseFloat(formData.maxDiscount),
       maxDiscountCurrency: formData.maxDiscountCurrency || preferredCurrency,
       attributes: attributes.map(attr => ({
@@ -147,6 +146,13 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
         title: attr.title.trim(),
       })),
     }
+
+    // Solo incluir el nombre si es una categoría nueva o si ha cambiado sustancialmente (ignoring whitespace differences)
+    // Esto evita errores 409 Conflict si el backend tiene "Name " y enviamos "Name" (que ya existe como otra categoría o es la misma)
+    if (!category || trimmedName !== (category.name || "").trim()) {
+      categoryData.name = trimmedName;
+    }
+
     onSave(categoryData)
   }
 
@@ -311,8 +317,8 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
                                   {attribute.minValue !== undefined && attribute.maxValue !== undefined
                                     ? `${attribute.minValue} - ${attribute.maxValue}`
                                     : attribute.maxValue !== undefined
-                                    ? `≤ ${attribute.maxValue}`
-                                    : `≥ ${attribute.minValue}`}
+                                      ? `≤ ${attribute.maxValue}`
+                                      : `≥ ${attribute.minValue}`}
                                 </span>
                               ) : (
                                 <span className="text-sm text-muted-foreground">{attribute.values.length} valor(es)</span>
@@ -324,15 +330,15 @@ export function CategoryFormDialog({ open, onOpenChange, category, onSave }: Cat
                                   id={`required-${attribute.id}`}
                                   checked={attribute.required !== false}
                                   onCheckedChange={(checked) => {
-                                    setAttributes(attributes.map(a => 
-                                      a.id === attribute.id 
+                                    setAttributes(attributes.map(a =>
+                                      a.id === attribute.id
                                         ? { ...a, required: checked !== false }
                                         : a
                                     ))
                                   }}
                                 />
-                                <Label 
-                                  htmlFor={`required-${attribute.id}`} 
+                                <Label
+                                  htmlFor={`required-${attribute.id}`}
                                   className="text-sm font-normal cursor-pointer"
                                 >
                                   Obligatorio

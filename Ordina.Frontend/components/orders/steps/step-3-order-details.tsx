@@ -24,7 +24,7 @@ import {
 import { Plus, Trash2 } from "lucide-react";
 import type { UseOrderFormReturn } from "../hooks/use-order-form";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
-import { maskAccountNumber, type ProductImage } from "@/lib/storage";
+import { type ProductImage } from "@/lib/storage";
 import { ImageUploader } from "../ImageUploader";
 import {
   PAYMENT_CONDITIONS,
@@ -1155,10 +1155,10 @@ export function Step3OrderDetails({
                                       <SelectItem key={account.id} value={account.id}>
                                         <div className="flex flex-col">
                                           <span className="font-medium">
-                                            {maskAccountNumber(account.accountNumber || "")}
+                                            {account.label}
                                           </span>
                                           <span className="text-xs text-muted-foreground">
-                                            {account.bank || ""}
+                                            {account.code}
                                           </span>
                                         </div>
                                       </SelectItem>
@@ -1437,10 +1437,10 @@ export function Step3OrderDetails({
                                       <SelectItem key={account.id} value={account.id}>
                                         <div className="flex flex-col">
                                           <span className="font-medium">
-                                            {maskAccountNumber(account.accountNumber || "")}
+                                            {account.label}
                                           </span>
                                           <span className="text-xs text-muted-foreground">
-                                            {account.bank || ""}
+                                            {account.code}
                                           </span>
                                         </div>
                                       </SelectItem>
@@ -1769,10 +1769,10 @@ export function Step3OrderDetails({
                                         ) : (
                                             <div className="flex flex-col">
                                               <span className="font-medium">
-                                                {maskAccountNumber(account.accountNumber || "")}
+                                                {account.label}
                                               </span>
                                               <span className="text-xs text-muted-foreground">
-                                                {account.bank || ""}
+                                                {account.code}
                                               </span>
                                             </div>
                                           )}

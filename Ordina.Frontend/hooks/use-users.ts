@@ -130,7 +130,7 @@ export function useUsers(options: UseUsersOptions = {}) {
         createdAt: new Date().toISOString(),
       }
 
-      // Guardar en IndexedDB inmediatamente
+      // Guardar en IndexedDB inmediatamente (offline-first)
       await db.add('users', newUser)
       setUsers(prev => [...prev, newUser])
 
@@ -172,14 +172,16 @@ export function useUsers(options: UseUsersOptions = {}) {
             createdAt: createdUser.createdAt,
           }
         } catch (apiError) {
-          // Si falla, agregar a cola de sincronización
+          // Si falla el backend, mantener el usuario local y agregar a cola
+          // El usuario ya está guardado localmente, así que no lanzamos error
           await syncManager.addToQueue({
             type: 'create',
             entity: 'user',
             entityId: tempId,
             data: userData,
           })
-          throw apiError
+          // Retornar el usuario local aunque falle el backend
+          return newUser
         }
       } else {
         // Sin conexión, agregar a cola

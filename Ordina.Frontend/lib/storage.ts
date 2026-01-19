@@ -28,6 +28,7 @@ export interface AttributeValue {
 }
 
 export interface Category {
+  backendId?: string; // ObjectId original del backend (opcional)
   id: number;
   name: string;
   description: string;
@@ -64,6 +65,7 @@ export interface Product {
 // Helper para convertir Category con id number a formato IndexedDB (id string)
 interface CategoryDB {
   id: string;
+  backendId?: string; // ObjectId original del backend (opcional)
   name: string;
   description: string;
   products: number;
@@ -82,14 +84,16 @@ interface CategoryDB {
   }[];
 }
 
-const categoryToDB = (category: Category): CategoryDB => ({
+const categoryToDB = (category: Category, backendId?: string): CategoryDB => ({
   ...category,
   id: category.id.toString(),
+  ...(backendId || category.backendId ? { backendId: backendId ?? category.backendId } : {}),
 });
 
 const categoryFromDB = (categoryDB: CategoryDB): Category => ({
   ...categoryDB,
   id: Number.parseInt(categoryDB.id),
+  backendId: categoryDB.backendId,
 });
 
 // Helper para convertir string ID del backend a number ID del frontend
@@ -128,16 +132,16 @@ const categoryToBackendDto = (
       valueType: attr.valueType,
       values: Array.isArray(attr.values)
         ? attr.values.map((val) =>
-            typeof val === "string"
-              ? { label: val }
-              : {
-                  label: val.label,
-                  isDefault: val.isDefault,
-                  priceAdjustment: val.priceAdjustment,
-                  priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-                  productId: val.productId?.toString(),
-                }
-          )
+          typeof val === "string"
+            ? { label: val }
+            : {
+              label: val.label,
+              isDefault: val.isDefault,
+              priceAdjustment: val.priceAdjustment,
+              priceAdjustmentCurrency: val.priceAdjustmentCurrency,
+              productId: val.productId?.toString(),
+            }
+        )
         : [],
     };
 
@@ -145,7 +149,7 @@ const categoryToBackendDto = (
     if (attr.maxSelections !== undefined) {
       attrDto.maxSelections = attr.maxSelections;
     }
-    
+
     // Incluir required si existe (por defecto true)
     if (attr.required !== undefined) {
       attrDto.required = attr.required;
@@ -160,7 +164,7 @@ const categoryToBackendDto = (
       // El backend acepta decimal? (nullable), así que null debería ser válido
       attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
       attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
-      
+
       // Log para debugging
       if (attr.maxValue === undefined || attr.maxValue === null) {
         console.warn("⚠️ Atributo numérico sin maxValue:", attr.title, "valueType:", attr.valueType);
@@ -181,6 +185,7 @@ const categoryToBackendDto = (
 
 const categoryFromBackendDto = (dto: CategoryResponseDto): Category => ({
   id: backendIdToNumber(dto.id),
+  backendId: dto.id, // Guardar el ObjectId original
   name: dto.name,
   description: dto.description,
   products: dto.products,
@@ -241,7 +246,7 @@ export const getCategories = async (): Promise<Category[]> => {
         for (let i = 0; i < backendCategories.length; i++) {
           const backendCategory = backendCategories[i];
           const mappedCategory = backendCategoriesMapped[i];
-          
+
           // Verificar si ya existe una categoría con el mismo nombre
           const existing = categoriesMap.get(mappedCategory.name);
           if (existing && existing.id !== mappedCategory.id) {
@@ -250,15 +255,15 @@ export const getCategories = async (): Promise<Category[]> => {
               `Local: ${existing.id}, Backend: ${mappedCategory.id}. Usando versión del backend.`
             );
           }
-          
+
           // Las categorías del backend tienen prioridad
           categoriesMap.set(mappedCategory.name, mappedCategory);
-          
+
           // Guardar/actualizar en IndexedDB
           try {
-            await db.update("categories", categoryToDB(mappedCategory));
+            await db.update("categories", categoryToDB(mappedCategory, mappedCategory.backendId));
           } catch {
-            await db.add("categories", categoryToDB(mappedCategory));
+            await db.add("categories", categoryToDB(mappedCategory, mappedCategory.backendId));
           }
         }
 
@@ -266,7 +271,7 @@ export const getCategories = async (): Promise<Category[]> => {
         console.log(
           `✅ Categorías: ${localCategories.length} locales + ${backendCategories.length} del backend = ${mergedCategories.length} totales`
         );
-        
+
         // Log de debugging para verificar que todas se cargaron
         if (mergedCategories.length !== Math.max(localCategories.length, backendCategories.length)) {
           console.warn(
@@ -274,7 +279,7 @@ export const getCategories = async (): Promise<Category[]> => {
             `obtenidas ${mergedCategories.length}`
           );
         }
-        
+
         return mergedCategories;
       } catch (error) {
         console.warn(
@@ -341,7 +346,7 @@ export const resolveCategoryBackendId = async (
 
       // Actualizar la categoría local con el ID del backend
       const updatedLocalCategory = categoryFromBackendDto(syncedCategory);
-      await db.update("categories", categoryToDB(updatedLocalCategory));
+      await db.update("categories", categoryToDB(updatedLocalCategory, updatedLocalCategory.backendId));
 
       return syncedCategory.id;
     }
@@ -387,15 +392,33 @@ export const addCategory = async (
       const backendCategory = await apiClient.createCategory(createDto);
       newCategory = categoryFromBackendDto(backendCategory);
 
-      // Guardar también en IndexedDB
-      await db.add("categories", categoryToDB(newCategory));
+      // Guardar también en IndexedDB (preservando backendId si existe)
+      await db.add("categories", categoryToDB(newCategory, newCategory.backendId));
       console.log(
         "✅ Categoría guardada en backend y IndexedDB:",
         newCategory.name
       );
       syncedToBackend = true;
       return newCategory;
-    } catch (error) {
+    } catch (error: any) {
+      // Si la creación falla por conflicto, obtener la categoría existente y actualizar localmente
+      if (error?.message?.includes("Ya existe una categoría con el nombre")) {
+        try {
+          const existingCategory = await apiClient.getCategoryByName(category.name);
+          if (existingCategory) {
+            newCategory = categoryFromBackendDto(existingCategory);
+            // Merge con los datos nuevos del usuario
+            newCategory = { ...newCategory, ...category };
+            await db.update("categories", categoryToDB(newCategory, newCategory.backendId));
+            syncedToBackend = true;
+            return newCategory;
+          }
+        } catch (getError) {
+          // Si falla obtenerla, continuar con creación local
+          console.warn("⚠️ Error obteniendo categoría existente del backend:", getError);
+        }
+      }
+
       console.warn(
         "⚠️ Error guardando categoría en backend, guardando localmente:",
         error
@@ -412,7 +435,7 @@ export const addCategory = async (
     const newId = Math.max(...localCategories.map((c) => c.id), 0) + 1;
     newCategory = { ...category, id: newId };
 
-    await db.add("categories", categoryToDB(newCategory));
+    await db.add("categories", categoryToDB(newCategory, newCategory.backendId));
     console.log("✅ Categoría guardada en IndexedDB:", newCategory.name);
 
     // Encolar para sincronización si NO se sincronizó con el backend
@@ -483,27 +506,31 @@ export const updateCategory = async (
   const updatedCategory: Category = {
     ...existingCategory,
     ...updates,
+    backendId: existingCategory.backendId, // Preservar backendId
   };
 
   // Variable para rastrear si la categoría existe en el backend
-  let backendCategoryId: string | null = null;
+  let backendCategoryId: string | null = existingCategory.backendId || null;
 
   // Intentar actualizar en el backend primero si hay conexión
   if (isOnline()) {
     try {
-      // Buscar la categoría en el backend por nombre para obtener su ObjectId
-      try {
-        const backendCategory = await apiClient.getCategoryByName(
-          existingCategory.name
-        );
-        if (backendCategory) {
-          backendCategoryId = backendCategory.id;
+      // Si no tenemos backendId, intentar buscarlo por nombre (fallback)
+      if (!backendCategoryId) {
+        try {
+          const backendCategory = await apiClient.getCategoryByName(
+            existingCategory.name
+          );
+          if (backendCategory) {
+            backendCategoryId = backendCategory.id;
+            // Actualizar la categoría con el backendId encontrado
+            updatedCategory.backendId = backendCategoryId;
+          }
+        } catch (error) {
+          console.warn(
+            "⚠️ Categoría no encontrada en backend por nombre, actualizando solo localmente"
+          );
         }
-      } catch (error) {
-        // La categoría no existe en el backend todavía
-        console.warn(
-          "⚠️ Categoría no encontrada en backend por nombre, actualizando solo localmente"
-        );
       }
 
       // Si encontramos la categoría en el backend, actualizarla
@@ -523,54 +550,56 @@ export const updateCategory = async (
               : undefined,
           maxDiscountCurrency:
             updatedCategory.maxDiscountCurrency !==
-            existingCategory.maxDiscountCurrency
+              existingCategory.maxDiscountCurrency
               ? updatedCategory.maxDiscountCurrency
               : undefined,
           attributes:
             updatedCategory.attributes !== existingCategory.attributes
               ? updatedCategory.attributes.map((attr) => {
-                  const attrDto: any = {
-                    id: attr.id.toString(),
-                    title: attr.title,
-                    description: attr.description,
-                    valueType: attr.valueType,
-                    maxSelections: attr.maxSelections,
-                    values: Array.isArray(attr.values)
-                      ? attr.values.map((val) =>
-                          typeof val === "string"
-                            ? { label: val }
-                            : {
-                                id: val.id,
-                                label: val.label,
-                                isDefault: val.isDefault,
-                                priceAdjustment: val.priceAdjustment,
-                                priceAdjustmentCurrency:
-                                  val.priceAdjustmentCurrency,
-                                productId: val.productId?.toString(),
-                              }
-                        )
-                      : [],
-                  };
+                const attrDto: any = {
+                  id: attr.id.toString(),
+                  title: attr.title,
+                  description: attr.description,
+                  valueType: attr.valueType,
+                  maxSelections: attr.maxSelections,
+                  required: attr.required,
+                  values: Array.isArray(attr.values)
+                    ? attr.values.map((val) =>
+                      typeof val === "string"
+                        ? { label: val }
+                        : {
+                          id: val.id,
+                          label: val.label,
+                          isDefault: val.isDefault,
+                          priceAdjustment: val.priceAdjustment,
+                          priceAdjustmentCurrency:
+                            val.priceAdjustmentCurrency,
+                          productId: val.productId?.toString(),
+                        }
+                    )
+                    : [],
+                };
 
-                  // Para atributos de tipo "Number", siempre incluir minValue y maxValue
-                  if (attr.valueType === "Number") {
-                    attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
-                    attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
-                  } else {
-                    // Para otros tipos, incluir solo si existen
-                    if (attr.minValue !== undefined) {
-                      attrDto.minValue = attr.minValue;
-                    }
-                    if (attr.maxValue !== undefined) {
-                      attrDto.maxValue = attr.maxValue;
-                    }
+                // Para atributos de tipo "Number", siempre incluir minValue y maxValue
+                if (attr.valueType === "Number") {
+                  attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
+                  attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
+                } else {
+                  // Para otros tipos, incluir solo si existen
+                  if (attr.minValue !== undefined) {
+                    attrDto.minValue = attr.minValue;
                   }
+                  if (attr.maxValue !== undefined) {
+                    attrDto.maxValue = attr.maxValue;
+                  }
+                }
 
-                  return attrDto;
-                })
+                return attrDto;
+              })
               : undefined,
         };
 
+        console.log("📤 Sending update to backend:", JSON.stringify(updateDto, null, 2)); // Debug info
         const backendCategory = await apiClient.updateCategory(
           backendCategoryId,
           updateDto
@@ -578,7 +607,7 @@ export const updateCategory = async (
         const syncedCategory = categoryFromBackendDto(backendCategory);
 
         // Actualizar también en IndexedDB con los datos del backend
-        await db.update("categories", categoryToDB(syncedCategory));
+        await db.update("categories", categoryToDB(syncedCategory, syncedCategory.backendId));
         console.log(
           "✅ Categoría actualizada en backend y IndexedDB:",
           syncedCategory.name
@@ -591,7 +620,90 @@ export const updateCategory = async (
         );
         // Continuar para guardar localmente y encolar
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Manejar error 409 específicamente
+      if (error?.message?.includes("Ya existe una categoría con el nombre")) {
+        try {
+          const backendCategory = await apiClient.getCategoryByName(updatedCategory.name);
+          if (backendCategory) {
+            // Actualizar con el ID correcto y reintentar
+            updatedCategory.backendId = backendCategory.id;
+            backendCategoryId = backendCategory.id;
+
+            const retryUpdateDto: UpdateCategoryDto = {
+              name:
+                updatedCategory.name !== existingCategory.name
+                  ? updatedCategory.name
+                  : undefined,
+              description:
+                updatedCategory.description !== existingCategory.description
+                  ? updatedCategory.description
+                  : undefined,
+              maxDiscount:
+                updatedCategory.maxDiscount !== existingCategory.maxDiscount
+                  ? updatedCategory.maxDiscount
+                  : undefined,
+              maxDiscountCurrency:
+                updatedCategory.maxDiscountCurrency !==
+                  existingCategory.maxDiscountCurrency
+                  ? updatedCategory.maxDiscountCurrency
+                  : undefined,
+              attributes:
+                updatedCategory.attributes !== existingCategory.attributes
+                  ? updatedCategory.attributes.map((attr) => {
+                    const attrDto: any = {
+                      id: attr.id.toString(),
+                      title: attr.title,
+                      description: attr.description,
+                      valueType: attr.valueType,
+                      maxSelections: attr.maxSelections,
+                      values: Array.isArray(attr.values)
+                        ? attr.values.map((val) =>
+                          typeof val === "string"
+                            ? { label: val }
+                            : {
+                              id: val.id,
+                              label: val.label,
+                              isDefault: val.isDefault,
+                              priceAdjustment: val.priceAdjustment,
+                              priceAdjustmentCurrency:
+                                val.priceAdjustmentCurrency,
+                              productId: val.productId?.toString(),
+                            }
+                        )
+                        : [],
+                    };
+                    // Siempre incluir required (por defecto true si no existe)
+                    attrDto.required = attr.required !== undefined ? attr.required : true;
+                    if (attr.valueType === "Number") {
+                      attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
+                      attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
+                    } else {
+                      if (attr.minValue !== undefined) {
+                        attrDto.minValue = attr.minValue;
+                      }
+                      if (attr.maxValue !== undefined) {
+                        attrDto.maxValue = attr.maxValue;
+                      }
+                    }
+                    return attrDto;
+                  })
+                  : undefined,
+            };
+
+            const backendCategoryUpdated = await apiClient.updateCategory(
+              backendCategoryId,
+              retryUpdateDto
+            );
+            const syncedCategory = categoryFromBackendDto(backendCategoryUpdated);
+            await db.update("categories", categoryToDB(syncedCategory, syncedCategory.backendId));
+            return syncedCategory;
+          }
+        } catch (retryError) {
+          console.warn("⚠️ Error en reintento:", retryError);
+        }
+      }
+
       console.warn(
         "⚠️ Error actualizando categoría en backend, guardando localmente:",
         error
@@ -602,7 +714,7 @@ export const updateCategory = async (
 
   // Guardar en IndexedDB
   try {
-    await db.update("categories", categoryToDB(updatedCategory));
+    await db.update("categories", categoryToDB(updatedCategory, updatedCategory.backendId));
 
     // Encolar para sincronización si la categoría no está en el backend o estamos offline
     const shouldEnqueue = !isOnline() || !backendCategoryId;
@@ -622,19 +734,22 @@ export const updateCategory = async (
               maxSelections: attr.maxSelections,
               values: Array.isArray(attr.values)
                 ? attr.values.map((val) =>
-                    typeof val === "string"
-                      ? { label: val }
-                      : {
-                          id: val.id,
-                          label: val.label,
-                          isDefault: val.isDefault,
-                          priceAdjustment: val.priceAdjustment,
-                          priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-                          productId: val.productId?.toString(),
-                        }
-                  )
+                  typeof val === "string"
+                    ? { label: val }
+                    : {
+                      id: val.id,
+                      label: val.label,
+                      isDefault: val.isDefault,
+                      priceAdjustment: val.priceAdjustment,
+                      priceAdjustmentCurrency: val.priceAdjustmentCurrency,
+                      productId: val.productId?.toString(),
+                    }
+                )
                 : [],
             };
+
+            // Siempre incluir required (por defecto true si no existe)
+            attrDto.required = attr.required !== undefined ? attr.required : true;
 
             // Para atributos de tipo "Number", siempre incluir minValue y maxValue
             if (attr.valueType === "Number") {
@@ -1011,42 +1126,42 @@ export const updateProduct = async (
     try {
       // Construir el DTO solo con los campos que realmente cambiaron
       const updateDto: UpdateProductDto = {};
-      
+
       if (updatedProduct.name !== existingProduct.name) {
         updateDto.name = updatedProduct.name;
       }
-      
+
       // Siempre incluir la categoría para mantener consistencia
       if (updatedProduct.category) {
         updateDto.category = updatedProduct.category;
       }
-      
+
       if (updatedProduct.price !== existingProduct.price) {
         updateDto.price = updatedProduct.price;
       }
-      
+
       if (updatedProduct.priceCurrency !== existingProduct.priceCurrency) {
         updateDto.priceCurrency = updatedProduct.priceCurrency;
       }
-      
+
       if (updatedProduct.stock !== existingProduct.stock) {
         updateDto.stock = updatedProduct.stock;
       }
-      
+
       if (updatedProduct.status !== existingProduct.status) {
         updateDto.status = updatedProduct.status;
       }
-      
+
       if (updatedProduct.sku !== existingProduct.sku) {
         updateDto.sku = updatedProduct.sku;
       }
-      
+
       // Solo incluir attributes si realmente cambiaron
       const attributesChanged = JSON.stringify(updatedProduct.attributes || {}) !== JSON.stringify(existingProduct.attributes || {});
       if (attributesChanged) {
         updateDto.attributes = updatedProduct.attributes;
       }
-      
+
       // Si no hay cambios, al menos enviar la categoría para mantener consistencia
       const hasChanges = Object.keys(updateDto).length > 0;
       if (!hasChanges && updatedProduct.category) {
@@ -1424,14 +1539,14 @@ export interface Store {
 
 export interface Account {
   id: string;
-  accountNumber?: string; // Se guarda completo, se enmascara al mostrar (opcional para cuentas digitales)
-  storeId: string; // ID de la tienda asociada
-  responsible: string; // Responsable
-  bank?: string; // Banco (opcional para cuentas digitales)
+  code: string; // Código de la cuenta (ej: Banesco_POS)
+  label: string; // Etiqueta o Nombre (ej: Punto de Venta Banesco)
+  storeId: string | "all"; // ID de la tienda asociada o "all" para todas las tiendas
   isForeign: boolean; // true = Extranjera, false = Nacional
   accountType: string; // "Cuentas Digitales", "Ahorro", "Corriente", etc.
   email?: string; // Correo (solo para cuentas digitales)
   wallet?: string; // Wallet (solo para cuentas digitales)
+  isActive: boolean; // true = Activa, false = Inactiva
   createdAt: string;
   updatedAt: string;
 }
@@ -1441,11 +1556,11 @@ export interface User {
   username: string;
   email: string;
   role:
-    | "Super Administrator"
-    | "Administrator"
-    | "Supervisor"
-    | "Store Seller"
-    | "Online Seller";
+  | "Super Administrator"
+  | "Administrator"
+  | "Supervisor"
+  | "Store Seller"
+  | "Online Seller";
   name: string;
   status: "active" | "inactive";
   createdAt?: string;
@@ -2428,15 +2543,39 @@ export interface DashboardMetrics {
   averageOrderValue: number;
 }
 
+export interface DashboardMetrics {
+  completedOrders: number;
+  completedOrdersChange: number;
+  pendingPayments: number;
+  pendingPaymentsChange: number;
+  productsToManufacture: number;
+  productsToManufactureChange: number;
+  averageOrderValue: number;
+  // Nuevas métricas
+  totalSalesCount: number; // Total de ventas (cantidad de facturas/notas de despachos)
+  totalInvoiced: number;   // Total facturado (base imponible)
+  totalCollected: number;  // Total cobrado (ingresos reales en el periodo)
+  expiredLayawaysCount: number; // Cantidad de apartados vencidos
+  expiredLayawaysAmount: number; // Monto deuda de apartados vencidos
+}
+
 export const calculateDashboardMetrics = async (
-  period: "week" | "month" | "year" = "week"
+  period: "day" | "week" | "month" | "year" = "week"
 ): Promise<DashboardMetrics> => {
   const orders = await getOrders();
 
   // Filtrar por período
   const now = new Date();
   const periodStart = new Date();
+
+  // Resetear horas para comparación de días completa
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+
   switch (period) {
+    case "day":
+      periodStart.setTime(todayStart.getTime());
+      break;
     case "week":
       periodStart.setDate(now.getDate() - 7);
       break;
@@ -2448,6 +2587,7 @@ export const calculateDashboardMetrics = async (
       break;
   }
 
+  // Filtrar órdenes creadas en el periodo (para ventas y facturación)
   const periodOrders = orders.filter(
     (order) => new Date(order.createdAt) >= periodStart
   );
@@ -2455,7 +2595,13 @@ export const calculateDashboardMetrics = async (
   // Calcular período anterior para comparar cambios
   const previousPeriodStart = new Date(periodStart);
   const previousPeriodEnd = new Date(periodStart);
-  const periodDuration = now.getTime() - periodStart.getTime();
+  let periodDuration = now.getTime() - periodStart.getTime();
+
+  // Ajuste para "day" para que compare con el día anterior (ayer)
+  if (period === "day") {
+    periodDuration = 24 * 60 * 60 * 1000;
+  }
+
   previousPeriodStart.setTime(periodStart.getTime() - periodDuration);
 
   const previousPeriodOrders = orders.filter((order) => {
@@ -2463,24 +2609,51 @@ export const calculateDashboardMetrics = async (
     return orderDate >= previousPeriodStart && orderDate < previousPeriodEnd;
   });
 
-  // Pedidos completados (los que están listos para despachar o ya despachados)
-  // Estos son los que se ven en la nota de despacho
+  // 1. Pedidos completados / Total de Ventas (Cantidad)
+  // Tomar cantidad de clientes facturados (Notas de despacho)
+  // Asumimos que "Por despachar" y "Completada" son las que tienen nota de despacho
   const completedOrders = periodOrders.filter(
     (order) => order.status === "Por despachar" || order.status === "Completada"
   ).length;
+
   const previousCompletedOrders = previousPeriodOrders.filter(
     (order) => order.status === "Por despachar" || order.status === "Completada"
   ).length;
+
   const completedOrdersChange =
     previousCompletedOrders > 0
       ? Math.round(
-          ((completedOrders - previousCompletedOrders) /
-            previousCompletedOrders) *
-            100
-        )
+        ((completedOrders - previousCompletedOrders) /
+          previousCompletedOrders) *
+        100
+      )
       : 0;
 
-  // Abonos por recaudar (suma de pagos parciales pendientes)
+  // 2. Total Facturado (Base Imponible)
+  // Suma del Subtotal de las ventas del periodo
+  const totalInvoiced = periodOrders
+    .filter((order) => order.status === "Por despachar" || order.status === "Completada" || order.status === "Generado" || order.status === "Generada" || order.status === "Fabricación")
+    // Nota: Incluimos estados activos para facturación, ajustar según requerimiento exacto de "Facturado"
+    // Si "Facturado" es estrictamente nota de despacho, solo usar "Por despachar" y "Completada"
+    // El requerimiento dice "Total de ventas... Notas de despacho", asumiremos consistencia.
+    // Sin embargo, para "Facturado" a veces se considera todo lo vendido.
+    // Vamos a alinear con "Total de ventas" (Notas de despacho) para consistencia
+    .filter((order) => order.status === "Por despachar" || order.status === "Completada")
+    .reduce((sum, order) => sum + (order.subtotal || 0), 0);
+
+  // 3. Total Cobrado (Ingresos reales en el periodo)
+  // Debe incluir todo lo ingresado por nuevas ventas y abonos, independientemente de la fecha de la orden
+  const totalCollected = orders.reduce((total, order) => {
+    const paymentsInPeriod = order.partialPayments?.filter(payment => {
+      const paymentDate = new Date(payment.date);
+      return paymentDate >= periodStart && paymentDate <= now;
+    }) || [];
+
+    const sumPayments = paymentsInPeriod.reduce((sum, p) => sum + (p.amount || 0), 0);
+    return total + sumPayments;
+  }, 0);
+
+  // 4. Abonos por recaudar (Deuda actual general de órdenes activas)
   const pendingPayments = orders.reduce((total, order) => {
     if (order.status === "Generado" || order.status === "Generada" || order.status === "Fabricación" || order.status === "Por despachar") {
       const paidAmount =
@@ -2507,16 +2680,47 @@ export const calculateDashboardMetrics = async (
     },
     0
   );
+
   const pendingPaymentsChange =
     previousPendingPayments > 0
       ? Math.round(
-          ((pendingPayments - previousPendingPayments) /
-            previousPendingPayments) *
-            100
-        )
+        ((pendingPayments - previousPendingPayments) /
+          previousPendingPayments) *
+        100
+      )
       : 0;
 
-  // Productos por fabricar
+  // 5. Sistemas de Apartado (SA) Vencidos
+  // "lo que tenga deuda ya es un SA vencido" -> saldo > 0
+  // "debe reflejar lo vencido, sin cancelación" -> status no cancelado
+  // Solo considerar pedidos con saleType === "sistema_apartado"
+
+  const expiredLayawaysOrders = orders.filter(order => {
+    // SOLO considerar Sistemas de Apartado
+    if (order.saleType !== "sistema_apartado") {
+      return false;
+    }
+
+    // No considerar cancelados
+    if (order.status === "Cancelado") {
+      return false;
+    }
+
+    // "lo que tenga deuda ya es un SA vencido" - verificar deuda pendiente
+    const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+    const pendingAmount = Math.max(0, order.total - paidAmount);
+
+    // Si tiene deuda, está vencido
+    return pendingAmount > 0;
+  });
+
+  const expiredLayawaysCount = expiredLayawaysOrders.length;
+  const expiredLayawaysAmount = expiredLayawaysOrders.reduce((total, order) => {
+    const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+    return total + Math.max(0, order.total - paidAmount);
+  }, 0);
+
+  // Productos por fabricar (Métrica existente)
   const productsToManufacture = orders.reduce((count, order) => {
     return (
       count +
@@ -2528,7 +2732,7 @@ export const calculateDashboardMetrics = async (
     );
   }, 0);
 
-  // Promedio de pedidos completados (Por despachar o Completada)
+  // Promedio de pedidos completados (Por despachar o Completada) - Métrica existente
   const completedOrdersTotal = periodOrders
     .filter((order) => order.status === "Por despachar" || order.status === "Completada")
     .reduce((sum, order) => sum + order.total, 0);
@@ -2541,9 +2745,59 @@ export const calculateDashboardMetrics = async (
     pendingPayments,
     pendingPaymentsChange,
     productsToManufacture,
-    productsToManufactureChange: 0, // TODO: calcular cuando tengamos datos históricos
+    productsToManufactureChange: 0,
     averageOrderValue,
+    // Nuevas métricas
+    totalSalesCount: completedOrders, // Es lo mismo que completedOrders (Ventas = Notas de despacho)
+    totalInvoiced,
+    totalCollected,
+    expiredLayawaysCount,
+    expiredLayawaysAmount
   };
+};
+
+/**
+ * Obtiene todos los Sistemas de Apartado (SA) vencidos
+ * Un SA está vencido si tiene saleType === "sistema_apartado" y tiene deuda pendiente
+ * @returns Array de órdenes con SA vencidos, incluyendo información de días vencidos y deuda
+ */
+export const getExpiredLayaways = async (): Promise<Array<Order & { daysExpired: number; pendingAmount: number }>> => {
+  const orders = await getOrders();
+  const now = new Date();
+
+  const expiredLayaways = orders
+    .filter(order => {
+      // SOLO considerar Sistemas de Apartado
+      if (order.saleType !== "sistema_apartado") {
+        return false;
+      }
+
+      // No considerar cancelados
+      if (order.status === "Cancelado") {
+        return false;
+      }
+
+      // "lo que tenga deuda ya es un SA vencido" - verificar deuda pendiente
+      const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+      const pendingAmount = Math.max(0, order.total - paidAmount);
+
+      return pendingAmount > 0;
+    })
+    .map(order => {
+      const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+      const pendingAmount = Math.max(0, order.total - paidAmount);
+      const orderDate = new Date(order.createdAt);
+      const daysExpired = Math.floor((now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      return {
+        ...order,
+        daysExpired,
+        pendingAmount
+      };
+    })
+    .sort((a, b) => b.daysExpired - a.daysExpired); // Ordenar por días vencidos (más antiguos primero)
+
+  return expiredLayaways;
 };
 
 // ===== BUDGETS STORAGE (IndexedDB) =====
@@ -2955,9 +3209,7 @@ export const addAccount = async (
     };
 
     await db.add("accounts", newAccount);
-    const displayInfo = newAccount.accountType === "Cuentas Digitales" 
-      ? newAccount.email || "Cuenta Digital"
-      : maskAccountNumber(newAccount.accountNumber || "");
+    const displayInfo = newAccount.label || newAccount.code || "Cuenta";
     console.log("✅ Cuenta guardada en IndexedDB:", displayInfo);
     return newAccount;
   } catch (error) {
@@ -3438,11 +3690,11 @@ export const addCommission = async (commission: Omit<Commission, "id" | "created
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    
+
     // 1. Guardar en IndexedDB (fuente de verdad)
     await db.add("commissions", newCommission);
     console.log("✅ Comisión guardada en IndexedDB:", newCommission.id);
-    
+
     // 2. Sincronizar con backend (importante, pero no bloquea si falla)
     try {
       const { syncManager } = await import("./sync-manager");
@@ -3456,7 +3708,7 @@ export const addCommission = async (commission: Omit<Commission, "id" | "created
       console.warn("⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):", syncError);
       // No fallar, IndexedDB es la fuente de verdad
     }
-    
+
     return newCommission;
   } catch (error) {
     console.error("Error adding commission to IndexedDB:", error);
@@ -3476,11 +3728,11 @@ export const updateCommission = async (id: string, updates: Partial<Commission>)
       id, // Asegurar que el ID no cambie
       updatedAt: new Date().toISOString(),
     };
-    
+
     // 1. Actualizar en IndexedDB (fuente de verdad)
     await db.update("commissions", updated);
     console.log("✅ Comisión actualizada en IndexedDB:", id);
-    
+
     // 2. Sincronizar con backend (importante, pero no bloquea si falla)
     try {
       const { syncManager } = await import("./sync-manager");
@@ -3494,7 +3746,7 @@ export const updateCommission = async (id: string, updates: Partial<Commission>)
       console.warn("⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):", syncError);
       // No fallar, IndexedDB es la fuente de verdad
     }
-    
+
     return updated;
   } catch (error) {
     console.error("Error updating commission in IndexedDB:", error);
@@ -3507,7 +3759,7 @@ export const deleteCommission = async (id: string): Promise<void> => {
     // 1. Eliminar de IndexedDB (fuente de verdad)
     await db.remove("commissions", id);
     console.log("✅ Comisión eliminada de IndexedDB:", id);
-    
+
     // 2. Sincronizar con backend (importante, pero no bloquea si falla)
     try {
       const { syncManager } = await import("./sync-manager");
@@ -3693,8 +3945,8 @@ export const getVendor = async (id: string): Promise<Vendor | undefined> => {
             user.role === "Store Seller"
               ? "Vendedor de tienda"
               : user.role === "Online Seller"
-              ? "Vendedor Online"
-              : user.role,
+                ? "Vendedor Online"
+                : user.role,
           type: isVendor ? "vendor" : "referrer",
         };
       }

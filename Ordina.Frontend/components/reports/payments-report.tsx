@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Download, Wifi, WifiOff, Loader2 } from "lucide-react"
-import { getOrders, getAccounts, maskAccountNumber, type Order, type PartialPayment, type Account } from "@/lib/storage"
+import { getOrders, getAccounts, type Order, type PartialPayment, type Account } from "@/lib/storage"
 import { toast } from "sonner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
@@ -380,7 +380,7 @@ export function PaymentsReport() {
     
     // Si es cuenta bancaria, mostrar número enmascarado y banco
     if (payment.paymentDetails.accountNumber && payment.paymentDetails.bank) {
-      return `${maskAccountNumber(payment.paymentDetails.accountNumber)} - ${payment.paymentDetails.bank}`
+      return `${payment.paymentDetails.accountNumber} - ${payment.paymentDetails.bank}`
     }
     
     // Fallback: buscar en accounts por accountId
@@ -390,7 +390,7 @@ export function PaymentsReport() {
         if (account.accountType === "Cuentas Digitales") {
           return account.email || "-"
         } else {
-          return `${maskAccountNumber(account.accountNumber || "")} - ${account.bank || ""}`
+          return `${account.label || account.code || ""}`
         }
       }
     }
@@ -409,7 +409,7 @@ export function PaymentsReport() {
     
     // Si es cuenta bancaria, mostrar número enmascarado y banco
     if (order.paymentDetails.accountNumber && order.paymentDetails.bank) {
-      return `${maskAccountNumber(order.paymentDetails.accountNumber)} - ${order.paymentDetails.bank}`
+      return `${order.paymentDetails.accountNumber} - ${order.paymentDetails.bank}`
     }
     
     // Fallback: buscar en accounts por accountId
@@ -419,7 +419,7 @@ export function PaymentsReport() {
         if (account.accountType === "Cuentas Digitales") {
           return account.email || "-"
         } else {
-          return `${maskAccountNumber(account.accountNumber || "")} - ${account.bank || ""}`
+          return `${account.label || account.code || ""}`
         }
       }
     }
@@ -564,7 +564,7 @@ export function PaymentsReport() {
                       <SelectItem key={account.id} value={account.id}>
                         {account.accountType === "Cuentas Digitales"
                           ? account.email || "Cuenta Digital"
-                          : `${maskAccountNumber(account.accountNumber || "")} - ${account.bank || ""}`}
+                          : `${account.label || account.code || ""}`}
                       </SelectItem>
                     ))}
                 </SelectContent>

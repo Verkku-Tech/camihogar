@@ -8,18 +8,19 @@ import { OrdersTable } from "./orders-table"
 import { ManufacturingProductsTable } from "./manufacturing-products-table"
 import { BudgetsTable } from "./budgets-table"
 import { DispatchesTable } from "./dispatches-table"
+import { ExpiredLayawaysTable } from "./expired-layaways-table"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import { calculateDashboardMetrics, DashboardMetrics } from "@/lib/storage"
 import { Card, CardContent } from "@/components/ui/card"
 import { NewOrderDialog } from "@/components/orders/new-order-dialog"
 
-type Period = "week" | "month" | "year"
-type Tab = "presupuestos" | "pedidos" | "fabricacion" | "despachos"
+type Period = "day" | "week" | "month" | "year"
+type Tab = "presupuestos" | "pedidos" | "fabricacion" | "despachos" | "sa-vencidos"
 
 export function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [period, setPeriod] = useState<Period>("week")
+  const [period, setPeriod] = useState<Period>("day")
   const [activeTab, setActiveTab] = useState<Tab>("pedidos")
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(true)
@@ -83,6 +84,7 @@ export function Dashboard() {
                 onChange={handlePeriodChange}
                 className="px-3 py-2 border border-border rounded-md bg-background text-foreground"
               >
+                <option value="day">Hoy</option>
                 <option value="week">Última Semana</option>
                 <option value="month">Último Mes</option>
                 <option value="year">Último Año</option>
@@ -99,43 +101,48 @@ export function Dashboard() {
               <div className="flex items-center space-x-1 mb-4 sm:mb-0">
                 <button
                   onClick={() => setActiveTab("presupuestos")}
-                  className={`px-4 py-2 text-sm rounded-md transition-colors ${
-                    activeTab === "presupuestos"
+                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "presupuestos"
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
+                    }`}
                 >
                   Presupuestos
                 </button>
                 <button
                   onClick={() => setActiveTab("pedidos")}
-                  className={`px-4 py-2 text-sm rounded-md transition-colors ${
-                    activeTab === "pedidos"
+                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "pedidos"
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
+                    }`}
                 >
                   Pedidos
                 </button>
                 <button
                   onClick={() => setActiveTab("fabricacion")}
-                  className={`px-4 py-2 text-sm rounded-md transition-colors ${
-                    activeTab === "fabricacion"
+                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "fabricacion"
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
+                    }`}
                 >
                   Fabricación
                 </button>
                 <button
                   onClick={() => setActiveTab("despachos")}
-                  className={`px-4 py-2 text-sm rounded-md transition-colors ${
-                    activeTab === "despachos"
+                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "despachos"
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
+                    }`}
                 >
                   Notas de Despacho
+                </button>
+                <button
+                  onClick={() => setActiveTab("sa-vencidos")}
+                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "sa-vencidos"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                >
+                  SA Vencidos
                 </button>
               </div>
               <Button
@@ -152,6 +159,7 @@ export function Dashboard() {
             {activeTab === "presupuestos" && <BudgetsTable />}
             {activeTab === "fabricacion" && <ManufacturingProductsTable />}
             {activeTab === "despachos" && <DispatchesTable />}
+            {activeTab === "sa-vencidos" && <ExpiredLayawaysTable />}
           </div>
         </main>
       </div>
