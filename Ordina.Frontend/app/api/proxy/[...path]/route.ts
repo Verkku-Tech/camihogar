@@ -5,7 +5,7 @@ const API_BASE_URLS: Record<string, string> = {
   security: process.env.SECURITY_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8082',
   users: process.env.USERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8083',
   providers: process.env.PROVIDERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8084',
-  orders: process.env.ORDERS_API_URL || process.env.NEXT_PUBLIC_ORDERS_API_URL || 'http://localhost:5093',
+  orders: process.env.ORDERS_API_URL || process.env.NEXT_PUBLIC_ORDERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8085',
 };
 
 async function handleRequest(

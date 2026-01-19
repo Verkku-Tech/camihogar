@@ -158,6 +158,33 @@ export function PaymentsReport() {
     loadReportData()
   }, [orders, accounts, startDate, endDate, selectedPaymentMethod, selectedAccount, isOnline])
 
+  // Función helper para obtener el monto original del pago en su moneda
+  const getOriginalPaymentAmount = (
+    payment: PartialPayment
+  ): { amount: number; currency: string } => {
+    // Para Efectivo, el monto original está en cashReceived
+    if (payment.method === "Efectivo" && payment.paymentDetails?.cashReceived) {
+      return {
+        amount: payment.paymentDetails.cashReceived,
+        currency: payment.paymentDetails.cashCurrency || payment.currency || "Bs",
+      };
+    }
+
+    // Si hay monto original guardado (para Pago Móvil y Transferencia)
+    if (payment.paymentDetails?.originalAmount !== undefined) {
+      return {
+        amount: payment.paymentDetails.originalAmount,
+        currency: payment.paymentDetails.originalCurrency || payment.currency || "Bs",
+      };
+    }
+
+    // Fallback: usar amount y currency directamente
+    return {
+      amount: payment.amount,
+      currency: payment.currency || "Bs",
+    };
+  };
+
   // Función para generar datos localmente (fallback offline)
   const generateLocalReportData = () => {
     let filteredOrders = orders
@@ -198,9 +225,10 @@ export function PaymentsReport() {
             const referencia = getPaymentReference(payment, order)
             const cuenta = getAccountDisplay(payment)
             
-            // Usar originalAmount y originalCurrency si están disponibles, sino usar amount y currency
-            const montoOriginal = payment.paymentDetails?.originalAmount ?? payment.amount
-            const monedaOriginal = payment.paymentDetails?.originalCurrency ?? payment.currency ?? "Bs"
+            // Usar la función helper para obtener el monto original
+            const originalPayment = getOriginalPaymentAmount(payment)
+            const montoOriginal = originalPayment.amount
+            const monedaOriginal = originalPayment.currency
             
             // Calcular monto en Bs: si la moneda original no es Bs, convertir usando exchangeRate
             const montoBs = monedaOriginal === "Bs" 
@@ -244,9 +272,10 @@ export function PaymentsReport() {
             const referencia = getPaymentReference(payment, order)
             const cuenta = getAccountDisplay(payment)
             
-            // Usar originalAmount y originalCurrency si están disponibles, sino usar amount y currency
-            const montoOriginal = payment.paymentDetails?.originalAmount ?? payment.amount
-            const monedaOriginal = payment.paymentDetails?.originalCurrency ?? payment.currency ?? "Bs"
+            // Usar la función helper para obtener el monto original
+            const originalPayment = getOriginalPaymentAmount(payment)
+            const montoOriginal = originalPayment.amount
+            const monedaOriginal = originalPayment.currency
             
             // Calcular monto en Bs: si la moneda original no es Bs, convertir usando exchangeRate
             const montoBs = monedaOriginal === "Bs" 
@@ -293,9 +322,19 @@ export function PaymentsReport() {
           const referencia = getMainPaymentReference(order)
           const cuenta = getMainAccountDisplay(order)
           
-          // Usar originalAmount y originalCurrency si están disponibles
-          const montoOriginal = order.paymentDetails?.originalAmount ?? order.total
-          const monedaOriginal = order.paymentDetails?.originalCurrency ?? order.baseCurrency ?? "Bs"
+          // Para el pago principal, manejar especialmente pagos en efectivo
+          let montoOriginal: number
+          let monedaOriginal: string
+          
+          if (order.paymentMethod === "Efectivo" && order.paymentDetails?.cashReceived) {
+            // Para Efectivo, usar cashReceived y cashCurrency
+            montoOriginal = order.paymentDetails.cashReceived
+            monedaOriginal = order.paymentDetails.cashCurrency || order.baseCurrency || "Bs"
+          } else {
+            // Para otros métodos, usar originalAmount y originalCurrency si están disponibles
+            montoOriginal = order.paymentDetails?.originalAmount ?? order.total
+            monedaOriginal = order.paymentDetails?.originalCurrency ?? order.baseCurrency ?? "Bs"
+          }
           
           // Calcular monto en Bs: si la moneda original no es Bs, convertir usando exchangeRate
           const montoBs = monedaOriginal === "Bs" 

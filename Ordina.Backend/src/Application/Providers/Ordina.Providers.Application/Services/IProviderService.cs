@@ -1,20 +1,15 @@
-﻿using MongoDB.Bson;
-using Ordina.Providers.Application.DTOs;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using Ordina.Providers.Application.DTOs;
 
-namespace Ordina.Providers.Application.Services
+namespace Ordina.Providers.Application.Services;
+
+public interface IProviderService
 {
-    public interface IProviderService
-    {
-        Task<IEnumerable<ProviderResponseDto>> GetAllAsync();
-        Task<ProviderResponseDto?> GetByIdAsync(ObjectId id);
-        Task<ProviderResponseDto?> GetByRifAsync(string rif);
-        Task<ProviderResponseDto> CreateAsync(CreateProviderDto createProviderDto);
-        Task<ProviderResponseDto?> UpdateAsync(ObjectId id, UpdateProviderDto updateProviderDto);
-        Task<bool> DeleteAsync(ObjectId id);
-    }
+    Task<IEnumerable<ProviderResponseDto>> GetAllAsync();
+    Task<ProviderResponseDto?> GetByIdAsync(string id);
+    Task<ProviderResponseDto?> GetByRifAsync(string rif);
+    Task<ProviderResponseDto?> GetByEmailAsync(string email);
+    Task<ProviderResponseDto> CreateAsync(CreateProviderDto createProviderDto);
+    Task<ProviderResponseDto> UpdateAsync(string id, UpdateProviderDto updateProviderDto);
+    Task<bool> DeleteAsync(string id);
+    Task<bool> ProviderExistsAsync(string id);
 }
