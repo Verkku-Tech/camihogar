@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from 'react'
-import { X, ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, Image as ImageIcon, FileText } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
@@ -72,6 +72,13 @@ export function ImageGallery({
 
   const selectedImage = selectedImageIndex !== null ? images[selectedImageIndex] : null
 
+  // Helper para detectar si es PDF
+  const isPDF = (image: ProductImage): boolean => {
+    return image.mimeType === 'application/pdf' || 
+           image.filename.toLowerCase().endsWith('.pdf') ||
+           image.base64.startsWith('data:application/pdf')
+  }
+
   return (
     <>
       <div className={cn("space-y-2", className)}>
@@ -87,19 +94,30 @@ export function ImageGallery({
         <div className="flex flex-wrap gap-2">
           {visibleThumbnails.map((image, index) => {
             const actualIndex = showAll ? index : index
+            const imageIsPDF = isPDF(image)
+            
             return (
               <button
                 key={image.id}
                 onClick={() => openLightbox(actualIndex)}
                 className="relative group aspect-square w-20 h-20 sm:w-24 sm:h-24 rounded-md overflow-hidden border-2 border-border hover:border-primary transition-all hover:scale-105 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                 type="button"
-                aria-label={`Ver imagen ${index + 1} de ${images.length}`}
+                aria-label={`Ver ${imageIsPDF ? 'PDF' : 'imagen'} ${index + 1} de ${images.length}`}
               >
-                <img
-                  src={image.base64}
-                  alt={image.filename}
-                  className="w-full h-full object-cover"
-                />
+                {imageIsPDF ? (
+                  <div className="w-full h-full bg-muted flex flex-col items-center justify-center">
+                    <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-muted-foreground" />
+                    <p className="text-[8px] sm:text-[10px] text-muted-foreground mt-1 px-1 text-center truncate w-full">
+                      PDF
+                    </p>
+                  </div>
+                ) : (
+                  <img
+                    src={image.base64}
+                    alt={image.filename}
+                    className="w-full h-full object-cover"
+                  />
+                )}
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <p className="text-[10px] text-white truncate">
@@ -129,7 +147,7 @@ export function ImageGallery({
         <Dialog open={selectedImageIndex !== null} onOpenChange={closeLightbox}>
           <DialogContent className="max-w-5xl max-h-[90vh] p-0 bg-black/95 border-none">
             <DialogDescription className="sr-only">
-              Visualizador de imagen {selectedImageIndex + 1} de {images.length}: {selectedImage.filename}
+              Visualizador de {isPDF(selectedImage) ? 'PDF' : 'imagen'} {selectedImageIndex + 1} de {images.length}: {selectedImage.filename}
             </DialogDescription>
             <div className="relative w-full h-full flex items-center justify-center min-h-[400px]">
               {/* Botón cerrar */}
@@ -156,13 +174,21 @@ export function ImageGallery({
                 </Button>
               )}
 
-              {/* Imagen principal */}
+              {/* Imagen o PDF principal */}
               <div className="w-full h-full flex items-center justify-center p-8">
-                <img
-                  src={selectedImage.base64}
-                  alt={selectedImage.filename}
-                  className="max-w-full max-h-[80vh] object-contain rounded-lg"
-                />
+                {isPDF(selectedImage) ? (
+                  <iframe
+                    src={selectedImage.base64}
+                    className="w-full h-full min-h-[600px] rounded-lg border-0"
+                    title={selectedImage.filename}
+                  />
+                ) : (
+                  <img
+                    src={selectedImage.base64}
+                    alt={selectedImage.filename}
+                    className="max-w-full max-h-[80vh] object-contain rounded-lg"
+                  />
+                )}
               </div>
 
               {/* Navegación siguiente */}
@@ -178,7 +204,7 @@ export function ImageGallery({
                 </Button>
               )}
 
-              {/* Información de la imagen */}
+              {/* Información del archivo */}
               <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg text-sm">
                 <p className="font-medium">{selectedImage.filename}</p>
                 <p className="text-xs text-muted-foreground">
@@ -186,6 +212,7 @@ export function ImageGallery({
                   {selectedImage.size && (
                     <> • {(selectedImage.size / 1024 / 1024).toFixed(2)}MB</>
                   )}
+                  {isPDF(selectedImage) && <> • PDF</>}
                 </p>
               </div>
             </div>

@@ -34,6 +34,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import { usePagination } from "@/hooks/use-pagination"
+import { TablePagination } from "@/components/ui/table-pagination"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -101,6 +103,7 @@ export default function DespachosPage() {
   const [orderToComplete, setOrderToComplete] = useState<UnifiedOrder | null>(null)
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
   const [isBulkDispatchDialogOpen, setIsBulkDispatchDialogOpen] = useState(false)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -157,6 +160,20 @@ export default function DespachosPage() {
     return matchesSearch && matchesDeliveryType && matchesDeliveryZone
   })
 
+  // Paginación
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedOrders,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({
+    data: filteredOrders,
+    itemsPerPage,
+  })
+
   // Manejar selección individual
   const handleToggleSelect = (orderId: string) => {
     setSelectedOrders((prev) => {
@@ -173,7 +190,7 @@ export default function DespachosPage() {
   // Manejar selección de todos (solo los que no están completados)
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      const selectableOrders = filteredOrders.filter(order => order.status !== "Completada")
+      const selectableOrders = paginatedOrders.filter(order => order.status !== "Completada")
       setSelectedOrders(new Set(selectableOrders.map((order) => order.id)))
     } else {
       setSelectedOrders(new Set())
@@ -264,7 +281,7 @@ export default function DespachosPage() {
   }
 
   // Solo contar pedidos que no están completados para la selección
-  const selectableOrders = filteredOrders.filter(order => order.status !== "Completada")
+  const selectableOrders = paginatedOrders.filter(order => order.status !== "Completada")
   const allSelected = selectableOrders.length > 0 && selectedOrders.size === selectableOrders.length
   const someSelected = selectedOrders.size > 0 && selectedOrders.size < selectableOrders.length
 
@@ -390,7 +407,7 @@ export default function DespachosPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredOrders.map((order) => (
+                        {paginatedOrders.map((order) => (
                           <TableRow key={order.id}>
                             <TableCell>
                               {order.status !== "Completada" && (
@@ -439,6 +456,20 @@ export default function DespachosPage() {
                         ))}
                       </TableBody>
                     </Table>
+                  )}
+                  
+                  {/* Paginación */}
+                  {!isLoading && filteredOrders.length > 0 && (
+                    <TablePagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      totalItems={totalItems}
+                      startIndex={startIndex}
+                      endIndex={endIndex}
+                      onPageChange={goToPage}
+                      itemsPerPage={itemsPerPage}
+                      onItemsPerPageChange={setItemsPerPage}
+                    />
                   )}
                 </CardContent>
               </Card>

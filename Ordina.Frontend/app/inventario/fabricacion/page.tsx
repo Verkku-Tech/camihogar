@@ -17,11 +17,24 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { getOrders, getOrder, type Order, type OrderProduct, updateOrder } from "@/lib/storage"
 import { SelectProviderDialog } from "@/components/manufacturing/select-provider-dialog"
 import { useRouter } from "next/navigation"
+import { usePagination } from "@/hooks/use-pagination"
+import { TablePagination } from "@/components/ui/table-pagination"
 
 // Tipo para productos agrupados por pedido
 interface ProductRow {
@@ -42,6 +55,11 @@ export default function FabricacionPage() {
   const [selectedProduct, setSelectedProduct] = useState<{ orderId: string; product: OrderProduct } | null>(null)
   const [selectProviderDialogOpen, setSelectProviderDialogOpen] = useState(false)
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
+  const [bulkManufactureDialogOpen, setBulkManufactureDialogOpen] = useState(false)
+  const [bulkFabricatedDialogOpen, setBulkFabricatedDialogOpen] = useState(false)
+  const [bulkSelectedProvider, setBulkSelectedProvider] = useState<{ id: string; name: string } | null>(null)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
   const router = useRouter()
 
   // Cargar pedidos
@@ -130,6 +148,20 @@ export default function FabricacionPage() {
 
     setProductRows(filtered)
   }, [orders, filterStatus, searchTerm])
+
+  // Paginación
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedRows,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({
+    data: productRows,
+    itemsPerPage,
+  })
 
   // Obtener badge de estado
   const getStatusBadge = (status: string) => {
@@ -253,8 +285,8 @@ export default function FabricacionPage() {
     }
   }
 
-  // Agrupar productos por pedido
-  const groupedRows = productRows.reduce((acc, row) => {
+  // Agrupar productos por pedido (solo los paginados)
+  const groupedRows = paginatedRows.reduce((acc, row) => {
     if (!acc[row.orderId]) {
       acc[row.orderId] = {
         orderNumber: row.orderNumber,
@@ -277,6 +309,255 @@ export default function FabricacionPage() {
         newSet.add(orderId)
       }
       return newSet
+    })
+  }
+
+  // Manejar selección individual de productos
+  const handleToggleSelect = (orderId: string, productId: string) => {
+    const key = `${orderId}|${productId}`
+    setSelectedProducts(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(key)) {
+        newSet.delete(key)
+      } else {
+        newSet.add(key)
+      }
+      return newSet
+    })
+  }
+
+  // Manejar selección de todos los productos filtrados (solo los paginados)
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const keys = paginatedRows.map(row => `${row.orderId}|${row.product.id}`)
+      setSelectedProducts(new Set(keys))
+    } else {
+      setSelectedProducts(new Set())
+    }
+  }
+
+  // Manejar selección de todos los productos de un pedido
+  const handleToggleSelectOrder = (orderId: string) => {
+    const orderProducts = paginatedRows.filter(row => row.orderId === orderId)
+    const orderProductKeys = orderProducts.map(row => `${row.orderId}|${row.product.id}`)
+    
+    // Verificar si todos los productos del pedido están seleccionados
+    const allSelected = orderProductKeys.length > 0 && orderProductKeys.every(key => selectedProducts.has(key))
+    
+    setSelectedProducts(prev => {
+      const newSet = new Set(prev)
+      if (allSelected) {
+        // Deseleccionar todos los productos del pedido
+        orderProductKeys.forEach(key => newSet.delete(key))
+      } else {
+        // Seleccionar todos los productos del pedido
+        orderProductKeys.forEach(key => newSet.add(key))
+      }
+      return newSet
+    })
+  }
+
+  // Verificar si todos los productos de un pedido están seleccionados
+  const isOrderFullySelected = (orderId: string): boolean => {
+    const orderProducts = paginatedRows.filter(row => row.orderId === orderId)
+    if (orderProducts.length === 0) return false
+    
+    const orderProductKeys = orderProducts.map(row => `${row.orderId}|${row.product.id}`)
+    return orderProductKeys.every(key => selectedProducts.has(key))
+  }
+
+  // Verificar si algunos (pero no todos) productos de un pedido están seleccionados
+  const isOrderPartiallySelected = (orderId: string): boolean => {
+    const orderProducts = paginatedRows.filter(row => row.orderId === orderId)
+    if (orderProducts.length === 0) return false
+    
+    const orderProductKeys = orderProducts.map(row => `${row.orderId}|${row.product.id}`)
+    const selectedCount = orderProductKeys.filter(key => selectedProducts.has(key)).length
+    return selectedCount > 0 && selectedCount < orderProductKeys.length
+  }
+
+  // Manejar click en "Mandar a Fabricar" (masivo)
+  const handleBulkManufacture = () => {
+    if (selectedProducts.size === 0) {
+      toast.error("Por favor selecciona al menos un producto")
+      return
+    }
+
+    // Filtrar solo productos que estén en "debe_fabricar"
+    const selectedKeys = Array.from(selectedProducts)
+    const validProducts = selectedKeys.filter(key => {
+      const [orderId, productId] = key.split('|')
+      const row = productRows.find(r => r.orderId === orderId && r.product.id === productId)
+      return row && row.status === "debe_fabricar"
+    })
+
+    if (validProducts.length === 0) {
+      toast.error("Solo se pueden mandar a fabricar productos con estado 'Debe Fabricar'")
+      return
+    }
+
+    setBulkManufactureDialogOpen(true)
+  }
+
+  // Manejar click en "Marcar como Fabricado" (masivo)
+  const handleBulkMarkAsFabricated = () => {
+    if (selectedProducts.size === 0) {
+      toast.error("Por favor selecciona al menos un producto")
+      return
+    }
+
+    // Filtrar solo productos que estén en "fabricando"
+    const selectedKeys = Array.from(selectedProducts)
+    const validProducts = selectedKeys.filter(key => {
+      const [orderId, productId] = key.split('|')
+      const row = productRows.find(r => r.orderId === orderId && r.product.id === productId)
+      return row && row.status === "fabricando"
+    })
+
+    if (validProducts.length === 0) {
+      toast.error("Solo se pueden marcar como fabricados productos con estado 'Fabricando'")
+      return
+    }
+
+    setBulkFabricatedDialogOpen(true)
+  }
+
+  // Ejecutar acción masiva de fabricación
+  const executeBulkManufacture = async (providerId: string, providerName: string, notes?: string) => {
+    const selectedKeys = Array.from(selectedProducts)
+    let successCount = 0
+    let errorCount = 0
+
+    for (const key of selectedKeys) {
+      const [orderId, productId] = key.split('|')
+      try {
+        const order = await getOrder(orderId)
+        if (!order) {
+          errorCount++
+          continue
+        }
+
+        const productIndex = order.products.findIndex(p => p.id === productId)
+        if (productIndex === -1) {
+          errorCount++
+          continue
+        }
+
+        // Solo actualizar productos que estén en "debe_fabricar"
+        if (order.products[productIndex].manufacturingStatus !== "debe_fabricar" && 
+            !order.products[productIndex].manufacturingStatus) {
+          continue
+        }
+
+        const updatedProduct = {
+          ...order.products[productIndex],
+          availabilityStatus: "no_disponible" as const,
+          manufacturingStatus: "fabricando" as const,
+          manufacturingProviderId: providerId,
+          manufacturingProviderName: providerName,
+          manufacturingStartedAt: new Date().toISOString(),
+          manufacturingNotes: notes,
+        }
+
+        const updatedProducts = [...order.products]
+        updatedProducts[productIndex] = updatedProduct
+
+        await updateOrder(order.id, { products: updatedProducts })
+        successCount++
+      } catch (error) {
+        console.error(`Error actualizando producto ${productId}:`, error)
+        errorCount++
+      }
+    }
+
+    // Refrescar
+    const loadedOrders = await getOrders()
+    setOrders(loadedOrders)
+    setSelectedProducts(new Set())
+    setBulkManufactureDialogOpen(false)
+    setBulkSelectedProvider(null)
+
+    if (errorCount === 0) {
+      toast.success(`${successCount} producto(s) enviado(s) a fabricación`)
+    } else {
+      toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+    }
+  }
+
+  // Ejecutar acción masiva de "marcar como fabricado"
+  const executeBulkMarkAsFabricated = async () => {
+    const selectedKeys = Array.from(selectedProducts)
+    let successCount = 0
+    let errorCount = 0
+
+    for (const key of selectedKeys) {
+      const [orderId, productId] = key.split('|')
+      try {
+        const order = await getOrder(orderId)
+        if (!order) {
+          errorCount++
+          continue
+        }
+
+        const productIndex = order.products.findIndex(p => p.id === productId)
+        if (productIndex === -1) {
+          errorCount++
+          continue
+        }
+
+        // Solo actualizar productos que estén en "fabricando"
+        if (order.products[productIndex].manufacturingStatus !== "fabricando") {
+          continue
+        }
+
+        const updatedProduct = {
+          ...order.products[productIndex],
+          manufacturingStatus: "fabricado" as const,
+          manufacturingCompletedAt: new Date().toISOString(),
+        }
+
+        const updatedProducts = [...order.products]
+        updatedProducts[productIndex] = updatedProduct
+
+        await updateOrder(order.id, { products: updatedProducts })
+        successCount++
+      } catch (error) {
+        console.error(`Error actualizando producto ${productId}:`, error)
+        errorCount++
+      }
+    }
+
+    // Refrescar
+    const loadedOrders = await getOrders()
+    setOrders(loadedOrders)
+    setSelectedProducts(new Set())
+    setBulkFabricatedDialogOpen(false)
+
+    if (errorCount === 0) {
+      toast.success(`${successCount} producto(s) marcado(s) como fabricado(s)`)
+    } else {
+      toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+    }
+  }
+
+  // Calcular si todos están seleccionados (solo los paginados)
+  const allSelected = paginatedRows.length > 0 && selectedProducts.size === paginatedRows.length
+  const someSelected = selectedProducts.size > 0 && selectedProducts.size < paginatedRows.length
+
+  // Obtener productos seleccionados válidos para cada acción
+  const getSelectedProductsForManufacture = () => {
+    return Array.from(selectedProducts).filter(key => {
+      const [orderId, productId] = key.split('|')
+      const row = productRows.find(r => r.orderId === orderId && r.product.id === productId)
+      return row && row.status === "debe_fabricar"
+    })
+  }
+
+  const getSelectedProductsForFabricated = () => {
+    return Array.from(selectedProducts).filter(key => {
+      const [orderId, productId] = key.split('|')
+      const row = productRows.find(r => r.orderId === orderId && r.product.id === productId)
+      return row && row.status === "fabricando"
     })
   }
 
@@ -347,6 +628,40 @@ export default function FabricacionPage() {
               </CardContent>
             </Card>
 
+            {/* Botones de acción masiva */}
+            {selectedProducts.size > 0 && (
+              <Card className="mb-6">
+                <CardContent className="pt-6">
+                  <div className="flex flex-wrap gap-2">
+                    {getSelectedProductsForManufacture().length > 0 && (
+                      <Button
+                        onClick={handleBulkManufacture}
+                        className="bg-orange-600 hover:bg-orange-700"
+                      >
+                        <Hammer className="w-4 h-4 mr-2" />
+                        Mandar a Fabricar ({getSelectedProductsForManufacture().length})
+                      </Button>
+                    )}
+                    {getSelectedProductsForFabricated().length > 0 && (
+                      <Button
+                        onClick={handleBulkMarkAsFabricated}
+                        variant="outline"
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                        Marcar como Fabricado ({getSelectedProductsForFabricated().length})
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      onClick={() => setSelectedProducts(new Set())}
+                    >
+                      Limpiar Selección
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Tabla de productos agrupados por pedido */}
             {productRows.length === 0 ? (
               <Card className="p-8 text-center">
@@ -365,7 +680,7 @@ export default function FabricacionPage() {
                 <CardHeader>
                   <CardTitle>Productos en Fabricación</CardTitle>
                   <CardDescription>
-                    {productRows.length} producto(s) encontrado(s)
+                    {totalItems} producto(s) encontrado(s)
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -388,6 +703,22 @@ export default function FabricacionPage() {
                                   <TableRow className="hover:bg-muted/50 cursor-pointer border-b">
                                     <TableCell className="font-medium" style={{ width: '150px' }}>
                                       <div className="flex items-center gap-2">
+                                        {/* Checkbox para seleccionar todo el pedido */}
+                                        <Checkbox
+                                          checked={
+                                            isOrderFullySelected(orderId)
+                                              ? true
+                                              : isOrderPartiallySelected(orderId)
+                                              ? "indeterminate"
+                                              : false
+                                          }
+                                          onCheckedChange={(checked) => {
+                                            handleToggleSelectOrder(orderId)
+                                          }}
+                                          onClick={(e) => e.stopPropagation()} // Evitar que se expanda/contraiga al hacer click
+                                          aria-label={`Seleccionar todos los productos de ${group.orderNumber}`}
+                                          className="mr-2"
+                                        />
                                         {isExpanded ? (
                                           <ChevronDown className="w-4 h-4 text-muted-foreground" />
                                         ) : (
@@ -405,6 +736,15 @@ export default function FabricacionPage() {
                                       <div className="font-medium">{group.clientName}</div>
                                       <div className="text-xs text-muted-foreground">
                                         {totalProducts} producto(s)
+                                        {(() => {
+                                          const selectedCount = group.products.filter(row => 
+                                            selectedProducts.has(`${row.orderId}|${row.product.id}`)
+                                          ).length
+                                          if (selectedCount > 0) {
+                                            return ` • ${selectedCount} seleccionado(s)`
+                                          }
+                                          return ''
+                                        })()}
                                       </div>
                                     </TableCell>
                                     <TableCell colSpan={6}>
@@ -433,8 +773,14 @@ export default function FabricacionPage() {
                               <Table>
                                 <TableHeader>
                                   <TableRow>
+                                    <TableHead className="w-12">
+                                      <Checkbox
+                                        checked={allSelected}
+                                        onCheckedChange={handleSelectAll}
+                                        aria-label="Seleccionar todos"
+                                      />
+                                    </TableHead>
                                     <TableHead style={{ width: '150px' }}></TableHead>
-                                    <TableHead></TableHead>
                                     <TableHead>Producto</TableHead>
                                     <TableHead>Categoría</TableHead>
                                     <TableHead>Cantidad</TableHead>
@@ -446,7 +792,13 @@ export default function FabricacionPage() {
                                 <TableBody>
                                   {group.products.map((row) => (
                                     <TableRow key={row.product.id}>
-                                      <TableCell></TableCell>
+                                      <TableCell>
+                                        <Checkbox
+                                          checked={selectedProducts.has(`${row.orderId}|${row.product.id}`)}
+                                          onCheckedChange={() => handleToggleSelect(row.orderId, row.product.id)}
+                                          aria-label={`Seleccionar ${row.product.name}`}
+                                        />
+                                      </TableCell>
                                       <TableCell></TableCell>
                                       <TableCell className="font-medium">
                                         {row.product.name}
@@ -500,13 +852,27 @@ export default function FabricacionPage() {
                     })}
                   </div>
                 </CardContent>
+                
+                {/* Paginación */}
+                {productRows.length > 0 && (
+                  <TablePagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalItems={totalItems}
+                    startIndex={startIndex}
+                    endIndex={endIndex}
+                    onPageChange={goToPage}
+                    itemsPerPage={itemsPerPage}
+                    onItemsPerPageChange={setItemsPerPage}
+                  />
+                )}
               </Card>
             )}
           </div>
         </main>
       </div>
 
-      {/* Modal de selección de proveedor */}
+      {/* Modal de selección de proveedor (individual) */}
       <SelectProviderDialog
         open={selectProviderDialogOpen}
         onOpenChange={setSelectProviderDialogOpen}
@@ -514,6 +880,42 @@ export default function FabricacionPage() {
         orderId={selectedProduct?.orderId || ""}
         onConfirm={handleConfirmManufacture}
       />
+
+      {/* Modal de selección de proveedor (masivo) */}
+      <SelectProviderDialog
+        open={bulkManufactureDialogOpen}
+        onOpenChange={setBulkManufactureDialogOpen}
+        product={null}
+        orderId=""
+        onConfirm={executeBulkManufacture}
+      />
+
+      {/* Dialog de confirmación para marcar como fabricado (masivo) */}
+      <AlertDialog open={bulkFabricatedDialogOpen} onOpenChange={setBulkFabricatedDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Marcar como fabricado?</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas marcar {getSelectedProductsForFabricated().length} producto(s) como fabricado(s)?
+              <br />
+              <span className="text-sm text-muted-foreground mt-2 block">
+                Solo se procesarán los productos con estado "Fabricando".
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setBulkFabricatedDialogOpen(false)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={executeBulkMarkAsFabricated}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Marcar como Fabricado
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

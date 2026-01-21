@@ -9,9 +9,12 @@ export const PAYMENT_CONDITIONS = [
 
 // Constantes para Tipo de Venta
 export const PURCHASE_TYPES = [
+  { value: "delivery_express", label: "Delivery Express" },
   { value: "encargo", label: "Encargo" },
+  { value: "encargo_entrega", label: "Encargo/Entrega" },
   { value: "entrega", label: "Entrega" },
-  { value: "sistema_apartado", label: "Sistema de Apartado" },
+  { value: "retiro_almacen", label: "Retiro x Almacén" },
+  { value: "retiro_tienda", label: "Retiro x Tienda" },
 ] as const;
 
 // Constantes para Tipo de Entrega

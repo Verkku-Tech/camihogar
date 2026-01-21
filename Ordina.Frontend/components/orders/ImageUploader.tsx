@@ -2,9 +2,10 @@
 
 import React, { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { UploadCloud, X, Loader2, Shield } from 'lucide-react'
+import { UploadCloud, X, Loader2, Shield, FileText } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import type { ProductImage } from "@/lib/storage"
 
 interface ImageUploaderProps {
@@ -12,6 +13,7 @@ interface ImageUploaderProps {
   onImagesChange: (images: ProductImage[]) => void;
   maxImages?: number;
   maxSizeMB?: number; // Tamaño máximo por imagen DESPUÉS de compresión
+  maxPdfSizeMB?: number; // Tamaño máximo por PDF (sin compresión)
   maxTotalSizeMB?: number; // Tamaño total máximo (para evitar exceder 16MB de MongoDB)
   compressionQuality?: number; // Calidad de compresión (0.1 a 1.0)
   maxWidth?: number; // Ancho máximo de la imagen comprimida
@@ -24,6 +26,7 @@ export function ImageUploader({
   onImagesChange, 
   maxImages = 10,
   maxSizeMB = 2, // Reducido a 2MB por defecto después de compresión
+  maxPdfSizeMB = 5, // Máximo 5MB por PDF (sin compresión)
   maxTotalSizeMB = 10, // Máximo 10MB total para estar seguros del límite de 16MB
   compressionQuality = 0.7, // 70% de calidad (balance entre tamaño y calidad)
   maxWidth = 1920, // Máximo 1920px de ancho
@@ -160,6 +163,56 @@ export function ImageUploader({
   }
 
   /**
+   * Convierte un File directamente a base64 (para PDFs, sin compresión)
+   * @param file - Archivo a convertir
+   * @returns Promise con el string base64
+   */
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      
+      reader.onload = () => {
+        resolve(reader.result as string)
+      }
+      
+      reader.onerror = () => {
+        reject(new Error('Error al leer el archivo'))
+      }
+      
+      reader.readAsDataURL(file)
+    })
+  }
+
+  /**
+   * Procesa un archivo PDF: valida tamaño y convierte a base64 (sin compresión)
+   * @param file - Archivo PDF a procesar
+   * @returns Promise con ProductImage
+   */
+  const processPDF = async (file: File): Promise<ProductImage> => {
+    // Validar tamaño ANTES de procesar
+    const fileSizeMB = file.size / 1024 / 1024
+    if (fileSizeMB > maxPdfSizeMB) {
+      throw new Error(
+        `El PDF "${file.name}" es muy grande (${fileSizeMB.toFixed(2)}MB). ` +
+        `Máximo permitido: ${maxPdfSizeMB}MB.`
+      )
+    }
+
+    // Convertir a base64 directamente (sin compresión)
+    const base64 = await fileToBase64(file)
+    
+    return {
+      id: `pdf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      base64,
+      filename: file.name,
+      type: "reference" as const,
+      uploadedAt: new Date().toISOString(),
+      size: file.size,
+      mimeType: "application/pdf"
+    }
+  }
+
+  /**
    * Calcula el tamaño total de todas las imágenes en base64
    */
   const calculateTotalSize = (imageList: ProductImage[]): number => {
@@ -172,7 +225,7 @@ export function ImageUploader({
   }
 
   /**
-   * Procesa múltiples archivos: valida, comprime, convierte a base64
+   * Procesa múltiples archivos: valida, comprime imágenes, convierte PDFs a base64
    */
   const processFiles = async (files: File[]) => {
     setError(null)
@@ -182,14 +235,31 @@ export function ImageUploader({
     try {
       // Validar cantidad máxima
       if (images.length + files.length > maxImages) {
-        throw new Error(`Solo puedes subir máximo ${maxImages} imágenes. Ya tienes ${images.length}.`)
+        const errorMsg = `Solo puedes subir máximo ${maxImages} archivos. Ya tienes ${images.length}.`
+        toast.error(errorMsg)
+        throw new Error(errorMsg)
       }
 
-      // Validar tipo de archivo
+      // Validar tipo de archivo y tamaño ANTES de procesar
       const invalidFiles: string[] = []
+      const pdfs: File[] = []
+      const imageFiles: File[] = []
+      
       files.forEach(file => {
-        if (!file.type.startsWith('image/')) {
-          invalidFiles.push(`${file.name} (no es una imagen)`)
+        if (file.type === 'application/pdf') {
+          // Validar tamaño de PDF antes de procesar
+          const fileSizeMB = file.size / 1024 / 1024
+          if (fileSizeMB > maxPdfSizeMB) {
+            invalidFiles.push(`${file.name} (PDF muy grande: ${fileSizeMB.toFixed(2)}MB, máximo: ${maxPdfSizeMB}MB)`)
+            toast.error(`El PDF "${file.name}" es muy grande (${fileSizeMB.toFixed(2)}MB). Máximo permitido: ${maxPdfSizeMB}MB.`)
+          } else {
+            pdfs.push(file)
+          }
+        } else if (file.type.startsWith('image/')) {
+          imageFiles.push(file)
+        } else {
+          invalidFiles.push(`${file.name} (tipo no soportado: ${file.type})`)
+          toast.error(`Tipo de archivo no soportado: ${file.name}. Solo se aceptan imágenes (JPG, PNG) y PDFs.`)
         }
       })
 
@@ -201,12 +271,47 @@ export function ImageUploader({
       const currentTotalSize = calculateTotalSize(images)
       const maxTotalSizeBytes = maxTotalSizeMB * 1024 * 1024
 
-      // Procesar imágenes una por una para mostrar progreso y validar tamaño
+      // Procesar archivos una por una para mostrar progreso y validar tamaño
       const newImages: ProductImage[] = []
+      const totalFiles = pdfs.length + imageFiles.length
       
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        setCompressionProgress(((i + 1) / files.length) * 100)
+      let processedCount = 0
+
+      // Procesar PDFs primero
+      for (const file of pdfs) {
+        processedCount++
+        setCompressionProgress((processedCount / totalFiles) * 100)
+
+        try {
+          const pdfImage = await processPDF(file)
+          
+          // Validar tamaño total acumulado (considerando que base64 aumenta ~33%)
+          const estimatedBase64Size = file.size * 1.33 // Aproximación
+          const testTotalSize = currentTotalSize + 
+            calculateTotalSize(newImages) + 
+            estimatedBase64Size
+
+          if (testTotalSize > maxTotalSizeBytes) {
+            const currentMB = (currentTotalSize / 1024 / 1024).toFixed(2)
+            const fileMB = (file.size / 1024 / 1024).toFixed(2)
+            throw new Error(
+              `No se puede agregar más archivos. El tamaño total excedería ${maxTotalSizeMB}MB. ` +
+              `Tamaño actual: ${currentMB}MB. Este PDF agregaría aproximadamente: ${fileMB}MB.`
+            )
+          }
+
+          newImages.push(pdfImage)
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : `Error procesando ${file.name}`
+          toast.error(errorMessage)
+          throw new Error(errorMessage)
+        }
+      }
+
+      // Procesar imágenes (con compresión)
+      for (const file of imageFiles) {
+        processedCount++
+        setCompressionProgress((processedCount / totalFiles) * 100)
 
         try {
           // Comprimir imagen (todo local, sin envío externo)
@@ -231,13 +336,14 @@ export function ImageUploader({
             filename: file.name,
             type: "reference" as const,
             uploadedAt: new Date().toISOString(),
-            size: compressedBlob.size
+            size: compressedBlob.size,
+            mimeType: file.type
           }
 
           const testTotalSize = calculateTotalSize([...images, ...newImages, newImage])
           if (testTotalSize > maxTotalSizeBytes) {
             throw new Error(
-              `No se puede agregar más imágenes. El tamaño total excedería ${maxTotalSizeMB}MB. ` +
+              `No se puede agregar más archivos. El tamaño total excedería ${maxTotalSizeMB}MB. ` +
               `Tamaño actual: ${(currentTotalSize / 1024 / 1024).toFixed(2)}MB. ` +
               `Esta imagen agregaría: ${compressedSizeMB.toFixed(2)}MB.`
             )
@@ -246,22 +352,35 @@ export function ImageUploader({
           newImages.push(newImage)
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : `Error procesando ${file.name}`
+          toast.error(errorMessage)
           throw new Error(errorMessage)
         }
       }
 
-      // Combinar imágenes existentes con las nuevas
+      // Combinar archivos existentes con los nuevos
       const allImages = [...images, ...newImages]
       onImagesChange(allImages)
       
-      // Mostrar información de compresión
+      // Mostrar información de procesamiento
       const totalSizeMB = (calculateTotalSize(allImages) / 1024 / 1024).toFixed(2)
-      console.log(`✅ Imágenes comprimidas. Tamaño total: ${totalSizeMB}MB`)
+      const pdfCount = newImages.filter(img => img.mimeType === 'application/pdf').length
+      const imgCount = newImages.filter(img => img.mimeType?.startsWith('image/')).length
+      
+      if (pdfCount > 0 && imgCount > 0) {
+        toast.success(`${imgCount} imagen(es) y ${pdfCount} PDF(s) procesados. Tamaño total: ${totalSizeMB}MB`)
+      } else if (pdfCount > 0) {
+        toast.success(`${pdfCount} PDF(s) agregado(s). Tamaño total: ${totalSizeMB}MB`)
+      } else {
+        toast.success(`${imgCount} imagen(es) comprimida(s). Tamaño total: ${totalSizeMB}MB`)
+      }
+      
+      console.log(`✅ Archivos procesados. Tamaño total: ${totalSizeMB}MB`)
       
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error al procesar las imágenes'
+      const errorMessage = err instanceof Error ? err.message : 'Error al procesar los archivos'
       setError(errorMessage)
-      console.error('Error procesando imágenes:', err)
+      console.error('Error procesando archivos:', err)
+      // El toast ya se mostró en las validaciones individuales
     } finally {
       setUploading(false)
       setCompressionProgress(0)
@@ -272,11 +391,14 @@ export function ImageUploader({
     if (acceptedFiles.length > 0) {
       processFiles(acceptedFiles)
     }
-  }, [images, maxImages, maxSizeMB, maxTotalSizeMB, compressionQuality, maxWidth, maxHeight, isSensitive])
+  }, [images, maxImages, maxSizeMB, maxPdfSizeMB, maxTotalSizeMB, compressionQuality, maxWidth, maxHeight, isSensitive])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp'] },
+    accept: { 
+      'image/*': ['.png', '.jpg', '.jpeg', '.webp'],
+      'application/pdf': ['.pdf']
+    },
     multiple: true,
     disabled: uploading || images.length >= maxImages
   })
@@ -312,7 +434,7 @@ export function ImageUploader({
           <>
             <Loader2 className="w-8 h-8 text-primary animate-spin mb-4" />
             <p className="text-sm font-medium text-center">
-              Comprimiendo imágenes... {Math.round(compressionProgress)}%
+              Procesando archivos... {Math.round(compressionProgress)}%
             </p>
             <div className="w-full max-w-xs mt-2 bg-muted rounded-full h-2">
               <div 
@@ -328,13 +450,13 @@ export function ImageUploader({
             </div>
             <p className="text-sm font-medium text-center">
               {isDragActive 
-                ? "Suelta las imágenes aquí" 
+                ? "Suelta los archivos aquí" 
                 : images.length >= maxImages
-                ? `Máximo de ${maxImages} imágenes alcanzado`
-                : "Arrastra imágenes o haz clic para seleccionar"}
+                ? `Máximo de ${maxImages} archivos alcanzado`
+                : "Arrastra imágenes/PDFs o haz clic para seleccionar"}
             </p>
             <p className="text-xs text-muted-foreground mt-2 text-center">
-              {images.length}/{maxImages} imágenes • Máximo {maxSizeMB}MB por imagen
+              {images.length}/{maxImages} archivos • Imágenes: {maxSizeMB}MB • PDFs: {maxPdfSizeMB}MB
               <br />
               Tamaño total: {currentTotalSizeMB}MB / {maxTotalSizeMB}MB
             </p>
@@ -349,30 +471,51 @@ export function ImageUploader({
         </div>
       )}
 
-      {/* Vista previa de imágenes */}
+      {/* Vista previa de archivos */}
       {images.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {images.map((image) => {
-            const imageSrc = image.base64
-            const imageSizeMB = image.size ? (image.size / 1024 / 1024).toFixed(2) : 'N/A'
+            const isPDF = image.mimeType === 'application/pdf' || 
+                         image.filename.toLowerCase().endsWith('.pdf') ||
+                         image.base64.startsWith('data:application/pdf')
+            const fileSizeMB = image.size ? (image.size / 1024 / 1024).toFixed(2) : 'N/A'
             
             return (
-              <div key={image.id} className="relative group aspect-square rounded-md overflow-hidden border">
-                <img
-                  src={imageSrc}
-                  alt={image.filename}
-                  className="w-full h-full object-cover"
-                />
+              <div key={image.id} className="relative group rounded-md overflow-hidden border">
+                {isPDF ? (
+                  <div className="w-full aspect-square flex flex-col bg-muted">
+                    <div className="flex-1 min-h-[200px]">
+                      <iframe
+                        src={image.base64}
+                        className="w-full h-full border-0"
+                        title={image.filename}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="aspect-square">
+                    <img
+                      src={image.base64}
+                      alt={image.filename}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
                 <button
                   onClick={() => removeImage(image.id)}
-                  className="absolute top-1 right-1 bg-destructive text-destructive-foreground p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-1 right-1 bg-destructive text-destructive-foreground p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
                   type="button"
                 >
                   <X className="w-4 h-4" />
                 </button>
                 <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1">
-                  <div className="truncate">{image.filename}</div>
-                  <div className="text-[10px] opacity-75">{imageSizeMB}MB</div>
+                  <div className="truncate flex items-center gap-1">
+                    {isPDF && <FileText className="w-3 h-3" />}
+                    {image.filename}
+                  </div>
+                  <div className="text-[10px] opacity-75">
+                    {isPDF ? 'PDF' : 'Imagen'} • {fileSizeMB}MB
+                  </div>
                 </div>
               </div>
             )

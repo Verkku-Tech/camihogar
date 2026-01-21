@@ -99,22 +99,28 @@ const categoryFromDB = (categoryDB: CategoryDB): Category => ({
 // Helper para convertir string ID del backend a number ID del frontend
 // Usa un hash simple para generar un ID numérico consistente
 const backendIdToNumber = (backendId: string): number => {
-  // Si el string ID puede parsearse como número, usarlo directamente
+  // Si el string ID puede parsearse como número COMPLETO (sin caracteres adicionales), usarlo directamente
   const parsed = Number.parseInt(backendId);
-  if (!Number.isNaN(parsed) && parsed > 0) {
+  // Verificar que el parseo fue exacto (sin caracteres sobrantes)
+  // Esto evita que "693db0" se convierta en 693, causando colisiones
+  if (!Number.isNaN(parsed) && parsed > 0 && parsed.toString() === backendId) {
     return parsed;
   }
 
-  // Si no, generar un hash numérico del string
+  // Si no es un número exacto, generar un hash numérico del string completo
+  // Esto asegura que IDs como "693db0" y "693" generen números diferentes
   let hash = 0;
   for (let i = 0; i < backendId.length; i++) {
     const char = backendId.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
+    hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // Convertir a 32 bits
   }
 
-  // Retornar un número positivo
-  return Math.abs(hash) || Date.now();
+  // Retornar un número positivo, asegurando que sea mayor que cualquier ID numérico común
+  // Multiplicamos por un factor para evitar colisiones con IDs numéricos simples
+  const hashValue = Math.abs(hash) || Date.now();
+  // Asegurar que el hash sea suficientemente grande para evitar colisiones con IDs numéricos simples
+  return hashValue > 1000000 ? hashValue : hashValue + 1000000;
 };
 
 // Helper functions para mapear entre frontend y backend
@@ -243,9 +249,27 @@ export const getCategories = async (): Promise<Category[]> => {
         }
 
         // Luego agregar/actualizar con categorías del backend (estas tienen prioridad)
+        const idSet = new Set<number>(); // Para detectar IDs duplicados
+
         for (let i = 0; i < backendCategories.length; i++) {
           const backendCategory = backendCategories[i];
           const mappedCategory = backendCategoriesMapped[i];
+
+          // Verificar si el ID ya existe
+          if (idSet.has(mappedCategory.id)) {
+            console.warn(
+              `⚠️ ID duplicado detectado: ${mappedCategory.id} para categoría "${mappedCategory.name}". ` +
+              `Backend ID: ${backendCategory.id}. Generando nuevo ID...`
+            );
+            // Generar un nuevo ID único sumando un offset basado en el índice
+            mappedCategory.id = mappedCategory.id + (i * 1000000);
+            // Asegurar que el nuevo ID no colisione
+            while (idSet.has(mappedCategory.id)) {
+              mappedCategory.id += 1;
+            }
+          }
+          
+          idSet.add(mappedCategory.id);
 
           // Verificar si ya existe una categoría con el mismo nombre
           const existing = categoriesMap.get(mappedCategory.name);
@@ -259,11 +283,13 @@ export const getCategories = async (): Promise<Category[]> => {
           // Las categorías del backend tienen prioridad
           categoriesMap.set(mappedCategory.name, mappedCategory);
 
-          // Guardar/actualizar en IndexedDB
+          // Guardar/actualizar en IndexedDB usando put (hace update si existe, add si no)
           try {
-            await db.update("categories", categoryToDB(mappedCategory, mappedCategory.backendId));
-          } catch {
-            await db.add("categories", categoryToDB(mappedCategory, mappedCategory.backendId));
+            await db.put("categories", categoryToDB(mappedCategory, mappedCategory.backendId));
+            console.log(`✅ Categoría sincronizada: ${mappedCategory.name} (ID: ${mappedCategory.id}, Backend ID: ${backendCategory.id})`);
+          } catch (error) {
+            console.error(`❌ Error guardando categoría ${mappedCategory.name}:`, error);
+            // Continuar con las demás categorías aunque una falle
           }
         }
 
@@ -1340,11 +1366,12 @@ export const deleteProduct = async (id: number): Promise<void> => {
 // Interfaz para imágenes de productos
 export interface ProductImage {
   id: string; // ID único para la imagen
-  base64: string; // Imagen en base64 (data:image/jpeg;base64,...)
+  base64: string; // Imagen o PDF en base64 (data:image/jpeg;base64,... o data:application/pdf;base64,...)
   filename: string; // Nombre original del archivo
   type: "model" | "reference" | "other"; // Tipo de imagen
   uploadedAt: string; // Fecha de carga (ISO string)
   size?: number; // Tamaño del archivo en bytes (opcional)
+  mimeType?: string; // Tipo MIME: "image/jpeg", "image/png", "application/pdf", etc.
 }
 
 export interface OrderProduct {
@@ -1429,7 +1456,7 @@ export interface Order {
   paymentMethod: string;
   // Nuevos campos opcionales para compatibilidad hacia atrás
   paymentCondition?: "cashea" | "pagara_en_tienda" | "pago_a_entrega" | "pago_parcial" | "todo_pago";
-  saleType?: "encargo" | "entrega" | "sistema_apartado";
+  saleType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado";
   deliveryType?: "entrega_programada" | "delivery_express" | "retiro_tienda" | "retiro_almacen";
   deliveryZone?: "caracas" | "g_g" | "san_antonio_los_teques" | "caucagua_higuerote" | "la_guaira" | "charallave_cua" | "interior_pais";
   paymentDetails?: {
@@ -2438,7 +2465,7 @@ export interface UnifiedOrder {
   expiresAt?: string; // Solo para presupuestos
   validForDays?: number; // Solo para presupuestos
   paymentMethod?: string; // Solo para pedidos
-  saleType?: "encargo" | "entrega" | "sistema_apartado";
+  saleType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado";
   deliveryType?: "entrega_programada" | "delivery_express" | "retiro_tienda" | "retiro_almacen";
   deliveryZone?: "caracas" | "g_g" | "san_antonio_los_teques" | "caucagua_higuerote" | "la_guaira" | "charallave_cua" | "interior_pais";
   dispatchDate?: string; // Fecha de despacho

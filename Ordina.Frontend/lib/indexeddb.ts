@@ -256,6 +256,22 @@ export const update = async <T extends { id: string }>(
   });
 };
 
+// Actualizar o agregar un registro (put hace update si existe, add si no)
+export const put = async <T extends { id: string }>(
+  storeName: string,
+  item: T
+): Promise<T> => {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], "readwrite");
+    const objectStore = transaction.objectStore(storeName);
+    const request = objectStore.put(item);
+
+    request.onsuccess = () => resolve(item);
+    request.onerror = () => reject(request.error);
+  });
+};
+
 // Eliminar un registro
 export const remove = async (storeName: string, id: string): Promise<void> => {
   const db = await getDB();

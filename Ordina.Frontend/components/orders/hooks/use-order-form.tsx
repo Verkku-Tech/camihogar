@@ -85,7 +85,7 @@ export interface UseOrderFormReturn {
     condition: UseOrderFormReturn["paymentCondition"]
   ) => void;
 
-  saleType: "encargo" | "entrega" | "sistema_apartado" | "";
+  saleType: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado" | "";
   setSaleType: (type: UseOrderFormReturn["saleType"]) => void;
 
   deliveryType:
@@ -248,7 +248,7 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
     | ""
   >("");
   const [saleType, setSaleType] = useState<
-    "encargo" | "entrega" | "sistema_apartado" | ""
+    "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado" | ""
   >("");
   const [deliveryType, setDeliveryType] = useState<
     | "entrega_programada"
@@ -396,15 +396,26 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
   }, [preferredCurrency]);
 
   const getDefaultCurrencyFromSelection = useCallback((): Currency => {
+    // Priorizar USD primero si está disponible en selectedCurrencies O si hay tasa de cambio
+    if (selectedCurrencies.includes("USD") || exchangeRates.USD?.rate) {
+      return "USD";
+    }
+    // Luego EUR si está disponible en selectedCurrencies O si hay tasa de cambio
+    if (selectedCurrencies.includes("EUR") || exchangeRates.EUR?.rate) {
+      return "EUR";
+    }
+    // Si preferredCurrency no es Bs y está disponible, usarla
     if (selectedCurrencies.includes(preferredCurrency) && preferredCurrency !== "Bs") {
       return preferredCurrency;
     }
+    // Buscar cualquier moneda no-Bs disponible
     const nonBsCurrency = selectedCurrencies.find((c) => c !== "Bs");
     if (nonBsCurrency) {
       return nonBsCurrency;
     }
-    return preferredCurrency;
-  }, [selectedCurrencies, preferredCurrency]);
+    // Fallback: devolver preferredCurrency o USD si no hay nada
+    return preferredCurrency !== "Bs" ? preferredCurrency : "USD";
+  }, [selectedCurrencies, preferredCurrency, exchangeRates]);
 
   const convertCurrencyValue = useCallback(
     (value: number, fromCurrency: Currency, toCurrency: Currency): number => {
