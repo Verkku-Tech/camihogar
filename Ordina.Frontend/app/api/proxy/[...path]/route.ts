@@ -13,7 +13,7 @@ async function handleRequest(
   params: { path: string[] },
   method: string
 ) {
-  const [service, ...pathParts] = params.path;
+  const [service, ...rest] = params.path;
   const apiBaseUrl = API_BASE_URLS[service];
   
   if (!apiBaseUrl) {
@@ -24,8 +24,17 @@ async function handleRequest(
   }
 
   // Construir el path completo del endpoint
-  // Todos los endpoints del backend tienen el prefijo /api/
-  const path = `/api/${pathParts.join('/')}`;
+  // rest puede ser: ['api', 'Orders'] o ['Orders'] dependiendo de cómo venga del api-client
+  // Normalizar para que siempre tenga /api/ al inicio
+  let path: string;
+  if (rest[0] === 'api') {
+    // Ya viene con /api/: ['api', 'Orders'] → /api/Orders
+    path = `/${rest.join('/')}`;
+  } else {
+    // No viene con /api/: ['Orders'] → /api/Orders
+    path = `/api/${rest.join('/')}`;
+  }
+  
   const searchParams = request.nextUrl.search;
   const url = `${apiBaseUrl}${path}${searchParams}`;
 

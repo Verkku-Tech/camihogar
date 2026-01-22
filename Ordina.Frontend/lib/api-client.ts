@@ -229,11 +229,12 @@ export class ApiClient {
     }
 
     // Construir la URL final
-    // Si baseUrl es un proxy (/api/proxy/security), agregar el endpoint sin el /api inicial
+    // Si baseUrl es un proxy (/api/proxy/security), enviar el endpoint completo (incluyendo /api/)
+    // El proxy extraerá el servicio y pasará el resto al backend correctamente
     // Si baseUrl es una URL directa (http://...), agregar el endpoint completo
     const isProxy = baseUrl.startsWith("/api/proxy/");
     const finalUrl = isProxy
-      ? `${baseUrl}${endpoint.replace(/^\/api\//, "/")}` // Proxy: /api/proxy/security/Auth/login
+      ? `${baseUrl}${endpoint}` // Proxy: /api/proxy/orders/api/Orders (el proxy manejará el path)
       : `${baseUrl}${endpoint}`; // Directo: http://.../api/Auth/login
 
     try {
