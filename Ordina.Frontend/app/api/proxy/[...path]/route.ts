@@ -24,7 +24,8 @@ async function handleRequest(
   }
 
   // Construir el path completo del endpoint
-  const path = `/${pathParts.join('/')}`;
+  // Todos los endpoints del backend tienen el prefijo /api/
+  const path = `/api/${pathParts.join('/')}`;
   const searchParams = request.nextUrl.search;
   const url = `${apiBaseUrl}${path}${searchParams}`;
 
