@@ -333,8 +333,12 @@ interface OrderConfirmationDialogProps {
       | "pago_parcial"
       | "todo_pago";
     saleType?:
+      | "delivery_express"
       | "encargo"
+      | "encargo_entrega"
       | "entrega"
+      | "retiro_almacen"
+      | "retiro_tienda"
       | "sistema_apartado";
     deliveryType?:
       | "entrega_programada"
@@ -918,8 +922,16 @@ export function OrderConfirmationDialog({
                       <p className="font-medium">
                         {orderData.saleType === "encargo"
                           ? "Encargo"
+                          : orderData.saleType === "encargo_entrega"
+                          ? "Encargo/Entrega"
                           : orderData.saleType === "entrega"
                           ? "Entrega"
+                          : orderData.saleType === "delivery_express"
+                          ? "Delivery Express"
+                          : orderData.saleType === "retiro_almacen"
+                          ? "Retiro x Almacén"
+                          : orderData.saleType === "retiro_tienda"
+                          ? "Retiro x Tienda"
                           : orderData.saleType === "sistema_apartado"
                           ? "Sistema de Apartado"
                           : orderData.saleType}
@@ -971,7 +983,7 @@ export function OrderConfirmationDialog({
                   {orderData.hasDelivery && orderData.deliveryServices && (
                     <div>
                       <span className="text-sm text-muted-foreground">
-                        Servicios de Delivery:
+                        Servicios adicionales:
                       </span>
                       <p className="font-medium">
                         {(() => {
@@ -1016,7 +1028,7 @@ export function OrderConfirmationDialog({
                       <div className="mb-3 pb-3 border-b">
                         {(() => {
                           let badgeText = "Sin definir";
-                          let badgeVariant: "default" | "destructive" | "secondary" = "secondary";
+                          let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "secondary";
                           let badgeClassName = "text-sm";
 
                           if (product.locationStatus === "EN TIENDA") {
@@ -1033,7 +1045,8 @@ export function OrderConfirmationDialog({
                               badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
                             } else {
                               badgeText = "Mandar a Fabricar";
-                              badgeVariant = "destructive";
+                              badgeVariant = "outline";
+                              badgeClassName = "text-sm text-foreground border-0";
                             }
                           }
 

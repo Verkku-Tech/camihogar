@@ -46,6 +46,18 @@ export function ExchangeRatesPage() {
     loadRates();
   }, []);
 
+  // Función helper para formatear la tasa de cambio
+  const formatExchangeRate = (rate: number): string => {
+    // Convertir a string y eliminar ceros innecesarios al final
+    const rateStr = rate.toString();
+    if (rateStr.includes('.')) {
+      // Eliminar ceros finales después del punto decimal, pero mantener el punto si hay dígitos antes
+      // Ejemplo: "347.26310000" -> "347.2631", "347.0" -> "347"
+      return rateStr.replace(/\.?0+$/, '');
+    }
+    return rateStr;
+  };
+
   const loadRates = async () => {
     try {
       const allRates = await getAll<ExchangeRate>("exchange_rates");
@@ -227,17 +239,17 @@ export function ExchangeRatesPage() {
                   <Label>Tasa (Bs por unidad)</Label>
                   <Input
                     type="number"
-                    step="0.01"
+                    step="any"
                     min="0"
                     value={formData.rate}
                     onChange={(e) =>
                       setFormData({ ...formData, rate: e.target.value })
                     }
-                    placeholder="Ej: 38.50"
+                    placeholder="Ej: 347.26310000"
                     required
                   />
                   <p className="text-xs text-muted-foreground">
-                    Ejemplo: 38.50 significa 1 USD = 38.50 Bs
+                    Ejemplo: 347.26310000 significa 1 USD = 347.26310000 Bs
                   </p>
                 </div>
               </div>
@@ -300,7 +312,7 @@ export function ExchangeRatesPage() {
                       <TableCell className="font-medium">
                         {rate.toCurrency === "USD" ? "💵 Dólares" : "💶 Euros"}
                       </TableCell>
-                      <TableCell>{rate.rate.toFixed(2)} Bs</TableCell>
+                      <TableCell>{formatExchangeRate(rate.rate)} Bs</TableCell>
                       <TableCell>
                         {new Date(rate.createdAt).toLocaleDateString()}
                       </TableCell>

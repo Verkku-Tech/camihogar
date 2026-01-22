@@ -75,15 +75,17 @@ export function SelectProviderDialog({
     onConfirm(provider.id, provider.razonSocial, notes)
   }
 
-  if (!product) return null
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Seleccionar Proveedor para Fabricación</DialogTitle>
           <DialogDescription>
-            Selecciona el proveedor que fabricará: <strong>{product.name}</strong>
+            {product ? (
+              <>Selecciona el proveedor que fabricará: <strong>{product.name}</strong></>
+            ) : (
+              <>Selecciona el proveedor para los productos seleccionados</>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -129,7 +131,7 @@ export function SelectProviderDialog({
             Cancelar
           </Button>
           <Button onClick={handleConfirm} disabled={!selectedProviderId || isLoading}>
-            Confirmar Fabricación
+            {product ? "Confirmar Fabricación" : "Confirmar Fabricación Masiva"}
           </Button>
         </DialogFooter>
       </DialogContent>

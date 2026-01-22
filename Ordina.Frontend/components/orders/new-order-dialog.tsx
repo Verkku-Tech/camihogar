@@ -47,9 +47,12 @@ export const PAYMENT_CONDITIONS = [
 ] as const;
 
 export const PURCHASE_TYPES = [
+  { value: "delivery_express", label: "Delivery Express" },
   { value: "encargo", label: "Encargo" },
+  { value: "encargo_entrega", label: "Encargo/Entrega" },
   { value: "entrega", label: "Entrega" },
-  { value: "sistema_apartado", label: "Sistema de Apartado" },
+  { value: "retiro_almacen", label: "Retiro x Almacén" },
+  { value: "retiro_tienda", label: "Retiro x Tienda" },
 ] as const;
 
 export const DELIVERY_TYPES = [
@@ -499,7 +502,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           | "pago_a_entrega"
           | "pago_parcial"
           | "todo_pago",
-        saleType: orderForm.saleType as "encargo" | "entrega" | "sistema_apartado",
+        saleType: orderForm.saleType as "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado",
         deliveryType: orderForm.deliveryType as
           | "entrega_programada"
           | "delivery_express"

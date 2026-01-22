@@ -403,12 +403,94 @@ export function Step3OrderDetails({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {/* Base imponible (descuentos por producto + express + acarreo + armada) */}
+                    {/* DELIVERY EXPRESS - Mostrar por separado cuando esté habilitado */}
+                    {orderForm.deliveryServices.deliveryExpress?.enabled && 
+                     orderForm.deliveryServices.deliveryExpress.cost > 0 && (
+                      <TableRow>
+                        <TableCell className="text-xs sm:text-sm font-medium">
+                          DELIVERY EXPRESS:
+                        </TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
+                          {(() => {
+                            const cost = orderForm.deliveryServices.deliveryExpress.cost;
+                            const currency = orderForm.deliveryServices.deliveryExpress.currency || "Bs";
+                            // Si la moneda no es Bs, convertir el costo de Bs a la moneda original
+                            if (currency !== "Bs") {
+                              const rate = currency === "USD" 
+                                ? orderForm.exchangeRates.USD?.rate 
+                                : orderForm.exchangeRates.EUR?.rate;
+                              if (rate && rate > 0) {
+                                const costInOriginalCurrency = cost / rate;
+                                return formatCurrency(costInOriginalCurrency, currency);
+                              }
+                            }
+                            return formatCurrency(cost, currency);
+                          })()}
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {/* SERVICIO DE ACARREO - Mostrar por separado cuando esté habilitado */}
+                    {orderForm.deliveryServices.servicioAcarreo?.enabled && 
+                     orderForm.deliveryServices.servicioAcarreo.cost && 
+                     orderForm.deliveryServices.servicioAcarreo.cost > 0 && (
+                      <TableRow>
+                        <TableCell className="text-xs sm:text-sm font-medium">
+                          SERVICIO DE ACARREO:
+                        </TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
+                          {(() => {
+                            const cost = orderForm.deliveryServices.servicioAcarreo.cost;
+                            const currency = orderForm.deliveryServices.servicioAcarreo.currency || "Bs";
+                            // Si la moneda no es Bs, convertir el costo de Bs a la moneda original
+                            if (currency !== "Bs") {
+                              const rate = currency === "USD" 
+                                ? orderForm.exchangeRates.USD?.rate 
+                                : orderForm.exchangeRates.EUR?.rate;
+                              if (rate && rate > 0) {
+                                const costInOriginalCurrency = cost / rate;
+                                return formatCurrency(costInOriginalCurrency, currency);
+                              }
+                            }
+                            return formatCurrency(cost, currency);
+                          })()}
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {/* SERVICIO DE ARMADO - Mostrar por separado cuando esté habilitado */}
+                    {orderForm.deliveryServices.servicioArmado?.enabled && 
+                     orderForm.deliveryServices.servicioArmado.cost > 0 && (
+                      <TableRow>
+                        <TableCell className="text-xs sm:text-sm font-medium">
+                          SERVICIO DE ARMADO:
+                        </TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
+                          {(() => {
+                            const cost = orderForm.deliveryServices.servicioArmado.cost;
+                            const currency = orderForm.deliveryServices.servicioArmado.currency || "Bs";
+                            // Si la moneda no es Bs, convertir el costo de Bs a la moneda original
+                            if (currency !== "Bs") {
+                              const rate = currency === "USD" 
+                                ? orderForm.exchangeRates.USD?.rate 
+                                : orderForm.exchangeRates.EUR?.rate;
+                              if (rate && rate > 0) {
+                                const costInOriginalCurrency = cost / rate;
+                                return formatCurrency(costInOriginalCurrency, currency);
+                              }
+                            }
+                            return formatCurrency(cost, currency);
+                          })()}
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {/* Base imponible (descuentos por producto) */}
                     <TableRow>
                       <TableCell className="text-xs sm:text-sm">
-                        Base imponible (descuentos por producto + express + acarreo + armada):
+                        Base imponible (descuentos por producto):
                       </TableCell>
-                      {orderForm.renderCurrencyCell(orderForm.subtotal + orderForm.deliveryCost)}
+                      {orderForm.renderCurrencyCell(orderForm.subtotal)}
                     </TableRow>
 
                     {/* Impuesto */}
@@ -668,6 +750,10 @@ export function Step3OrderDetails({
                     value as
                       | "encargo"
                       | "entrega"
+                      | "delivery_express"
+                      | "encargo_entrega"
+                      | "retiro_almacen"
+                      | "retiro_tienda"
                       | "sistema_apartado"
                       | ""
                 )

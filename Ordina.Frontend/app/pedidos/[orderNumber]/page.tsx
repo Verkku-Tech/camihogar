@@ -1207,7 +1207,7 @@ export default function OrderDetailPage() {
                               <div className="mb-3 pb-3 border-b">
                                 {(() => {
                                   let badgeText = "Sin definir";
-                                  let badgeVariant: "default" | "destructive" | "secondary" = "secondary";
+                                  let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "secondary";
                                   let badgeClassName = "text-sm";
 
                                   // Normalizar locationStatus para comparación (trim y manejar ambos formatos)
@@ -1238,7 +1238,8 @@ export default function OrderDetailPage() {
                                       badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
                                     } else {
                                       badgeText = "Mandar a Fabricar";
-                                      badgeVariant = "destructive";
+                                      badgeVariant = "outline";
+                                      badgeClassName = "text-sm text-foreground border-0";
                                     }
                                   }
 

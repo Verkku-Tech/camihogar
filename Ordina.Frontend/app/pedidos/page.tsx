@@ -25,6 +25,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner"
 import { getUnifiedOrders, deleteOrder, deleteBudget, type UnifiedOrder } from "@/lib/storage"
 import { useCurrency } from "@/contexts/currency-context"
+import { usePagination } from "@/hooks/use-pagination"
+import { TablePagination } from "@/components/ui/table-pagination"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -55,6 +57,7 @@ export default function PedidosPage() {
     vendor: "all",
     status: "all",
     paymentMethod: "all",
+    client: "all",
   })
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -62,6 +65,7 @@ export default function PedidosPage() {
   const [orderToDelete, setOrderToDelete] = useState<UnifiedOrder | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
+  const [itemsPerPage, setItemsPerPage] = useState(10)
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -114,6 +118,7 @@ export default function PedidosPage() {
   const uniquePaymentMethods = Array.from(
     new Set(orders.map((o) => o.paymentMethod).filter((m): m is string => !!m))
   ).sort()
+  const uniqueClients = Array.from(new Set(orders.map((o) => o.clientName))).sort()
 
   const filteredOrders = orders.filter((order) => {
     // Filtro de búsqueda general (existente)
@@ -127,8 +132,23 @@ export default function PedidosPage() {
     const matchesStatus = filters.status === "all" || order.status === filters.status
     const matchesPaymentMethod =
       filters.paymentMethod === "all" || order.paymentMethod === filters.paymentMethod
+    const matchesClient = filters.client === "all" || order.clientName === filters.client
 
-    return matchesSearch && matchesVendor && matchesStatus && matchesPaymentMethod
+    return matchesSearch && matchesVendor && matchesStatus && matchesPaymentMethod && matchesClient
+  })
+
+  // Paginación
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedOrders,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({
+    data: filteredOrders,
+    itemsPerPage,
   })
 
   const handleDelete = async () => {
@@ -210,6 +230,25 @@ export default function PedidosPage() {
               {/* Filtros por columna */}
               <div className="flex flex-wrap gap-2 items-center">
                 <Select
+                  value={filters.client}
+                  onValueChange={(value) =>
+                    setFilters((prev) => ({ ...prev, client: value }))
+                  }
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Todos los clientes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los clientes</SelectItem>
+                    {uniqueClients.map((client) => (
+                      <SelectItem key={client} value={client}>
+                        {client}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
                   value={filters.vendor}
                   onValueChange={(value) =>
                     setFilters((prev) => ({ ...prev, vendor: value }))
@@ -266,12 +305,12 @@ export default function PedidosPage() {
                   </SelectContent>
                 </Select>
 
-                {(filters.vendor !== "all" || filters.status !== "all" || filters.paymentMethod !== "all") && (
+                {(filters.client !== "all" || filters.vendor !== "all" || filters.status !== "all" || filters.paymentMethod !== "all") && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() =>
-                      setFilters({ vendor: "all", status: "all", paymentMethod: "all" })
+                      setFilters({ client: "all", vendor: "all", status: "all", paymentMethod: "all" })
                     }
                     className="gap-2"
                   >
@@ -309,7 +348,7 @@ export default function PedidosPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredOrders.map((order) => (
+                        {paginatedOrders.map((order) => (
                           <TableRow key={order.id}>
                             <TableCell className="font-medium">{order.orderNumber}</TableCell>
                             <TableCell>{order.clientName}</TableCell>
@@ -356,6 +395,20 @@ export default function PedidosPage() {
                         ))}
                       </TableBody>
                     </Table>
+                  )}
+                  
+                  {/* Paginación */}
+                  {!isLoading && filteredOrders.length > 0 && (
+                    <TablePagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      totalItems={totalItems}
+                      startIndex={startIndex}
+                      endIndex={endIndex}
+                      onPageChange={goToPage}
+                      itemsPerPage={itemsPerPage}
+                      onItemsPerPageChange={setItemsPerPage}
+                    />
                   )}
                 </CardContent>
               </Card>
