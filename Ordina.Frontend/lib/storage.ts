@@ -1475,7 +1475,7 @@ export interface OrderProduct {
   images?: ProductImage[]; // Imágenes de referencia del producto
   // Campos de fabricación
   availabilityStatus?: "disponible" | "no_disponible"; // Estado de disponibilidad
-  manufacturingStatus?: "debe_fabricar" | "fabricando" | "fabricado"; // Estado de fabricación (solo si no_disponible)
+  manufacturingStatus?: "debe_fabricar" | "fabricando" | "almacen_no_fabricado"; // Estado de fabricación (solo si no_disponible): 3 estados, último = En almacén
   manufacturingProviderId?: string; // ID del proveedor asignado
   manufacturingProviderName?: string; // Nombre del proveedor (para display)
   manufacturingStartedAt?: string; // Fecha de inicio de fabricación
@@ -1518,6 +1518,8 @@ export interface PartialPayment {
     wallet?: string; // Para cuentas digitales: wallet
     // Zelle
     envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
+    // TDD (Tarjeta de Débito)
+    cardReference?: string; // Número de referencia del pago con tarjeta
   };
 }
 
@@ -1723,7 +1725,13 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       size: img.size,
     })),
     availabilityStatus: p.availabilityStatus as "disponible" | "no_disponible" | undefined,
-    manufacturingStatus: p.manufacturingStatus as "debe_fabricar" | "fabricando" | "fabricado" | undefined,
+    manufacturingStatus: (() => {
+      const s = p.manufacturingStatus?.trim().toLowerCase();
+      if (!s) return undefined;
+      if (s === "fabricado") return "almacen_no_fabricado" as const; // legacy
+      if (s === "almacen_no_fabricado" || s === "debe_fabricar" || s === "fabricando") return s as "debe_fabricar" | "fabricando" | "almacen_no_fabricado";
+      return undefined;
+    })(),
     manufacturingProviderId: p.manufacturingProviderId,
     manufacturingProviderName: p.manufacturingProviderName,
     manufacturingStartedAt: p.manufacturingStartedAt,
@@ -2906,11 +2914,13 @@ export const calculateDashboardMetrics = async (
   const productsToManufacture = orders.reduce((count, order) => {
     return (
       count +
-      order.products.filter(
-        (product) =>
-          product.locationStatus === "FABRICACION" &&
-          product.manufacturingStatus !== "fabricado"
-      ).length
+      order.products.filter((product) => {
+        if (product.locationStatus !== "FABRICACION") {
+          return false;
+        }
+        const manufacturingStatus = product.manufacturingStatus || "debe_fabricar";
+        return manufacturingStatus !== "almacen_no_fabricado";
+      }).length
     );
   }, 0);
 

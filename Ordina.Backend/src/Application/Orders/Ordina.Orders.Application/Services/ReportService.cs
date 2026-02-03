@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Microsoft.Extensions.Logging;
@@ -70,6 +71,19 @@ public interface IReportService
 
 public class ReportService : IReportService
 {
+    private static readonly HashSet<string> ValidManufacturingStatuses = new HashSet<string>(new[]
+    {
+        "debe_fabricar",
+        "fabricando",
+        "almacen_no_fabricado"
+    }, StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> FabricationLocationStatuses = new HashSet<string>(new[]
+    {
+        "mandar_a_fabricar",
+        "fabricacion"
+    }, StringComparer.OrdinalIgnoreCase);
+
     private readonly IOrderRepository _orderRepository;
     private readonly IProviderRepository _providerRepository;
     private readonly ICategoryRepository _categoryRepository;
@@ -111,10 +125,10 @@ public class ReportService : IReportService
         string? searchTerm = null)
     {
         // Validar estado
-        if (string.IsNullOrWhiteSpace(status) || 
-            !new[] { "debe_fabricar", "fabricando", "fabricado" }.Contains(status))
+        if (string.IsNullOrWhiteSpace(status) ||
+            !ValidManufacturingStatuses.Contains(status))
         {
-            throw new ArgumentException("El estado debe ser: debe_fabricar, fabricando o fabricado", nameof(status));
+            throw new ArgumentException("El estado debe ser: debe_fabricar, fabricando o almacen_no_fabricado", nameof(status));
         }
 
         try
@@ -159,10 +173,10 @@ public class ReportService : IReportService
         string? searchTerm = null)
     {
         // Validar estado
-        if (string.IsNullOrWhiteSpace(status) || 
-            !new[] { "debe_fabricar", "fabricando", "fabricado" }.Contains(status))
+        if (string.IsNullOrWhiteSpace(status) ||
+            !ValidManufacturingStatuses.Contains(status))
         {
-            throw new ArgumentException("El estado debe ser: debe_fabricar, fabricando o fabricado", nameof(status));
+            throw new ArgumentException("El estado debe ser: debe_fabricar, fabricando o almacen_no_fabricado", nameof(status));
         }
 
         try
@@ -262,6 +276,8 @@ public class ReportService : IReportService
         DateTime? endDate, 
         string? searchTerm)
     {
+        var normalizedStatus = NormalizeManufacturingStatus(status);
+
         // 1. Obtener todas las órdenes
         var orders = await _orderRepository.GetAllAsync();
         _logger.LogInformation("Órdenes obtenidas: {Count}", orders.Count());
@@ -302,24 +318,17 @@ public class ReportService : IReportService
 
             foreach (var product in order.Products)
             {
-                // Solo productos que deben mandarse a fabricar
-                if (product.LocationStatus != "mandar_a_fabricar")
+                // Solo productos que deben mandarse a fabricar (aceptar "mandar_a_fabricar" y "FABRICACION")
+                if (!IsFabricationLocation(product.LocationStatus))
                 {
                     continue;
                 }
 
                 // Determinar el estado real del producto
-                string? productStatus = product.ManufacturingStatus;
-                
-                // Si no tiene manufacturingStatus pero locationStatus es "mandar_a_fabricar",
-                // asumimos que es "debe_fabricar"
-                if (string.IsNullOrWhiteSpace(productStatus))
-                {
-                    productStatus = "debe_fabricar";
-                }
+                var productStatus = NormalizeManufacturingStatus(product.ManufacturingStatus);
 
                 // Filtrar por el estado solicitado
-                if (productStatus != status)
+                if (!productStatus.Equals(normalizedStatus, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -355,7 +364,8 @@ public class ReportService : IReportService
                 {
                     "debe_fabricar" => "Por Fabricar",
                     "fabricando" => "Fabricando",
-                    "fabricado" => "Fabricado",
+                    "almacen_no_fabricado" => "En almacén",
+                    "fabricado" => "En almacén", // legacy
                     _ => productStatus
                 };
 
@@ -380,6 +390,29 @@ public class ReportService : IReportService
             .ToList();
 
         return reportData;
+    }
+
+    private static string NormalizeManufacturingStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return "debe_fabricar";
+        }
+
+        var normalized = status.Trim().ToLowerInvariant();
+        // Legacy: "fabricado" se trata como "almacen_no_fabricado"
+        if (normalized == "fabricado") return "almacen_no_fabricado";
+        return ValidManufacturingStatuses.Contains(normalized) ? normalized : "debe_fabricar";
+    }
+
+    private static bool IsFabricationLocation(string? locationStatus)
+    {
+        if (string.IsNullOrWhiteSpace(locationStatus))
+        {
+            return false;
+        }
+
+        return FabricationLocationStatuses.Contains(locationStatus.Trim());
     }
 
     // Método simplificado: ahora los valores ya son labels, solo necesitamos formatearlos

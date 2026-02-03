@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Microsoft.AspNetCore.Mvc;
 using Ordina.Orders.Application.Services;
 using Ordina.Orders.Application.DTOs;
@@ -9,6 +10,13 @@ namespace Ordina.Orders.Api.Controllers;
 [Produces("application/json")]
 public class ReportsController : ControllerBase
 {
+    private static readonly HashSet<string> ManufacturingStatuses = new HashSet<string>(new[]
+    {
+        "debe_fabricar",
+        "fabricando",
+        "almacen_no_fabricado"
+    }, System.StringComparer.OrdinalIgnoreCase);
+
     private readonly IReportService _reportService;
     private readonly ILogger<ReportsController> _logger;
 
@@ -45,10 +53,10 @@ public class ReportsController : ControllerBase
         try
         {
             // Validar estado
-            if (string.IsNullOrWhiteSpace(status) || 
-                !new[] { "debe_fabricar", "fabricando", "fabricado" }.Contains(status))
+            if (string.IsNullOrWhiteSpace(status) ||
+                !ManufacturingStatuses.Contains(status))
             {
-                return BadRequest(new { message = "El estado debe ser: debe_fabricar, fabricando o fabricado" });
+                return BadRequest(new { message = "El estado debe ser: debe_fabricar, fabricando, fabricado o almacen_no_fabricado" });
             }
 
             // Parsear fechas
@@ -81,11 +89,12 @@ public class ReportsController : ControllerBase
                 parsedEndDate,
                 searchTerm);
             
-            var statusName = status switch
+            var normalizedStatus = status.ToLowerInvariant();
+            var statusName = normalizedStatus switch
             {
                 "debe_fabricar" => "PorFabricar",
                 "fabricando" => "Fabricando",
-                "fabricado" => "Fabricado",
+                "almacen_no_fabricado" => "EnAlmacen",
                 _ => "Fabricacion"
             };
             
@@ -131,10 +140,10 @@ public class ReportsController : ControllerBase
         try
         {
             // Validar estado
-            if (string.IsNullOrWhiteSpace(status) || 
-                !new[] { "debe_fabricar", "fabricando", "fabricado" }.Contains(status))
+            if (string.IsNullOrWhiteSpace(status) ||
+                !ManufacturingStatuses.Contains(status))
             {
-                return BadRequest(new { message = "El estado debe ser: debe_fabricar, fabricando o fabricado" });
+                return BadRequest(new { message = "El estado debe ser: debe_fabricar, fabricando, fabricado o almacen_no_fabricado" });
             }
 
             // Parsear fechas

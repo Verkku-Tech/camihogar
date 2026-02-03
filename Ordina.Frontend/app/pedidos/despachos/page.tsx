@@ -79,9 +79,9 @@ const isOrderReadyForDispatch = (order: UnifiedOrder): boolean => {
       return true
     }
 
-    // Si debe fabricarse, debe estar fabricado
+    // Si debe fabricarse, debe estar En almacén (listo para despacho)
     if (product.locationStatus === "FABRICACION") {
-      return product.manufacturingStatus === "fabricado"
+      return product.manufacturingStatus === "almacen_no_fabricado"
     }
 
     // Por defecto, considerar listo

@@ -264,9 +264,9 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
   const [deliveryZone, setDeliveryZone] = useState("");
   const [hasDelivery, setHasDelivery] = useState(false);
   const [deliveryServices, setDeliveryServices] = useState<DeliveryServices>({
-    deliveryExpress: { enabled: false, cost: 0, currency: "Bs" },
-    servicioAcarreo: { enabled: false, cost: undefined, currency: "Bs" },
-    servicioArmado: { enabled: false, cost: 0, currency: "Bs" },
+    deliveryExpress: { enabled: false, cost: 0, currency: "USD" },
+    servicioAcarreo: { enabled: false, cost: undefined, currency: "USD" },
+    servicioArmado: { enabled: false, cost: 0, currency: "USD" },
   });
   const [payments, setPayments] = useState<PartialPayment[]>([]);
   const [generalDiscount, setGeneralDiscount] = useState(0);
@@ -847,9 +847,9 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
     setDeliveryZone("");
     setHasDelivery(false);
     setDeliveryServices({
-      deliveryExpress: { enabled: false, cost: 0, currency: "Bs" },
-      servicioAcarreo: { enabled: false, cost: undefined, currency: "Bs" },
-      servicioArmado: { enabled: false, cost: 0, currency: "Bs" },
+      deliveryExpress: { enabled: false, cost: 0, currency: "USD" },
+      servicioAcarreo: { enabled: false, cost: undefined, currency: "USD" },
+      servicioArmado: { enabled: false, cost: 0, currency: "USD" },
     });
     setPayments([]);
     setGeneralDiscount(0);

@@ -1,4 +1,4 @@
-﻿using MongoDB.Bson;
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Ordina.Database.Entities.Order;
@@ -44,7 +44,7 @@ public class OrderProduct
     public string? AvailabilityStatus { get; set; } // "disponible" | "no_disponible"
 
     [BsonElement("manufacturingStatus")]
-    public string? ManufacturingStatus { get; set; } // "debe_fabricar" | "fabricando" | "fabricado"
+    public string? ManufacturingStatus { get; set; } // "debe_fabricar" | "fabricando" | "almacen_no_fabricado" (3 estados; último = En almacén)
 
     [BsonElement("manufacturingProviderId")]
     public string? ManufacturingProviderId { get; set; }

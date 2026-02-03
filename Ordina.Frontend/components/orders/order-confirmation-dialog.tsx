@@ -1038,10 +1038,10 @@ export function OrderConfirmationDialog({
                             badgeVariant = "default";
                             badgeClassName = "text-sm";
                           } else if (product.locationStatus === "FABRICACION") {
-                            if (product.manufacturingStatus === "fabricado") {
-                              badgeText = "Fabricado";
+                            if (product.manufacturingStatus === "almacen_no_fabricado" || (product.manufacturingStatus as string) === "fabricado") {
+                              badgeText = "En almacén";
                               badgeVariant = "default";
-                              badgeClassName = "text-sm bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+                              badgeClassName = "text-sm bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300";
                             } else if (product.manufacturingStatus === "fabricando") {
                               badgeText = "En Fabricación";
                               badgeVariant = "secondary";

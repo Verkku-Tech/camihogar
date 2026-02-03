@@ -79,9 +79,9 @@ export function Step3OrderDetails({
                   if (!checked) {
                     // Resetear servicios cuando se desactiva delivery
                     orderForm.setDeliveryServices({
-                      deliveryExpress: { enabled: false, cost: 0, currency: "Bs" },
-                      servicioAcarreo: { enabled: false, cost: undefined, currency: "Bs" },
-                      servicioArmado: { enabled: false, cost: 0, currency: "Bs" },
+                      deliveryExpress: { enabled: false, cost: 0, currency: "USD" },
+                      servicioAcarreo: { enabled: false, cost: undefined, currency: "USD" },
+                      servicioArmado: { enabled: false, cost: 0, currency: "USD" },
                     });
                   }
                 }}
@@ -122,14 +122,14 @@ export function Step3OrderDetails({
                       id="deliveryExpress"
                       checked={orderForm.deliveryServices.deliveryExpress?.enabled || false}
                       onCheckedChange={(checked) => {
-                        orderForm.setDeliveryServices((prev) => ({
-                          ...prev,
-                          deliveryExpress: {
-                            enabled: checked as boolean,
-                            cost: checked ? (prev.deliveryExpress?.cost || 0) : 0,
-                            currency: prev.deliveryExpress?.currency || "Bs",
-                          },
-                        }));
+                          orderForm.setDeliveryServices((prev) => ({
+                            ...prev,
+                            deliveryExpress: {
+                              enabled: checked as boolean,
+                              cost: checked ? (prev.deliveryExpress?.cost || 0) : 0,
+                              currency: prev.deliveryExpress?.currency || "USD",
+                            },
+                          }));
                       }}
                     />
                     <Label htmlFor="deliveryExpress" className="text-sm sm:text-base font-medium">
@@ -173,7 +173,7 @@ export function Step3OrderDetails({
                           step="0.01"
                           value={(() => {
                             const cost = orderForm.deliveryServices.deliveryExpress?.cost || 0;
-                            const currency = orderForm.deliveryServices.deliveryExpress?.currency || "Bs";
+                        const currency = orderForm.deliveryServices.deliveryExpress?.currency || "USD";
                             if (cost === 0) return "";
                             if (currency === "Bs") return cost;
                             const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
@@ -181,7 +181,7 @@ export function Step3OrderDetails({
                           })()}
                           onChange={(e) => {
                             const inputValue = Number.parseFloat(e.target.value) || 0;
-                            const currency = orderForm.deliveryServices.deliveryExpress?.currency || "Bs";
+                        const currency = orderForm.deliveryServices.deliveryExpress?.currency || "USD";
                             let valueInBs = inputValue;
                             if (currency !== "Bs") {
                               const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
@@ -211,14 +211,14 @@ export function Step3OrderDetails({
                       id="servicioAcarreo"
                       checked={orderForm.deliveryServices.servicioAcarreo?.enabled || false}
                       onCheckedChange={(checked) => {
-                        orderForm.setDeliveryServices((prev) => ({
-                          ...prev,
-                          servicioAcarreo: {
-                            enabled: checked as boolean,
-                            cost: checked ? (prev.servicioAcarreo?.cost || undefined) : undefined,
-                            currency: prev.servicioAcarreo?.currency || "Bs",
-                          },
-                        }));
+                          orderForm.setDeliveryServices((prev) => ({
+                            ...prev,
+                            servicioAcarreo: {
+                              enabled: checked as boolean,
+                              cost: checked ? (prev.servicioAcarreo?.cost || undefined) : undefined,
+                              currency: prev.servicioAcarreo?.currency || "USD",
+                            },
+                          }));
                       }}
                     />
                     <Label htmlFor="servicioAcarreo" className="text-sm sm:text-base font-medium">
@@ -265,14 +265,14 @@ export function Step3OrderDetails({
                           value={(() => {
                             const cost = orderForm.deliveryServices.servicioAcarreo?.cost;
                             if (cost === undefined || cost === 0) return "";
-                            const currency = orderForm.deliveryServices.servicioAcarreo?.currency || "Bs";
+                            const currency = orderForm.deliveryServices.servicioAcarreo?.currency || "USD";
                             if (currency === "Bs") return cost;
                             const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
                             return rate && rate > 0 ? cost / rate : cost;
                           })()}
                           onChange={(e) => {
                             const inputValue = e.target.value === "" ? undefined : Number.parseFloat(e.target.value) || 0;
-                            const currency = orderForm.deliveryServices.servicioAcarreo?.currency || "Bs";
+                            const currency = orderForm.deliveryServices.servicioAcarreo?.currency || "USD";
                             let valueInBs: number | undefined = inputValue;
                             if (inputValue !== undefined && currency !== "Bs") {
                               const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
@@ -302,14 +302,14 @@ export function Step3OrderDetails({
                       id="servicioArmado"
                       checked={orderForm.deliveryServices.servicioArmado?.enabled || false}
                       onCheckedChange={(checked) => {
-                        orderForm.setDeliveryServices((prev) => ({
-                          ...prev,
-                          servicioArmado: {
-                            enabled: checked as boolean,
-                            cost: checked ? (prev.servicioArmado?.cost || 0) : 0,
-                            currency: prev.servicioArmado?.currency || "Bs",
-                          },
-                        }));
+                          orderForm.setDeliveryServices((prev) => ({
+                            ...prev,
+                            servicioArmado: {
+                              enabled: checked as boolean,
+                              cost: checked ? (prev.servicioArmado?.cost || 0) : 0,
+                              currency: prev.servicioArmado?.currency || "USD",
+                            },
+                          }));
                       }}
                     />
                     <Label htmlFor="servicioArmado" className="text-sm sm:text-base font-medium">
@@ -354,7 +354,7 @@ export function Step3OrderDetails({
                           required
                           value={(() => {
                             const cost = orderForm.deliveryServices.servicioArmado?.cost || 0;
-                            const currency = orderForm.deliveryServices.servicioArmado?.currency || "Bs";
+                        const currency = orderForm.deliveryServices.servicioArmado?.currency || "USD";
                             if (cost === 0) return "";
                             if (currency === "Bs") return cost;
                             const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
@@ -362,7 +362,7 @@ export function Step3OrderDetails({
                           })()}
                           onChange={(e) => {
                             const inputValue = Number.parseFloat(e.target.value) || 0;
-                            const currency = orderForm.deliveryServices.servicioArmado?.currency || "Bs";
+                        const currency = orderForm.deliveryServices.servicioArmado?.currency || "USD";
                             let valueInBs = inputValue;
                             if (currency !== "Bs") {
                               const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
@@ -404,88 +404,6 @@ export function Step3OrderDetails({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {/* DELIVERY EXPRESS - Mostrar por separado cuando esté habilitado */}
-                    {orderForm.deliveryServices.deliveryExpress?.enabled && 
-                     orderForm.deliveryServices.deliveryExpress.cost > 0 && (
-                      <TableRow>
-                        <TableCell className="text-xs sm:text-sm font-medium">
-                          DELIVERY EXPRESS:
-                        </TableCell>
-                        <TableCell className="text-right text-xs sm:text-sm">
-                          {(() => {
-                            const cost = orderForm.deliveryServices.deliveryExpress.cost;
-                            const currency = orderForm.deliveryServices.deliveryExpress.currency || "Bs";
-                            // Si la moneda no es Bs, convertir el costo de Bs a la moneda original
-                            if (currency !== "Bs") {
-                              const rate = currency === "USD" 
-                                ? orderForm.exchangeRates.USD?.rate 
-                                : orderForm.exchangeRates.EUR?.rate;
-                              if (rate && rate > 0) {
-                                const costInOriginalCurrency = cost / rate;
-                                return formatCurrency(costInOriginalCurrency, currency);
-                              }
-                            }
-                            return formatCurrency(cost, currency);
-                          })()}
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {/* SERVICIO DE ACARREO - Mostrar por separado cuando esté habilitado */}
-                    {orderForm.deliveryServices.servicioAcarreo?.enabled && 
-                     orderForm.deliveryServices.servicioAcarreo.cost && 
-                     orderForm.deliveryServices.servicioAcarreo.cost > 0 && (
-                      <TableRow>
-                        <TableCell className="text-xs sm:text-sm font-medium">
-                          SERVICIO DE ACARREO:
-                        </TableCell>
-                        <TableCell className="text-right text-xs sm:text-sm">
-                          {(() => {
-                            const cost = orderForm.deliveryServices.servicioAcarreo.cost;
-                            const currency = orderForm.deliveryServices.servicioAcarreo.currency || "Bs";
-                            // Si la moneda no es Bs, convertir el costo de Bs a la moneda original
-                            if (currency !== "Bs") {
-                              const rate = currency === "USD" 
-                                ? orderForm.exchangeRates.USD?.rate 
-                                : orderForm.exchangeRates.EUR?.rate;
-                              if (rate && rate > 0) {
-                                const costInOriginalCurrency = cost / rate;
-                                return formatCurrency(costInOriginalCurrency, currency);
-                              }
-                            }
-                            return formatCurrency(cost, currency);
-                          })()}
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {/* SERVICIO DE ARMADO - Mostrar por separado cuando esté habilitado */}
-                    {orderForm.deliveryServices.servicioArmado?.enabled && 
-                     orderForm.deliveryServices.servicioArmado.cost > 0 && (
-                      <TableRow>
-                        <TableCell className="text-xs sm:text-sm font-medium">
-                          SERVICIO DE ARMADO:
-                        </TableCell>
-                        <TableCell className="text-right text-xs sm:text-sm">
-                          {(() => {
-                            const cost = orderForm.deliveryServices.servicioArmado.cost;
-                            const currency = orderForm.deliveryServices.servicioArmado.currency || "Bs";
-                            // Si la moneda no es Bs, convertir el costo de Bs a la moneda original
-                            if (currency !== "Bs") {
-                              const rate = currency === "USD" 
-                                ? orderForm.exchangeRates.USD?.rate 
-                                : orderForm.exchangeRates.EUR?.rate;
-                              if (rate && rate > 0) {
-                                const costInOriginalCurrency = cost / rate;
-                                return formatCurrency(costInOriginalCurrency, currency);
-                              }
-                            }
-                            return formatCurrency(cost, currency);
-                          })()}
-                        </TableCell>
-                      </TableRow>
-                    )}
-
                     {/* Base imponible (descuentos por producto) */}
                     <TableRow>
                       <TableCell className="text-xs sm:text-sm">
@@ -516,6 +434,83 @@ export function Step3OrderDetails({
                         : <TableCell className="text-right text-muted-foreground">$ 0,00</TableCell>
                       }
                     </TableRow>
+
+                    {/* Servicios complementarios (se suman después del impuesto) */}
+                    {orderForm.deliveryServices.deliveryExpress?.enabled && 
+                     orderForm.deliveryServices.deliveryExpress.cost > 0 && (
+                      <TableRow>
+                        <TableCell className="text-xs sm:text-sm font-medium">
+                          DELIVERY EXPRESS:
+                        </TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
+                          {(() => {
+                            const cost = orderForm.deliveryServices.deliveryExpress.cost;
+                            const currency = orderForm.deliveryServices.deliveryExpress.currency || "USD";
+                            if (currency !== "Bs") {
+                              const rate = currency === "USD" 
+                                ? orderForm.exchangeRates.USD?.rate 
+                                : orderForm.exchangeRates.EUR?.rate;
+                              if (rate && rate > 0) {
+                                const costInOriginalCurrency = cost / rate;
+                                return formatCurrency(costInOriginalCurrency, currency);
+                              }
+                            }
+                            return formatCurrency(cost, currency);
+                          })()}
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {orderForm.deliveryServices.servicioAcarreo?.enabled && 
+                     orderForm.deliveryServices.servicioAcarreo.cost && 
+                     orderForm.deliveryServices.servicioAcarreo.cost > 0 && (
+                      <TableRow>
+                        <TableCell className="text-xs sm:text-sm font-medium">
+                          SERVICIO DE ACARREO:
+                        </TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
+                          {(() => {
+                            const cost = orderForm.deliveryServices.servicioAcarreo.cost;
+                            const currency = orderForm.deliveryServices.servicioAcarreo.currency || "USD";
+                            if (currency !== "Bs") {
+                              const rate = currency === "USD" 
+                                ? orderForm.exchangeRates.USD?.rate 
+                                : orderForm.exchangeRates.EUR?.rate;
+                              if (rate && rate > 0) {
+                                const costInOriginalCurrency = cost / rate;
+                                return formatCurrency(costInOriginalCurrency, currency);
+                              }
+                            }
+                            return formatCurrency(cost, currency);
+                          })()}
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {orderForm.deliveryServices.servicioArmado?.enabled && 
+                     orderForm.deliveryServices.servicioArmado.cost > 0 && (
+                      <TableRow>
+                        <TableCell className="text-xs sm:text-sm font-medium">
+                          SERVICIO DE ARMADO:
+                        </TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
+                          {(() => {
+                            const cost = orderForm.deliveryServices.servicioArmado.cost;
+                            const currency = orderForm.deliveryServices.servicioArmado.currency || "USD";
+                            if (currency !== "Bs") {
+                              const rate = currency === "USD" 
+                                ? orderForm.exchangeRates.USD?.rate 
+                                : orderForm.exchangeRates.EUR?.rate;
+                              if (rate && rate > 0) {
+                                const costInOriginalCurrency = cost / rate;
+                                return formatCurrency(costInOriginalCurrency, currency);
+                              }
+                            }
+                            return formatCurrency(cost, currency);
+                          })()}
+                        </TableCell>
+                      </TableRow>
+                    )}
 
                     {/* Total */}
                     <TableRow className="font-medium border-t">

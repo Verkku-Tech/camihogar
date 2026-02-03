@@ -13,7 +13,7 @@ interface ManufacturingProduct {
   orderNumber: string
   clientName: string
   product: OrderProduct
-  status: "debe_fabricar" | "fabricando" | "fabricado"
+  status: "debe_fabricar" | "fabricando" | "almacen_no_fabricado"
 }
 
 export function ManufacturingProductsTable() {
@@ -34,21 +34,19 @@ export function ManufacturingProductsTable() {
               return
             }
 
-            // Determinar estado del producto
-            let status: "debe_fabricar" | "fabricando" | "fabricado"
-
-            if (product.manufacturingStatus === "fabricado") {
-              status = "fabricado"
-            } else if (product.manufacturingStatus === "fabricando") {
+            // Determinar estado del producto (3 estados: debe_fabricar, fabricando, almacen_no_fabricado = En almacén)
+            let status: "debe_fabricar" | "fabricando" | "almacen_no_fabricado"
+            const ms = product.manufacturingStatus
+            if (ms === "almacen_no_fabricado" || (ms as string) === "fabricado") {
+              status = "almacen_no_fabricado" // fabricado legacy → En almacén
+            } else if (ms === "fabricando") {
               status = "fabricando"
-            } else if (product.manufacturingStatus === "debe_fabricar") {
-              status = "debe_fabricar"
             } else {
               status = "debe_fabricar"
             }
 
-            // Solo mostrar los que no estén completamente fabricados
-            if (status !== "fabricado") {
+            // Solo mostrar los que aún no están en almacén (por fabricar o fabricando)
+            if (status !== "almacen_no_fabricado") {
               manufacturingProducts.push({
                 orderId: order.id,
                 orderNumber: order.orderNumber,
@@ -62,7 +60,7 @@ export function ManufacturingProductsTable() {
 
         // Ordenar por estado (debe_fabricar primero, luego fabricando)
         manufacturingProducts.sort((a, b) => {
-          const statusOrder = { debe_fabricar: 0, fabricando: 1, fabricado: 2 }
+          const statusOrder = { debe_fabricar: 0, fabricando: 1, almacen_no_fabricado: 2 }
           if (statusOrder[a.status] !== statusOrder[b.status]) {
             return statusOrder[a.status] - statusOrder[b.status]
           }
@@ -96,11 +94,11 @@ export function ManufacturingProductsTable() {
             Fabricando
           </Badge>
         )
-      case "fabricado":
+      case "almacen_no_fabricado":
         return (
-          <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-            <CheckCircle2 className="w-3 h-3 mr-1" />
-            Fabricado
+          <Badge className="bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300">
+            <Package className="w-3 h-3 mr-1" />
+            En almacén
           </Badge>
         )
       default:

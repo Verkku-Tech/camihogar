@@ -30,7 +30,13 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
-import { getOrders, getOrder, type Order, type OrderProduct, updateOrder } from "@/lib/storage"
+import { getOrders, getOrder, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder } from "@/lib/storage"
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card"
+import { Separator } from "@/components/ui/separator"
 import { SelectProviderDialog } from "@/components/manufacturing/select-provider-dialog"
 import { useRouter } from "next/navigation"
 import { usePagination } from "@/hooks/use-pagination"
@@ -43,15 +49,16 @@ interface ProductRow {
   clientName: string
   orderDate: string
   product: OrderProduct
-  status: "disponible" | "debe_fabricar" | "fabricando" | "fabricado"
+  status: "disponible" | "debe_fabricar" | "fabricando" | "almacen_no_fabricado"
 }
 
 export default function FabricacionPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [productRows, setProductRows] = useState<ProductRow[]>([])
   const [searchTerm, setSearchTerm] = useState("")
-  const [filterStatus, setFilterStatus] = useState<"all" | "needs_fabrication" | "fabricating" | "fabricated">("all")
+  const [filterStatus, setFilterStatus] = useState<"all" | "needs_fabrication" | "fabricating" | "warehouse">("all")
   const [selectedProduct, setSelectedProduct] = useState<{ orderId: string; product: OrderProduct } | null>(null)
   const [selectProviderDialogOpen, setSelectProviderDialogOpen] = useState(false)
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
@@ -62,18 +69,22 @@ export default function FabricacionPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const router = useRouter()
 
-  // Cargar pedidos
+  // Cargar pedidos y categorías
   useEffect(() => {
-    const loadOrders = async () => {
+    const loadData = async () => {
       try {
-        const loadedOrders = await getOrders()
+        const [loadedOrders, loadedCategories] = await Promise.all([
+          getOrders(),
+          getCategories()
+        ])
         setOrders(loadedOrders)
+        setCategories(loadedCategories)
       } catch (error) {
-        console.error("Error loading orders:", error)
-        toast.error("Error al cargar los pedidos")
+        console.error("Error loading data:", error)
+        toast.error("Error al cargar los datos")
       }
     }
-    loadOrders()
+    loadData()
   }, [])
 
   // Procesar pedidos y crear filas de productos
@@ -87,19 +98,16 @@ export default function FabricacionPage() {
           return // Saltar productos en tienda
         }
 
-        // Determinar estado del producto para fabricación
-        let status: "disponible" | "debe_fabricar" | "fabricando" | "fabricado"
-        
-        // Si tiene manufacturingStatus, usar ese
-        if (product.manufacturingStatus === "fabricado") {
-          status = "fabricado"
-        } else if (product.manufacturingStatus === "fabricando") {
+        // Determinar estado del producto (3 estados de fabricación: debe_fabricar, fabricando, almacen_no_fabricado = En almacén)
+        let status: "disponible" | "debe_fabricar" | "fabricando" | "almacen_no_fabricado"
+        const ms = product.manufacturingStatus as string | undefined
+        if (ms === "almacen_no_fabricado" || ms === "fabricado") {
+          status = "almacen_no_fabricado" // fabricado legacy → En almacén
+        } else if (ms === "fabricando") {
           status = "fabricando"
-        } else if (product.manufacturingStatus === "debe_fabricar") {
+        } else if (ms === "debe_fabricar") {
           status = "debe_fabricar"
-        } 
-        // Si no tiene manufacturingStatus, asumir que debe fabricarse
-        else {
+        } else {
           status = "debe_fabricar"
         }
 
@@ -121,7 +129,7 @@ export default function FabricacionPage() {
       filtered = rows.filter(row => {
         if (filterStatus === "needs_fabrication") return row.status === "debe_fabricar"
         if (filterStatus === "fabricating") return row.status === "fabricando"
-        if (filterStatus === "fabricated") return row.status === "fabricado"
+        if (filterStatus === "warehouse") return row.status === "almacen_no_fabricado"
         return true
       })
     }
@@ -141,8 +149,8 @@ export default function FabricacionPage() {
       if (a.orderNumber !== b.orderNumber) {
         return a.orderNumber.localeCompare(b.orderNumber)
       }
-      // Luego por estado (debe_fabricar primero, luego fabricando, luego fabricado)
-      const statusOrder = { "debe_fabricar": 0, "fabricando": 1, "fabricado": 2, "disponible": 3 }
+      // Luego por estado (debe_fabricar, fabricando, almacen_no_fabricado = En almacén, disponible)
+      const statusOrder = { "debe_fabricar": 0, "fabricando": 1, "almacen_no_fabricado": 2, "disponible": 3 }
       return statusOrder[a.status] - statusOrder[b.status]
     })
 
@@ -187,16 +195,106 @@ export default function FabricacionPage() {
             Fabricando
           </Badge>
         )
-      case "fabricado":
+      case "almacen_no_fabricado":
         return (
-          <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
-            <CheckCircle2 className="w-3 h-3 mr-1" />
-            Fabricado
+          <Badge className="bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200">
+            <Package className="w-3 h-3 mr-1" />
+            En almacén
           </Badge>
         )
       default:
         return null
     }
+  }
+
+  // Obtener categoría para producto
+  const getCategoryForProduct = (productCategory: string) =>
+    categories.find(c => c.name === productCategory)
+
+  const getValueLabel = (value: string | AttributeValue): string => {
+    if (typeof value === "string") return value
+    return (value as AttributeValue).label || (value as AttributeValue).id || String(value)
+  }
+
+  const getAttributeValueLabel = (
+    selectedValue: unknown,
+    categoryAttribute: Category["attributes"][0] | undefined
+  ): string => {
+    if (!categoryAttribute) return String(selectedValue)
+    if (categoryAttribute.valueType === "Number") {
+      return selectedValue !== undefined && selectedValue !== null && selectedValue !== ""
+        ? String(selectedValue)
+        : ""
+    }
+    if (!categoryAttribute.values || categoryAttribute.values.length === 0) {
+      return String(selectedValue)
+    }
+    if (Array.isArray(selectedValue)) {
+      const labels: string[] = []
+      selectedValue.forEach((valStr) => {
+        const attributeValue = categoryAttribute.values!.find(
+          (val: string | AttributeValue) => {
+            if (typeof val === "string") return val === valStr
+            return (val as AttributeValue).id === valStr || (val as AttributeValue).label === valStr
+          }
+        )
+        if (attributeValue) {
+          labels.push(getValueLabel(attributeValue as string | AttributeValue))
+        } else {
+          labels.push(String(valStr))
+        }
+      })
+      return labels.join(", ")
+    }
+    const selectedValueStr = String(selectedValue ?? "")
+    if (selectedValueStr) {
+      const attributeValue = categoryAttribute.values.find(
+        (val: string | AttributeValue) => {
+          if (typeof val === "string") return val === selectedValueStr
+          return (val as AttributeValue).id === selectedValueStr || (val as AttributeValue).label === selectedValueStr
+        }
+      )
+      if (attributeValue) return getValueLabel(attributeValue as string | AttributeValue)
+    }
+    return String(selectedValue)
+  }
+
+  const getProductAttributePairs = (product: OrderProduct): { key: string; value: string }[] => {
+    const category = getCategoryForProduct(product.category)
+    if (!product.attributes || Object.keys(product.attributes).length === 0) return []
+    const pairs: { key: string; value: string }[] = []
+    for (const [key, value] of Object.entries(product.attributes)) {
+      if (key.includes("_") && key.split("_").length === 2) continue
+      const categoryAttribute = category?.attributes?.find(
+        attr => attr.id?.toString() === key || attr.title === key
+      )
+      const valueLabel = getAttributeValueLabel(value, categoryAttribute)
+      if (valueLabel && valueLabel.trim() !== "") {
+        pairs.push({
+          key: categoryAttribute?.title || key,
+          value: valueLabel.trim()
+        })
+      }
+    }
+    return pairs
+  }
+
+  // Componente para mostrar atributos en grid (5 columnas, filas según cantidad)
+  const AttributesGrid = ({ pairs, productName }: { pairs: { key: string; value: string }[]; productName?: string }) => {
+    if (pairs.length === 0) return <p className="text-sm text-muted-foreground">Sin atributos</p>
+    return (
+      <div className="space-y-2">
+        {productName && <h4 className="font-semibold text-sm">{productName}</h4>}
+        <div className="grid grid-cols-5 gap-x-4 gap-y-2 text-sm">
+          {pairs.map(({ key, value }) => (
+            <div key={key} className="flex flex-col min-w-0">
+              <span className="text-muted-foreground font-medium">{key}:</span>
+              <span className="text-foreground break-words">{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   // Manejar click en "Fabricar"
@@ -253,7 +351,7 @@ export default function FabricacionPage() {
     }
   }
 
-  // Marcar como fabricado
+  // Marcar como En almacén (último paso de fabricación)
   const handleMarkAsFabricated = async (orderId: string, productId: string) => {
     try {
       const order = await getOrder(orderId)
@@ -264,7 +362,7 @@ export default function FabricacionPage() {
 
       const updatedProduct = {
         ...order.products[productIndex],
-        manufacturingStatus: "fabricado" as const,
+        manufacturingStatus: "almacen_no_fabricado" as const,
         manufacturingCompletedAt: new Date().toISOString(),
       }
 
@@ -278,7 +376,7 @@ export default function FabricacionPage() {
       const loadedOrders = await getOrders()
       setOrders(loadedOrders)
 
-      toast.success("Producto marcado como fabricado")
+      toast.success("Producto marcado como En almacén")
     } catch (error: any) {
       console.error("Error marking as fabricated:", error)
       toast.error(error.message || "Error al actualizar el estado")
@@ -512,7 +610,7 @@ export default function FabricacionPage() {
 
         const updatedProduct = {
           ...order.products[productIndex],
-          manufacturingStatus: "fabricado" as const,
+          manufacturingStatus: "almacen_no_fabricado" as const,
           manufacturingCompletedAt: new Date().toISOString(),
         }
 
@@ -620,7 +718,7 @@ export default function FabricacionPage() {
                         <SelectItem value="all">Todos los estados</SelectItem>
                         <SelectItem value="needs_fabrication">Debe Fabricar</SelectItem>
                         <SelectItem value="fabricating">Fabricando</SelectItem>
-                        <SelectItem value="fabricated">Fabricado</SelectItem>
+                        <SelectItem value="warehouse">En almacén</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -700,39 +798,41 @@ export default function FabricacionPage() {
                             <CollapsibleTrigger className="w-full">
                               <Table>
                                 <TableBody>
-                                  <TableRow className="hover:bg-muted/50 cursor-pointer border-b">
-                                    <TableCell className="font-medium" style={{ width: '150px' }}>
-                                      <div className="flex items-center gap-2">
-                                        {/* Checkbox para seleccionar todo el pedido */}
-                                        <Checkbox
-                                          checked={
-                                            isOrderFullySelected(orderId)
-                                              ? true
-                                              : isOrderPartiallySelected(orderId)
-                                              ? "indeterminate"
-                                              : false
-                                          }
-                                          onCheckedChange={(checked) => {
-                                            handleToggleSelectOrder(orderId)
-                                          }}
-                                          onClick={(e) => e.stopPropagation()} // Evitar que se expanda/contraiga al hacer click
-                                          aria-label={`Seleccionar todos los productos de ${group.orderNumber}`}
-                                          className="mr-2"
-                                        />
-                                        {isExpanded ? (
-                                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                                        ) : (
-                                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                                        )}
-                                        <div>
-                                          <div className="font-semibold">#{group.orderNumber}</div>
-                                          <div className="text-xs text-muted-foreground">
-                                            {new Date(group.orderDate).toLocaleDateString()}
+                                  <HoverCard openDelay={200} closeDelay={100}>
+                                    <HoverCardTrigger asChild>
+                                      <TableRow className="hover:bg-muted/50 cursor-pointer border-b">
+                                        <TableCell className="font-medium" style={{ width: '150px' }}>
+                                          <div className="flex items-center gap-2">
+                                            {/* Checkbox para seleccionar todo el pedido */}
+                                            <Checkbox
+                                              checked={
+                                                isOrderFullySelected(orderId)
+                                                  ? true
+                                                  : isOrderPartiallySelected(orderId)
+                                                  ? "indeterminate"
+                                                  : false
+                                              }
+                                              onCheckedChange={(checked) => {
+                                                handleToggleSelectOrder(orderId)
+                                              }}
+                                              onClick={(e) => e.stopPropagation()}
+                                              aria-label={`Seleccionar todos los productos de ${group.orderNumber}`}
+                                              className="mr-2"
+                                            />
+                                            {isExpanded ? (
+                                              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                            ) : (
+                                              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                            )}
+                                            <div>
+                                              <div className="font-semibold">#{group.orderNumber}</div>
+                                              <div className="text-xs text-muted-foreground">
+                                                {new Date(group.orderDate).toLocaleDateString()}
+                                              </div>
+                                            </div>
                                           </div>
-                                        </div>
-                                      </div>
-                                    </TableCell>
-                                    <TableCell>
+                                        </TableCell>
+                                        <TableCell>
                                       <div className="font-medium">{group.clientName}</div>
                                       <div className="text-xs text-muted-foreground">
                                         {totalProducts} producto(s)
@@ -747,23 +847,41 @@ export default function FabricacionPage() {
                                         })()}
                                       </div>
                                     </TableCell>
-                                    <TableCell colSpan={6}>
-                                      <div className="flex items-center justify-end gap-2">
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-7 text-xs"
-                                          onClick={(e) => {
-                                            e.stopPropagation()
-                                            router.push(`/inventario/fabricacion/${group.orderNumber}`)
-                                          }}
-                                        >
-                                          <Eye className="w-3 h-3 mr-1" />
-                                          Ver Detalles
-                                        </Button>
+                                        <TableCell colSpan={6}>
+                                          <div className="flex items-center justify-end gap-2">
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-7 text-xs"
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                router.push(`/inventario/fabricacion/${group.orderNumber}`)
+                                              }}
+                                            >
+                                              <Eye className="w-3 h-3 mr-1" />
+                                              Ver Detalles
+                                            </Button>
+                                          </div>
+                                        </TableCell>
+                                      </TableRow>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent className="min-w-[480px] max-w-[min(640px,95vw)] w-max" align="start">
+                                      <div className="space-y-3">
+                                        <h4 className="font-semibold text-sm">
+                                          #{group.orderNumber} - {totalProducts} producto(s)
+                                        </h4>
+                                        {group.products.map((row, idx) => {
+                                          const pairs = getProductAttributePairs(row.product)
+                                          return (
+                                            <div key={row.product.id}>
+                                              {idx > 0 && <Separator className="my-3" />}
+                                              <AttributesGrid pairs={pairs} productName={row.product.name} />
+                                            </div>
+                                          )
+                                        })}
                                       </div>
-                                    </TableCell>
-                                  </TableRow>
+                                    </HoverCardContent>
+                                  </HoverCard>
                                 </TableBody>
                               </Table>
                             </CollapsibleTrigger>
@@ -791,18 +909,20 @@ export default function FabricacionPage() {
                                 </TableHeader>
                                 <TableBody>
                                   {group.products.map((row) => (
-                                    <TableRow key={row.product.id}>
-                                      <TableCell>
-                                        <Checkbox
-                                          checked={selectedProducts.has(`${row.orderId}|${row.product.id}`)}
-                                          onCheckedChange={() => handleToggleSelect(row.orderId, row.product.id)}
-                                          aria-label={`Seleccionar ${row.product.name}`}
-                                        />
-                                      </TableCell>
-                                      <TableCell></TableCell>
-                                      <TableCell className="font-medium">
-                                        {row.product.name}
-                                      </TableCell>
+                                    <HoverCard key={row.product.id} openDelay={200} closeDelay={100}>
+                                      <HoverCardTrigger asChild>
+                                        <TableRow className="hover:bg-muted/50">
+                                          <TableCell>
+                                            <Checkbox
+                                              checked={selectedProducts.has(`${row.orderId}|${row.product.id}`)}
+                                              onCheckedChange={() => handleToggleSelect(row.orderId, row.product.id)}
+                                              aria-label={`Seleccionar ${row.product.name}`}
+                                            />
+                                          </TableCell>
+                                          <TableCell></TableCell>
+                                          <TableCell className="font-medium">
+                                            {row.product.name}
+                                          </TableCell>
                                       <TableCell>
                                         <Badge variant="outline">{row.product.category}</Badge>
                                       </TableCell>
@@ -819,29 +939,43 @@ export default function FabricacionPage() {
                                           <span className="text-muted-foreground text-sm">-</span>
                                         )}
                                       </TableCell>
-                                      <TableCell className="text-right">
-                                        <div className="flex justify-end gap-2">
-                                          {row.status === "debe_fabricar" && (
-                                            <Button
-                                              size="sm"
-                                              onClick={() => handleManufactureClick(row.orderId, row.product)}
-                                            >
-                                              <Hammer className="w-4 h-4 mr-1" />
-                                              Fabricar
-                                            </Button>
-                                          )}
-                                          {row.status === "fabricando" && (
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              onClick={() => handleMarkAsFabricated(row.orderId, row.product.id)}
-                                            >
-                                              Marcar como Fabricado
-                                            </Button>
-                                          )}
-                                        </div>
-                                      </TableCell>
-                                    </TableRow>
+                                          <TableCell className="text-right">
+                                            <div className="flex justify-end gap-2">
+                                              {row.status === "debe_fabricar" && (
+                                                <Button
+                                                  size="sm"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    handleManufactureClick(row.orderId, row.product)
+                                                  }}
+                                                >
+                                                  <Hammer className="w-4 h-4 mr-1" />
+                                                  Fabricar
+                                                </Button>
+                                              )}
+                                              {row.status === "fabricando" && (
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    handleMarkAsFabricated(row.orderId, row.product.id)
+                                                  }}
+                                                >
+                                                  En almacén
+                                                </Button>
+                                              )}
+                                            </div>
+                                          </TableCell>
+                                        </TableRow>
+                                      </HoverCardTrigger>
+                                      <HoverCardContent className="min-w-[480px] max-w-[min(640px,95vw)] w-max" align="start">
+                                        <AttributesGrid
+                                          pairs={getProductAttributePairs(row.product)}
+                                          productName={row.product.name}
+                                        />
+                                      </HoverCardContent>
+                                    </HoverCard>
                                   ))}
                                 </TableBody>
                               </Table>
@@ -890,13 +1024,13 @@ export default function FabricacionPage() {
         onConfirm={executeBulkManufacture}
       />
 
-      {/* Dialog de confirmación para marcar como fabricado (masivo) */}
+      {/* Dialog de confirmación para marcar como En almacén (masivo) */}
       <AlertDialog open={bulkFabricatedDialogOpen} onOpenChange={setBulkFabricatedDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Marcar como fabricado?</AlertDialogTitle>
+            <AlertDialogTitle>¿Marcar como En almacén?</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Estás seguro de que deseas marcar {getSelectedProductsForFabricated().length} producto(s) como fabricado(s)?
+              ¿Estás seguro de que deseas marcar {getSelectedProductsForFabricated().length} producto(s) como En almacén?
               <br />
               <span className="text-sm text-muted-foreground mt-2 block">
                 Solo se procesarán los productos con estado "Fabricando".
@@ -911,7 +1045,7 @@ export default function FabricacionPage() {
               onClick={executeBulkMarkAsFabricated}
               className="bg-blue-600 hover:bg-blue-700"
             >
-              Marcar como Fabricado
+              En almacén
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

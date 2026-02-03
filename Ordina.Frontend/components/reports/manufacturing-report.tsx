@@ -14,7 +14,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-type ManufacturingStatus = "debe_fabricar" | "fabricando" | "fabricado"
+type ManufacturingStatus = "debe_fabricar" | "fabricando" | "almacen_no_fabricado"
 
 interface ManufacturingReportRow {
   fecha: string
@@ -350,8 +350,8 @@ export function ManufacturingReport() {
         return "Por Fabricar"
       case "fabricando":
         return "Fabricando"
-      case "fabricado":
-        return "Fabricado"
+      case "almacen_no_fabricado":
+        return "En almacén"
       default:
         return status
     }
@@ -402,7 +402,7 @@ export function ManufacturingReport() {
           return
         }
 
-        // Filtrar por fabricante si se especifica (solo para fabricando y fabricado)
+        // Filtrar por fabricante si se especifica (solo para fabricando y en almacén)
         if (activeTab !== "debe_fabricar" && selectedManufacturer !== "all") {
           if (!product.manufacturingProviderId || product.manufacturingProviderId !== selectedManufacturer) {
             return
@@ -520,7 +520,7 @@ export function ManufacturingReport() {
                   <SelectContent>
                     <SelectItem value="debe_fabricar">Por Fabricar</SelectItem>
                     <SelectItem value="fabricando">Fabricando</SelectItem>
-                    <SelectItem value="fabricado">Fabricado</SelectItem>
+                    <SelectItem value="almacen_no_fabricado">En almacén</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -620,8 +620,8 @@ export function ManufacturingReport() {
                 </div>
               )}
 
-              {/* Para "Fabricando" y "Fabricado": Solo Fabricante */}
-              {(activeTab === "fabricando" || activeTab === "fabricado") && (
+              {/* Para estados distintos de "Por Fabricar": filtro por Fabricante */}
+              {activeTab !== "debe_fabricar" && (
                 <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">
