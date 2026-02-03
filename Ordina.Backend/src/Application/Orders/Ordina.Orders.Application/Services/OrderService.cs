@@ -34,6 +34,34 @@ public class OrderService : IOrderService
         }
     }
 
+    public async Task<PagedOrdersResponseDto> GetOrdersPagedAsync(int page = 1, int pageSize = 50, DateTime? since = null)
+    {
+        try
+        {
+            // Validar parámetros
+            if (page < 1) page = 1;
+            if (pageSize < 1) pageSize = 50;
+            if (pageSize > 100) pageSize = 100; // Límite máximo para evitar sobrecarga
+
+            var (orders, totalCount) = await _orderRepository.GetPagedAsync(page, pageSize, since);
+
+            return new PagedOrdersResponseDto
+            {
+                Orders = orders.Select(MapToDto),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount,
+                ServerTimestamp = DateTime.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener pedidos paginados (page: {Page}, pageSize: {PageSize}, since: {Since})", 
+                page, pageSize, since);
+            throw;
+        }
+    }
+
     public async Task<IEnumerable<OrderResponseDto>> GetOrdersByClientIdAsync(string clientId)
     {
         try

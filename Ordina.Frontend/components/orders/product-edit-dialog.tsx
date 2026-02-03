@@ -1597,7 +1597,7 @@ export function ProductEditDialog({
     });
 
     // Asegurar que stock tenga un valor por defecto si no está presente
-    // Preservar locationStatus del producto original o establecer por defecto "EN TIENDA"
+    // Preservar locationStatus del producto original o establecer por defecto "SIN DEFINIR"
     const updatedProduct: OrderProduct = {
       ...product,
       quantity,
@@ -1605,7 +1605,7 @@ export function ProductEditDialog({
       attributes: finalAttributes,
       stock: product.stock ?? 0, // Usar 0 como valor por defecto si stock no existe
       observations: observations.trim() || undefined,
-      locationStatus: product.locationStatus ?? "EN TIENDA", // Preservar locationStatus o establecer por defecto
+      locationStatus: product.locationStatus ?? "SIN DEFINIR", // Preservar locationStatus o establecer por defecto
       images: productImages.length > 0 ? productImages : undefined, // Agregar imágenes si hay alguna
     };
     onProductUpdate(updatedProduct);

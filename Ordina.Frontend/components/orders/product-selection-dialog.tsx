@@ -160,7 +160,7 @@ export function ProductSelectionDialog({
       stock: 0, // Los productos se crean bajo demanda, no hay stock
       attributes: mergedAttributes,
       discount: 0, // Inicializar sin descuento
-      locationStatus: "EN TIENDA", // Establecer por defecto "EN TIENDA"
+      locationStatus: "SIN DEFINIR", // Establecer por defecto "SIN DEFINIR"
     }
     
     setProductToEdit(newProduct)

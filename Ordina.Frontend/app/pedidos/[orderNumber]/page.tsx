@@ -1914,16 +1914,11 @@ export default function OrderDetailPage() {
                           <span className="font-semibold text-red-700 dark:text-red-300">
                             Total Pendiente:
                           </span>
-                          <div className="text-right">
-                            <div className="font-bold text-xl text-red-700 dark:text-red-300">
-                              {formatCurrency(order.total, "Bs")}
-                            </div>
-                            {selectedCurrency && selectedCurrency !== "Bs" && (
-                              <div className="text-sm text-red-600 dark:text-red-400 font-medium">
-                                {formattedPendingBalance}
-                              </div>
-                            )}
-                          </div>
+                          <CurrencyDisplay 
+                            amountInBs={order.total} 
+                            exchangeRates={localExchangeRates}
+                            className="font-bold text-lg text-red-700 dark:text-red-300"
+                          />
                         </div>
                       </div>
                     </CardContent>

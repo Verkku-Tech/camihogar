@@ -74,6 +74,8 @@ public class ReportService : IReportService
     private readonly IProviderRepository _providerRepository;
     private readonly ICategoryRepository _categoryRepository;
     private readonly ICommissionRepository _commissionRepository;
+    private readonly IProductCommissionRepository _productCommissionRepository;
+    private readonly ISaleTypeCommissionRuleRepository _saleTypeCommissionRuleRepository;
     private readonly IUserRepository _userRepository;
     private readonly IClientRepository _clientRepository;
     private readonly ILogger<ReportService> _logger;
@@ -83,6 +85,8 @@ public class ReportService : IReportService
         IProviderRepository providerRepository,
         ICategoryRepository categoryRepository,
         ICommissionRepository commissionRepository,
+        IProductCommissionRepository productCommissionRepository,
+        ISaleTypeCommissionRuleRepository saleTypeCommissionRuleRepository,
         IUserRepository userRepository,
         IClientRepository clientRepository,
         ILogger<ReportService> logger)
@@ -91,6 +95,8 @@ public class ReportService : IReportService
         _providerRepository = providerRepository;
         _categoryRepository = categoryRepository;
         _commissionRepository = commissionRepository;
+        _productCommissionRepository = productCommissionRepository;
+        _saleTypeCommissionRuleRepository = saleTypeCommissionRuleRepository;
         _userRepository = userRepository;
         _clientRepository = clientRepository;
         _logger = logger;
@@ -1011,12 +1017,19 @@ public class ReportService : IReportService
                 Fecha = row.Fecha,
                 Cliente = row.Cliente,
                 Vendedor = row.Vendedor,
+                Pedido = row.Pedido,
                 Descripcion = row.Descripcion,
                 CantidadArticulos = row.CantidadArticulos,
                 TipoCompra = row.TipoCompra,
                 Comision = row.Comision,
                 VendedorSecundario = row.VendedorSecundario,
-                ComisionSecundaria = row.ComisionSecundaria
+                ComisionSecundaria = row.ComisionSecundaria,
+                SueldoBase = row.SueldoBase,
+                TasaComisionBase = row.TasaComisionBase,
+                TasaAplicadaVendedor = row.TasaAplicadaVendedor,
+                TasaAplicadaReferido = row.TasaAplicadaReferido,
+                EsVentaCompartida = row.EsVentaCompartida,
+                EsVendedorExclusivo = row.EsVendedorExclusivo
             }).ToList();
 
             return await GenerateCommissionsReportFromDataAsync(dtoData);
@@ -1046,21 +1059,23 @@ public class ReportService : IReportService
             
             using (var sl = new SLDocument())
             {
-                // Headers en la fila 1
+                // Headers en la fila 1 (según especificaciones del documento)
                 sl.SetCellValue(1, 1, "Fecha");
                 sl.SetCellValue(1, 2, "Cliente");
                 sl.SetCellValue(1, 3, "Vendedor");
-                sl.SetCellValue(1, 4, "Descripción");
+                sl.SetCellValue(1, 4, "Pedido");
                 sl.SetCellValue(1, 5, "Cant. Artículos");
-                sl.SetCellValue(1, 6, "Tipo de compra");
-                sl.SetCellValue(1, 7, "Comisión");
+                sl.SetCellValue(1, 6, "Tipo de Compra");
+                sl.SetCellValue(1, 7, "Comisión Vendedor");
+                sl.SetCellValue(1, 8, "Total Comisión + Sueldo");
+                sl.SetCellValue(1, 9, "Comisión Postventa");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 7; col++)
+                for (int col = 1; col <= 9; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -1072,10 +1087,12 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 1, item.Fecha);
                     sl.SetCellValue(row, 2, item.Cliente);
                     sl.SetCellValue(row, 3, item.Vendedor);
-                    sl.SetCellValue(row, 4, item.Descripcion);
+                    sl.SetCellValue(row, 4, item.Pedido);
                     sl.SetCellValue(row, 5, item.CantidadArticulos);
                     sl.SetCellValue(row, 6, item.TipoCompra);
-                    sl.SetCellValue(row, 7, item.Comision);
+                    sl.SetCellValue(row, 7, (double)item.Comision);
+                    sl.SetCellValue(row, 8, (double)item.TotalComisionMasSueldo);
+                    sl.SetCellValue(row, 9, item.ComisionSecundaria.HasValue ? (double)item.ComisionSecundaria.Value : 0);
                     row++;
                 }
 
@@ -1083,10 +1100,12 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(1, 20);  // Fecha
                 sl.SetColumnWidth(2, 30);  // Cliente
                 sl.SetColumnWidth(3, 30);  // Vendedor
-                sl.SetColumnWidth(4, 50);  // Descripción
+                sl.SetColumnWidth(4, 15);  // Pedido
                 sl.SetColumnWidth(5, 15);  // Cant. Artículos
-                sl.SetColumnWidth(6, 20);  // Tipo de compra
-                sl.SetColumnWidth(7, 15);  // Comisión
+                sl.SetColumnWidth(6, 20);  // Tipo de Compra
+                sl.SetColumnWidth(7, 18);  // Comisión Vendedor
+                sl.SetColumnWidth(8, 22);  // Total Comisión + Sueldo
+                sl.SetColumnWidth(9, 18);  // Comisión Postventa
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
@@ -1129,12 +1148,19 @@ public class ReportService : IReportService
                 Fecha = row.Fecha,
                 Cliente = row.Cliente,
                 Vendedor = row.Vendedor,
+                Pedido = row.Pedido,
                 Descripcion = row.Descripcion,
                 CantidadArticulos = row.CantidadArticulos,
                 TipoCompra = row.TipoCompra,
                 Comision = row.Comision,
                 VendedorSecundario = row.VendedorSecundario,
-                ComisionSecundaria = row.ComisionSecundaria
+                ComisionSecundaria = row.ComisionSecundaria,
+                SueldoBase = row.SueldoBase,
+                TasaComisionBase = row.TasaComisionBase,
+                TasaAplicadaVendedor = row.TasaAplicadaVendedor,
+                TasaAplicadaReferido = row.TasaAplicadaReferido,
+                EsVentaCompartida = row.EsVentaCompartida,
+                EsVendedorExclusivo = row.EsVendedorExclusivo
             }).ToList();
         }
         catch (Exception ex)
@@ -1151,7 +1177,8 @@ public class ReportService : IReportService
         string? team = null)
     {
         var orders = await _orderRepository.GetAllAsync();
-        var commissions = await _commissionRepository.GetAllAsync();
+        var productCommissions = await _productCommissionRepository.GetAllAsync();
+        var saleTypeRules = await _saleTypeCommissionRuleRepository.GetAllAsync();
         var users = await _userRepository.GetAllAsync();
         var reportData = new List<CommissionReportRow>();
 
@@ -1168,45 +1195,61 @@ public class ReportService : IReportService
             if (!string.IsNullOrWhiteSpace(vendorId) && order.VendorId != vendorId)
                 continue;
 
+            // Obtener datos del vendedor principal
+            var mainVendor = users.FirstOrDefault(u => u.Id == order.VendorId);
+            var isExclusiveVendor = mainVendor?.ExclusiveCommission ?? false;
+            var vendorBaseSalary = mainVendor?.BaseSalary ?? 0m;
+
             // Procesar cada producto del pedido (una fila por producto)
             foreach (var product in order.Products)
             {
                 var isSharedSale = !string.IsNullOrWhiteSpace(order.ReferrerId);
                 
-                if (isSharedSale)
+                // Calcular comisiones usando el nuevo sistema
+                var (vendorCommission, referrerCommission, baseRate, appliedVendorRate, appliedReferrerRate) = 
+                    CalculateProductCommission(product, order, productCommissions, saleTypeRules, users, isExclusiveVendor);
+                
+                if (isSharedSale && !isExclusiveVendor)
                 {
-                    // VENTA COMPARTIDA: Dividir comisión 50/50
-                    var vendorCommission = await CalculateCommissionAsync(product, order, order.VendorId, commissions, users, isShared: true);
-                    var referrerCommission = await CalculateCommissionAsync(product, order, order.ReferrerId, commissions, users, isShared: true);
-                    
-                    // Fila para vendedor de tienda
+                    // VENTA COMPARTIDA: Comisión según reglas de tipo de venta
                     reportData.Add(new CommissionReportRow
                     {
                         Fecha = order.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
                         Cliente = order.ClientName,
                         Vendedor = order.VendorName,
+                        Pedido = order.OrderNumber,
                         Descripcion = await FormatProductDescriptionAsync(product),
                         CantidadArticulos = product.Quantity,
                         TipoCompra = GetPurchaseType(order),
                         Comision = vendorCommission,
                         VendedorSecundario = order.ReferrerName,
-                        ComisionSecundaria = referrerCommission
+                        ComisionSecundaria = referrerCommission,
+                        SueldoBase = vendorBaseSalary,
+                        TasaComisionBase = baseRate,
+                        TasaAplicadaVendedor = appliedVendorRate,
+                        TasaAplicadaReferido = appliedReferrerRate,
+                        EsVentaCompartida = true,
+                        EsVendedorExclusivo = isExclusiveVendor
                     });
                 }
                 else
                 {
-                    // VENTA NORMAL: Comisión completa
-                    var commission = await CalculateCommissionAsync(product, order, order.VendorId, commissions, users, isShared: false);
-                    
+                    // VENTA NORMAL o VENDEDOR EXCLUSIVO: Comisión completa para vendedor
                     reportData.Add(new CommissionReportRow
                     {
                         Fecha = order.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
                         Cliente = order.ClientName,
                         Vendedor = order.VendorName,
+                        Pedido = order.OrderNumber,
                         Descripcion = await FormatProductDescriptionAsync(product),
                         CantidadArticulos = product.Quantity,
                         TipoCompra = GetPurchaseType(order),
-                        Comision = commission
+                        Comision = vendorCommission,
+                        SueldoBase = vendorBaseSalary,
+                        TasaComisionBase = baseRate,
+                        TasaAplicadaVendedor = appliedVendorRate,
+                        EsVentaCompartida = false,
+                        EsVendedorExclusivo = isExclusiveVendor
                     });
                 }
             }
@@ -1215,52 +1258,85 @@ public class ReportService : IReportService
         return reportData;
     }
 
-    private Task<decimal> CalculateCommissionAsync(
-        OrderProduct product,
-        Order order,
-        string? sellerId,
-        IEnumerable<Commission> commissions,
-        IEnumerable<User> users,
-        bool isShared = false)
+    /// <summary>
+    /// Calcula la comisión de un producto según el nuevo sistema:
+    /// 1. Obtiene la comisión base de la categoría/familia del producto
+    /// 2. Si es venta compartida, aplica las reglas de distribución por tipo de venta
+    /// 3. Si el vendedor es exclusivo, no se comparte la comisión
+    /// </summary>
+    private (decimal vendorCommission, decimal referrerCommission, decimal baseRate, decimal appliedVendorRate, decimal appliedReferrerRate) 
+        CalculateProductCommission(
+            OrderProduct product,
+            Order order,
+            IEnumerable<ProductCommission> productCommissions,
+            IEnumerable<SaleTypeCommissionRule> saleTypeRules,
+            IEnumerable<User> users,
+            bool isExclusiveVendor)
     {
-        if (string.IsNullOrWhiteSpace(sellerId))
-            return Task.FromResult(0m);
-
-        // Obtener usuario para determinar su rol
-        var user = users.FirstOrDefault(u => u.Id == sellerId);
-        if (user == null)
-            return Task.FromResult(0m);
-
-        // Buscar comisión por usuario primero, luego por rol
-        var commission = commissions.FirstOrDefault(c =>
-            (c.CommissionType == "user" && c.UserId == sellerId)) ??
-            commissions.FirstOrDefault(c =>
-                (c.CommissionType == "role" && c.Role == user.Role));
-
-        if (commission == null)
-            return Task.FromResult(0m);
-
-        // Calcular monto base (precio del producto después de descuentos)
-        var productTotal = product.Total; // Ya incluye descuentos si los hay
+        // 1. Obtener comisión base de la categoría del producto
+        var categoryCommission = productCommissions.FirstOrDefault(c => 
+            c.CategoryName.Equals(product.Category, StringComparison.OrdinalIgnoreCase) || 
+            c.CategoryId == product.Category);
         
-        decimal calculatedCommission = 0;
+        var baseCommissionRate = categoryCommission?.CommissionValue ?? 0m;
         
-        if (commission.CommissionKind == "percentage")
+        if (baseCommissionRate == 0)
         {
-            calculatedCommission = productTotal * (commission.Value / 100);
-        }
-        else // "net"
-        {
-            calculatedCommission = commission.Value; // Comisión fija por artículo
+            _logger.LogWarning("No se encontró comisión configurada para la categoría '{Category}' del producto '{Product}'", 
+                product.Category, product.Name);
+            return (0m, 0m, 0m, 0m, 0m);
         }
 
-        // Si es venta compartida, dividir la comisión 50/50
-        if (isShared)
-        {
-            calculatedCommission = calculatedCommission / 2;
-        }
+        // 2. Calcular monto base del producto
+        var productTotal = product.Total;
+        
+        // 3. Verificar si es venta compartida
+        var isSharedSale = !string.IsNullOrWhiteSpace(order.ReferrerId);
 
-        return Task.FromResult(calculatedCommission);
+        if (isSharedSale && !isExclusiveVendor)
+        {
+            // VENTA COMPARTIDA: Aplicar distribución según tipo de venta
+            var saleType = DetermineSaleType(order);
+            var rule = saleTypeRules.FirstOrDefault(r => 
+                r.SaleType.Equals(saleType, StringComparison.OrdinalIgnoreCase));
+            
+            if (rule != null)
+            {
+                // La comisión se calcula aplicando el porcentaje de la regla al total del producto
+                var vendorCommission = productTotal * (rule.VendorRate / 100);
+                var referrerCommission = productTotal * (rule.ReferrerRate / 100);
+                
+                return (vendorCommission, referrerCommission, baseCommissionRate, rule.VendorRate, rule.ReferrerRate);
+            }
+            else
+            {
+                // Sin regla definida para este tipo de venta, usar comisión base dividida 50/50
+                _logger.LogWarning("No se encontró regla de distribución para el tipo de venta '{SaleType}'. Dividiendo 50/50.", saleType);
+                var halfCommission = productTotal * (baseCommissionRate / 100) / 2;
+                return (halfCommission, halfCommission, baseCommissionRate, baseCommissionRate / 2, baseCommissionRate / 2);
+            }
+        }
+        else
+        {
+            // VENTA NORMAL o VENDEDOR EXCLUSIVO: Comisión completa
+            var fullCommission = productTotal * (baseCommissionRate / 100);
+            return (fullCommission, 0m, baseCommissionRate, baseCommissionRate, 0m);
+        }
+    }
+
+    /// <summary>
+    /// Determina el tipo de venta del pedido para aplicar las reglas de distribución
+    /// </summary>
+    private string DetermineSaleType(Order order)
+    {
+        // Priorizar saleType, luego deliveryType
+        if (!string.IsNullOrWhiteSpace(order.SaleType))
+            return order.SaleType;
+        
+        if (!string.IsNullOrWhiteSpace(order.DeliveryType))
+            return order.DeliveryType;
+        
+        return "entrega"; // Default
     }
 
     private string GetPurchaseType(Order order)
@@ -1769,12 +1845,19 @@ public class ReportService : IReportService
         public string Fecha { get; set; } = string.Empty;
         public string Cliente { get; set; } = string.Empty;
         public string Vendedor { get; set; } = string.Empty;
+        public string Pedido { get; set; } = string.Empty;
         public string Descripcion { get; set; } = string.Empty;
         public int CantidadArticulos { get; set; }
         public string TipoCompra { get; set; } = string.Empty;
         public decimal Comision { get; set; }
         public string? VendedorSecundario { get; set; }
         public decimal? ComisionSecundaria { get; set; }
+        public decimal SueldoBase { get; set; }
+        public decimal TasaComisionBase { get; set; }
+        public decimal TasaAplicadaVendedor { get; set; }
+        public decimal? TasaAplicadaReferido { get; set; }
+        public bool EsVentaCompartida { get; set; }
+        public bool EsVendedorExclusivo { get; set; }
     }
 
     private class DispatchReportRow

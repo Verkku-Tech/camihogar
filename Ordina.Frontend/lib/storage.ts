@@ -225,6 +225,93 @@ const isOnline = (): boolean => {
   return navigator.onLine;
 };
 
+// ===== SYNC TIMESTAMP MANAGEMENT =====
+// Gestión de timestamps de sincronización para sincronización incremental
+
+interface SyncMetadata {
+  id: string;
+  key: string;
+  lastSyncTimestamp: string | null;
+  lastSyncDate: string;
+}
+
+/**
+ * Obtiene el timestamp de última sincronización para una entidad
+ * @param entity Nombre de la entidad (ej: "orders", "products")
+ * @returns Timestamp ISO 8601 o null si nunca se ha sincronizado
+ */
+const getLastSyncTimestamp = async (entity: string): Promise<string | null> => {
+  try {
+    const metadata = await db.get<SyncMetadata>("app_settings", `sync_${entity}`);
+    return metadata?.lastSyncTimestamp || null;
+  } catch (error) {
+    console.warn(`⚠️ Error obteniendo timestamp de sync para ${entity}:`, error);
+    return null;
+  }
+};
+
+/**
+ * Guarda el timestamp de última sincronización para una entidad
+ * @param entity Nombre de la entidad (ej: "orders", "products")
+ * @param timestamp Timestamp ISO 8601 del servidor
+ */
+const setLastSyncTimestamp = async (entity: string, timestamp: string): Promise<void> => {
+  try {
+    const metadata: SyncMetadata = {
+      id: `sync_${entity}`,
+      key: `sync_${entity}`,
+      lastSyncTimestamp: timestamp,
+      lastSyncDate: new Date().toISOString(),
+    };
+    await db.put("app_settings", metadata);
+    console.log(`✅ Timestamp de sync guardado para ${entity}: ${timestamp}`);
+  } catch (error) {
+    console.warn(`⚠️ Error guardando timestamp de sync para ${entity}:`, error);
+  }
+};
+
+/**
+ * Verifica si se debe realizar una sincronización completa o incremental
+ * @param entity Nombre de la entidad
+ * @param forceFullSync Forzar sincronización completa
+ * @returns true si se debe hacer sync completa, false si incremental
+ */
+const shouldDoFullSync = async (entity: string, forceFullSync: boolean = false): Promise<boolean> => {
+  if (forceFullSync) return true;
+  
+  const lastSync = await getLastSyncTimestamp(entity);
+  if (!lastSync) return true; // Nunca se ha sincronizado
+  
+  // También hacer sync completa si han pasado más de 24 horas
+  const lastSyncDate = new Date(lastSync);
+  const hoursSinceLastSync = (Date.now() - lastSyncDate.getTime()) / (1000 * 60 * 60);
+  
+  return hoursSinceLastSync > 24;
+};
+
+/**
+ * Tiempo mínimo entre sincronizaciones (en milisegundos)
+ * Para evitar sincronizaciones excesivas
+ */
+const MIN_SYNC_INTERVAL_MS = 30 * 1000; // 30 segundos
+
+/**
+ * Verifica si se debe sincronizar basado en el intervalo mínimo
+ * @param entity Nombre de la entidad
+ * @returns true si se debe sincronizar
+ */
+const shouldSync = async (entity: string): Promise<boolean> => {
+  try {
+    const metadata = await db.get<SyncMetadata>("app_settings", `sync_${entity}`);
+    if (!metadata?.lastSyncDate) return true;
+    
+    const timeSinceLastSync = Date.now() - new Date(metadata.lastSyncDate).getTime();
+    return timeSinceLastSync >= MIN_SYNC_INTERVAL_MS;
+  } catch {
+    return true;
+  }
+};
+
 export const getCategories = async (): Promise<Category[]> => {
   try {
     // Cargar siempre categorías locales desde IndexedDB primero (offline-first)
@@ -1395,7 +1482,7 @@ export interface OrderProduct {
   manufacturingCompletedAt?: string; // Fecha de finalización de fabricación
   manufacturingNotes?: string; // Notas de fabricación
   // Estado de ubicación del producto
-  locationStatus?: "EN TIENDA" | "FABRICACION" | ""; // Estado de ubicación: EN TIENDA, FABRICACION o en blanco
+  locationStatus?: "SIN DEFINIR" | "EN TIENDA" | "FABRICACION"; // Estado de ubicación
 }
 
 export interface PartialPayment {
@@ -1591,6 +1678,10 @@ export interface User {
   name: string;
   status: "active" | "inactive";
   createdAt?: string;
+  // Campos para comisiones
+  exclusiveCommission?: boolean; // Vendedores que NO comparten comisión con referidos
+  baseSalary?: number; // Sueldo fijo del vendedor
+  baseSalaryCurrency?: string; // Moneda del sueldo
 }
 
 export interface Vendor {
@@ -1642,7 +1733,8 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       // Normalizar valores antiguos a nuevos
       if (p.locationStatus === "en_tienda") return "EN TIENDA" as const
       if (p.locationStatus === "mandar_a_fabricar") return "FABRICACION" as const
-      return (p.locationStatus as "EN TIENDA" | "FABRICACION" | "" | undefined) ?? undefined
+      if (!p.locationStatus || p.locationStatus === "") return "SIN DEFINIR" as const
+      return (p.locationStatus as "SIN DEFINIR" | "EN TIENDA" | "FABRICACION" | undefined) ?? "SIN DEFINIR"
     })(),
   })),
   subtotal: dto.subtotal,
@@ -1896,55 +1988,118 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   deliveryZone: order.deliveryZone,
 });
 
-export const getOrders = async (): Promise<Order[]> => {
+/**
+ * Obtiene todos los pedidos con sincronización incremental optimizada
+ * 
+ * Estrategia de sincronización:
+ * 1. Siempre retorna primero los datos de IndexedDB (offline-first)
+ * 2. Si hay conexión y ha pasado el intervalo mínimo, sincroniza con el backend
+ * 3. Si nunca se ha sincronizado o han pasado >24h, hace sync completa
+ * 4. En otros casos, hace sync incremental (solo pedidos modificados)
+ * 
+ * @param forceFullSync Forzar sincronización completa (útil para refresh manual)
+ */
+export const getOrders = async (forceFullSync: boolean = false): Promise<Order[]> => {
   try {
-    // Cargar siempre órdenes locales desde IndexedDB primero (offline-first)
+    // 1. Cargar siempre órdenes locales desde IndexedDB primero (offline-first)
     const localOrders = await db.getAll<Order>("orders");
 
-    // Si hay conexión, intentar sincronizar con backend y hacer merge
-    if (isOnline()) {
-      try {
-        const backendOrders = await apiClient.getOrders();
-        const backendOrdersMapped = backendOrders.map(orderFromBackendDto);
-
-        // Hacer merge usando orderNumber como clave única para evitar duplicados
-        // Los pedidos del backend tienen prioridad sobre los locales
-        const ordersMap = new Map<string, Order>();
-
-        // Primero agregar órdenes locales
-        for (const order of localOrders) {
-          ordersMap.set(order.orderNumber, order);
-        }
-
-        // Luego agregar/actualizar con órdenes del backend (estas tienen prioridad)
-        for (const order of backendOrdersMapped) {
-          ordersMap.set(order.orderNumber, order);
-          // Guardar/actualizar en IndexedDB
-          try {
-            await db.update("orders", order);
-          } catch {
-            await db.add("orders", order);
-          }
-        }
-
-        const mergedOrders = Array.from(ordersMap.values());
-        console.log(
-          `✅ Órdenes: ${localOrders.length} locales + ${backendOrdersMapped.length} del backend = ${mergedOrders.length} totales`
-        );
-        return mergedOrders;
-      } catch (error) {
-        console.warn(
-          "⚠️ Error cargando órdenes del backend, usando solo IndexedDB:",
-          error
-        );
-        // Si falla el backend, retornar órdenes locales
-        return localOrders;
-      }
+    // 2. Si está offline, retornar solo órdenes locales inmediatamente
+    if (!isOnline()) {
+      console.log(`✅ Órdenes cargadas desde IndexedDB (offline): ${localOrders.length}`);
+      return localOrders;
     }
 
-    // Si está offline, solo retornar órdenes locales
-    console.log(`✅ Órdenes cargadas desde IndexedDB (offline): ${localOrders.length}`);
-    return localOrders;
+    // 3. Verificar si debemos sincronizar (evitar sincronizaciones muy frecuentes)
+    const needsSync = await shouldSync("orders");
+    if (!needsSync && !forceFullSync) {
+      console.log(`⏳ Sync de órdenes omitida (muy reciente). Usando ${localOrders.length} locales.`);
+      return localOrders;
+    }
+
+    // 4. Determinar tipo de sincronización
+    const doFullSync = await shouldDoFullSync("orders", forceFullSync);
+    const lastSyncTimestamp = doFullSync ? null : await getLastSyncTimestamp("orders");
+
+    try {
+      let backendOrdersMapped: Order[];
+      let newServerTimestamp: string;
+
+      if (doFullSync) {
+        // Sincronización completa: traer todos los pedidos paginados
+        console.log("🔄 Iniciando sincronización COMPLETA de órdenes...");
+        const allOrders: Order[] = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+          const response = await apiClient.getOrdersPaged(page, 50);
+          const mappedOrders = response.orders.map(orderFromBackendDto);
+          allOrders.push(...mappedOrders);
+          newServerTimestamp = response.serverTimestamp;
+          hasMore = response.hasNextPage;
+          page++;
+          
+          // Log de progreso
+          console.log(`📥 Página ${page - 1}: ${mappedOrders.length} pedidos (total: ${allOrders.length}/${response.totalCount})`);
+        }
+
+        backendOrdersMapped = allOrders;
+      } else {
+        // Sincronización incremental: solo pedidos modificados desde lastSyncTimestamp
+        console.log(`🔄 Sincronización INCREMENTAL de órdenes (desde ${lastSyncTimestamp})...`);
+        const { orders, serverTimestamp } = await apiClient.getOrdersSince(lastSyncTimestamp!);
+        backendOrdersMapped = orders.map(orderFromBackendDto);
+        newServerTimestamp = serverTimestamp;
+        console.log(`📥 ${backendOrdersMapped.length} pedidos actualizados desde última sync`);
+      }
+
+      // 5. Hacer merge usando orderNumber como clave única
+      const ordersMap = new Map<string, Order>();
+
+      // Primero agregar órdenes locales
+      for (const order of localOrders) {
+        ordersMap.set(order.orderNumber, order);
+      }
+
+      // Actualizar con órdenes del backend en paralelo
+      if (backendOrdersMapped.length > 0) {
+        // Primero actualizar el mapa
+        for (const order of backendOrdersMapped) {
+          ordersMap.set(order.orderNumber, order);
+        }
+
+        // Luego guardar en IndexedDB en paralelo
+        await Promise.all(
+          backendOrdersMapped.map(async (order) => {
+            try {
+              await db.put("orders", order);
+            } catch (error) {
+              console.warn(`⚠️ Error guardando orden ${order.orderNumber} en IndexedDB:`, error);
+            }
+          })
+        );
+      }
+
+      // 6. Guardar el nuevo timestamp de sincronización
+      if (newServerTimestamp!) {
+        await setLastSyncTimestamp("orders", newServerTimestamp);
+      }
+
+      const mergedOrders = Array.from(ordersMap.values());
+      console.log(
+        `✅ Órdenes sincronizadas: ${localOrders.length} locales + ${backendOrdersMapped.length} del backend = ${mergedOrders.length} totales`
+      );
+      return mergedOrders;
+
+    } catch (error) {
+      console.warn(
+        "⚠️ Error sincronizando órdenes con backend, usando solo IndexedDB:",
+        error
+      );
+      // Si falla el backend, retornar órdenes locales
+      return localOrders;
+    }
   } catch (error) {
     console.error("Error loading orders from IndexedDB:", error);
     return [];
@@ -3802,6 +3957,120 @@ export const deleteCommission = async (id: string): Promise<void> => {
     }
   } catch (error) {
     console.error("Error deleting commission from IndexedDB:", error);
+    throw error;
+  }
+};
+
+// ===== PRODUCT COMMISSIONS (Comisiones por Categoría/Familia) =====
+
+export interface ProductCommission {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  commissionValue: number; // 2.5, 5, 7.5, etc.
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getProductCommissions = async (): Promise<ProductCommission[]> => {
+  try {
+    // Intentar obtener del backend via API
+    const response = await apiClient.getProductCommissions();
+    return response;
+  } catch (error) {
+    console.error("Error loading product commissions:", error);
+    return [];
+  }
+};
+
+export const upsertProductCommission = async (
+  data: Omit<ProductCommission, "id" | "createdAt" | "updatedAt">
+): Promise<ProductCommission> => {
+  try {
+    return await apiClient.upsertProductCommission(data);
+  } catch (error) {
+    console.error("Error upserting product commission:", error);
+    throw error;
+  }
+};
+
+export const batchUpsertProductCommissions = async (
+  data: Omit<ProductCommission, "id" | "createdAt" | "updatedAt">[]
+): Promise<ProductCommission[]> => {
+  try {
+    return await apiClient.batchUpsertProductCommissions(data);
+  } catch (error) {
+    console.error("Error batch upserting product commissions:", error);
+    throw error;
+  }
+};
+
+export const deleteProductCommission = async (categoryId: string): Promise<void> => {
+  try {
+    await apiClient.deleteProductCommission(categoryId);
+  } catch (error) {
+    console.error("Error deleting product commission:", error);
+    throw error;
+  }
+};
+
+// ===== SALE TYPE COMMISSION RULES (Reglas de distribución por tipo de venta) =====
+
+export interface SaleTypeCommissionRule {
+  id: string;
+  saleType: string;
+  saleTypeLabel: string;
+  vendorRate: number; // Porcentaje que gana el vendedor de tienda
+  referrerRate: number; // Porcentaje que gana el referido/postventa
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getSaleTypeCommissionRules = async (): Promise<SaleTypeCommissionRule[]> => {
+  try {
+    return await apiClient.getSaleTypeCommissionRules();
+  } catch (error) {
+    console.error("Error loading sale type commission rules:", error);
+    return [];
+  }
+};
+
+export const upsertSaleTypeCommissionRule = async (
+  data: Omit<SaleTypeCommissionRule, "id" | "createdAt" | "updatedAt">
+): Promise<SaleTypeCommissionRule> => {
+  try {
+    return await apiClient.upsertSaleTypeCommissionRule(data);
+  } catch (error) {
+    console.error("Error upserting sale type commission rule:", error);
+    throw error;
+  }
+};
+
+export const batchUpsertSaleTypeCommissionRules = async (
+  data: Omit<SaleTypeCommissionRule, "id" | "createdAt" | "updatedAt">[]
+): Promise<SaleTypeCommissionRule[]> => {
+  try {
+    return await apiClient.batchUpsertSaleTypeCommissionRules(data);
+  } catch (error) {
+    console.error("Error batch upserting sale type commission rules:", error);
+    throw error;
+  }
+};
+
+export const deleteSaleTypeCommissionRule = async (saleType: string): Promise<void> => {
+  try {
+    await apiClient.deleteSaleTypeCommissionRule(saleType);
+  } catch (error) {
+    console.error("Error deleting sale type commission rule:", error);
+    throw error;
+  }
+};
+
+export const seedDefaultSaleTypeRules = async (): Promise<SaleTypeCommissionRule[]> => {
+  try {
+    return await apiClient.seedDefaultSaleTypeRules();
+  } catch (error) {
+    console.error("Error seeding default sale type rules:", error);
     throw error;
   }
 };

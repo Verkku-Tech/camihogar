@@ -26,19 +26,27 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
   };
 
   // Función para procesar y obtener el label del valor de un atributo
+  // includeNameForNumeric: si es true, para atributos numéricos incluye el nombre del atributo
   const getAttributeValueLabel = (
     selectedValue: any,
-    categoryAttribute: { valueType?: string; values?: (string | AttributeValue)[] } | undefined
+    categoryAttribute: { valueType?: string; values?: (string | AttributeValue)[]; title?: string } | undefined,
+    includeNameForNumeric: boolean = true
   ): string => {
     if (!categoryAttribute) {
       return String(selectedValue);
     }
 
-    // Si es un atributo numérico, mostrar el valor directamente
+    // Si es un atributo numérico, mostrar nombre + valor (ej: "Patas 3")
     if (categoryAttribute.valueType === "Number") {
-      return selectedValue !== undefined && selectedValue !== null && selectedValue !== ""
+      const numValue = selectedValue !== undefined && selectedValue !== null && selectedValue !== ""
         ? selectedValue.toString()
         : "";
+      if (!numValue) return "";
+      // Para concatenación, incluir el nombre del atributo
+      if (includeNameForNumeric && categoryAttribute.title) {
+        return `${categoryAttribute.title} ${numValue}`;
+      }
+      return numValue;
     }
 
     // Si no tiene values, mostrar el valor tal cual
@@ -115,10 +123,10 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
 
                     {/* Select de estado */}
                     <div className="w-full sm:w-48">
-                      <Label>Estado de Ubicación *</Label>
+                      <Label>Estado de Ubicación</Label>
                       <Select
-                        value={product.locationStatus ?? "EN TIENDA"}
-                        onValueChange={(value: "EN TIENDA" | "FABRICACION") => {
+                        value={product.locationStatus ?? "SIN DEFINIR"}
+                        onValueChange={(value: "SIN DEFINIR" | "EN TIENDA" | "FABRICACION") => {
                           orderForm.setSelectedProducts((products) =>
                             products.map((p) =>
                               p.id === product.id
@@ -132,6 +140,7 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
                           <SelectValue placeholder="Seleccionar estado" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="SIN DEFINIR">SIN DEFINIR</SelectItem>
                           <SelectItem value="EN TIENDA">EN TIENDA</SelectItem>
                           <SelectItem value="FABRICACION">FABRICACION</SelectItem>
                         </SelectContent>

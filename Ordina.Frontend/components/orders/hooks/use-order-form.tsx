@@ -152,6 +152,10 @@ export interface UseOrderFormReturn {
   accounts: Account[];
   exchangeRates: { USD?: ExchangeRate; EUR?: ExchangeRate };
 
+  // Control de impuesto
+  taxEnabled: boolean;
+  setTaxEnabled: (enabled: boolean) => void;
+
   // Valores calculados
   productSubtotal: number;
   productDiscountTotal: number;
@@ -269,6 +273,7 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
   const [generalDiscountType, setGeneralDiscountType] = useState<
     "monto" | "porcentaje"
   >("monto");
+  const [taxEnabled, setTaxEnabled] = useState<boolean>(true); // Impuesto habilitado por defecto
   const [generalDiscountCurrency, setGeneralDiscountCurrency] =
     useState<Currency>(preferredCurrency);
   const [generalObservations, setGeneralObservations] = useState("");
@@ -580,7 +585,7 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
   }, [productSubtotal, productDiscountTotal]);
 
   const subtotal = subtotalAfterProductDiscounts;
-  const taxAmount = subtotal * 0.16;
+  const taxAmount = taxEnabled ? subtotal * 0.16 : 0; // Impuesto condicional (16% o 0%)
   const deliveryCost = calculateDeliveryCost();
   const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
   const generalDiscountAmount = Math.min(
@@ -661,7 +666,7 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
         products.map((product) => ({
           ...product,
           discount: product.discount ?? 0,
-          locationStatus: product.locationStatus ?? "EN TIENDA",
+          locationStatus: product.locationStatus ?? "SIN DEFINIR",
         }))
       );
       const newTypes: Record<string, "monto" | "porcentaje"> = {};
@@ -848,6 +853,7 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
     });
     setPayments([]);
     setGeneralDiscount(0);
+    setTaxEnabled(true); // Reiniciar impuesto a habilitado
     setGeneralDiscountType("monto");
     setGeneralDiscountCurrency(preferredCurrency);
     setGeneralObservations("");
@@ -964,6 +970,8 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
     setGeneralDiscountType,
     generalDiscountCurrency,
     setGeneralDiscountCurrency,
+    taxEnabled,
+    setTaxEnabled,
     generalObservations,
     setGeneralObservations,
     createSupplierOrder,

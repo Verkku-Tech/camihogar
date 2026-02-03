@@ -27,23 +27,31 @@ import { getUnifiedOrders, deleteOrder, deleteBudget, type UnifiedOrder } from "
 import { useCurrency } from "@/contexts/currency-context"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
+import { ORDER_STATUSES, PAYMENT_METHODS_FILTER } from "@/components/orders/constants"
 
 const getStatusColor = (status: string) => {
   switch (status) {
     case "Presupuesto":
       return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300"
-    case "Generado":
-      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
-    case "Generada":
-      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+    case "Por Fabricar":
+      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
+    case "En Fabricación":
     case "Fabricación":
       return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300"
+    case "Almacén":
+      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+    case "Despacho":
     case "Por despachar":
       return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
+    case "Entregado":
     case "Completada":
       return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+    case "Declinado":
     case "Cancelado":
       return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+    case "Generado":
+    case "Generada":
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
     default:
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
   }
@@ -114,11 +122,11 @@ export default function PedidosPage() {
 
   // Obtener valores únicos para los filtros
   const uniqueVendors = Array.from(new Set(orders.map((o) => o.vendorName))).sort()
-  const uniqueStatuses = Array.from(new Set(orders.map((o) => o.status))).sort()
-  const uniquePaymentMethods = Array.from(
-    new Set(orders.map((o) => o.paymentMethod).filter((m): m is string => !!m))
-  ).sort()
   const uniqueClients = Array.from(new Set(orders.map((o) => o.clientName))).sort()
+  
+  // Usar lista fija de estados y métodos de pago
+  const uniqueStatuses = ORDER_STATUSES.map(s => s.value)
+  const uniquePaymentMethods = [...PAYMENT_METHODS_FILTER]
 
   const filteredOrders = orders.filter((order) => {
     // Filtro de búsqueda general (existente)

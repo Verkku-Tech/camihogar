@@ -42,6 +42,8 @@ public static class MongoDbServiceExtensions
         services.AddScoped<IPaymentMethodRepository, PaymentMethodRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<ICommissionRepository, CommissionRepository>();
+        services.AddScoped<IProductCommissionRepository, ProductCommissionRepository>();
+        services.AddScoped<ISaleTypeCommissionRuleRepository, SaleTypeCommissionRuleRepository>();
 
         return services;
     }
