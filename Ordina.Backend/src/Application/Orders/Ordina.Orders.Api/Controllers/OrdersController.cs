@@ -19,10 +19,42 @@ public class OrdersController : ControllerBase
     }
 
     /// <summary>
-    /// Obtiene todos los pedidos
+    /// Obtiene pedidos con paginación y filtro de sincronización incremental
     /// </summary>
-    /// <returns>Lista de pedidos</returns>
+    /// <param name="page">Número de página (1-indexed, default: 1)</param>
+    /// <param name="pageSize">Cantidad de elementos por página (default: 50, max: 100)</param>
+    /// <param name="since">Fecha ISO 8601 opcional para obtener solo pedidos modificados desde esa fecha (sincronización incremental)</param>
+    /// <returns>Respuesta paginada con los pedidos</returns>
+    /// <remarks>
+    /// Para sincronización incremental:
+    /// 1. Primera llamada: GET /api/Orders (sin parámetro 'since')
+    /// 2. Guardar el 'serverTimestamp' de la respuesta
+    /// 3. Siguientes llamadas: GET /api/Orders?since={serverTimestamp guardado}
+    /// </remarks>
     [HttpGet]
+    [ProducesResponseType(typeof(PagedOrdersResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedOrdersResponseDto>> GetOrdersPaged(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        [FromQuery] DateTime? since = null)
+    {
+        try
+        {
+            var result = await _orderService.GetOrdersPagedAsync(page, pageSize, since);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener pedidos paginados");
+            return StatusCode(500, new { message = "Error interno del servidor al obtener pedidos" });
+        }
+    }
+
+    /// <summary>
+    /// Obtiene todos los pedidos (sin paginación - usar solo para compatibilidad)
+    /// </summary>
+    /// <returns>Lista de todos los pedidos</returns>
+    [HttpGet("all")]
     [ProducesResponseType(typeof(IEnumerable<OrderResponseDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<OrderResponseDto>>> GetAllOrders()
     {

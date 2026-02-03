@@ -632,8 +632,51 @@ export class ApiClient {
   }
 
   // Orders endpoints
+  
+  /**
+   * Obtiene pedidos con paginación y filtro de sincronización incremental
+   * @param page Número de página (1-indexed, default: 1)
+   * @param pageSize Cantidad de elementos por página (default: 50, max: 100)
+   * @param since Fecha ISO 8601 opcional para obtener solo pedidos modificados desde esa fecha
+   */
+  async getOrdersPaged(page: number = 1, pageSize: number = 50, since?: string) {
+    const params = new URLSearchParams();
+    params.append("page", page.toString());
+    params.append("pageSize", pageSize.toString());
+    if (since) {
+      params.append("since", since);
+    }
+    return this.request<PagedOrdersResponseDto>(`/api/Orders?${params.toString()}`);
+  }
+
+  /**
+   * Obtiene todos los pedidos modificados desde una fecha específica (para sincronización incremental)
+   * Itera automáticamente por todas las páginas
+   * @param since Fecha ISO 8601 para obtener solo pedidos modificados desde esa fecha
+   */
+  async getOrdersSince(since: string): Promise<{ orders: OrderResponseDto[]; serverTimestamp: string }> {
+    const allOrders: OrderResponseDto[] = [];
+    let page = 1;
+    let hasMore = true;
+    let serverTimestamp = "";
+
+    while (hasMore) {
+      const response = await this.getOrdersPaged(page, 50, since);
+      allOrders.push(...response.orders);
+      serverTimestamp = response.serverTimestamp;
+      hasMore = response.hasNextPage;
+      page++;
+    }
+
+    return { orders: allOrders, serverTimestamp };
+  }
+
+  /**
+   * Obtiene todos los pedidos (sin paginación - para compatibilidad o sincronización inicial)
+   * @deprecated Usar getOrdersPaged() para mejor rendimiento
+   */
   async getOrders() {
-    return this.request<OrderResponseDto[]>("/api/Orders");
+    return this.request<OrderResponseDto[]>("/api/Orders/all");
   }
 
   async getOrderById(id: string) {
@@ -677,6 +720,106 @@ export class ApiClient {
       method: "DELETE",
     });
   }
+
+  // ===== PRODUCT COMMISSIONS (Comisiones por Categoría/Familia) =====
+
+  async getProductCommissions(): Promise<ProductCommissionDto[]> {
+    return this.request<ProductCommissionDto[]>("/api/CommissionSettings/ProductCommissions");
+  }
+
+  async getProductCommissionByCategory(categoryId: string): Promise<ProductCommissionDto> {
+    return this.request<ProductCommissionDto>(`/api/CommissionSettings/ProductCommissions/${categoryId}`);
+  }
+
+  async upsertProductCommission(data: CreateProductCommissionDto): Promise<ProductCommissionDto> {
+    return this.request<ProductCommissionDto>("/api/CommissionSettings/ProductCommissions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async batchUpsertProductCommissions(data: CreateProductCommissionDto[]): Promise<ProductCommissionDto[]> {
+    return this.request<ProductCommissionDto[]>("/api/CommissionSettings/ProductCommissions/Batch", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteProductCommission(categoryId: string): Promise<void> {
+    return this.request<void>(`/api/CommissionSettings/ProductCommissions/${categoryId}`, {
+      method: "DELETE",
+    });
+  }
+
+  // ===== SALE TYPE COMMISSION RULES (Reglas de distribución por tipo de venta) =====
+
+  async getSaleTypeCommissionRules(): Promise<SaleTypeCommissionRuleDto[]> {
+    return this.request<SaleTypeCommissionRuleDto[]>("/api/CommissionSettings/SaleTypeRules");
+  }
+
+  async getSaleTypeCommissionRule(saleType: string): Promise<SaleTypeCommissionRuleDto> {
+    return this.request<SaleTypeCommissionRuleDto>(`/api/CommissionSettings/SaleTypeRules/${saleType}`);
+  }
+
+  async upsertSaleTypeCommissionRule(data: CreateSaleTypeCommissionRuleDto): Promise<SaleTypeCommissionRuleDto> {
+    return this.request<SaleTypeCommissionRuleDto>("/api/CommissionSettings/SaleTypeRules", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async batchUpsertSaleTypeCommissionRules(data: CreateSaleTypeCommissionRuleDto[]): Promise<SaleTypeCommissionRuleDto[]> {
+    return this.request<SaleTypeCommissionRuleDto[]>("/api/CommissionSettings/SaleTypeRules/Batch", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSaleTypeCommissionRule(saleType: string): Promise<void> {
+    return this.request<void>(`/api/CommissionSettings/SaleTypeRules/${saleType}`, {
+      method: "DELETE",
+    });
+  }
+
+  async seedDefaultSaleTypeRules(): Promise<SaleTypeCommissionRuleDto[]> {
+    return this.request<SaleTypeCommissionRuleDto[]>("/api/CommissionSettings/SaleTypeRules/SeedDefaults", {
+      method: "POST",
+    });
+  }
+}
+
+// Product Commission Types
+export interface ProductCommissionDto {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  commissionValue: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProductCommissionDto {
+  categoryId: string;
+  categoryName: string;
+  commissionValue: number;
+}
+
+// Sale Type Commission Rule Types
+export interface SaleTypeCommissionRuleDto {
+  id: string;
+  saleType: string;
+  saleTypeLabel: string;
+  vendorRate: number;
+  referrerRate: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSaleTypeCommissionRuleDto {
+  saleType: string;
+  saleTypeLabel: string;
+  vendorRate: number;
+  referrerRate: number;
 }
 
 // Types
@@ -723,6 +866,9 @@ export interface UpdateUserDto {
   role?: string;
   status?: string;
   password?: string;
+  exclusiveCommission?: boolean;
+  baseSalary?: number;
+  baseSalaryCurrency?: string;
 }
 
 // Category Types
@@ -976,6 +1122,26 @@ export interface OrderResponseDto {
   deliveryZone?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Respuesta paginada de pedidos con información de sincronización */
+export interface PagedOrdersResponseDto {
+  /** Lista de pedidos en la página actual */
+  orders: OrderResponseDto[];
+  /** Número de página actual (1-indexed) */
+  page: number;
+  /** Cantidad de elementos por página */
+  pageSize: number;
+  /** Total de elementos (sin paginar) */
+  totalCount: number;
+  /** Total de páginas disponibles */
+  totalPages: number;
+  /** Indica si hay más páginas después de la actual */
+  hasNextPage: boolean;
+  /** Indica si hay páginas anteriores a la actual */
+  hasPreviousPage: boolean;
+  /** Timestamp del servidor para sincronización incremental */
+  serverTimestamp: string;
 }
 
 export interface CreateOrderDto {

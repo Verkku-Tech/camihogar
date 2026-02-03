@@ -22,7 +22,7 @@ const reports: ReportCard[] = [
   {
     id: "fabricacion",
     title: "Reporte de Fabricación",
-    description: "Productos que deben fabricarse, en fabricación o fabricados. Filtrable por fabricante.",
+    description: "Productos por fabricar, en fabricación o en almacén. Filtrable por fabricante.",
     href: "/reportes/fabricacion",
     icon: Package,
     color: "bg-blue-500",

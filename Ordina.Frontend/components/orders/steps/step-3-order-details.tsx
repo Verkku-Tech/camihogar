@@ -33,6 +33,7 @@ import {
   DELIVERY_ZONES,
   paymentMethods,
   digitalPaymentMethods,
+  bsOnlyPaymentMethods,
 } from "../constants";
 
 interface Step3OrderDetailsProps {
@@ -78,9 +79,9 @@ export function Step3OrderDetails({
                   if (!checked) {
                     // Resetear servicios cuando se desactiva delivery
                     orderForm.setDeliveryServices({
-                      deliveryExpress: { enabled: false, cost: 0, currency: "Bs" },
-                      servicioAcarreo: { enabled: false, cost: undefined, currency: "Bs" },
-                      servicioArmado: { enabled: false, cost: 0, currency: "Bs" },
+                      deliveryExpress: { enabled: false, cost: 0, currency: "USD" },
+                      servicioAcarreo: { enabled: false, cost: undefined, currency: "USD" },
+                      servicioArmado: { enabled: false, cost: 0, currency: "USD" },
                     });
                   }
                 }}
@@ -121,14 +122,14 @@ export function Step3OrderDetails({
                       id="deliveryExpress"
                       checked={orderForm.deliveryServices.deliveryExpress?.enabled || false}
                       onCheckedChange={(checked) => {
-                        orderForm.setDeliveryServices((prev) => ({
-                          ...prev,
-                          deliveryExpress: {
-                            enabled: checked as boolean,
-                            cost: checked ? (prev.deliveryExpress?.cost || 0) : 0,
-                            currency: prev.deliveryExpress?.currency || "Bs",
-                          },
-                        }));
+                          orderForm.setDeliveryServices((prev) => ({
+                            ...prev,
+                            deliveryExpress: {
+                              enabled: checked as boolean,
+                              cost: checked ? (prev.deliveryExpress?.cost || 0) : 0,
+                              currency: prev.deliveryExpress?.currency || "USD",
+                            },
+                          }));
                       }}
                     />
                     <Label htmlFor="deliveryExpress" className="text-sm sm:text-base font-medium">
@@ -172,7 +173,7 @@ export function Step3OrderDetails({
                           step="0.01"
                           value={(() => {
                             const cost = orderForm.deliveryServices.deliveryExpress?.cost || 0;
-                            const currency = orderForm.deliveryServices.deliveryExpress?.currency || "Bs";
+                        const currency = orderForm.deliveryServices.deliveryExpress?.currency || "USD";
                             if (cost === 0) return "";
                             if (currency === "Bs") return cost;
                             const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
@@ -180,7 +181,7 @@ export function Step3OrderDetails({
                           })()}
                           onChange={(e) => {
                             const inputValue = Number.parseFloat(e.target.value) || 0;
-                            const currency = orderForm.deliveryServices.deliveryExpress?.currency || "Bs";
+                        const currency = orderForm.deliveryServices.deliveryExpress?.currency || "USD";
                             let valueInBs = inputValue;
                             if (currency !== "Bs") {
                               const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
@@ -210,14 +211,14 @@ export function Step3OrderDetails({
                       id="servicioAcarreo"
                       checked={orderForm.deliveryServices.servicioAcarreo?.enabled || false}
                       onCheckedChange={(checked) => {
-                        orderForm.setDeliveryServices((prev) => ({
-                          ...prev,
-                          servicioAcarreo: {
-                            enabled: checked as boolean,
-                            cost: checked ? (prev.servicioAcarreo?.cost || undefined) : undefined,
-                            currency: prev.servicioAcarreo?.currency || "Bs",
-                          },
-                        }));
+                          orderForm.setDeliveryServices((prev) => ({
+                            ...prev,
+                            servicioAcarreo: {
+                              enabled: checked as boolean,
+                              cost: checked ? (prev.servicioAcarreo?.cost || undefined) : undefined,
+                              currency: prev.servicioAcarreo?.currency || "USD",
+                            },
+                          }));
                       }}
                     />
                     <Label htmlFor="servicioAcarreo" className="text-sm sm:text-base font-medium">
@@ -264,14 +265,14 @@ export function Step3OrderDetails({
                           value={(() => {
                             const cost = orderForm.deliveryServices.servicioAcarreo?.cost;
                             if (cost === undefined || cost === 0) return "";
-                            const currency = orderForm.deliveryServices.servicioAcarreo?.currency || "Bs";
+                            const currency = orderForm.deliveryServices.servicioAcarreo?.currency || "USD";
                             if (currency === "Bs") return cost;
                             const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
                             return rate && rate > 0 ? cost / rate : cost;
                           })()}
                           onChange={(e) => {
                             const inputValue = e.target.value === "" ? undefined : Number.parseFloat(e.target.value) || 0;
-                            const currency = orderForm.deliveryServices.servicioAcarreo?.currency || "Bs";
+                            const currency = orderForm.deliveryServices.servicioAcarreo?.currency || "USD";
                             let valueInBs: number | undefined = inputValue;
                             if (inputValue !== undefined && currency !== "Bs") {
                               const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
@@ -301,14 +302,14 @@ export function Step3OrderDetails({
                       id="servicioArmado"
                       checked={orderForm.deliveryServices.servicioArmado?.enabled || false}
                       onCheckedChange={(checked) => {
-                        orderForm.setDeliveryServices((prev) => ({
-                          ...prev,
-                          servicioArmado: {
-                            enabled: checked as boolean,
-                            cost: checked ? (prev.servicioArmado?.cost || 0) : 0,
-                            currency: prev.servicioArmado?.currency || "Bs",
-                          },
-                        }));
+                          orderForm.setDeliveryServices((prev) => ({
+                            ...prev,
+                            servicioArmado: {
+                              enabled: checked as boolean,
+                              cost: checked ? (prev.servicioArmado?.cost || 0) : 0,
+                              currency: prev.servicioArmado?.currency || "USD",
+                            },
+                          }));
                       }}
                     />
                     <Label htmlFor="servicioArmado" className="text-sm sm:text-base font-medium">
@@ -353,7 +354,7 @@ export function Step3OrderDetails({
                           required
                           value={(() => {
                             const cost = orderForm.deliveryServices.servicioArmado?.cost || 0;
-                            const currency = orderForm.deliveryServices.servicioArmado?.currency || "Bs";
+                        const currency = orderForm.deliveryServices.servicioArmado?.currency || "USD";
                             if (cost === 0) return "";
                             if (currency === "Bs") return cost;
                             const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
@@ -361,7 +362,7 @@ export function Step3OrderDetails({
                           })()}
                           onChange={(e) => {
                             const inputValue = Number.parseFloat(e.target.value) || 0;
-                            const currency = orderForm.deliveryServices.servicioArmado?.currency || "Bs";
+                        const currency = orderForm.deliveryServices.servicioArmado?.currency || "USD";
                             let valueInBs = inputValue;
                             if (currency !== "Bs") {
                               const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
@@ -403,7 +404,38 @@ export function Step3OrderDetails({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {/* DELIVERY EXPRESS - Mostrar por separado cuando esté habilitado */}
+                    {/* Base imponible (descuentos por producto) */}
+                    <TableRow>
+                      <TableCell className="text-xs sm:text-sm">
+                        Base imponible (descuentos por producto):
+                      </TableCell>
+                      {orderForm.renderCurrencyCell(orderForm.subtotal)}
+                    </TableRow>
+
+                    {/* Impuesto con checkbox para habilitar/deshabilitar */}
+                    <TableRow>
+                      <TableCell className="text-xs sm:text-sm">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="tax-enabled"
+                            checked={orderForm.taxEnabled}
+                            onCheckedChange={(checked) => orderForm.setTaxEnabled(!!checked)}
+                          />
+                          <label 
+                            htmlFor="tax-enabled" 
+                            className="cursor-pointer select-none"
+                          >
+                            Impuesto (16%):
+                          </label>
+                        </div>
+                      </TableCell>
+                      {orderForm.taxEnabled 
+                        ? orderForm.renderCurrencyCell(orderForm.taxAmount)
+                        : <TableCell className="text-right text-muted-foreground">$ 0,00</TableCell>
+                      }
+                    </TableRow>
+
+                    {/* Servicios complementarios (se suman después del impuesto) */}
                     {orderForm.deliveryServices.deliveryExpress?.enabled && 
                      orderForm.deliveryServices.deliveryExpress.cost > 0 && (
                       <TableRow>
@@ -413,8 +445,7 @@ export function Step3OrderDetails({
                         <TableCell className="text-right text-xs sm:text-sm">
                           {(() => {
                             const cost = orderForm.deliveryServices.deliveryExpress.cost;
-                            const currency = orderForm.deliveryServices.deliveryExpress.currency || "Bs";
-                            // Si la moneda no es Bs, convertir el costo de Bs a la moneda original
+                            const currency = orderForm.deliveryServices.deliveryExpress.currency || "USD";
                             if (currency !== "Bs") {
                               const rate = currency === "USD" 
                                 ? orderForm.exchangeRates.USD?.rate 
@@ -430,7 +461,6 @@ export function Step3OrderDetails({
                       </TableRow>
                     )}
 
-                    {/* SERVICIO DE ACARREO - Mostrar por separado cuando esté habilitado */}
                     {orderForm.deliveryServices.servicioAcarreo?.enabled && 
                      orderForm.deliveryServices.servicioAcarreo.cost && 
                      orderForm.deliveryServices.servicioAcarreo.cost > 0 && (
@@ -441,8 +471,7 @@ export function Step3OrderDetails({
                         <TableCell className="text-right text-xs sm:text-sm">
                           {(() => {
                             const cost = orderForm.deliveryServices.servicioAcarreo.cost;
-                            const currency = orderForm.deliveryServices.servicioAcarreo.currency || "Bs";
-                            // Si la moneda no es Bs, convertir el costo de Bs a la moneda original
+                            const currency = orderForm.deliveryServices.servicioAcarreo.currency || "USD";
                             if (currency !== "Bs") {
                               const rate = currency === "USD" 
                                 ? orderForm.exchangeRates.USD?.rate 
@@ -458,7 +487,6 @@ export function Step3OrderDetails({
                       </TableRow>
                     )}
 
-                    {/* SERVICIO DE ARMADO - Mostrar por separado cuando esté habilitado */}
                     {orderForm.deliveryServices.servicioArmado?.enabled && 
                      orderForm.deliveryServices.servicioArmado.cost > 0 && (
                       <TableRow>
@@ -468,8 +496,7 @@ export function Step3OrderDetails({
                         <TableCell className="text-right text-xs sm:text-sm">
                           {(() => {
                             const cost = orderForm.deliveryServices.servicioArmado.cost;
-                            const currency = orderForm.deliveryServices.servicioArmado.currency || "Bs";
-                            // Si la moneda no es Bs, convertir el costo de Bs a la moneda original
+                            const currency = orderForm.deliveryServices.servicioArmado.currency || "USD";
                             if (currency !== "Bs") {
                               const rate = currency === "USD" 
                                 ? orderForm.exchangeRates.USD?.rate 
@@ -484,22 +511,6 @@ export function Step3OrderDetails({
                         </TableCell>
                       </TableRow>
                     )}
-
-                    {/* Base imponible (descuentos por producto) */}
-                    <TableRow>
-                      <TableCell className="text-xs sm:text-sm">
-                        Base imponible (descuentos por producto):
-                      </TableCell>
-                      {orderForm.renderCurrencyCell(orderForm.subtotal)}
-                    </TableRow>
-
-                    {/* Impuesto */}
-                    <TableRow>
-                      <TableCell className="text-xs sm:text-sm">
-                        Impuesto:
-                      </TableCell>
-                      {orderForm.renderCurrencyCell(orderForm.taxAmount)}
-                    </TableRow>
 
                     {/* Total */}
                     <TableRow className="font-medium border-t">
@@ -874,18 +885,31 @@ export function Step3OrderDetails({
                                 "method",
                                 value
                             );
-                              // Si se cambia a método digital, establecer automáticamente USD
+                              // Si se cambia a método digital (AirTM, Binance, Facebank, etc.), establecer automáticamente USD
                               if (digitalPaymentMethods.includes(value)) {
-                                updatePayment?.(
-                                  payment.id,
-                                  "currency",
-                                  "USD"
-                              );
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "originalCurrency",
-                                  "USD"
-                              );
+                                updatePayment?.(payment.id, "currency", "USD");
+                                updatePaymentDetails?.(payment.id, "originalCurrency", "USD");
+                                
+                                // Si ya hay un monto, reconvertirlo de USD a Bs
+                                if (payment.paymentDetails?.originalAmount) {
+                                  const rate = orderForm.exchangeRates.USD?.rate;
+                                  if (rate && rate > 0) {
+                                    const valueInBs = payment.paymentDetails.originalAmount * rate;
+                                    updatePayment?.(payment.id, "amount", valueInBs);
+                                    updatePaymentDetails?.(payment.id, "exchangeRate", rate);
+                                  }
+                                }
+                              }
+                              // Si se cambia a método solo Bs (Pago Móvil, Transferencia, TDD, TDC), forzar Bs
+                              if (bsOnlyPaymentMethods.includes(value)) {
+                                updatePayment?.(payment.id, "currency", "Bs");
+                                updatePaymentDetails?.(payment.id, "originalCurrency", "Bs");
+                                updatePaymentDetails?.(payment.id, "exchangeRate", undefined);
+                                
+                                // Si hay monto original, usarlo directamente como Bs
+                                if (payment.paymentDetails?.originalAmount) {
+                                  updatePayment?.(payment.id, "amount", payment.paymentDetails.originalAmount);
+                                }
                               }
                               // Si se cambia a Efectivo, inicializar cashCurrency con la moneda del pago
                               if (value === "Efectivo") {
@@ -977,217 +1001,34 @@ export function Step3OrderDetails({
                             Información de Pago Móvil
                           </Label>
                           <div className="grid gap-3 sm:grid-cols-2">
+                            {/* Moneda fija: Bs (solo lectura) */}
                             <div className="space-y-2">
-                              <Label
-                                htmlFor={`pagomovil-currency-${payment.id}`}
-                                className="text-xs"
-                              >
-                                Moneda *
-                              </Label>
-                              <Select
-                                value={
-                                  (payment.currency && orderForm.selectedCurrencies.includes(payment.currency))
-                                    ? payment.currency
-                                    : orderForm.getDefaultCurrencyFromSelection()
-                                }
-                                onValueChange={(value: Currency) => {
-                                  // Actualizar la moneda registrada
-                                  updatePayment?.(
-                                    payment.id,
-                                    "currency",
-                                    value
-                                );
-
-                                  // Si ya hay un originalAmount y originalCurrency guardados, 
-                                  // solo actualizar la moneda y recalcular el amount en Bs
-                                  const currentOriginalAmount = payment.paymentDetails?.originalAmount;
-                                  const currentOriginalCurrency = payment.paymentDetails?.originalCurrency;
-                                          
-                                  if (currentOriginalAmount !== undefined && currentOriginalCurrency) {
-                                    // Actualizar la moneda original
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "originalCurrency",
-                                      value
-                                  );
-                                            
-                                    // Si el monto original está en otra moneda, mantenerlo pero recalcular Bs
-                                    // Si cambia a la misma moneda que ya tiene el originalAmount, mantenerlo
-                                    if (value !== currentOriginalCurrency) {
-                                      // Si cambia de moneda, mantener el originalAmount actual
-                                      // y recalcular el amount en Bs basado en la nueva moneda
-                                      let valueInBs = currentOriginalAmount;
-                                      if (value !== "Bs") {
-                                        const rate =
-                                          value === "USD"
-                                            ? orderForm.exchangeRates.USD?.rate
-                                            : orderForm.exchangeRates.EUR?.rate;
-                                        if (rate && rate > 0) {
-                                          valueInBs = currentOriginalAmount * rate;
-                                          updatePaymentDetails?.(
-                                            payment.id,
-                                            "exchangeRate",
-                                            rate
-                                        );
-                                        }
-                                      } else {
-                                        // Si cambia a Bs, el originalAmount ya está en Bs
-                                        valueInBs = currentOriginalAmount;
-                                      }
-                                      updatePayment?.(
-                                        payment.id,
-                                        "amount",
-                                        valueInBs
-                                    );
-                                    }
-                                  } else if (payment.amount > 0) {
-                                    // Si no hay originalAmount guardado pero hay amount, calcular desde amount
-                                    let originalAmount = payment.amount;
-                                    if (value !== "Bs") {
-                                      const rate =
-                                        value === "USD"
-                                          ? orderForm.exchangeRates.USD?.rate
-                                          : orderForm.exchangeRates.EUR?.rate;
-                                      if (rate && rate > 0) {
-                                        originalAmount = payment.amount / rate;
-                                        updatePaymentDetails?.(
-                                          payment.id,
-                                          "exchangeRate",
-                                          rate
-                                      );
-                                      }
-                                    }
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "originalAmount",
-                                      originalAmount
-                                  );
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "originalCurrency",
-                                      value
-                                  );
-                                  } else {
-                                    // Si no hay monto aún, solo actualizar la moneda
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "originalCurrency",
-                                      value
-                                  );
-                                  }
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Bs">
-                                    Bolívares (Bs)
-                                  </SelectItem>
-                                  <SelectItem value="USD">
-                                    Dólares (USD)
-                                  </SelectItem>
-                                  <SelectItem value="EUR">
-                                    Euros (EUR)
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
+                              <Label className="text-xs">Moneda</Label>
+                              <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 text-sm">
+                                Bolívares (Bs)
+                              </div>
                             </div>
-                            {/* Campo Monto después de Moneda */}
+                            {/* Campo Monto - siempre en Bs */}
                             <div className="space-y-2">
                               <Label
                                 htmlFor={`pagomovil-amount-${payment.id}`}
                                 className="text-xs"
                               >
-                                Monto *
+                                Monto (Bs) *
                               </Label>
                               <Input
                                 id={`pagomovil-amount-${payment.id}`}
                                 type="number"
                                 step="0.01"
-                                value={(() => {
-                                  if (payment.amount === 0) return "";
-                                  // Si hay monto original guardado, usarlo
-                                  if (
-                                    payment.paymentDetails
-                                      ?.originalAmount !== undefined
-                                ) {
-                                    return payment.paymentDetails
-                                      .originalAmount;
-                                  }
-                                  // Fallback: calcular desde payment.amount
-                                  const paymentCurrency =
-                                    payment.currency || orderForm.getDefaultCurrencyFromSelection();
-                                  if (paymentCurrency === "Bs") {
-                                    return payment.amount;
-                                  }
-                                  const rate =
-                                    paymentCurrency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    return payment.amount / rate;
-                                  }
-                                  return payment.amount;
-                                })()}
+                                value={payment.amount === 0 ? "" : payment.amount}
                                 onChange={(e) => {
-                                  const inputValue =
-                                    Number.parseFloat(e.target.value) ||
-                                    0;
-                                  const paymentCurrency =
-                                    payment.currency || orderForm.getDefaultCurrencyFromSelection();
-
-                                  // SIEMPRE guardar el monto original en la moneda del pago
-                                  // Esto asegura que siempre tengamos el valor original
-                                  updatePaymentDetails?.(
-                                    payment.id,
-                                    "originalAmount",
-                                    inputValue
-                                );
-                                  updatePaymentDetails?.(
-                                    payment.id,
-                                    "originalCurrency",
-                                    paymentCurrency
-                                );
-
-                                  // También actualizar payment.currency si no está definida
-                                  if (!payment.currency) {
-                                    updatePayment?.(
-                                      payment.id,
-                                      "currency",
-                                      paymentCurrency
-                                  );
-                                  }
-
-                                  // Convertir a Bs según la moneda seleccionada
-                                  let valueInBs = inputValue;
-                                  if (paymentCurrency !== "Bs") {
-                                    const rate =
-                                      paymentCurrency === "USD"
-                                        ? orderForm.exchangeRates.USD?.rate
-                                        : orderForm.exchangeRates.EUR?.rate;
-                                    if (rate && rate > 0) {
-                                      valueInBs = inputValue * rate;
-                                      // Guardar la tasa de cambio usada
-                                      updatePaymentDetails?.(
-                                        payment.id,
-                                        "exchangeRate",
-                                        rate
-                                    );
-                                    }
-                                  } else {
-                                    // Si es Bs, asegurar que el exchangeRate sea null/undefined
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "exchangeRate",
-                                      undefined
-                                  );
-                                  }
-                                  updatePayment?.(
-                                    payment.id,
-                                    "amount",
-                                    valueInBs
-                                );
+                                  const inputValue = Number.parseFloat(e.target.value) || 0;
+                                  // Pago Móvil siempre es en Bs
+                                  updatePayment?.(payment.id, "amount", inputValue);
+                                  updatePayment?.(payment.id, "currency", "Bs");
+                                  updatePaymentDetails?.(payment.id, "originalAmount", inputValue);
+                                  updatePaymentDetails?.(payment.id, "originalCurrency", "Bs");
+                                  updatePaymentDetails?.(payment.id, "exchangeRate", undefined);
                                 }}
                                 placeholder="0.00"
                               />
@@ -1282,217 +1123,34 @@ export function Step3OrderDetails({
                             Información de Transferencia
                           </Label>
                           <div className="grid gap-3 sm:grid-cols-2">
+                            {/* Moneda fija: Bs (solo lectura) */}
                             <div className="space-y-2">
-                              <Label
-                                htmlFor={`transferencia-currency-${payment.id}`}
-                                className="text-xs"
-                              >
-                                Moneda *
-                              </Label>
-                              <Select
-                                value={
-                                  (payment.currency && orderForm.selectedCurrencies.includes(payment.currency))
-                                    ? payment.currency
-                                    : orderForm.getDefaultCurrencyFromSelection()
-                                }
-                                onValueChange={(value: Currency) => {
-                                  // Actualizar la moneda registrada
-                                  updatePayment?.(
-                                    payment.id,
-                                    "currency",
-                                    value
-                                );
-
-                                  // Si ya hay un originalAmount y originalCurrency guardados, 
-                                  // solo actualizar la moneda y recalcular el amount en Bs
-                                  const currentOriginalAmount = payment.paymentDetails?.originalAmount;
-                                  const currentOriginalCurrency = payment.paymentDetails?.originalCurrency;
-                                          
-                                  if (currentOriginalAmount !== undefined && currentOriginalCurrency) {
-                                    // Actualizar la moneda original
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "originalCurrency",
-                                      value
-                                  );
-                                            
-                                    // Si el monto original está en otra moneda, mantenerlo pero recalcular Bs
-                                    // Si cambia a la misma moneda que ya tiene el originalAmount, mantenerlo
-                                    if (value !== currentOriginalCurrency) {
-                                      // Si cambia de moneda, mantener el originalAmount actual
-                                      // y recalcular el amount en Bs basado en la nueva moneda
-                                      let valueInBs = currentOriginalAmount;
-                                      if (value !== "Bs") {
-                                        const rate =
-                                          value === "USD"
-                                            ? orderForm.exchangeRates.USD?.rate
-                                            : orderForm.exchangeRates.EUR?.rate;
-                                        if (rate && rate > 0) {
-                                          valueInBs = currentOriginalAmount * rate;
-                                          updatePaymentDetails?.(
-                                            payment.id,
-                                            "exchangeRate",
-                                            rate
-                                        );
-                                        }
-                                      } else {
-                                        // Si cambia a Bs, el originalAmount ya está en Bs
-                                        valueInBs = currentOriginalAmount;
-                                      }
-                                      updatePayment?.(
-                                        payment.id,
-                                        "amount",
-                                        valueInBs
-                                    );
-                                    }
-                                  } else if (payment.amount > 0) {
-                                    // Si no hay originalAmount guardado pero hay amount, calcular desde amount
-                                    let originalAmount = payment.amount;
-                                    if (value !== "Bs") {
-                                      const rate =
-                                        value === "USD"
-                                          ? orderForm.exchangeRates.USD?.rate
-                                          : orderForm.exchangeRates.EUR?.rate;
-                                      if (rate && rate > 0) {
-                                        originalAmount = payment.amount / rate;
-                                        updatePaymentDetails?.(
-                                          payment.id,
-                                          "exchangeRate",
-                                          rate
-                                      );
-                                      }
-                                    }
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "originalAmount",
-                                      originalAmount
-                                  );
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "originalCurrency",
-                                      value
-                                  );
-                                  } else {
-                                    // Si no hay monto aún, solo actualizar la moneda
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "originalCurrency",
-                                      value
-                                  );
-                                  }
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Bs">
-                                    Bolívares (Bs)
-                                  </SelectItem>
-                                  <SelectItem value="USD">
-                                    Dólares (USD)
-                                  </SelectItem>
-                                  <SelectItem value="EUR">
-                                    Euros (EUR)
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
+                              <Label className="text-xs">Moneda</Label>
+                              <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 text-sm">
+                                Bolívares (Bs)
+                              </div>
                             </div>
-                            {/* Campo Monto después de Moneda */}
+                            {/* Campo Monto - siempre en Bs */}
                             <div className="space-y-2">
                               <Label
                                 htmlFor={`transferencia-amount-${payment.id}`}
                                 className="text-xs"
                               >
-                                Monto *
+                                Monto (Bs) *
                               </Label>
                               <Input
                                 id={`transferencia-amount-${payment.id}`}
                                 type="number"
                                 step="0.01"
-                                value={(() => {
-                                  if (payment.amount === 0) return "";
-                                  // Si hay monto original guardado, usarlo
-                                  if (
-                                    payment.paymentDetails
-                                      ?.originalAmount !== undefined
-                                ) {
-                                    return payment.paymentDetails
-                                      .originalAmount;
-                                  }
-                                  // Fallback: calcular desde payment.amount
-                                  const paymentCurrency =
-                                    payment.currency || orderForm.getDefaultCurrencyFromSelection();
-                                  if (paymentCurrency === "Bs") {
-                                    return payment.amount;
-                                  }
-                                  const rate =
-                                    paymentCurrency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    return payment.amount / rate;
-                                  }
-                                  return payment.amount;
-                                })()}
+                                value={payment.amount === 0 ? "" : payment.amount}
                                 onChange={(e) => {
-                                  const inputValue =
-                                    Number.parseFloat(e.target.value) ||
-                                    0;
-                                  const paymentCurrency =
-                                    payment.currency || orderForm.getDefaultCurrencyFromSelection();
-
-                                  // SIEMPRE guardar el monto original en la moneda del pago
-                                  // Esto asegura que siempre tengamos el valor original
-                                  updatePaymentDetails?.(
-                                    payment.id,
-                                    "originalAmount",
-                                    inputValue
-                                );
-                                  updatePaymentDetails?.(
-                                    payment.id,
-                                    "originalCurrency",
-                                    paymentCurrency
-                                );
-
-                                  // También actualizar payment.currency si no está definida
-                                  if (!payment.currency) {
-                                    updatePayment?.(
-                                      payment.id,
-                                      "currency",
-                                      paymentCurrency
-                                  );
-                                  }
-
-                                  // Convertir a Bs según la moneda seleccionada
-                                  let valueInBs = inputValue;
-                                  if (paymentCurrency !== "Bs") {
-                                    const rate =
-                                      paymentCurrency === "USD"
-                                        ? orderForm.exchangeRates.USD?.rate
-                                        : orderForm.exchangeRates.EUR?.rate;
-                                    if (rate && rate > 0) {
-                                      valueInBs = inputValue * rate;
-                                      // Guardar la tasa de cambio usada
-                                      updatePaymentDetails?.(
-                                        payment.id,
-                                        "exchangeRate",
-                                        rate
-                                    );
-                                    }
-                                  } else {
-                                    // Si es Bs, asegurar que el exchangeRate sea null/undefined
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "exchangeRate",
-                                      undefined
-                                  );
-                                  }
-                                  updatePayment?.(
-                                    payment.id,
-                                    "amount",
-                                    valueInBs
-                                );
+                                  const inputValue = Number.parseFloat(e.target.value) || 0;
+                                  // Transferencia siempre es en Bs
+                                  updatePayment?.(payment.id, "amount", inputValue);
+                                  updatePayment?.(payment.id, "currency", "Bs");
+                                  updatePaymentDetails?.(payment.id, "originalAmount", inputValue);
+                                  updatePaymentDetails?.(payment.id, "originalCurrency", "Bs");
+                                  updatePaymentDetails?.(payment.id, "exchangeRate", undefined);
                                 }}
                                 placeholder="0.00"
                               />
@@ -1581,17 +1239,231 @@ export function Step3OrderDetails({
                         </div>
                       )}
 
+                      {/* Tarjeta de Débito - Solo Bs con selector de banco */}
+                      {payment.method === "Tarjeta de débito" && (
+                        <div className="space-y-3 pt-2 border-t">
+                          <Label className="text-sm font-medium">
+                            Información de Tarjeta de Débito
+                          </Label>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {/* Moneda fija: Bs (solo lectura) */}
+                            <div className="space-y-2">
+                              <Label className="text-xs">Moneda</Label>
+                              <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 text-sm">
+                                Bolívares (Bs)
+                              </div>
+                            </div>
+                            {/* Campo Monto - siempre en Bs */}
+                            <div className="space-y-2">
+                              <Label
+                                htmlFor={`tdd-amount-${payment.id}`}
+                                className="text-xs"
+                              >
+                                Monto (Bs) *
+                              </Label>
+                              <Input
+                                id={`tdd-amount-${payment.id}`}
+                                type="number"
+                                step="0.01"
+                                value={payment.amount === 0 ? "" : payment.amount}
+                                onChange={(e) => {
+                                  const inputValue = Number.parseFloat(e.target.value) || 0;
+                                  updatePayment?.(payment.id, "amount", inputValue);
+                                  updatePayment?.(payment.id, "currency", "Bs");
+                                  updatePaymentDetails?.(payment.id, "originalAmount", inputValue);
+                                  updatePaymentDetails?.(payment.id, "originalCurrency", "Bs");
+                                  updatePaymentDetails?.(payment.id, "exchangeRate", undefined);
+                                }}
+                                placeholder="0.00"
+                              />
+                            </div>
+                            {/* Selector de Banco */}
+                            <div className="space-y-2">
+                              <Label
+                                htmlFor={`tdd-bank-${payment.id}`}
+                                className="text-xs"
+                              >
+                                Banco *
+                              </Label>
+                              <Select
+                                value={payment.paymentDetails?.bank || undefined}
+                                onValueChange={(value) => {
+                                  updatePaymentDetails?.(payment.id, "bank", value);
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Seleccione el banco" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {getAccountsForPaymentMethod?.("Transferencia")
+                                    .filter((account) => account.id && account.id.trim() !== "")
+                                    .map((account) => (
+                                      <SelectItem key={account.id} value={account.label || account.id}>
+                                        {account.label}
+                                      </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {/* N° de Referencia */}
+                            <div className="space-y-2">
+                              <Label
+                                htmlFor={`tdd-reference-${payment.id}`}
+                                className="text-xs"
+                              >
+                                N° de Referencia
+                              </Label>
+                              <Input
+                                id={`tdd-reference-${payment.id}`}
+                                value={payment.paymentDetails?.cardReference || ""}
+                                onChange={(e) =>
+                                  updatePaymentDetails?.(payment.id, "cardReference", e.target.value)
+                                }
+                                placeholder="Ingrese el número de referencia"
+                              />
+                            </div>
+                          </div>
+                          
+                          {/* Comprobante - Imágenes */}
+                          <div className="space-y-2 pt-2 border-t">
+                            <Label className="text-xs font-medium">
+                              Comprobante (Imágenes)
+                            </Label>
+                            {updatePaymentImages && (
+                              <ImageUploader
+                                images={payment.images || []}
+                                onImagesChange={(images) => updatePaymentImages(payment.id, images)}
+                                maxImages={3}
+                                maxSizeMB={1}
+                                maxTotalSizeMB={2.5}
+                                compressionQuality={0.7}
+                                maxWidth={1600}
+                                maxHeight={1600}
+                                isSensitive={true}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tarjeta de Crédito - Solo Bs con selector de banco */}
+                      {payment.method === "Tarjeta de Crédito" && (
+                        <div className="space-y-3 pt-2 border-t">
+                          <Label className="text-sm font-medium">
+                            Información de Tarjeta de Crédito
+                          </Label>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {/* Moneda fija: Bs (solo lectura) */}
+                            <div className="space-y-2">
+                              <Label className="text-xs">Moneda</Label>
+                              <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 text-sm">
+                                Bolívares (Bs)
+                              </div>
+                            </div>
+                            {/* Campo Monto - siempre en Bs */}
+                            <div className="space-y-2">
+                              <Label
+                                htmlFor={`tdc-amount-${payment.id}`}
+                                className="text-xs"
+                              >
+                                Monto (Bs) *
+                              </Label>
+                              <Input
+                                id={`tdc-amount-${payment.id}`}
+                                type="number"
+                                step="0.01"
+                                value={payment.amount === 0 ? "" : payment.amount}
+                                onChange={(e) => {
+                                  const inputValue = Number.parseFloat(e.target.value) || 0;
+                                  updatePayment?.(payment.id, "amount", inputValue);
+                                  updatePayment?.(payment.id, "currency", "Bs");
+                                  updatePaymentDetails?.(payment.id, "originalAmount", inputValue);
+                                  updatePaymentDetails?.(payment.id, "originalCurrency", "Bs");
+                                  updatePaymentDetails?.(payment.id, "exchangeRate", undefined);
+                                }}
+                                placeholder="0.00"
+                              />
+                            </div>
+                            {/* Selector de Banco */}
+                            <div className="space-y-2">
+                              <Label
+                                htmlFor={`tdc-bank-${payment.id}`}
+                                className="text-xs"
+                              >
+                                Banco *
+                              </Label>
+                              <Select
+                                value={payment.paymentDetails?.bank || undefined}
+                                onValueChange={(value) => {
+                                  updatePaymentDetails?.(payment.id, "bank", value);
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Seleccione el banco" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {getAccountsForPaymentMethod?.("Transferencia")
+                                    .filter((account) => account.id && account.id.trim() !== "")
+                                    .map((account) => (
+                                      <SelectItem key={account.id} value={account.label || account.id}>
+                                        {account.label}
+                                      </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {/* N° de Referencia */}
+                            <div className="space-y-2">
+                              <Label
+                                htmlFor={`tdc-reference-${payment.id}`}
+                                className="text-xs"
+                              >
+                                N° de Referencia
+                              </Label>
+                              <Input
+                                id={`tdc-reference-${payment.id}`}
+                                value={payment.paymentDetails?.cardReference || ""}
+                                onChange={(e) =>
+                                  updatePaymentDetails?.(payment.id, "cardReference", e.target.value)
+                                }
+                                placeholder="Ingrese el número de referencia"
+                              />
+                            </div>
+                          </div>
+                          
+                          {/* Comprobante - Imágenes */}
+                          <div className="space-y-2 pt-2 border-t">
+                            <Label className="text-xs font-medium">
+                              Comprobante (Imágenes)
+                            </Label>
+                            {updatePaymentImages && (
+                              <ImageUploader
+                                images={payment.images || []}
+                                onImagesChange={(images) => updatePaymentImages(payment.id, images)}
+                                maxImages={3}
+                                maxSizeMB={1}
+                                maxTotalSizeMB={2.5}
+                                compressionQuality={0.7}
+                                maxWidth={1600}
+                                maxHeight={1600}
+                                isSensitive={true}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Sección genérica para métodos que solo necesitan Moneda y Monto */}
                       {payment.method && 
                        payment.method !== "" && 
-                       !["Pago Móvil", "Transferencia", "Efectivo"].includes(payment.method) && (
+                       !["Pago Móvil", "Transferencia", "Tarjeta de débito", "Tarjeta de Crédito", "Efectivo"].includes(payment.method) && (
                         <div className="space-y-3 pt-2 border-t">
                           <Label className="text-sm font-medium">
                             Información de {payment.method}
                           </Label>
                           <div className="grid gap-3 sm:grid-cols-2">
-                            {/* Campo Moneda - Oculto para métodos digitales */}
-                            {!digitalPaymentMethods.includes(payment.method) && (
+                            {/* Campo Moneda - Oculto para métodos digitales (USD) y métodos de solo Bs */}
+                            {!digitalPaymentMethods.includes(payment.method) && !bsOnlyPaymentMethods.includes(payment.method) && (
                               <div className="space-y-2">
                                 <Label
                                   htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-currency-${payment.id}`}
@@ -1601,9 +1473,7 @@ export function Step3OrderDetails({
                                 </Label>
                                 <Select
                                   value={
-                                    (payment.currency && orderForm.selectedCurrencies.includes(payment.currency))
-                                      ? payment.currency
-                                      : orderForm.getDefaultCurrencyFromSelection()
+                                    payment.currency || orderForm.getDefaultCurrencyFromSelection()
                                   }
                                   onValueChange={(value: Currency) => {
                                   // Actualizar la moneda registrada
@@ -1709,32 +1579,43 @@ export function Step3OrderDetails({
                               </Select>
                             </div>
                           )}
+                          {/* Indicador de moneda fija para métodos digitales */}
+                          {digitalPaymentMethods.includes(payment.method) && (
+                            <div className="space-y-2">
+                              <Label className="text-xs">Moneda</Label>
+                              <div className="flex items-center h-10 px-3 border rounded-md bg-muted text-muted-foreground text-sm">
+                                Dólares (USD)
+                              </div>
+                            </div>
+                          )}
                           <div className="space-y-2">
                             <Label
                               htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-amount-${payment.id}`}
-                                className="text-xs"
-                              >
-                                Monto *
-                              </Label>
-                              <Input
-                                id={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-amount-${payment.id}`}
-                                type="number"
-                                step="0.01"
-                                value={(() => {
-                                  if (payment.amount === 0) return "";
-                                  // Si hay monto original guardado, usarlo
-                                  if (
-                                    payment.paymentDetails
-                                      ?.originalAmount !== undefined
-                                ) {
-                                    return payment.paymentDetails
-                                      .originalAmount;
+                              className="text-xs"
+                            >
+                              Monto {digitalPaymentMethods.includes(payment.method) ? "($)" : ""} *
+                            </Label>
+                            <Input
+                              id={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-amount-${payment.id}`}
+                              type="number"
+                              step="0.01"
+                              value={(() => {
+                                if (payment.amount === 0) return "";
+                                // Si hay monto original guardado, usarlo
+                                if (payment.paymentDetails?.originalAmount !== undefined) {
+                                  return payment.paymentDetails.originalAmount;
+                                }
+                                // Fallback: calcular desde payment.amount
+                                // Determinar la moneda según el tipo de método
+                                let paymentCurrency: Currency;
+                                if (digitalPaymentMethods.includes(payment.method)) {
+                                  paymentCurrency = "USD";
+                                  } else if (bsOnlyPaymentMethods.includes(payment.method)) {
+                                    paymentCurrency = "Bs";
+                                  } else {
+                                    paymentCurrency = payment.currency || orderForm.getDefaultCurrencyFromSelection();
                                   }
-                                  // Fallback: calcular desde payment.amount
-                                  // Para métodos digitales, siempre usar USD
-                                  const paymentCurrency = digitalPaymentMethods.includes(payment.method)
-                                    ? "USD"
-                                    : (payment.currency || orderForm.getDefaultCurrencyFromSelection());
+                                  
                                   if (paymentCurrency === "Bs") {
                                     return payment.amount;
                                   }
@@ -1751,34 +1632,37 @@ export function Step3OrderDetails({
                                   const inputValue =
                                     Number.parseFloat(e.target.value) ||
                                     0;
-                                  // Para métodos digitales, siempre usar USD
-                                  const paymentCurrency = digitalPaymentMethods.includes(payment.method)
-                                    ? "USD"
-                                    : (payment.currency || orderForm.getDefaultCurrencyFromSelection());
+                                  // Para métodos digitales, SIEMPRE usar USD
+                                  // Para métodos de solo Bs, SIEMPRE usar Bs
+                                  let paymentCurrency: Currency;
+                                  if (digitalPaymentMethods.includes(payment.method)) {
+                                    paymentCurrency = "USD";
+                                  } else if (bsOnlyPaymentMethods.includes(payment.method)) {
+                                    paymentCurrency = "Bs";
+                                  } else {
+                                    paymentCurrency = payment.currency || orderForm.getDefaultCurrencyFromSelection();
+                                  }
 
                                   // SIEMPRE guardar el monto original en la moneda del pago
-                                  // Esto asegura que siempre tengamos el valor original
                                   updatePaymentDetails?.(
                                     payment.id,
                                     "originalAmount",
                                     inputValue
-                                );
+                                  );
                                   updatePaymentDetails?.(
                                     payment.id,
                                     "originalCurrency",
                                     paymentCurrency
-                                );
-
-                                  // También actualizar payment.currency si no está definida
-                                  if (!payment.currency) {
-                                    updatePayment?.(
-                                      payment.id,
-                                      "currency",
-                                      paymentCurrency
                                   );
-                                  }
 
-                                  // Convertir a Bs según la moneda seleccionada
+                                  // Asegurar que payment.currency refleje la moneda correcta
+                                  updatePayment?.(
+                                    payment.id,
+                                    "currency",
+                                    paymentCurrency
+                                  );
+
+                                  // Convertir a Bs según la moneda
                                   let valueInBs = inputValue;
                                   if (paymentCurrency !== "Bs") {
                                     const rate =
@@ -1787,26 +1671,32 @@ export function Step3OrderDetails({
                                         : orderForm.exchangeRates.EUR?.rate;
                                     if (rate && rate > 0) {
                                       valueInBs = inputValue * rate;
-                                      // Guardar la tasa de cambio usada
                                       updatePaymentDetails?.(
                                         payment.id,
                                         "exchangeRate",
                                         rate
-                                    );
+                                      );
+                                    } else {
+                                      // Si no hay tasa, guardar el valor como está y marcar que necesita conversión
+                                      console.warn(`⚠️ No hay tasa de cambio para ${paymentCurrency}, guardando valor sin convertir`);
+                                      updatePaymentDetails?.(
+                                        payment.id,
+                                        "exchangeRate",
+                                        undefined
+                                      );
                                     }
                                   } else {
-                                    // Si es Bs, asegurar que el exchangeRate sea null/undefined
                                     updatePaymentDetails?.(
                                       payment.id,
                                       "exchangeRate",
                                       undefined
-                                  );
+                                    );
                                   }
                                   updatePayment?.(
                                     payment.id,
                                     "amount",
                                     valueInBs
-                                );
+                                  );
                                 }}
                                 placeholder="0.00"
                               />
@@ -1931,10 +1821,7 @@ export function Step3OrderDetails({
                               </Label>
                               <Select
                                 value={
-                                  (payment.paymentDetails?.cashCurrency && 
-                                   orderForm.selectedCurrencies.includes(payment.paymentDetails.cashCurrency))
-                                    ? payment.paymentDetails.cashCurrency
-                                    : orderForm.getDefaultCurrencyFromSelection()
+                                  payment.paymentDetails?.cashCurrency || orderForm.getDefaultCurrencyFromSelection()
                                 }
                                 onValueChange={(value: Currency) => {
                                   // Actualizar cashCurrency

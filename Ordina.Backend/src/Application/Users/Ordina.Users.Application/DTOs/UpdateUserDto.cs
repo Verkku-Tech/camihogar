@@ -22,5 +22,14 @@ public class UpdateUserDto
 
     [StringLength(500, ErrorMessage = "La contraseña no puede exceder 500 caracteres")]
     public string? Password { get; set; }
+
+    // Campos para comisiones
+    public bool? ExclusiveCommission { get; set; } // Vendedores que NO comparten comisión con referidos
+
+    [Range(0, double.MaxValue, ErrorMessage = "El sueldo base debe ser un valor positivo")]
+    public decimal? BaseSalary { get; set; } // Sueldo fijo del vendedor
+
+    [StringLength(10, ErrorMessage = "La moneda del sueldo no puede exceder 10 caracteres")]
+    public string? BaseSalaryCurrency { get; set; } // Moneda del sueldo
 }
 

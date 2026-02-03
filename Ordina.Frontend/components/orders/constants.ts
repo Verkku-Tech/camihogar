@@ -1,3 +1,32 @@
+// Estados de pedidos para filtros
+export const ORDER_STATUSES = [
+  { value: "Presupuesto", label: "Presupuesto" },
+  { value: "Por Fabricar", label: "Por Fabricar" },
+  { value: "En Fabricación", label: "En Fabricación" },
+  { value: "Almacén", label: "Almacén" },
+  { value: "Despacho", label: "Despacho" },
+  { value: "Entregado", label: "Entregado" },
+  { value: "Declinado", label: "Declinado" },
+] as const;
+
+// Métodos de pago para filtros (lista completa)
+export const PAYMENT_METHODS_FILTER = [
+  "AirTM",
+  "Banesco Panamá",
+  "Binance",
+  "Efectivo Bs",
+  "Efectivo $",
+  "Facebank",
+  "Mercantil Panamá",
+  "Pago Móvil",
+  "Pago a la entrega",
+  "Paypal",
+  "Tarjeta de débito",
+  "Tarjeta de Crédito",
+  "Transferencia",
+  "Zelle",
+] as const;
+
 // Constantes para Condición de Pago
 export const PAYMENT_CONDITIONS = [
   { value: "cashea", label: "Cashea" },
@@ -54,11 +83,20 @@ export const paymentMethods = [
 
 // Métodos de pago digitales en divisas (USD) que no requieren campo de moneda
 export const digitalPaymentMethods = [
-  "Mercantil Panamá",
+  "AirTM",
   "Banesco Panamá",
-  "Paypal",
-  "Bonace",
+  "Binance",
   "Facebank",
+  "Mercantil Panamá",
+  "Paypal",
   "Zelle",
+];
+
+// Métodos de pago que solo operan en Bolívares (Bs)
+export const bsOnlyPaymentMethods = [
+  "Pago Móvil",
+  "Tarjeta de débito",
+  "Tarjeta de Crédito",
+  "Transferencia",
 ];
 

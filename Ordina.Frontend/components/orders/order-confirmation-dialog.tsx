@@ -1027,18 +1027,21 @@ export function OrderConfirmationDialog({
                       {/* Estado de ubicación */}
                       <div className="mb-3 pb-3 border-b">
                         {(() => {
-                          let badgeText = "Sin definir";
-                          let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "secondary";
-                          let badgeClassName = "text-sm";
+                          let badgeText = "Sin Definir";
+                          let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "outline";
+                          let badgeClassName = "text-sm text-muted-foreground";
 
-                          if (product.locationStatus === "EN TIENDA") {
+                          if (product.locationStatus === "SIN DEFINIR" || !product.locationStatus) {
+                            // Mantener valores por defecto (Sin Definir)
+                          } else if (product.locationStatus === "EN TIENDA") {
                             badgeText = "En Tienda";
                             badgeVariant = "default";
+                            badgeClassName = "text-sm";
                           } else if (product.locationStatus === "FABRICACION") {
-                            if (product.manufacturingStatus === "fabricado") {
-                              badgeText = "Fabricado";
+                            if (product.manufacturingStatus === "almacen_no_fabricado" || (product.manufacturingStatus as string) === "fabricado") {
+                              badgeText = "En almacén";
                               badgeVariant = "default";
-                              badgeClassName = "text-sm bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+                              badgeClassName = "text-sm bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300";
                             } else if (product.manufacturingStatus === "fabricando") {
                               badgeText = "En Fabricación";
                               badgeVariant = "secondary";
@@ -1083,19 +1086,27 @@ export function OrderConfirmationDialog({
                               );
                               
                               // Función helper para obtener el label del valor desde los values del atributo
+                              // includeNameForNumeric: si es true, para atributos numéricos incluye el nombre del atributo
                               const getAttributeValueLabel = (
                                 selectedValue: any,
-                                categoryAttribute: Category["attributes"][0] | undefined
+                                categoryAttribute: Category["attributes"][0] | undefined,
+                                includeNameForNumeric: boolean = true
                               ): string => {
                                 if (!categoryAttribute) {
                                   return String(selectedValue);
                                 }
 
-                                // Si es un atributo numérico, mostrar el valor directamente
+                                // Si es un atributo numérico, mostrar nombre + valor (ej: "Patas 3")
                                 if (categoryAttribute.valueType === "Number") {
-                                  return selectedValue !== undefined && selectedValue !== null && selectedValue !== ""
+                                  const numValue = selectedValue !== undefined && selectedValue !== null && selectedValue !== ""
                                     ? selectedValue.toString()
                                     : "";
+                                  if (!numValue) return "";
+                                  // Para concatenación, incluir el nombre del atributo
+                                  if (includeNameForNumeric && categoryAttribute.title) {
+                                    return `${categoryAttribute.title} ${numValue}`;
+                                  }
+                                  return numValue;
                                 }
 
                                 // Si no tiene values, mostrar el valor tal cual

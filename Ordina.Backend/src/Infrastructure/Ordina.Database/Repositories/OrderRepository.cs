@@ -25,6 +25,34 @@ public class OrderRepository : IOrderRepository
             .ToListAsync();
     }
 
+    public async Task<(IEnumerable<Order> Orders, int TotalCount)> GetPagedAsync(int page, int pageSize, DateTime? since = null)
+    {
+        // Construir el filtro base
+        var filterBuilder = Builders<Order>.Filter;
+        var filter = filterBuilder.Empty;
+
+        // Si hay fecha 'since', filtrar solo pedidos modificados después de esa fecha
+        if (since.HasValue)
+        {
+            filter = filterBuilder.Gte(o => o.UpdatedAt, since.Value);
+        }
+
+        // Obtener el conteo total (antes de paginar)
+        var totalCount = await _collection.CountDocumentsAsync(filter);
+
+        // Calcular skip para la paginación
+        var skip = (page - 1) * pageSize;
+
+        // Obtener los pedidos paginados
+        var orders = await _collection.Find(filter)
+            .SortByDescending(o => o.UpdatedAt) // Ordenar por UpdatedAt para sincronización
+            .Skip(skip)
+            .Limit(pageSize)
+            .ToListAsync();
+
+        return (orders, (int)totalCount);
+    }
+
     public async Task<IEnumerable<Order>> GetByClientIdAsync(string clientId)
     {
         return await _collection.Find(o => o.ClientId == clientId)

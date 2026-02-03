@@ -200,6 +200,16 @@ public class UserService : IUserService
                 existingUser.PasswordHash = HashPassword(updateDto.Password);
             }
 
+            // Actualizar campos de comisiones
+            if (updateDto.ExclusiveCommission.HasValue)
+                existingUser.ExclusiveCommission = updateDto.ExclusiveCommission.Value;
+
+            if (updateDto.BaseSalary.HasValue)
+                existingUser.BaseSalary = updateDto.BaseSalary.Value;
+
+            if (!string.IsNullOrWhiteSpace(updateDto.BaseSalaryCurrency))
+                existingUser.BaseSalaryCurrency = updateDto.BaseSalaryCurrency;
+
             var updatedUser = await _userRepository.UpdateAsync(existingUser);
             return MapToDto(updatedUser);
         }
@@ -262,7 +272,10 @@ public class UserService : IUserService
             Name = user.Name,
             Role = user.Role,
             Status = user.Status,
-            CreatedAt = user.CreatedAt
+            CreatedAt = user.CreatedAt,
+            ExclusiveCommission = user.ExclusiveCommission,
+            BaseSalary = user.BaseSalary,
+            BaseSalaryCurrency = user.BaseSalaryCurrency
         };
     }
 

@@ -72,29 +72,8 @@ export const DELIVERY_ZONES = [
   { value: "interior_pais", label: "Interior del País" },
 ] as const;
 
-const paymentMethods = [
-  "AirTM",
-  "Banesco Panamá",
-  "Binance",
-  "Efectivo",
-  "Facebank",
-  "Mercantil Panamá",
-  "Pago Móvil",
-  "Paypal",
-  "Tarjeta de débito",
-  "Tarjeta de Crédito",
-  "Transferencia",
-  "Zelle",
-];
-
-const digitalPaymentMethods = [
-  "Mercantil Panamá",
-  "Banesco Panamá",
-  "Paypal",
-  "Bonace",
-  "Facebank",
-  "Zelle",
-];
+// Las constantes de métodos de pago se importan desde constants.ts
+// y se usan en step-3-order-details.tsx
 
 export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const { preferredCurrency } = useCurrency();
@@ -120,7 +99,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     orderForm.setSelectedProducts((products) =>
       products.map((p) =>
         p.id === updatedProduct.id
-          ? { ...updatedProduct, locationStatus: updatedProduct.locationStatus ?? "EN TIENDA" }
+          ? { ...updatedProduct, locationStatus: updatedProduct.locationStatus ?? "SIN DEFINIR" }
           : p
       )
     );
@@ -406,7 +385,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         products: orderForm.selectedProducts.map((product) => ({
           ...product,
           discount: product.discount && product.discount > 0 ? product.discount : undefined,
-          locationStatus: product.locationStatus ?? "EN TIENDA",
+          locationStatus: product.locationStatus ?? "SIN DEFINIR",
         })),
         subtotal: orderForm.subtotal,
         productDiscountTotal:
@@ -477,7 +456,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         products: orderForm.selectedProducts.map((product) => ({
           ...product,
           discount: product.discount && product.discount > 0 ? product.discount : undefined,
-          locationStatus: product.locationStatus ?? "EN TIENDA",
+          locationStatus: product.locationStatus ?? "SIN DEFINIR",
         })),
         subtotalBeforeDiscounts: orderForm.productSubtotal,
         productDiscountTotal:
