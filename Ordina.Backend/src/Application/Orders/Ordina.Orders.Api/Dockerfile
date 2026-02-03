@@ -22,9 +22,9 @@ RUN dotnet publish "Ordina.Orders.Api.csproj" -c $BUILD_CONFIGURATION -o /app/pu
 
 FROM base AS final
 WORKDIR /app
-# Install curl for health checks
+# Install curl for health checks and libgdiplus for SpreadsheetLight (Excel reports on Linux)
 RUN apt-get update && \
-    apt-get install -y curl && \
+    apt-get install -y --no-install-recommends curl libgdiplus && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "Ordina.Orders.Api.dll"] 
