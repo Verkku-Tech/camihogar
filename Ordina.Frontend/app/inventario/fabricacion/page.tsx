@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -59,6 +59,7 @@ export default function FabricacionPage() {
   const [productRows, setProductRows] = useState<ProductRow[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [filterStatus, setFilterStatus] = useState<"all" | "needs_fabrication" | "fabricating" | "warehouse">("all")
+  const [filterProvider, setFilterProvider] = useState<string>("all")
   const [selectedProduct, setSelectedProduct] = useState<{ orderId: string; product: OrderProduct } | null>(null)
   const [selectProviderDialogOpen, setSelectProviderDialogOpen] = useState(false)
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
@@ -86,6 +87,19 @@ export default function FabricacionPage() {
     }
     loadData()
   }, [])
+
+  // Proveedores únicos (de productos en fabricación)
+  const uniqueProviders = useMemo(() => {
+    const providers = new Set<string>()
+    orders.forEach(order => {
+      order.products.forEach(p => {
+        if (p.locationStatus !== "FABRICACION") return
+        const name = p.manufacturingProviderName?.trim()
+        if (name) providers.add(name)
+      })
+    })
+    return Array.from(providers).sort()
+  }, [orders])
 
   // Procesar pedidos y crear filas de productos
   useEffect(() => {
@@ -134,28 +148,36 @@ export default function FabricacionPage() {
       })
     }
 
-    // Filtrar por búsqueda
+    // Filtrar por búsqueda (incluye proveedor)
     if (searchTerm) {
+      const term = searchTerm.toLowerCase()
       filtered = filtered.filter(row =>
-        row.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        row.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        row.product.name.toLowerCase().includes(searchTerm.toLowerCase())
+        row.orderNumber.toLowerCase().includes(term) ||
+        row.clientName.toLowerCase().includes(term) ||
+        row.product.name.toLowerCase().includes(term) ||
+        (row.product.manufacturingProviderName?.toLowerCase().includes(term) ?? false)
       )
     }
 
-    // Ordenar por pedido y luego por estado
+    // Filtrar por proveedor
+    if (filterProvider !== "all") {
+      filtered = filtered.filter(row => {
+        const provider = row.product.manufacturingProviderName?.trim() || ""
+        if (filterProvider === "unassigned") return !provider
+        return provider === filterProvider
+      })
+    }
+
+    // Ordenar: primero por ESTADO (Debe Fabricar → Fabricando → En almacén), luego por pedido
     filtered.sort((a, b) => {
-      // Primero por número de pedido
-      if (a.orderNumber !== b.orderNumber) {
-        return a.orderNumber.localeCompare(b.orderNumber)
-      }
-      // Luego por estado (debe_fabricar, fabricando, almacen_no_fabricado = En almacén, disponible)
       const statusOrder = { "debe_fabricar": 0, "fabricando": 1, "almacen_no_fabricado": 2, "disponible": 3 }
-      return statusOrder[a.status] - statusOrder[b.status]
+      const statusDiff = statusOrder[a.status] - statusOrder[b.status]
+      if (statusDiff !== 0) return statusDiff
+      return a.orderNumber.localeCompare(b.orderNumber)
     })
 
     setProductRows(filtered)
-  }, [orders, filterStatus, searchTerm])
+  }, [orders, filterStatus, filterProvider, searchTerm])
 
   // Paginación
   const {
@@ -697,7 +719,7 @@ export default function FabricacionPage() {
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                     <Input
-                      placeholder="Buscar por pedido, cliente o producto..."
+                      placeholder="Buscar por pedido, cliente, producto o proveedor..."
                       className="pl-10"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
@@ -719,6 +741,19 @@ export default function FabricacionPage() {
                         <SelectItem value="needs_fabrication">Debe Fabricar</SelectItem>
                         <SelectItem value="fabricating">Fabricando</SelectItem>
                         <SelectItem value="warehouse">En almacén</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={filterProvider} onValueChange={setFilterProvider}>
+                      <SelectTrigger className="w-full sm:w-48">
+                        <SelectValue placeholder="Todos los proveedores" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos los proveedores</SelectItem>
+                        <SelectItem value="unassigned">Sin asignar</SelectItem>
+                        {uniqueProviders.map(p => (
+                          <SelectItem key={p} value={p}>{p}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

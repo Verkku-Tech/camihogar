@@ -37,7 +37,8 @@ export class ApiClient {
     } else if (
       endpoint.startsWith("/api/categories") ||
       endpoint.startsWith("/api/products") ||
-      endpoint.startsWith("/api/providers")
+      endpoint.startsWith("/api/providers") ||
+      endpoint.startsWith("/api/Providers")
     ) {
       service = "providers";
     } else if (
@@ -81,6 +82,8 @@ export class ApiClient {
       "/api/Users",
       "/api/categories",
       "/api/products",
+      "/api/providers",
+      "/api/Providers",
       "/api/orders",
       "/api/Orders",
       "/api/Reports",
@@ -631,6 +634,47 @@ export class ApiClient {
     });
   }
 
+  // Providers endpoints
+  async getProviders() {
+    return this.request<ProviderResponseDto[]>("/api/Providers");
+  }
+
+  async getProviderById(id: string) {
+    return this.request<ProviderResponseDto>(`/api/Providers/${id}`);
+  }
+
+  async getProviderByRif(rif: string) {
+    return this.request<ProviderResponseDto>(`/api/Providers/rif/${encodeURIComponent(rif)}`);
+  }
+
+  async getProviderByEmail(email: string) {
+    return this.request<ProviderResponseDto>(`/api/Providers/email/${encodeURIComponent(email)}`);
+  }
+
+  async createProvider(provider: CreateProviderDto) {
+    return this.request<ProviderResponseDto>("/api/Providers", {
+      method: "POST",
+      body: JSON.stringify(provider),
+    });
+  }
+
+  async updateProvider(id: string, provider: UpdateProviderDto) {
+    return this.request<ProviderResponseDto>(`/api/Providers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(provider),
+    });
+  }
+
+  async deleteProvider(id: string) {
+    return this.request<void>(`/api/Providers/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async checkProviderExists(id: string): Promise<boolean> {
+    return this.request<boolean>(`/api/Providers/${id}/exists`);
+  }
+
   // Orders endpoints
   
   /**
@@ -1005,6 +1049,47 @@ export interface UpdateProductDto {
   status?: string;
   attributes?: { [key: string]: any };
   providerId?: string;
+}
+
+// Provider Types
+export interface ProviderResponseDto {
+  id: string;
+  razonSocial: string;
+  rif: string;
+  nombre: string;
+  email: string;
+  telefono?: string;
+  direccion?: string;
+  contacto: string;
+  tipo: string;
+  estado?: string;
+  createdAt: string;
+  updatedAt?: string;
+  productsCount: number;
+}
+
+export interface CreateProviderDto {
+  rif: string;
+  nombre: string;
+  razonSocial: string;
+  email: string;
+  telefono: string;
+  direccion: string;
+  contacto: string;
+  tipo: string;
+  estado?: string;
+}
+
+export interface UpdateProviderDto {
+  rif?: string;
+  nombre?: string;
+  email?: string;
+  telefono?: string;
+  direccion?: string;
+  estado?: string;
+  razonSocial?: string;
+  contacto?: string;
+  tipo?: string;
 }
 
 // Order Types

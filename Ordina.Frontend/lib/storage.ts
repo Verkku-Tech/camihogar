@@ -15,6 +15,9 @@ import type {
   OrderProductDto as OrderProductDtoBackend,
   PaymentDetailsDto,
   PartialPaymentDto as PartialPaymentDtoBackend,
+  ProviderResponseDto,
+  CreateProviderDto,
+  UpdateProviderDto,
 } from "./api-client";
 import { syncManager } from "./sync-manager";
 
@@ -2633,6 +2636,7 @@ export interface UnifiedOrder {
   deliveryZone?: "caracas" | "g_g" | "san_antonio_los_teques" | "caucagua_higuerote" | "la_guaira" | "charallave_cua" | "interior_pais";
   dispatchDate?: string; // Fecha de despacho
   completedAt?: string; // Fecha de completado
+  partialPayments?: PartialPayment[]; // Para mostrar saldo pendiente / debe en USD en listados
 }
 
 // Función para obtener pedidos y presupuestos unificados
@@ -2676,6 +2680,7 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       deliveryZone: order.deliveryZone,
       dispatchDate: order.dispatchDate,
       completedAt: order.completedAt,
+      partialPayments: order.partialPayments,
     }));
 
     // Convertir presupuestos a formato unificado
@@ -3223,6 +3228,64 @@ export const deleteClient = async (id: string): Promise<void> => {
 
 // ===== PROVIDERS STORAGE (IndexedDB) =====
 
+// Helper functions para mapear providers entre frontend y backend
+export const providerFromBackendDto = (dto: ProviderResponseDto): Provider => {
+  // Manejar tanto camelCase como PascalCase (por si el backend serializa diferente)
+  const razonSocial = (dto as any).razonSocial || (dto as any).RazonSocial || "";
+  const rif = (dto as any).rif || (dto as any).Rif || "";
+  const nombre = (dto as any).nombre || (dto as any).Nombre || "";
+  const email = (dto as any).email || (dto as any).Email || "";
+  const telefono = (dto as any).telefono || (dto as any).Telefono || "";
+  const direccion = (dto as any).direccion || (dto as any).Direccion || "";
+  const contacto = (dto as any).contacto || (dto as any).Contacto || "";
+  const tipo = (dto as any).tipo || (dto as any).Tipo || "";
+  const estado = (dto as any).estado || (dto as any).Estado || "activo";
+  const createdAt = (dto as any).createdAt || (dto as any).CreatedAt || new Date().toISOString();
+  
+  return {
+    id: dto.id,
+    razonSocial: razonSocial || nombre, // Usar nombre si razonSocial está vacío
+    rif: rif,
+    direccion: direccion || "",
+    telefono: telefono || "",
+    email: email,
+    contacto: contacto,
+    tipo: tipo as Provider["tipo"],
+    estado: (estado.toLowerCase() || "activo") as Provider["estado"],
+    fechaCreacion: createdAt.split("T")[0], // Convertir ISO a fecha YYYY-MM-DD
+  };
+};
+
+export const providerToCreateDto = (provider: Omit<Provider, "id" | "fechaCreacion">): CreateProviderDto => ({
+  rif: provider.rif,
+  nombre: provider.razonSocial, // El backend espera "nombre" y "razonSocial", usamos razonSocial para ambos
+  razonSocial: provider.razonSocial,
+  email: provider.email,
+  telefono: provider.telefono,
+  direccion: provider.direccion,
+  contacto: provider.contacto,
+  tipo: provider.tipo,
+  estado: provider.estado === "activo" ? "Activo" : "Inactivo", // Backend usa PascalCase
+});
+
+export const providerToUpdateDto = (updates: Partial<Provider>): UpdateProviderDto => {
+  const dto: UpdateProviderDto = {};
+  if (updates.rif !== undefined) dto.rif = updates.rif;
+  if (updates.razonSocial !== undefined) {
+    dto.razonSocial = updates.razonSocial;
+    dto.nombre = updates.razonSocial; // Mantener ambos campos sincronizados
+  }
+  if (updates.email !== undefined) dto.email = updates.email;
+  if (updates.telefono !== undefined) dto.telefono = updates.telefono;
+  if (updates.direccion !== undefined) dto.direccion = updates.direccion;
+  if (updates.contacto !== undefined) dto.contacto = updates.contacto;
+  if (updates.tipo !== undefined) dto.tipo = updates.tipo;
+  if (updates.estado !== undefined) {
+    dto.estado = updates.estado === "activo" ? "Activo" : "Inactivo";
+  }
+  return dto;
+};
+
 export const getProviders = async (): Promise<Provider[]> => {
   try {
     return await db.getAll<Provider>("providers");
@@ -3291,6 +3354,35 @@ export const deleteProvider = async (id: string): Promise<void> => {
   } catch (error) {
     console.error("Error deleting provider from IndexedDB:", error);
     throw error;
+  }
+};
+
+// Sincronizar proveedores desde el backend
+export const syncProvidersFromBackend = async (): Promise<Provider[]> => {
+  try {
+    const providersDto = await apiClient.getProviders();
+    const providers: Provider[] = providersDto.map(providerFromBackendDto);
+    
+    // Guardar todos los proveedores en IndexedDB
+    for (const provider of providers) {
+      try {
+        const existing = await getProvider(provider.id);
+        if (existing) {
+          await updateProvider(provider.id, provider);
+        } else {
+          await db.add("providers", provider);
+        }
+      } catch (error) {
+        console.error(`Error syncing provider ${provider.id}:`, error);
+      }
+    }
+    
+    console.log(`✅ ${providers.length} proveedores sincronizados desde el backend`);
+    return providers;
+  } catch (error) {
+    console.error("Error syncing providers from backend:", error);
+    // Si falla, retornar los proveedores locales
+    return getProviders();
   }
 };
 

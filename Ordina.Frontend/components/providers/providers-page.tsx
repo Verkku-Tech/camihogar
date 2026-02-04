@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,9 +20,22 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Search, Edit, Power, PowerOff, Filter } from "lucide-react"
+import { Plus, Search, Edit, Power, PowerOff, Filter, Cloud, CloudOff, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import { getProviders, addProvider, updateProvider, type Provider } from "@/lib/storage"
+import { 
+  getProviders, 
+  addProvider, 
+  updateProvider, 
+  deleteProvider,
+  syncProvidersFromBackend,
+  providerFromBackendDto,
+  providerToCreateDto,
+  providerToUpdateDto,
+  type Provider 
+} from "@/lib/storage"
+import { apiClient } from "@/lib/api-client"
+import { syncManager } from "@/lib/sync-manager"
+import * as db from "@/lib/indexeddb"
 
 const tipoOptions = [
   { value: "materia-prima", label: "Materia Prima" },
@@ -30,9 +43,15 @@ const tipoOptions = [
   { value: "productos-terminados", label: "Productos Terminados" },
 ]
 
+export type ProvidersDataSource = "backend" | "indexeddb" | "syncing"
+
 export function ProvidersPage() {
   const [providers, setProviders] = useState<Provider[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [dataSource, setDataSource] = useState<ProvidersDataSource>("syncing")
+  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true)
+  const [pendingSyncCount, setPendingSyncCount] = useState(0)
+  const hadBeenOffline = useRef(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [filterTipo, setFilterTipo] = useState<string>("all")
   const [filterEstado, setFilterEstado] = useState<string>("all")
@@ -50,20 +69,96 @@ export function ProvidersPage() {
     tipo: "materia-prima" as Provider["tipo"],
   })
 
+  // Escuchar conexión y marcar cuando hemos estado offline
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true)
+    }
+    const handleOffline = () => {
+      setIsOnline(false)
+      hadBeenOffline.current = true
+    }
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [])
+
+  const refreshPendingCount = async () => {
+    const pending = await syncManager.getPendingOperations()
+    const providerPending = pending.filter((op) => op.entity === "provider")
+    setPendingSyncCount(providerPending.length)
+  }
+
+  useEffect(() => {
+    refreshPendingCount()
+    const interval = setInterval(refreshPendingCount, 5000)
+    return () => clearInterval(interval)
+  }, [providers])
+
   useEffect(() => {
     const loadProviders = async () => {
       try {
         setIsLoading(true)
+        setDataSource("syncing")
+        // Intentar sincronizar desde el backend primero
+        if (navigator.onLine) {
+          try {
+            const syncedProviders = await syncProvidersFromBackend()
+            setProviders(syncedProviders)
+            setDataSource("backend")
+            return
+          } catch (error) {
+            console.warn("Error syncing from backend, using local storage:", error)
+          }
+        }
+        // Si falla o está offline, usar IndexedDB
         const loadedProviders = await getProviders()
         setProviders(loadedProviders)
+        setDataSource("indexeddb")
       } catch (error) {
         console.error("Error loading providers:", error)
+        toast.error("Error al cargar proveedores")
+        setDataSource("indexeddb")
       } finally {
         setIsLoading(false)
       }
     }
     loadProviders()
   }, [])
+
+  // Al recuperar conexión (solo cuando pasamos de offline a online): sincronizar cola y refrescar desde backend
+  useEffect(() => {
+    if (!isOnline || !hadBeenOffline.current) return
+    hadBeenOffline.current = false
+    let cancelled = false
+    const run = async () => {
+      setDataSource("syncing")
+      try {
+        await syncManager.syncPendingOperations()
+        if (cancelled) return
+        const synced = await syncProvidersFromBackend()
+        if (cancelled) return
+        setProviders(synced)
+        setDataSource("backend")
+        await refreshPendingCount()
+        toast.success("Proveedores sincronizados con el servidor")
+      } catch (error) {
+        if (!cancelled) {
+          setDataSource("indexeddb")
+          const loaded = await getProviders()
+          setProviders(loaded)
+          toast.error("No se pudo sincronizar. Se muestran datos locales.")
+        }
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [isOnline])
 
   const filteredProviders = providers.filter((provider) => {
     const matchesSearch =
@@ -88,14 +183,50 @@ export function ProvidersPage() {
     }
 
     try {
-      const newProvider = await addProvider({
+      const providerData = {
         ...formData,
         estado: "activo" as const,
-      })
+      }
+
+      // Intentar crear en el backend primero
+      if (navigator.onLine) {
+        try {
+          const createDto = providerToCreateDto(providerData)
+          const backendProvider = await apiClient.createProvider(createDto)
+          const newProvider = providerFromBackendDto(backendProvider)
+          
+          // Guardar en IndexedDB
+          await db.add("providers", newProvider)
+          
+          setProviders([...providers, newProvider])
+          setIsCreateDialogOpen(false)
+          resetForm()
+          toast.success("Proveedor creado exitosamente")
+          return
+        } catch (error: any) {
+          const errorMessage = error?.message || "Error al crear el proveedor"
+          if (errorMessage.includes("RIF") || errorMessage.includes("email")) {
+            toast.error(errorMessage)
+            return
+          }
+          console.warn("Error creating provider in backend, saving locally:", error)
+        }
+      }
+
+      // Si falla o está offline, guardar en IndexedDB y encolar para sincronizar
+      const newProvider = await addProvider(providerData)
       setProviders([...providers, newProvider])
+      await syncManager.addToQueue({
+        type: "create",
+        entity: "provider",
+        entityId: newProvider.id,
+        data: newProvider,
+      })
+      setDataSource("indexeddb")
+      refreshPendingCount()
       setIsCreateDialogOpen(false)
       resetForm()
-      toast.success("Proveedor creado exitosamente")
+      toast.success("Proveedor creado (modo offline). Se sincronizará al recuperar conexión.")
     } catch (error) {
       console.error("Error creating provider:", error)
       toast.error("Error al crear el proveedor")
@@ -115,12 +246,47 @@ export function ProvidersPage() {
     }
 
     try {
+      // Intentar actualizar en el backend primero
+      if (navigator.onLine) {
+        try {
+          const updateDto = providerToUpdateDto(formData)
+          const backendProvider = await apiClient.updateProvider(selectedProvider.id, updateDto)
+          const updatedProvider = providerFromBackendDto(backendProvider)
+          
+          // Actualizar en IndexedDB
+          await db.update("providers", updatedProvider)
+          
+          setProviders(providers.map((p) => (p.id === selectedProvider.id ? updatedProvider : p)))
+          setIsEditDialogOpen(false)
+          setSelectedProvider(null)
+          resetForm()
+          toast.success("Proveedor actualizado exitosamente")
+          return
+        } catch (error: any) {
+          const errorMessage = error?.message || "Error al actualizar el proveedor"
+          if (errorMessage.includes("RIF") || errorMessage.includes("email")) {
+            toast.error(errorMessage)
+            return
+          }
+          console.warn("Error updating provider in backend, updating locally:", error)
+        }
+      }
+
+      // Si falla o está offline, actualizar en IndexedDB y encolar
       const updatedProvider = await updateProvider(selectedProvider.id, formData)
       setProviders(providers.map((p) => (p.id === selectedProvider.id ? updatedProvider : p)))
+      await syncManager.addToQueue({
+        type: "update",
+        entity: "provider",
+        entityId: selectedProvider.id,
+        data: updatedProvider,
+      })
+      setDataSource("indexeddb")
+      refreshPendingCount()
       setIsEditDialogOpen(false)
       setSelectedProvider(null)
       resetForm()
-      toast.success("Proveedor actualizado exitosamente")
+      toast.success("Proveedor actualizado (modo offline). Se sincronizará al recuperar conexión.")
     } catch (error) {
       console.error("Error updating provider:", error)
       toast.error("Error al actualizar el proveedor")
@@ -129,13 +295,45 @@ export function ProvidersPage() {
 
   const handleToggleStatus = async (provider: Provider) => {
     try {
+      const newEstado = provider.estado === "activo" ? "inactivo" : "activo"
+      
+      // Intentar actualizar en el backend primero
+      if (navigator.onLine) {
+        try {
+          const updateDto = providerToUpdateDto({ estado: newEstado })
+          const backendProvider = await apiClient.updateProvider(provider.id, updateDto)
+          const updatedProvider = providerFromBackendDto(backendProvider)
+          
+          // Actualizar en IndexedDB
+          await db.update("providers", updatedProvider)
+          
+          setProviders(providers.map((p) => (p.id === provider.id ? updatedProvider : p)))
+          setDeactivateProvider(null)
+          toast.success(
+            `Proveedor ${provider.estado === "activo" ? "desactivado" : "activado"} exitosamente`
+          )
+          return
+        } catch (error) {
+          console.warn("Error updating provider status in backend, updating locally:", error)
+        }
+      }
+
+      // Si falla o está offline, actualizar en IndexedDB y encolar
       const updatedProvider = await updateProvider(provider.id, {
-        estado: provider.estado === "activo" ? "inactivo" : "activo",
+        estado: newEstado,
       })
       setProviders(providers.map((p) => (p.id === provider.id ? updatedProvider : p)))
+      await syncManager.addToQueue({
+        type: "update",
+        entity: "provider",
+        entityId: provider.id,
+        data: updatedProvider,
+      })
+      setDataSource("indexeddb")
+      refreshPendingCount()
       setDeactivateProvider(null)
       toast.success(
-        `Proveedor ${provider.estado === "activo" ? "desactivado" : "activado"} exitosamente`
+        `Proveedor ${provider.estado === "activo" ? "desactivado" : "activado"} (modo offline). Se sincronizará al recuperar conexión.`
       )
     } catch (error) {
       console.error("Error updating provider status:", error)
@@ -174,7 +372,33 @@ export function ProvidersPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Proveedores</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold text-foreground">Proveedores</h1>
+            {/* Indicador de origen de datos */}
+            {dataSource === "syncing" && (
+              <Badge variant="secondary" className="gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Sincronizando…
+              </Badge>
+            )}
+            {dataSource === "backend" && (
+              <Badge variant="default" className="gap-1 bg-green-600 hover:bg-green-700">
+                <Cloud className="w-3 h-3" />
+                Servidor
+              </Badge>
+            )}
+            {dataSource === "indexeddb" && (
+              <Badge variant="secondary" className="gap-1">
+                <CloudOff className="w-3 h-3" />
+                Sin conexión (datos locales)
+              </Badge>
+            )}
+            {pendingSyncCount > 0 && (
+              <Badge variant="outline" className="gap-1">
+                {pendingSyncCount} pendiente{pendingSyncCount !== 1 ? "s" : ""} de sincronizar
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground">Gestiona los proveedores de tu empresa</p>
         </div>
 
