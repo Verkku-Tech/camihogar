@@ -1057,14 +1057,57 @@ export default function OrderDetailPage() {
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     Volver
                   </Button>
-                  <div>
-                    <h1 className="text-2xl font-bold">
-                      Pedido {order.orderNumber}
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(order.createdAt).toLocaleString()}
-                    </p>
-                  </div>
+                  <HoverCard openDelay={300} closeDelay={100}>
+                    <HoverCardTrigger asChild>
+                      <div className="cursor-help border-b border-dashed border-transparent hover:border-muted-foreground/40 pb-0.5 transition-colors">
+                        <h1 className="text-2xl font-bold">
+                          Pedido {order.orderNumber}
+                        </h1>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(order.createdAt).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Pasa el cursor para ver resumen del pedido
+                        </p>
+                      </div>
+                    </HoverCardTrigger>
+                    <HoverCardContent className="min-w-[320px] max-w-[min(420px,95vw)]" align="start">
+                      <div className="space-y-2">
+                        <h4 className="font-semibold text-sm">Resumen del pedido</h4>
+                        <p className="text-sm"><span className="text-muted-foreground">Cliente:</span> {order.clientName}</p>
+                        <p className="text-sm"><span className="text-muted-foreground">Vendedor:</span> {order.vendorName}</p>
+                        <p className="text-sm"><span className="text-muted-foreground">Total:</span>{" "}
+                          <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline" />
+                        </p>
+                        {order.partialPayments && order.partialPayments.length > 0 && (() => {
+                          const totalPaid = order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                          const pending = order.total - totalPaid;
+                          if (pending > 0) {
+                            return (
+                              <p className="text-sm text-red-600 dark:text-red-400">
+                                <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
+                                <CurrencyDisplay amountInBs={pending} exchangeRates={localExchangeRates} inline className="inline font-medium" />
+                              </p>
+                            );
+                          }
+                          return null;
+                        })()}
+                        {(!order.partialPayments || order.partialPayments.length === 0) && (
+                          <p className="text-sm text-red-600 dark:text-red-400">
+                            <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
+                            <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline font-medium" />
+                          </p>
+                        )}
+                        {order.deliveryAddress && (
+                          <p className="text-sm"><span className="text-muted-foreground">Dirección:</span> {order.deliveryAddress}</p>
+                        )}
+                        <p className="text-sm"><span className="text-muted-foreground">Productos:</span> {order.products.length}</p>
+                        {order.observations && (
+                          <p className="text-sm"><span className="text-muted-foreground">Observaciones:</span> {order.observations.slice(0, 80)}{order.observations.length > 80 ? "…" : ""}</p>
+                        )}
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
                 </div>
                 <Badge className={getStatusColor(order.status)}>
                   {order.status}
@@ -1869,24 +1912,31 @@ export default function OrderDetailPage() {
                         />
                       </div>
 
-                      {/* Mostrar saldo pendiente si existe */}
+                      {/* Mostrar saldo pendiente si existe (en USD cuando hay tasa, para ver cuánto debe) */}
                       {formattedPendingBalance && (
                         <>
                           <Separator />
-                          <div className="flex justify-between items-center bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                            <div className="flex items-center gap-2">
-                              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-                              <span className="font-semibold text-red-700 dark:text-red-300">
-                                Saldo Pendiente:
-                              </span>
+                          <div className="space-y-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                                <span className="font-semibold text-red-700 dark:text-red-300">
+                                  Saldo pendiente (lo que debe el cliente):
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <CurrencyDisplay 
+                                  amountInBs={order.total - order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)} 
+                                  exchangeRates={localExchangeRates}
+                                  className="font-bold text-lg text-red-700 dark:text-red-300"
+                                />
+                              </div>
                             </div>
-                            <div className="text-right">
-                              <CurrencyDisplay 
-                                amountInBs={order.total - order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)} 
-                                exchangeRates={localExchangeRates}
-                                className="font-bold text-lg text-red-700 dark:text-red-300"
-                              />
-                            </div>
+                            {localExchangeRates?.USD?.rate && (
+                              <p className="text-xs text-red-600/90 dark:text-red-400/90">
+                                Monto a pagar en dólares (tasa del día del pedido aplicada)
+                              </p>
+                            )}
                           </div>
                         </>
                       )}
@@ -1908,11 +1958,11 @@ export default function OrderDetailPage() {
                     <CardContent>
                       <div className="space-y-2">
                         <p className="text-sm text-muted-foreground">
-                          Este pedido aún no tiene pagos registrados.
+                          Este pedido aún no tiene pagos registrados. Total a pagar (lo que debe el cliente):
                         </p>
                         <div className="flex justify-between items-center">
                           <span className="font-semibold text-red-700 dark:text-red-300">
-                            Total Pendiente:
+                            Total pendiente:
                           </span>
                           <CurrencyDisplay 
                             amountInBs={order.total} 
@@ -1920,6 +1970,11 @@ export default function OrderDetailPage() {
                             className="font-bold text-lg text-red-700 dark:text-red-300"
                           />
                         </div>
+                        {localExchangeRates?.USD?.rate && (
+                          <p className="text-xs text-red-600/90 dark:text-red-400/90">
+                            Mostrado en USD cuando hay tasa disponible; equivalente en Bs entre paréntesis.
+                          </p>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

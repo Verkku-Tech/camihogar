@@ -226,6 +226,69 @@ class SyncManager {
         return
       }
 
+      if (operation.entity === 'provider') {
+        const { providerFromBackendDto, providerToCreateDto, providerToUpdateDto } = await import('./storage')
+        switch (operation.type) {
+          case 'create': {
+            const localProvider = operation.data as any
+            const createDto = providerToCreateDto({
+              razonSocial: localProvider.razonSocial,
+              rif: localProvider.rif,
+              direccion: localProvider.direccion,
+              telefono: localProvider.telefono,
+              email: localProvider.email,
+              contacto: localProvider.contacto,
+              tipo: localProvider.tipo,
+              estado: localProvider.estado,
+            })
+            const backendProvider = await apiClient.createProvider(createDto)
+            const newProvider = providerFromBackendDto(backendProvider)
+            await db.remove('providers', operation.entityId)
+            await db.add('providers', newProvider)
+            // Actualizar cola: operaciones pendientes que referencian este id local
+            const pending = await this.getPendingOperations()
+            for (const op of pending) {
+              if (op.entity === 'provider' && op.entityId === operation.entityId && op.id !== operation.id) {
+                ;(op as any).entityId = newProvider.id
+                op.data = { ...(op.data || {}), id: newProvider.id }
+                await db.update('sync_queue', op)
+              }
+            }
+            break
+          }
+          case 'update': {
+            try {
+              await apiClient.updateProvider(operation.entityId, providerToUpdateDto(operation.data || {}))
+              const updatedFromBackend = await apiClient.getProviderById(operation.entityId)
+              if (updatedFromBackend) {
+                const updatedProvider = providerFromBackendDto(updatedFromBackend)
+                await db.update('providers', updatedProvider)
+              }
+            } catch (err: any) {
+              // 409 Conflict: RIF o email duplicado → aceptar datos del servidor (resolución de conflicto)
+              if (err?.message && (err.message.includes('409') || err.message.includes('Conflict') || err.message.includes('Ya existe'))) {
+                try {
+                  const fromBackend = await apiClient.getProviderById(operation.entityId)
+                  if (fromBackend) {
+                    await db.update('providers', providerFromBackendDto(fromBackend))
+                  }
+                } catch (_) {
+                  // si no se puede refrescar, marcar como fallido para reintentar
+                }
+                return // operación resuelta (servidor gana), no reintentar
+              }
+              throw err
+            }
+            break
+          }
+          case 'delete':
+            await apiClient.deleteProvider(operation.entityId)
+            await db.remove('providers', operation.entityId)
+            break
+        }
+        return
+      }
+
       if (operation.entity === 'commission') {
         // Sincronizar comisiones con el backend
         // Nota: El backend debe tener endpoints para recibir comisiones

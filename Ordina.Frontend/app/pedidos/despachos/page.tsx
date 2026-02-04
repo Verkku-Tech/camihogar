@@ -21,8 +21,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Search, Eye, Truck, CheckCircle, PackageCheck } from "lucide-react"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
+import { formatCurrency } from "@/lib/currency-utils"
+import { OrderGroupCollapsible } from "@/components/orders/order-group-collapsible"
 import { toast } from "sonner"
-import { getUnifiedOrders, updateOrder, type UnifiedOrder } from "@/lib/storage"
+import { getUnifiedOrders, getCategories, updateOrder, type UnifiedOrder, type OrderProduct, type Category, type AttributeValue } from "@/lib/storage"
 import { useCurrency } from "@/contexts/currency-context"
 import { useRouter } from "next/navigation"
 import { DELIVERY_TYPES, DELIVERY_ZONES } from "@/components/orders/new-order-dialog"
@@ -89,8 +92,19 @@ const isOrderReadyForDispatch = (order: UnifiedOrder): boolean => {
   })
 }
 
+// Calcular saldo pendiente en Bs y equivalente en USD
+function getPendingBalance(order: UnifiedOrder) {
+  const totalPaid = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) ?? 0
+  return Math.max(0, order.total - totalPaid)
+}
+
+function formatPendingInUsd(pendingBs: number, usdRate: number | undefined): string {
+  if (!usdRate || usdRate <= 0) return formatCurrency(pendingBs, "Bs")
+  return formatCurrency(pendingBs / usdRate, "USD")
+}
+
 export default function DespachosPage() {
-  const { formatWithPreference, preferredCurrency } = useCurrency()
+  const { formatWithPreference, preferredCurrency, exchangeRates } = useCurrency()
   const router = useRouter()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -99,11 +113,23 @@ export default function DespachosPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
+  const usdRate = exchangeRates?.USD?.rate
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
   const [orderToComplete, setOrderToComplete] = useState<UnifiedOrder | null>(null)
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
   const [isBulkDispatchDialogOpen, setIsBulkDispatchDialogOpen] = useState(false)
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [categories, setCategories] = useState<Category[]>([])
+
+  const toggleOrderExpanded = (orderId: string) => {
+    setExpandedOrders((prev) => {
+      const next = new Set(prev)
+      if (next.has(orderId)) next.delete(orderId)
+      else next.add(orderId)
+      return next
+    })
+  }
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -124,6 +150,106 @@ export default function DespachosPage() {
 
     loadOrders()
   }, [])
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const loaded = await getCategories()
+        setCategories(loaded)
+      } catch (error) {
+        console.error("Error loading categories:", error)
+      }
+    }
+    loadCategories()
+  }, [])
+
+  const getCategoryForProduct = (productCategory: string) =>
+    categories.find(c => c.name === productCategory)
+
+  const getValueLabel = (value: string | AttributeValue): string => {
+    if (typeof value === "string") return value
+    return (value as AttributeValue).label || (value as AttributeValue).id || String(value)
+  }
+
+  const getAttributeValueLabel = (
+    selectedValue: unknown,
+    categoryAttribute: Category["attributes"][0] | undefined
+  ): string => {
+    if (!categoryAttribute) return String(selectedValue)
+    if (categoryAttribute.valueType === "Number") {
+      return selectedValue !== undefined && selectedValue !== null && selectedValue !== ""
+        ? String(selectedValue)
+        : ""
+    }
+    if (!categoryAttribute.values || categoryAttribute.values.length === 0) {
+      return String(selectedValue)
+    }
+    if (Array.isArray(selectedValue)) {
+      const labels: string[] = []
+      selectedValue.forEach((valStr) => {
+        const attributeValue = categoryAttribute.values!.find(
+          (val: string | AttributeValue) => {
+            if (typeof val === "string") return val === valStr
+            return (val as AttributeValue).id === valStr || (val as AttributeValue).label === valStr
+          }
+        )
+        if (attributeValue) {
+          labels.push(getValueLabel(attributeValue as string | AttributeValue))
+        } else {
+          labels.push(String(valStr))
+        }
+      })
+      return labels.join(", ")
+    }
+    const selectedValueStr = String(selectedValue ?? "")
+    if (selectedValueStr) {
+      const attributeValue = categoryAttribute.values.find(
+        (val: string | AttributeValue) => {
+          if (typeof val === "string") return val === selectedValueStr
+          return (val as AttributeValue).id === selectedValueStr || (val as AttributeValue).label === selectedValueStr
+        }
+      )
+      if (attributeValue) return getValueLabel(attributeValue as string | AttributeValue)
+    }
+    return String(selectedValue)
+  }
+
+  const getProductAttributePairs = (product: OrderProduct): { key: string; value: string }[] => {
+    const category = getCategoryForProduct(product.category)
+    if (!product.attributes || Object.keys(product.attributes).length === 0) return []
+    const pairs: { key: string; value: string }[] = []
+    for (const [key, value] of Object.entries(product.attributes)) {
+      if (key.includes("_") && key.split("_").length === 2) continue
+      const categoryAttribute = category?.attributes?.find(
+        attr => attr.id?.toString() === key || attr.title === key
+      )
+      const valueLabel = getAttributeValueLabel(value, categoryAttribute)
+      if (valueLabel && valueLabel.trim() !== "") {
+        pairs.push({
+          key: categoryAttribute?.title || key,
+          value: valueLabel.trim()
+        })
+      }
+    }
+    return pairs
+  }
+
+  const AttributesGrid = ({ pairs, productName }: { pairs: { key: string; value: string }[]; productName?: string }) => {
+    if (pairs.length === 0) return <p className="text-sm text-muted-foreground">Sin atributos</p>
+    return (
+      <div className="space-y-2">
+        {productName && <h4 className="font-semibold text-sm">{productName}</h4>}
+        <div className="grid grid-cols-5 gap-x-4 gap-y-2 text-sm">
+          {pairs.map(({ key, value }) => (
+            <div key={key} className="flex flex-col min-w-0">
+              <span className="text-muted-foreground font-medium">{key}:</span>
+              <span className="text-foreground break-words">{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   // Actualizar totales cuando cambien los pedidos o la moneda preferida
   useEffect(() => {
@@ -384,80 +510,124 @@ export default function DespachosPage() {
                       {searchTerm ? "No se encontraron pedidos" : "No hay pedidos listos para despachar"}
                     </div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-12">
-                            {filteredOrders.some(order => order.status !== "Completada") && (
-                              <Checkbox
-                                checked={allSelected}
-                                onCheckedChange={handleSelectAll}
-                                aria-label="Seleccionar todos"
-                              />
-                            )}
-                          </TableHead>
-                          <TableHead>N° Pedido</TableHead>
-                          <TableHead>Cliente</TableHead>
-                          <TableHead>Vendedor</TableHead>
-                          <TableHead>Total</TableHead>
-                          <TableHead>Estado</TableHead>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead>Productos</TableHead>
-                          <TableHead className="text-right">Acciones</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {paginatedOrders.map((order) => (
-                          <TableRow key={order.id}>
-                            <TableCell>
+                    <div className="space-y-2">
+                      {/* Cabecera de tabla: checkbox "seleccionar todos" solo visible si hay pedidos despachables */}
+                      {filteredOrders.some((order) => order.status !== "Completada") && (
+                        <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground border-b pb-2 mb-2">
+                          <Checkbox
+                            checked={allSelected}
+                            onCheckedChange={handleSelectAll}
+                            aria-label="Seleccionar todos"
+                          />
+                          <span>Seleccionar todos los pedidos para despacho masivo</span>
+                        </div>
+                      )}
+                      {paginatedOrders.map((order) => (
+                        <OrderGroupCollapsible
+                          key={order.id}
+                          orderId={order.id}
+                          orderNumber={order.orderNumber}
+                          clientName={order.clientName}
+                          orderDate={order.createdAt}
+                          productCount={order.products.length}
+                          isExpanded={expandedOrders.has(order.id)}
+                          onOpenChange={(open) =>
+                            open ? setExpandedOrders((s) => new Set(s).add(order.id)) : setExpandedOrders((s) => { const n = new Set(s); n.delete(order.id); return n })
+                          }
+                          showViewDetailsButton={false}
+                          selectControl={
+                            order.status !== "Completada"
+                              ? {
+                                  checked: selectedOrders.has(order.id),
+                                  onCheckedChange: () => handleToggleSelect(order.id),
+                                  "aria-label": `Seleccionar pedido ${order.orderNumber}`,
+                                }
+                              : undefined
+                          }
+                          headerRight={
+                            <>
+                              <span className="text-sm text-muted-foreground hidden sm:inline">
+                                {order.vendorName}
+                              </span>
+                              <span className="font-medium tabular-nums">
+                                {orderTotals[order.id] ?? `Bs.${order.total.toFixed(2)}`}
+                              </span>
+                              <Badge className={getStatusColor(order.status)}>
+                                {order.status}
+                              </Badge>
+                              <span className="text-sm text-muted-foreground">
+                                {new Date(order.createdAt).toLocaleDateString()}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleView(order)
+                                }}
+                              >
+                                <Eye className="w-3 h-3 mr-1" />
+                                Ver Detalles
+                              </Button>
                               {order.status !== "Completada" && (
-                                <Checkbox
-                                  checked={selectedOrders.has(order.id)}
-                                  onCheckedChange={() => handleToggleSelect(order.id)}
-                                  aria-label={`Seleccionar pedido ${order.orderNumber}`}
-                                />
-                              )}
-                            </TableCell>
-                            <TableCell className="font-medium">{order.orderNumber}</TableCell>
-                            <TableCell>{order.clientName}</TableCell>
-                            <TableCell>{order.vendorName}</TableCell>
-                            <TableCell>
-                              {orderTotals[order.id] || `Bs.${order.total.toFixed(2)}`}
-                            </TableCell>
-                            <TableCell>
-                              <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
-                            </TableCell>
-                            <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
-                            <TableCell>{order.products.length}</TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => handleView(order)}
-                                  title="Ver detalles"
+                                  className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleCompleteClick(order)
+                                  }}
+                                  title="Despachar pedido"
                                 >
-                                  <Eye className="w-4 h-4" />
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Despachar
                                 </Button>
-                                {order.status !== "Completada" && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleCompleteClick(order)}
-                                    title="Despachar pedido"
-                                    className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
-                                  >
-                                    <CheckCircle className="w-4 h-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                              )}
+                            </>
+                          }
+                        >
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Producto</TableHead>
+                                <TableHead>Categoría</TableHead>
+                                <TableHead>Cantidad</TableHead>
+                                <TableHead>Estado</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {order.products.map((product) => (
+                                <TableRow key={product.id}>
+                                  <TableCell className="font-medium">{product.name}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline">{product.category}</Badge>
+                                  </TableCell>
+                                  <TableCell>{product.quantity}</TableCell>
+                                  <TableCell>
+                                    {(product.manufacturingStatus === "almacen_no_fabricado" ||
+                                      (product.manufacturingStatus as string) === "fabricado") ? (
+                                      <Badge className="bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                                        En almacén
+                                      </Badge>
+                                    ) : product.manufacturingStatus === "fabricando" ? (
+                                      <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
+                                        Fabricando
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-muted text-muted-foreground">-</Badge>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </OrderGroupCollapsible>
+                      ))}
+                    </div>
                   )}
-                  
+
                   {/* Paginación */}
                   {!isLoading && filteredOrders.length > 0 && (
                     <TablePagination
