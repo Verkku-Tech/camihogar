@@ -41,9 +41,11 @@ export function ClientsPage() {
   const [deactivateClient, setDeactivateClient] = useState<Client | null>(null)
   const [formData, setFormData] = useState({
     nombreRazonSocial: "",
+    apodo: "",
     rutId: "",
     direccion: "",
     telefono: "",
+    telefono2: "",
     email: "",
     tipoCliente: "particular" as Client["tipoCliente"],
   })
@@ -66,8 +68,10 @@ export function ClientsPage() {
   const filteredClients = clients.filter((client) => {
     const matchesSearch =
       client.nombreRazonSocial.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (client.apodo && client.apodo.toLowerCase().includes(searchTerm.toLowerCase())) ||
       client.rutId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.telefono.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (client.telefono2 && client.telefono2.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (client.email && client.email.toLowerCase().includes(searchTerm.toLowerCase()))
 
     const matchesTipoCliente = filterTipoCliente === "all" || client.tipoCliente === filterTipoCliente
@@ -149,9 +153,11 @@ export function ClientsPage() {
   const resetForm = () => {
     setFormData({
       nombreRazonSocial: "",
+      apodo: "",
       rutId: "",
       direccion: "",
       telefono: "",
+      telefono2: "",
       email: "",
       tipoCliente: "particular",
     })
@@ -161,9 +167,11 @@ export function ClientsPage() {
     setSelectedClient(client)
     setFormData({
       nombreRazonSocial: client.nombreRazonSocial,
+      apodo: client.apodo || "",
       rutId: client.rutId,
       direccion: client.direccion,
       telefono: client.telefono,
+      telefono2: client.telefono2 || "",
       email: client.email || "",
       tipoCliente: client.tipoCliente,
     })
@@ -202,6 +210,19 @@ export function ClientsPage() {
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="apodo">Apodo (Código RRSS)</Label>
+                <Input
+                  id="apodo"
+                  value={formData.apodo}
+                  onChange={(e) => setFormData({ ...formData, apodo: e.target.value })}
+                  placeholder="Código identificador para herramientas de RRSS (opcional)"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Código identificador usado en herramientas de manejo de conversaciones de redes sociales
+                </p>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="rutId">RUT o Número de Identificación *</Label>
                 <Input
                   id="rutId"
@@ -232,15 +253,25 @@ export function ClientsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Correo Electrónico (opcional)</Label>
+                  <Label htmlFor="telefono2">Teléfono de Contacto 2 (opcional)</Label>
                   <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="cliente@email.com"
+                    id="telefono2"
+                    value={formData.telefono2}
+                    onChange={(e) => setFormData({ ...formData, telefono2: e.target.value })}
+                    placeholder="+58 424 555-0123"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Correo Electrónico (opcional)</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="cliente@email.com"
+                />
               </div>
 
               <div className="space-y-2">
@@ -287,7 +318,7 @@ export function ClientsPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
-                  placeholder="Buscar por nombre, RUT o teléfono..."
+                  placeholder="Buscar por nombre, apodo, RUT, teléfono o email..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -357,11 +388,17 @@ export function ClientsPage() {
                       <TableCell>
                         <div>
                           <div className="font-medium">{client.nombreRazonSocial}</div>
+                          {client.apodo && <div className="text-xs text-muted-foreground">Apodo: {client.apodo}</div>}
                           {client.email && <div className="text-sm text-muted-foreground">{client.email}</div>}
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-sm">{client.rutId}</TableCell>
-                      <TableCell>{client.telefono}</TableCell>
+                      <TableCell>
+                        <div>
+                          <div>{client.telefono}</div>
+                          {client.telefono2 && <div className="text-sm text-muted-foreground">{client.telefono2}</div>}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline">
                           {tipoClienteOptions.find((t) => t.value === client.tipoCliente)?.label}
@@ -430,6 +467,19 @@ export function ClientsPage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="edit-apodo">Apodo (Código RRSS)</Label>
+              <Input
+                id="edit-apodo"
+                value={formData.apodo}
+                onChange={(e) => setFormData({ ...formData, apodo: e.target.value })}
+                placeholder="Código identificador para herramientas de RRSS (opcional)"
+              />
+              <p className="text-xs text-muted-foreground">
+                Código identificador usado en herramientas de manejo de conversaciones de redes sociales
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="edit-rutId">RUT o Número de Identificación *</Label>
               <Input
                 id="edit-rutId"
@@ -460,15 +510,25 @@ export function ClientsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-email">Correo Electrónico (opcional)</Label>
+                <Label htmlFor="edit-telefono2">Teléfono de Contacto 2 (opcional)</Label>
                 <Input
-                  id="edit-email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="cliente@email.com"
+                  id="edit-telefono2"
+                  value={formData.telefono2}
+                  onChange={(e) => setFormData({ ...formData, telefono2: e.target.value })}
+                  placeholder="+58 424 555-0123"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Correo Electrónico (opcional)</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="cliente@email.com"
+              />
             </div>
 
             <div className="space-y-2">

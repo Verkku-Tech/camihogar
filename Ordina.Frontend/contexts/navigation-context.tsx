@@ -6,7 +6,7 @@ interface NavigationItem {
   id: string
   name: string
   href: string
-  category: "main" | "configuration" | "inventory"
+  category: "main" | "configuration" | "inventory" | "orders"
   active: boolean
   description: string
 }
@@ -29,12 +29,20 @@ const defaultNavigationItems: NavigationItem[] = [
     description: "Panel principal con métricas y resumen",
   },
   {
-    id: "pedidos",
+    id: "pedidos-list",
     name: "Pedidos",
     href: "/pedidos",
-    category: "main",
+    category: "orders",
     active: true,
-    description: "Gestión de pedidos y órdenes",
+    description: "Gestión de pedidos y presupuestos",
+  },
+  {
+    id: "despachos",
+    name: "Despachos",
+    href: "/pedidos/despachos",
+    category: "orders",
+    active: true,
+    description: "Gestión de pedidos listos para despachar",
   },
   {
     id: "proveedores",
@@ -59,6 +67,14 @@ const defaultNavigationItems: NavigationItem[] = [
     category: "main",
     active: true,
     description: "Gestión de tiendas",
+  },
+  {
+    id: "cuentas",
+    name: "Cuentas",
+    href: "/cuentas",
+    category: "main",
+    active: true,
+    description: "Gestión de cuentas bancarias",
   },
   {
     id: "reportes",
@@ -107,6 +123,14 @@ const defaultNavigationItems: NavigationItem[] = [
     category: "configuration",
     active: true,
     description: "Gestión de tasas de cambio para monedas (USD, EUR)",
+  },
+  {
+    id: "comisiones",
+    name: "Comisiones",
+    href: "/configuracion/comisiones",
+    category: "configuration",
+    active: true,
+    description: "Gestión de comisiones por rol o por usuario",
   },
 ]
 

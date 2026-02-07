@@ -9,6 +9,15 @@ import type {
   CreateProductDto,
   UpdateProductDto,
   UserResponseDto,
+  OrderResponseDto,
+  CreateOrderDto,
+  UpdateOrderDto,
+  OrderProductDto as OrderProductDtoBackend,
+  PaymentDetailsDto,
+  PartialPaymentDto as PartialPaymentDtoBackend,
+  ProviderResponseDto,
+  CreateProviderDto,
+  UpdateProviderDto,
 } from "./api-client";
 import { syncManager } from "./sync-manager";
 
@@ -22,6 +31,7 @@ export interface AttributeValue {
 }
 
 export interface Category {
+  backendId?: string; // ObjectId original del backend (opcional)
   id: number;
   name: string;
   description: string;
@@ -37,6 +47,7 @@ export interface Category {
     maxSelections?: number; // For "Multiple select" type
     minValue?: number; // For "Number" type
     maxValue?: number; // For "Number" type (REQUIRED when valueType is "Number")
+    required?: boolean; // Indica si el atributo es obligatorio (por defecto true)
   }[];
 }
 
@@ -57,6 +68,7 @@ export interface Product {
 // Helper para convertir Category con id number a formato IndexedDB (id string)
 interface CategoryDB {
   id: string;
+  backendId?: string; // ObjectId original del backend (opcional)
   name: string;
   description: string;
   products: number;
@@ -71,38 +83,47 @@ interface CategoryDB {
     maxSelections?: number;
     minValue?: number; // For "Number" type
     maxValue?: number; // For "Number" type (REQUIRED when valueType is "Number")
+    required?: boolean; // Indica si el atributo es obligatorio (por defecto true)
   }[];
 }
 
-const categoryToDB = (category: Category): CategoryDB => ({
+const categoryToDB = (category: Category, backendId?: string): CategoryDB => ({
   ...category,
   id: category.id.toString(),
+  ...(backendId || category.backendId ? { backendId: backendId ?? category.backendId } : {}),
 });
 
 const categoryFromDB = (categoryDB: CategoryDB): Category => ({
   ...categoryDB,
   id: Number.parseInt(categoryDB.id),
+  backendId: categoryDB.backendId,
 });
 
 // Helper para convertir string ID del backend a number ID del frontend
 // Usa un hash simple para generar un ID numérico consistente
 const backendIdToNumber = (backendId: string): number => {
-  // Si el string ID puede parsearse como número, usarlo directamente
+  // Si el string ID puede parsearse como número COMPLETO (sin caracteres adicionales), usarlo directamente
   const parsed = Number.parseInt(backendId);
-  if (!Number.isNaN(parsed) && parsed > 0) {
+  // Verificar que el parseo fue exacto (sin caracteres sobrantes)
+  // Esto evita que "693db0" se convierta en 693, causando colisiones
+  if (!Number.isNaN(parsed) && parsed > 0 && parsed.toString() === backendId) {
     return parsed;
   }
 
-  // Si no, generar un hash numérico del string
+  // Si no es un número exacto, generar un hash numérico del string completo
+  // Esto asegura que IDs como "693db0" y "693" generen números diferentes
   let hash = 0;
   for (let i = 0; i < backendId.length; i++) {
     const char = backendId.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
+    hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // Convertir a 32 bits
   }
 
-  // Retornar un número positivo
-  return Math.abs(hash) || Date.now();
+  // Retornar un número positivo, asegurando que sea mayor que cualquier ID numérico común
+  // Multiplicamos por un factor para evitar colisiones con IDs numéricos simples
+  const hashValue = Math.abs(hash) || Date.now();
+  // Asegurar que el hash sea suficientemente grande para evitar colisiones con IDs numéricos simples
+  return hashValue > 1000000 ? hashValue : hashValue + 1000000;
 };
 
 // Helper functions para mapear entre frontend y backend
@@ -120,22 +141,29 @@ const categoryToBackendDto = (
       valueType: attr.valueType,
       values: Array.isArray(attr.values)
         ? attr.values.map((val) =>
-            typeof val === "string"
-              ? { label: val }
-              : {
-                  label: val.label,
-                  isDefault: val.isDefault,
-                  priceAdjustment: val.priceAdjustment,
-                  priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-                  productId: val.productId?.toString(),
-                }
-          )
+          typeof val === "string"
+            ? { label: val }
+            : {
+              label: val.label,
+              isDefault: val.isDefault,
+              priceAdjustment: val.priceAdjustment,
+              priceAdjustmentCurrency: val.priceAdjustmentCurrency,
+              productId: val.productId?.toString(),
+            }
+        )
         : [],
     };
 
     // Incluir maxSelections si existe
     if (attr.maxSelections !== undefined) {
       attrDto.maxSelections = attr.maxSelections;
+    }
+
+    // Incluir required si existe (por defecto true)
+    if (attr.required !== undefined) {
+      attrDto.required = attr.required;
+    } else {
+      attrDto.required = true; // Por defecto obligatorio
     }
 
     // Para atributos de tipo "Number", siempre incluir minValue y maxValue
@@ -145,7 +173,7 @@ const categoryToBackendDto = (
       // El backend acepta decimal? (nullable), así que null debería ser válido
       attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
       attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
-      
+
       // Log para debugging
       if (attr.maxValue === undefined || attr.maxValue === null) {
         console.warn("⚠️ Atributo numérico sin maxValue:", attr.title, "valueType:", attr.valueType);
@@ -166,6 +194,7 @@ const categoryToBackendDto = (
 
 const categoryFromBackendDto = (dto: CategoryResponseDto): Category => ({
   id: backendIdToNumber(dto.id),
+  backendId: dto.id, // Guardar el ObjectId original
   name: dto.name,
   description: dto.description,
   products: dto.products,
@@ -179,6 +208,7 @@ const categoryFromBackendDto = (dto: CategoryResponseDto): Category => ({
     maxSelections: attr.maxSelections,
     minValue: attr.minValue,
     maxValue: attr.maxValue,
+    required: attr.required !== undefined ? attr.required : true, // Por defecto true si no existe
     values: attr.values.map((val) => ({
       id: val.id,
       label: val.label,
@@ -198,6 +228,93 @@ const isOnline = (): boolean => {
   return navigator.onLine;
 };
 
+// ===== SYNC TIMESTAMP MANAGEMENT =====
+// Gestión de timestamps de sincronización para sincronización incremental
+
+interface SyncMetadata {
+  id: string;
+  key: string;
+  lastSyncTimestamp: string | null;
+  lastSyncDate: string;
+}
+
+/**
+ * Obtiene el timestamp de última sincronización para una entidad
+ * @param entity Nombre de la entidad (ej: "orders", "products")
+ * @returns Timestamp ISO 8601 o null si nunca se ha sincronizado
+ */
+const getLastSyncTimestamp = async (entity: string): Promise<string | null> => {
+  try {
+    const metadata = await db.get<SyncMetadata>("app_settings", `sync_${entity}`);
+    return metadata?.lastSyncTimestamp || null;
+  } catch (error) {
+    console.warn(`⚠️ Error obteniendo timestamp de sync para ${entity}:`, error);
+    return null;
+  }
+};
+
+/**
+ * Guarda el timestamp de última sincronización para una entidad
+ * @param entity Nombre de la entidad (ej: "orders", "products")
+ * @param timestamp Timestamp ISO 8601 del servidor
+ */
+const setLastSyncTimestamp = async (entity: string, timestamp: string): Promise<void> => {
+  try {
+    const metadata: SyncMetadata = {
+      id: `sync_${entity}`,
+      key: `sync_${entity}`,
+      lastSyncTimestamp: timestamp,
+      lastSyncDate: new Date().toISOString(),
+    };
+    await db.put("app_settings", metadata);
+    console.log(`✅ Timestamp de sync guardado para ${entity}: ${timestamp}`);
+  } catch (error) {
+    console.warn(`⚠️ Error guardando timestamp de sync para ${entity}:`, error);
+  }
+};
+
+/**
+ * Verifica si se debe realizar una sincronización completa o incremental
+ * @param entity Nombre de la entidad
+ * @param forceFullSync Forzar sincronización completa
+ * @returns true si se debe hacer sync completa, false si incremental
+ */
+const shouldDoFullSync = async (entity: string, forceFullSync: boolean = false): Promise<boolean> => {
+  if (forceFullSync) return true;
+  
+  const lastSync = await getLastSyncTimestamp(entity);
+  if (!lastSync) return true; // Nunca se ha sincronizado
+  
+  // También hacer sync completa si han pasado más de 24 horas
+  const lastSyncDate = new Date(lastSync);
+  const hoursSinceLastSync = (Date.now() - lastSyncDate.getTime()) / (1000 * 60 * 60);
+  
+  return hoursSinceLastSync > 24;
+};
+
+/**
+ * Tiempo mínimo entre sincronizaciones (en milisegundos)
+ * Para evitar sincronizaciones excesivas
+ */
+const MIN_SYNC_INTERVAL_MS = 30 * 1000; // 30 segundos
+
+/**
+ * Verifica si se debe sincronizar basado en el intervalo mínimo
+ * @param entity Nombre de la entidad
+ * @returns true si se debe sincronizar
+ */
+const shouldSync = async (entity: string): Promise<boolean> => {
+  try {
+    const metadata = await db.get<SyncMetadata>("app_settings", `sync_${entity}`);
+    if (!metadata?.lastSyncDate) return true;
+    
+    const timeSinceLastSync = Date.now() - new Date(metadata.lastSyncDate).getTime();
+    return timeSinceLastSync >= MIN_SYNC_INTERVAL_MS;
+  } catch {
+    return true;
+  }
+};
+
 export const getCategories = async (): Promise<Category[]> => {
   try {
     // Cargar siempre categorías locales desde IndexedDB primero (offline-first)
@@ -212,31 +329,73 @@ export const getCategories = async (): Promise<Category[]> => {
           categoryFromBackendDto
         );
 
-        // Hacer merge: combinar categorías del backend con las locales
-        // Crear un Map usando el ID como clave para evitar duplicados
-        // Las categorías del backend tienen prioridad sobre las locales
-        const categoriesMap = new Map<number, Category>();
+        // Hacer merge: usar nombre como clave única (similar a SKU en productos y orderNumber en órdenes)
+        // El nombre es único según el índice en IndexedDB
+        const categoriesMap = new Map<string, Category>();
 
         // Primero agregar categorías locales
         for (const category of localCategories) {
-          categoriesMap.set(category.id, category);
+          categoriesMap.set(category.name, category);
         }
 
         // Luego agregar/actualizar con categorías del backend (estas tienen prioridad)
-        for (const category of backendCategoriesMapped) {
-          categoriesMap.set(category.id, category);
-          // Guardar/actualizar en IndexedDB
+        const idSet = new Set<number>(); // Para detectar IDs duplicados
+
+        for (let i = 0; i < backendCategories.length; i++) {
+          const backendCategory = backendCategories[i];
+          const mappedCategory = backendCategoriesMapped[i];
+
+          // Verificar si el ID ya existe
+          if (idSet.has(mappedCategory.id)) {
+            console.warn(
+              `⚠️ ID duplicado detectado: ${mappedCategory.id} para categoría "${mappedCategory.name}". ` +
+              `Backend ID: ${backendCategory.id}. Generando nuevo ID...`
+            );
+            // Generar un nuevo ID único sumando un offset basado en el índice
+            mappedCategory.id = mappedCategory.id + (i * 1000000);
+            // Asegurar que el nuevo ID no colisione
+            while (idSet.has(mappedCategory.id)) {
+              mappedCategory.id += 1;
+            }
+          }
+          
+          idSet.add(mappedCategory.id);
+
+          // Verificar si ya existe una categoría con el mismo nombre
+          const existing = categoriesMap.get(mappedCategory.name);
+          if (existing && existing.id !== mappedCategory.id) {
+            console.warn(
+              `⚠️ Advertencia: Categoría "${mappedCategory.name}" existe con ID diferente. ` +
+              `Local: ${existing.id}, Backend: ${mappedCategory.id}. Usando versión del backend.`
+            );
+          }
+
+          // Las categorías del backend tienen prioridad
+          categoriesMap.set(mappedCategory.name, mappedCategory);
+
+          // Guardar/actualizar en IndexedDB usando put (hace update si existe, add si no)
           try {
-            await db.update("categories", categoryToDB(category));
-          } catch {
-            await db.add("categories", categoryToDB(category));
+            await db.put("categories", categoryToDB(mappedCategory, mappedCategory.backendId));
+            console.log(`✅ Categoría sincronizada: ${mappedCategory.name} (ID: ${mappedCategory.id}, Backend ID: ${backendCategory.id})`);
+          } catch (error) {
+            console.error(`❌ Error guardando categoría ${mappedCategory.name}:`, error);
+            // Continuar con las demás categorías aunque una falle
           }
         }
 
         const mergedCategories = Array.from(categoriesMap.values());
         console.log(
-          `✅ Categorías: ${localCategories.length} locales + ${backendCategoriesMapped.length} del backend = ${mergedCategories.length} totales`
+          `✅ Categorías: ${localCategories.length} locales + ${backendCategories.length} del backend = ${mergedCategories.length} totales`
         );
+
+        // Log de debugging para verificar que todas se cargaron
+        if (mergedCategories.length !== Math.max(localCategories.length, backendCategories.length)) {
+          console.warn(
+            `⚠️ Posible pérdida de categorías: esperadas ${Math.max(localCategories.length, backendCategories.length)}, ` +
+            `obtenidas ${mergedCategories.length}`
+          );
+        }
+
         return mergedCategories;
       } catch (error) {
         console.warn(
@@ -303,7 +462,7 @@ export const resolveCategoryBackendId = async (
 
       // Actualizar la categoría local con el ID del backend
       const updatedLocalCategory = categoryFromBackendDto(syncedCategory);
-      await db.update("categories", categoryToDB(updatedLocalCategory));
+      await db.update("categories", categoryToDB(updatedLocalCategory, updatedLocalCategory.backendId));
 
       return syncedCategory.id;
     }
@@ -349,15 +508,33 @@ export const addCategory = async (
       const backendCategory = await apiClient.createCategory(createDto);
       newCategory = categoryFromBackendDto(backendCategory);
 
-      // Guardar también en IndexedDB
-      await db.add("categories", categoryToDB(newCategory));
+      // Guardar también en IndexedDB (preservando backendId si existe)
+      await db.add("categories", categoryToDB(newCategory, newCategory.backendId));
       console.log(
         "✅ Categoría guardada en backend y IndexedDB:",
         newCategory.name
       );
       syncedToBackend = true;
       return newCategory;
-    } catch (error) {
+    } catch (error: any) {
+      // Si la creación falla por conflicto, obtener la categoría existente y actualizar localmente
+      if (error?.message?.includes("Ya existe una categoría con el nombre")) {
+        try {
+          const existingCategory = await apiClient.getCategoryByName(category.name);
+          if (existingCategory) {
+            newCategory = categoryFromBackendDto(existingCategory);
+            // Merge con los datos nuevos del usuario
+            newCategory = { ...newCategory, ...category };
+            await db.update("categories", categoryToDB(newCategory, newCategory.backendId));
+            syncedToBackend = true;
+            return newCategory;
+          }
+        } catch (getError) {
+          // Si falla obtenerla, continuar con creación local
+          console.warn("⚠️ Error obteniendo categoría existente del backend:", getError);
+        }
+      }
+
       console.warn(
         "⚠️ Error guardando categoría en backend, guardando localmente:",
         error
@@ -374,7 +551,7 @@ export const addCategory = async (
     const newId = Math.max(...localCategories.map((c) => c.id), 0) + 1;
     newCategory = { ...category, id: newId };
 
-    await db.add("categories", categoryToDB(newCategory));
+    await db.add("categories", categoryToDB(newCategory, newCategory.backendId));
     console.log("✅ Categoría guardada en IndexedDB:", newCategory.name);
 
     // Encolar para sincronización si NO se sincronizó con el backend
@@ -445,27 +622,31 @@ export const updateCategory = async (
   const updatedCategory: Category = {
     ...existingCategory,
     ...updates,
+    backendId: existingCategory.backendId, // Preservar backendId
   };
 
   // Variable para rastrear si la categoría existe en el backend
-  let backendCategoryId: string | null = null;
+  let backendCategoryId: string | null = existingCategory.backendId || null;
 
   // Intentar actualizar en el backend primero si hay conexión
   if (isOnline()) {
     try {
-      // Buscar la categoría en el backend por nombre para obtener su ObjectId
-      try {
-        const backendCategory = await apiClient.getCategoryByName(
-          existingCategory.name
-        );
-        if (backendCategory) {
-          backendCategoryId = backendCategory.id;
+      // Si no tenemos backendId, intentar buscarlo por nombre (fallback)
+      if (!backendCategoryId) {
+        try {
+          const backendCategory = await apiClient.getCategoryByName(
+            existingCategory.name
+          );
+          if (backendCategory) {
+            backendCategoryId = backendCategory.id;
+            // Actualizar la categoría con el backendId encontrado
+            updatedCategory.backendId = backendCategoryId;
+          }
+        } catch (error) {
+          console.warn(
+            "⚠️ Categoría no encontrada en backend por nombre, actualizando solo localmente"
+          );
         }
-      } catch (error) {
-        // La categoría no existe en el backend todavía
-        console.warn(
-          "⚠️ Categoría no encontrada en backend por nombre, actualizando solo localmente"
-        );
       }
 
       // Si encontramos la categoría en el backend, actualizarla
@@ -485,54 +666,56 @@ export const updateCategory = async (
               : undefined,
           maxDiscountCurrency:
             updatedCategory.maxDiscountCurrency !==
-            existingCategory.maxDiscountCurrency
+              existingCategory.maxDiscountCurrency
               ? updatedCategory.maxDiscountCurrency
               : undefined,
           attributes:
             updatedCategory.attributes !== existingCategory.attributes
               ? updatedCategory.attributes.map((attr) => {
-                  const attrDto: any = {
-                    id: attr.id.toString(),
-                    title: attr.title,
-                    description: attr.description,
-                    valueType: attr.valueType,
-                    maxSelections: attr.maxSelections,
-                    values: Array.isArray(attr.values)
-                      ? attr.values.map((val) =>
-                          typeof val === "string"
-                            ? { label: val }
-                            : {
-                                id: val.id,
-                                label: val.label,
-                                isDefault: val.isDefault,
-                                priceAdjustment: val.priceAdjustment,
-                                priceAdjustmentCurrency:
-                                  val.priceAdjustmentCurrency,
-                                productId: val.productId?.toString(),
-                              }
-                        )
-                      : [],
-                  };
+                const attrDto: any = {
+                  id: attr.id.toString(),
+                  title: attr.title,
+                  description: attr.description,
+                  valueType: attr.valueType,
+                  maxSelections: attr.maxSelections,
+                  required: attr.required,
+                  values: Array.isArray(attr.values)
+                    ? attr.values.map((val) =>
+                      typeof val === "string"
+                        ? { label: val }
+                        : {
+                          id: val.id,
+                          label: val.label,
+                          isDefault: val.isDefault,
+                          priceAdjustment: val.priceAdjustment,
+                          priceAdjustmentCurrency:
+                            val.priceAdjustmentCurrency,
+                          productId: val.productId?.toString(),
+                        }
+                    )
+                    : [],
+                };
 
-                  // Para atributos de tipo "Number", siempre incluir minValue y maxValue
-                  if (attr.valueType === "Number") {
-                    attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
-                    attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
-                  } else {
-                    // Para otros tipos, incluir solo si existen
-                    if (attr.minValue !== undefined) {
-                      attrDto.minValue = attr.minValue;
-                    }
-                    if (attr.maxValue !== undefined) {
-                      attrDto.maxValue = attr.maxValue;
-                    }
+                // Para atributos de tipo "Number", siempre incluir minValue y maxValue
+                if (attr.valueType === "Number") {
+                  attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
+                  attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
+                } else {
+                  // Para otros tipos, incluir solo si existen
+                  if (attr.minValue !== undefined) {
+                    attrDto.minValue = attr.minValue;
                   }
+                  if (attr.maxValue !== undefined) {
+                    attrDto.maxValue = attr.maxValue;
+                  }
+                }
 
-                  return attrDto;
-                })
+                return attrDto;
+              })
               : undefined,
         };
 
+        console.log("📤 Sending update to backend:", JSON.stringify(updateDto, null, 2)); // Debug info
         const backendCategory = await apiClient.updateCategory(
           backendCategoryId,
           updateDto
@@ -540,7 +723,7 @@ export const updateCategory = async (
         const syncedCategory = categoryFromBackendDto(backendCategory);
 
         // Actualizar también en IndexedDB con los datos del backend
-        await db.update("categories", categoryToDB(syncedCategory));
+        await db.update("categories", categoryToDB(syncedCategory, syncedCategory.backendId));
         console.log(
           "✅ Categoría actualizada en backend y IndexedDB:",
           syncedCategory.name
@@ -553,7 +736,90 @@ export const updateCategory = async (
         );
         // Continuar para guardar localmente y encolar
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Manejar error 409 específicamente
+      if (error?.message?.includes("Ya existe una categoría con el nombre")) {
+        try {
+          const backendCategory = await apiClient.getCategoryByName(updatedCategory.name);
+          if (backendCategory) {
+            // Actualizar con el ID correcto y reintentar
+            updatedCategory.backendId = backendCategory.id;
+            backendCategoryId = backendCategory.id;
+
+            const retryUpdateDto: UpdateCategoryDto = {
+              name:
+                updatedCategory.name !== existingCategory.name
+                  ? updatedCategory.name
+                  : undefined,
+              description:
+                updatedCategory.description !== existingCategory.description
+                  ? updatedCategory.description
+                  : undefined,
+              maxDiscount:
+                updatedCategory.maxDiscount !== existingCategory.maxDiscount
+                  ? updatedCategory.maxDiscount
+                  : undefined,
+              maxDiscountCurrency:
+                updatedCategory.maxDiscountCurrency !==
+                  existingCategory.maxDiscountCurrency
+                  ? updatedCategory.maxDiscountCurrency
+                  : undefined,
+              attributes:
+                updatedCategory.attributes !== existingCategory.attributes
+                  ? updatedCategory.attributes.map((attr) => {
+                    const attrDto: any = {
+                      id: attr.id.toString(),
+                      title: attr.title,
+                      description: attr.description,
+                      valueType: attr.valueType,
+                      maxSelections: attr.maxSelections,
+                      values: Array.isArray(attr.values)
+                        ? attr.values.map((val) =>
+                          typeof val === "string"
+                            ? { label: val }
+                            : {
+                              id: val.id,
+                              label: val.label,
+                              isDefault: val.isDefault,
+                              priceAdjustment: val.priceAdjustment,
+                              priceAdjustmentCurrency:
+                                val.priceAdjustmentCurrency,
+                              productId: val.productId?.toString(),
+                            }
+                        )
+                        : [],
+                    };
+                    // Siempre incluir required (por defecto true si no existe)
+                    attrDto.required = attr.required !== undefined ? attr.required : true;
+                    if (attr.valueType === "Number") {
+                      attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
+                      attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
+                    } else {
+                      if (attr.minValue !== undefined) {
+                        attrDto.minValue = attr.minValue;
+                      }
+                      if (attr.maxValue !== undefined) {
+                        attrDto.maxValue = attr.maxValue;
+                      }
+                    }
+                    return attrDto;
+                  })
+                  : undefined,
+            };
+
+            const backendCategoryUpdated = await apiClient.updateCategory(
+              backendCategoryId,
+              retryUpdateDto
+            );
+            const syncedCategory = categoryFromBackendDto(backendCategoryUpdated);
+            await db.update("categories", categoryToDB(syncedCategory, syncedCategory.backendId));
+            return syncedCategory;
+          }
+        } catch (retryError) {
+          console.warn("⚠️ Error en reintento:", retryError);
+        }
+      }
+
       console.warn(
         "⚠️ Error actualizando categoría en backend, guardando localmente:",
         error
@@ -564,7 +830,7 @@ export const updateCategory = async (
 
   // Guardar en IndexedDB
   try {
-    await db.update("categories", categoryToDB(updatedCategory));
+    await db.update("categories", categoryToDB(updatedCategory, updatedCategory.backendId));
 
     // Encolar para sincronización si la categoría no está en el backend o estamos offline
     const shouldEnqueue = !isOnline() || !backendCategoryId;
@@ -584,19 +850,22 @@ export const updateCategory = async (
               maxSelections: attr.maxSelections,
               values: Array.isArray(attr.values)
                 ? attr.values.map((val) =>
-                    typeof val === "string"
-                      ? { label: val }
-                      : {
-                          id: val.id,
-                          label: val.label,
-                          isDefault: val.isDefault,
-                          priceAdjustment: val.priceAdjustment,
-                          priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-                          productId: val.productId?.toString(),
-                        }
-                  )
+                  typeof val === "string"
+                    ? { label: val }
+                    : {
+                      id: val.id,
+                      label: val.label,
+                      isDefault: val.isDefault,
+                      priceAdjustment: val.priceAdjustment,
+                      priceAdjustmentCurrency: val.priceAdjustmentCurrency,
+                      productId: val.productId?.toString(),
+                    }
+                )
                 : [],
             };
+
+            // Siempre incluir required (por defecto true si no existe)
+            attrDto.required = attr.required !== undefined ? attr.required : true;
 
             // Para atributos de tipo "Number", siempre incluir minValue y maxValue
             if (attr.valueType === "Number") {
@@ -973,42 +1242,42 @@ export const updateProduct = async (
     try {
       // Construir el DTO solo con los campos que realmente cambiaron
       const updateDto: UpdateProductDto = {};
-      
+
       if (updatedProduct.name !== existingProduct.name) {
         updateDto.name = updatedProduct.name;
       }
-      
+
       // Siempre incluir la categoría para mantener consistencia
       if (updatedProduct.category) {
         updateDto.category = updatedProduct.category;
       }
-      
+
       if (updatedProduct.price !== existingProduct.price) {
         updateDto.price = updatedProduct.price;
       }
-      
+
       if (updatedProduct.priceCurrency !== existingProduct.priceCurrency) {
         updateDto.priceCurrency = updatedProduct.priceCurrency;
       }
-      
+
       if (updatedProduct.stock !== existingProduct.stock) {
         updateDto.stock = updatedProduct.stock;
       }
-      
+
       if (updatedProduct.status !== existingProduct.status) {
         updateDto.status = updatedProduct.status;
       }
-      
+
       if (updatedProduct.sku !== existingProduct.sku) {
         updateDto.sku = updatedProduct.sku;
       }
-      
+
       // Solo incluir attributes si realmente cambiaron
       const attributesChanged = JSON.stringify(updatedProduct.attributes || {}) !== JSON.stringify(existingProduct.attributes || {});
       if (attributesChanged) {
         updateDto.attributes = updatedProduct.attributes;
       }
-      
+
       // Si no hay cambios, al menos enviar la categoría para mantener consistencia
       const hasChanges = Object.keys(updateDto).length > 0;
       if (!hasChanges && updatedProduct.category) {
@@ -1184,6 +1453,17 @@ export const deleteProduct = async (id: number): Promise<void> => {
 // ===== INTERFACES =====
 
 // Agregar estas interfaces ANTES de Order
+// Interfaz para imágenes de productos
+export interface ProductImage {
+  id: string; // ID único para la imagen
+  base64: string; // Imagen o PDF en base64 (data:image/jpeg;base64,... o data:application/pdf;base64,...)
+  filename: string; // Nombre original del archivo
+  type: "model" | "reference" | "other"; // Tipo de imagen
+  uploadedAt: string; // Fecha de carga (ISO string)
+  size?: number; // Tamaño del archivo en bytes (opcional)
+  mimeType?: string; // Tipo MIME: "image/jpeg", "image/png", "application/pdf", etc.
+}
+
 export interface OrderProduct {
   id: string;
   name: string;
@@ -1195,6 +1475,17 @@ export interface OrderProduct {
   attributes?: Record<string, string | number | string[]>; // Permite arrays para selección múltiple
   discount?: number; // Descuento aplicado al producto (monto)
   observations?: string; // Observaciones específicas del producto
+  images?: ProductImage[]; // Imágenes de referencia del producto
+  // Campos de fabricación
+  availabilityStatus?: "disponible" | "no_disponible"; // Estado de disponibilidad
+  manufacturingStatus?: "debe_fabricar" | "fabricando" | "almacen_no_fabricado"; // Estado de fabricación (solo si no_disponible): 3 estados, último = En almacén
+  manufacturingProviderId?: string; // ID del proveedor asignado
+  manufacturingProviderName?: string; // Nombre del proveedor (para display)
+  manufacturingStartedAt?: string; // Fecha de inicio de fabricación
+  manufacturingCompletedAt?: string; // Fecha de finalización de fabricación
+  manufacturingNotes?: string; // Notas de fabricación
+  // Estado de ubicación del producto
+  locationStatus?: "SIN DEFINIR" | "EN TIENDA" | "FABRICACION"; // Estado de ubicación
 }
 
 export interface PartialPayment {
@@ -1203,14 +1494,17 @@ export interface PartialPayment {
   method: string;
   date: string;
   currency?: Currency; // Moneda del pago
+  images?: ProductImage[]; // Imágenes del comprobante de pago
   paymentDetails?: {
     // Pago Móvil
     pagomovilReference?: string;
     pagomovilBank?: string;
     pagomovilPhone?: string;
+    pagomovilDate?: string;
     // Transferencia
     transferenciaBank?: string;
     transferenciaReference?: string;
+    transferenciaDate?: string;
     // Efectivo
     cashAmount?: string;
     cashCurrency?: "Bs" | "USD" | "EUR"; // Moneda del pago en efectivo
@@ -1219,6 +1513,16 @@ export interface PartialPayment {
     // Para Pago Móvil y Transferencia
     originalAmount?: number; // Monto original en la moneda del pago
     originalCurrency?: "Bs" | "USD" | "EUR"; // Moneda original del pago
+    // Información de cuenta relacionada
+    accountId?: string; // ID de la cuenta (opcional)
+    accountNumber?: string; // Para cuentas bancarias: número de cuenta completo
+    bank?: string; // Para cuentas bancarias: nombre del banco
+    email?: string; // Para cuentas digitales: correo
+    wallet?: string; // Para cuentas digitales: wallet
+    // Zelle
+    envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
+    // TDD (Tarjeta de Débito)
+    cardReference?: string; // Número de referencia del pago con tarjeta
   };
 }
 
@@ -1244,7 +1548,9 @@ export interface Order {
   paymentMethod: string;
   // Nuevos campos opcionales para compatibilidad hacia atrás
   paymentCondition?: "cashea" | "pagara_en_tienda" | "pago_a_entrega" | "pago_parcial" | "todo_pago";
-  saleType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sa";
+  saleType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado";
+  deliveryType?: "entrega_programada" | "delivery_express" | "retiro_tienda" | "retiro_almacen";
+  deliveryZone?: "caracas" | "g_g" | "san_antonio_los_teques" | "caucagua_higuerote" | "la_guaira" | "charallave_cua" | "interior_pais";
   paymentDetails?: {
     // Pago Móvil
     pagomovilReference?: string;
@@ -1260,12 +1566,41 @@ export interface Order {
     cashCurrency?: "Bs" | "USD" | "EUR"; // Moneda del pago en efectivo
     cashReceived?: number; // Monto recibido del cliente
     exchangeRate?: number; // Tasa de cambio usada al momento del pago
+    // Para Pago Móvil y Transferencia
+    originalAmount?: number; // Monto original en la moneda del pago
+    originalCurrency?: "Bs" | "USD" | "EUR"; // Moneda original del pago
+    // Información de cuenta relacionada
+    accountId?: string; // ID de la cuenta (opcional)
+    accountNumber?: string; // Para cuentas bancarias: número de cuenta completo
+    bank?: string; // Para cuentas bancarias: nombre del banco
+    email?: string; // Para cuentas digitales: correo
+    wallet?: string; // Para cuentas digitales: wallet
+    // Zelle
+    envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
   };
   partialPayments?: PartialPayment[]; // Ahora usa la interfaz exportada
   mixedPayments?: PartialPayment[]; // Para pagos mixtos
   deliveryAddress?: string;
   hasDelivery: boolean;
-  status: "Pendiente" | "Apartado" | "Completado" | "Cancelado";
+  // Nueva estructura de servicios de delivery
+  deliveryServices?: {
+    deliveryExpress?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioAcarreo?: {
+      enabled: boolean;
+      cost?: number; // Opcional
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioArmado?: {
+      enabled: boolean;
+      cost: number; // Obligatorio si enabled
+      currency: "Bs" | "USD" | "EUR";
+    };
+  };
+  status: "Presupuesto" | "Generado" | "Generada" | "Fabricación" | "Por despachar" | "Completada" | "Cancelado";
   createdAt: string;
   updatedAt: string;
   productMarkups?: Record<string, number>;
@@ -1276,14 +1611,18 @@ export interface Order {
     USD?: { rate: number; effectiveDate: string };
     EUR?: { rate: number; effectiveDate: string };
   }; // Tasas de cambio del día en que se creó el pedido
+  dispatchDate?: string; // Fecha de despacho
+  completedAt?: string; // Fecha de completado
 }
 
 export interface Client {
   id: string;
   nombreRazonSocial: string;
+  apodo?: string;
   rutId: string;
   direccion: string;
   telefono: string;
+  telefono2?: string;
   email?: string;
   tipoCliente: "empresa" | "particular";
   estado: "activo" | "inactivo";
@@ -1317,19 +1656,37 @@ export interface Store {
   updatedAt: string;
 }
 
+export interface Account {
+  id: string;
+  code: string; // Código de la cuenta (ej: Banesco_POS)
+  label: string; // Etiqueta o Nombre (ej: Punto de Venta Banesco)
+  storeId: string | "all"; // ID de la tienda asociada o "all" para todas las tiendas
+  isForeign: boolean; // true = Extranjera, false = Nacional
+  accountType: string; // "Cuentas Digitales", "Ahorro", "Corriente", etc.
+  email?: string; // Correo (solo para cuentas digitales)
+  wallet?: string; // Wallet (solo para cuentas digitales)
+  isActive: boolean; // true = Activa, false = Inactiva
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface User {
   id: string;
   username: string;
   email: string;
   role:
-    | "Super Administrator"
-    | "Administrator"
-    | "Supervisor"
-    | "Store Seller"
-    | "Online Seller";
+  | "Super Administrator"
+  | "Administrator"
+  | "Supervisor"
+  | "Store Seller"
+  | "Online Seller";
   name: string;
   status: "active" | "inactive";
   createdAt?: string;
+  // Campos para comisiones
+  exclusiveCommission?: boolean; // Vendedores que NO comparten comisión con referidos
+  baseSalary?: number; // Sueldo fijo del vendedor
+  baseSalaryCurrency?: string; // Moneda del sueldo
 }
 
 export interface Vendor {
@@ -1341,9 +1698,419 @@ export interface Vendor {
 
 // ===== ORDERS STORAGE (IndexedDB) =====
 
-export const getOrders = async (): Promise<Order[]> => {
+// Helper functions para mapear orders entre frontend y backend
+const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
+  id: dto.id,
+  orderNumber: dto.orderNumber,
+  clientId: dto.clientId,
+  clientName: dto.clientName,
+  vendorId: dto.vendorId,
+  vendorName: dto.vendorName,
+  referrerId: dto.referrerId,
+  referrerName: dto.referrerName,
+  products: dto.products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    quantity: p.quantity,
+    total: p.total,
+    category: p.category,
+    stock: p.stock,
+    attributes: p.attributes,
+    discount: p.discount,
+    observations: p.observations,
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
+    availabilityStatus: p.availabilityStatus as "disponible" | "no_disponible" | undefined,
+    manufacturingStatus: (() => {
+      const s = p.manufacturingStatus?.trim().toLowerCase();
+      if (!s) return undefined;
+      if (s === "fabricado") return "almacen_no_fabricado" as const; // legacy
+      if (s === "almacen_no_fabricado" || s === "debe_fabricar" || s === "fabricando") return s as "debe_fabricar" | "fabricando" | "almacen_no_fabricado";
+      return undefined;
+    })(),
+    manufacturingProviderId: p.manufacturingProviderId,
+    manufacturingProviderName: p.manufacturingProviderName,
+    manufacturingStartedAt: p.manufacturingStartedAt,
+    manufacturingCompletedAt: p.manufacturingCompletedAt,
+    manufacturingNotes: p.manufacturingNotes,
+    locationStatus: (() => {
+      // Normalizar valores antiguos a nuevos
+      if (p.locationStatus === "en_tienda") return "EN TIENDA" as const
+      if (p.locationStatus === "mandar_a_fabricar") return "FABRICACION" as const
+      if (!p.locationStatus || p.locationStatus === "") return "SIN DEFINIR" as const
+      return (p.locationStatus as "SIN DEFINIR" | "EN TIENDA" | "FABRICACION" | undefined) ?? "SIN DEFINIR"
+    })(),
+  })),
+  subtotal: dto.subtotal,
+  taxAmount: dto.taxAmount,
+  deliveryCost: dto.deliveryCost,
+  total: dto.total,
+  subtotalBeforeDiscounts: dto.subtotalBeforeDiscounts,
+  productDiscountTotal: dto.productDiscountTotal,
+  generalDiscountAmount: dto.generalDiscountAmount,
+  paymentType: dto.paymentType as "directo" | "apartado" | "mixto",
+  paymentMethod: dto.paymentMethod,
+  paymentDetails: dto.paymentDetails ? {
+    pagomovilReference: dto.paymentDetails.pagomovilReference,
+    pagomovilBank: dto.paymentDetails.pagomovilBank,
+    pagomovilPhone: dto.paymentDetails.pagomovilPhone,
+    pagomovilDate: dto.paymentDetails.pagomovilDate,
+    transferenciaBank: dto.paymentDetails.transferenciaBank,
+    transferenciaReference: dto.paymentDetails.transferenciaReference,
+    transferenciaDate: dto.paymentDetails.transferenciaDate,
+    cashAmount: dto.paymentDetails.cashAmount,
+    cashCurrency: dto.paymentDetails.cashCurrency,
+    cashReceived: dto.paymentDetails.cashReceived,
+    exchangeRate: dto.paymentDetails.exchangeRate,
+    originalAmount: dto.paymentDetails.originalAmount,
+    originalCurrency: dto.paymentDetails.originalCurrency,
+    accountId: dto.paymentDetails.accountId,
+    accountNumber: dto.paymentDetails.accountNumber,
+    bank: dto.paymentDetails.bank,
+    email: dto.paymentDetails.email,
+    wallet: dto.paymentDetails.wallet,
+  } : undefined,
+  partialPayments: dto.partialPayments?.map((p) => ({
+    id: p.id,
+    amount: p.amount,
+    method: p.method,
+    date: p.date,
+    currency: undefined, // Se puede ajustar según necesidades
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
+    paymentDetails: p.paymentDetails ? {
+      pagomovilReference: p.paymentDetails.pagomovilReference,
+      pagomovilBank: p.paymentDetails.pagomovilBank,
+      pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      transferenciaBank: p.paymentDetails.transferenciaBank,
+      transferenciaReference: p.paymentDetails.transferenciaReference,
+      transferenciaDate: p.paymentDetails.transferenciaDate,
+      cashAmount: p.paymentDetails.cashAmount,
+      cashCurrency: p.paymentDetails.cashCurrency,
+      cashReceived: p.paymentDetails.cashReceived,
+      exchangeRate: p.paymentDetails.exchangeRate,
+      originalAmount: p.paymentDetails.originalAmount,
+      originalCurrency: p.paymentDetails.originalCurrency,
+      accountId: p.paymentDetails.accountId,
+      accountNumber: p.paymentDetails.accountNumber,
+      bank: p.paymentDetails.bank,
+      email: p.paymentDetails.email,
+      wallet: p.paymentDetails.wallet,
+    } : undefined,
+  })),
+  mixedPayments: dto.mixedPayments?.map((p) => ({
+    id: p.id,
+    amount: p.amount,
+    method: p.method,
+    date: p.date,
+    currency: undefined,
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
+    paymentDetails: p.paymentDetails ? {
+      pagomovilReference: p.paymentDetails.pagomovilReference,
+      pagomovilBank: p.paymentDetails.pagomovilBank,
+      pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      transferenciaBank: p.paymentDetails.transferenciaBank,
+      transferenciaReference: p.paymentDetails.transferenciaReference,
+      transferenciaDate: p.paymentDetails.transferenciaDate,
+      cashAmount: p.paymentDetails.cashAmount,
+      cashCurrency: p.paymentDetails.cashCurrency,
+      cashReceived: p.paymentDetails.cashReceived,
+      exchangeRate: p.paymentDetails.exchangeRate,
+      originalAmount: p.paymentDetails.originalAmount,
+      originalCurrency: p.paymentDetails.originalCurrency,
+      accountId: p.paymentDetails.accountId,
+      accountNumber: p.paymentDetails.accountNumber,
+      bank: p.paymentDetails.bank,
+      email: p.paymentDetails.email,
+      wallet: p.paymentDetails.wallet,
+    } : undefined,
+  })),
+  deliveryAddress: dto.deliveryAddress,
+  hasDelivery: dto.hasDelivery,
+  status: dto.status as Order["status"],
+  createdAt: dto.createdAt,
+  updatedAt: dto.updatedAt,
+  productMarkups: dto.productMarkups,
+  createSupplierOrder: dto.createSupplierOrder,
+  observations: dto.observations,
+  saleType: dto.saleType as Order["saleType"],
+  deliveryType: dto.deliveryType as Order["deliveryType"],
+  deliveryZone: dto.deliveryZone as Order["deliveryZone"],
+});
+
+export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">): CreateOrderDto => ({
+  clientId: order.clientId,
+  clientName: order.clientName,
+  vendorId: order.vendorId,
+  vendorName: order.vendorName,
+  referrerId: order.referrerId,
+  referrerName: order.referrerName,
+  products: order.products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    quantity: p.quantity,
+    total: p.total,
+    category: p.category,
+    stock: p.stock,
+    attributes: p.attributes,
+    discount: p.discount,
+    observations: p.observations,
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
+    availabilityStatus: p.availabilityStatus,
+    manufacturingStatus: p.manufacturingStatus,
+    manufacturingProviderId: p.manufacturingProviderId,
+    manufacturingProviderName: p.manufacturingProviderName,
+    manufacturingStartedAt: p.manufacturingStartedAt,
+    manufacturingCompletedAt: p.manufacturingCompletedAt,
+    manufacturingNotes: p.manufacturingNotes,
+    locationStatus: p.locationStatus,
+  })),
+  subtotal: order.subtotal,
+  taxAmount: order.taxAmount,
+  deliveryCost: order.deliveryCost,
+  total: order.total,
+  subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
+  productDiscountTotal: order.productDiscountTotal,
+  generalDiscountAmount: order.generalDiscountAmount,
+  paymentType: order.paymentType,
+  paymentMethod: order.paymentMethod,
+  paymentDetails: order.paymentDetails ? {
+    pagomovilReference: order.paymentDetails.pagomovilReference,
+    pagomovilBank: order.paymentDetails.pagomovilBank,
+    pagomovilPhone: order.paymentDetails.pagomovilPhone,
+    pagomovilDate: order.paymentDetails.pagomovilDate,
+    transferenciaBank: order.paymentDetails.transferenciaBank,
+    transferenciaReference: order.paymentDetails.transferenciaReference,
+    transferenciaDate: order.paymentDetails.transferenciaDate,
+    cashAmount: order.paymentDetails.cashAmount,
+    cashCurrency: order.paymentDetails.cashCurrency,
+    cashReceived: order.paymentDetails.cashReceived,
+    exchangeRate: order.paymentDetails.exchangeRate,
+    originalAmount: order.paymentDetails.originalAmount,
+    originalCurrency: order.paymentDetails.originalCurrency,
+    accountId: order.paymentDetails.accountId,
+    accountNumber: order.paymentDetails.accountNumber,
+    bank: order.paymentDetails.bank,
+    email: order.paymentDetails.email,
+    wallet: order.paymentDetails.wallet,
+  } : undefined,
+  partialPayments: order.partialPayments?.map((p) => ({
+    id: p.id,
+    amount: p.amount,
+    method: p.method,
+    date: p.date,
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
+    paymentDetails: p.paymentDetails ? {
+      pagomovilReference: p.paymentDetails.pagomovilReference,
+      pagomovilBank: p.paymentDetails.pagomovilBank,
+      pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      transferenciaBank: p.paymentDetails.transferenciaBank,
+      transferenciaReference: p.paymentDetails.transferenciaReference,
+      transferenciaDate: p.paymentDetails.transferenciaDate,
+      cashAmount: p.paymentDetails.cashAmount,
+      cashCurrency: p.paymentDetails.cashCurrency,
+      cashReceived: p.paymentDetails.cashReceived,
+      exchangeRate: p.paymentDetails.exchangeRate,
+      originalAmount: p.paymentDetails.originalAmount,
+      originalCurrency: p.paymentDetails.originalCurrency,
+      accountId: p.paymentDetails.accountId,
+      accountNumber: p.paymentDetails.accountNumber,
+      bank: p.paymentDetails.bank,
+      email: p.paymentDetails.email,
+      wallet: p.paymentDetails.wallet,
+    } : undefined,
+  })),
+  mixedPayments: order.mixedPayments?.map((p) => ({
+    id: p.id,
+    amount: p.amount,
+    method: p.method,
+    date: p.date,
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
+    paymentDetails: p.paymentDetails ? {
+      pagomovilReference: p.paymentDetails.pagomovilReference,
+      pagomovilBank: p.paymentDetails.pagomovilBank,
+      pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      transferenciaBank: p.paymentDetails.transferenciaBank,
+      transferenciaReference: p.paymentDetails.transferenciaReference,
+      transferenciaDate: p.paymentDetails.transferenciaDate,
+      cashAmount: p.paymentDetails.cashAmount,
+      cashCurrency: p.paymentDetails.cashCurrency,
+      cashReceived: p.paymentDetails.cashReceived,
+      exchangeRate: p.paymentDetails.exchangeRate,
+      originalAmount: p.paymentDetails.originalAmount,
+      originalCurrency: p.paymentDetails.originalCurrency,
+      accountId: p.paymentDetails.accountId,
+      accountNumber: p.paymentDetails.accountNumber,
+      bank: p.paymentDetails.bank,
+      email: p.paymentDetails.email,
+      wallet: p.paymentDetails.wallet,
+    } : undefined,
+  })),
+  deliveryAddress: order.deliveryAddress,
+  hasDelivery: order.hasDelivery,
+  status: order.status,
+  productMarkups: order.productMarkups,
+  createSupplierOrder: order.createSupplierOrder,
+  observations: order.observations,
+  saleType: order.saleType,
+  deliveryType: order.deliveryType,
+  deliveryZone: order.deliveryZone,
+});
+
+/**
+ * Obtiene todos los pedidos con sincronización incremental optimizada
+ * 
+ * Estrategia de sincronización:
+ * 1. Siempre retorna primero los datos de IndexedDB (offline-first)
+ * 2. Si hay conexión y ha pasado el intervalo mínimo, sincroniza con el backend
+ * 3. Si nunca se ha sincronizado o han pasado >24h, hace sync completa
+ * 4. En otros casos, hace sync incremental (solo pedidos modificados)
+ * 
+ * @param forceFullSync Forzar sincronización completa (útil para refresh manual)
+ */
+export const getOrders = async (forceFullSync: boolean = false): Promise<Order[]> => {
   try {
-    return await db.getAll<Order>("orders");
+    // 1. Cargar siempre órdenes locales desde IndexedDB primero (offline-first)
+    const localOrders = await db.getAll<Order>("orders");
+
+    // 2. Si está offline, retornar solo órdenes locales inmediatamente
+    if (!isOnline()) {
+      console.log(`✅ Órdenes cargadas desde IndexedDB (offline): ${localOrders.length}`);
+      return localOrders;
+    }
+
+    // 3. Verificar si debemos sincronizar (evitar sincronizaciones muy frecuentes)
+    const needsSync = await shouldSync("orders");
+    if (!needsSync && !forceFullSync) {
+      console.log(`⏳ Sync de órdenes omitida (muy reciente). Usando ${localOrders.length} locales.`);
+      return localOrders;
+    }
+
+    // 4. Determinar tipo de sincronización
+    const doFullSync = await shouldDoFullSync("orders", forceFullSync);
+    const lastSyncTimestamp = doFullSync ? null : await getLastSyncTimestamp("orders");
+
+    try {
+      let backendOrdersMapped: Order[];
+      let newServerTimestamp: string;
+
+      if (doFullSync) {
+        // Sincronización completa: traer todos los pedidos paginados
+        console.log("🔄 Iniciando sincronización COMPLETA de órdenes...");
+        const allOrders: Order[] = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+          const response = await apiClient.getOrdersPaged(page, 50);
+          const mappedOrders = response.orders.map(orderFromBackendDto);
+          allOrders.push(...mappedOrders);
+          newServerTimestamp = response.serverTimestamp;
+          hasMore = response.hasNextPage;
+          page++;
+          
+          // Log de progreso
+          console.log(`📥 Página ${page - 1}: ${mappedOrders.length} pedidos (total: ${allOrders.length}/${response.totalCount})`);
+        }
+
+        backendOrdersMapped = allOrders;
+      } else {
+        // Sincronización incremental: solo pedidos modificados desde lastSyncTimestamp
+        console.log(`🔄 Sincronización INCREMENTAL de órdenes (desde ${lastSyncTimestamp})...`);
+        const { orders, serverTimestamp } = await apiClient.getOrdersSince(lastSyncTimestamp!);
+        backendOrdersMapped = orders.map(orderFromBackendDto);
+        newServerTimestamp = serverTimestamp;
+        console.log(`📥 ${backendOrdersMapped.length} pedidos actualizados desde última sync`);
+      }
+
+      // 5. Hacer merge usando orderNumber como clave única
+      const ordersMap = new Map<string, Order>();
+
+      // Primero agregar órdenes locales
+      for (const order of localOrders) {
+        ordersMap.set(order.orderNumber, order);
+      }
+
+      // Actualizar con órdenes del backend en paralelo
+      if (backendOrdersMapped.length > 0) {
+        // Primero actualizar el mapa
+        for (const order of backendOrdersMapped) {
+          ordersMap.set(order.orderNumber, order);
+        }
+
+        // Luego guardar en IndexedDB en paralelo
+        await Promise.all(
+          backendOrdersMapped.map(async (order) => {
+            try {
+              await db.put("orders", order);
+            } catch (error) {
+              console.warn(`⚠️ Error guardando orden ${order.orderNumber} en IndexedDB:`, error);
+            }
+          })
+        );
+      }
+
+      // 6. Guardar el nuevo timestamp de sincronización
+      if (newServerTimestamp!) {
+        await setLastSyncTimestamp("orders", newServerTimestamp);
+      }
+
+      const mergedOrders = Array.from(ordersMap.values());
+      console.log(
+        `✅ Órdenes sincronizadas: ${localOrders.length} locales + ${backendOrdersMapped.length} del backend = ${mergedOrders.length} totales`
+      );
+      return mergedOrders;
+
+    } catch (error) {
+      console.warn(
+        "⚠️ Error sincronizando órdenes con backend, usando solo IndexedDB:",
+        error
+      );
+      // Si falla el backend, retornar órdenes locales
+      return localOrders;
+    }
   } catch (error) {
     console.error("Error loading orders from IndexedDB:", error);
     return [];
@@ -1380,21 +2147,74 @@ export const getOrdersByStatus = async (status: string): Promise<Order[]> => {
 export const addOrder = async (
   order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">
 ): Promise<Order> => {
+  let newOrder: Order;
+  let syncedToBackend = false;
+
+  // Intentar guardar en el backend primero si hay conexión
+  if (isOnline()) {
+    try {
+      const createDto = orderToBackendDto(order);
+      const backendOrder = await apiClient.createOrder(createDto);
+      newOrder = orderFromBackendDto(backendOrder);
+
+      // Guardar también en IndexedDB
+      await db.add("orders", newOrder);
+      console.log("✅ Pedido guardado en backend y IndexedDB:", newOrder.orderNumber);
+      syncedToBackend = true;
+      return newOrder;
+    } catch (error) {
+      console.warn(
+        "⚠️ Error guardando pedido en backend, guardando localmente:",
+        error
+      );
+      // Continuar para guardar localmente y encolar para sincronización
+    }
+  }
+
+  // Guardar en IndexedDB (offline o falló el backend)
   try {
     // Obtener el número de pedidos para generar el siguiente número
     const orders = await getOrders();
     const orderNumber = `ORD-${String(orders.length + 1).padStart(3, "0")}`;
 
-    const newOrder: Order = {
+    newOrder = {
       ...order,
       id: Date.now().toString(),
       orderNumber,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      status: order.status || "Generado", // Estado inicial para pedidos normales
     };
+
+    // DEBUG: Verificar imágenes antes de guardar
+    newOrder.products.forEach((p, idx) => {
+      if (p.images && p.images.length > 0) {
+        console.log(`💾 Guardando pedido: Producto ${idx} (${p.name}) tiene ${p.images.length} imágenes`);
+      } else {
+        console.log(`⚠️ Guardando pedido: Producto ${idx} (${p.name}) NO tiene imágenes`);
+      }
+    });
 
     await db.add("orders", newOrder);
     console.log("✅ Pedido guardado en IndexedDB:", newOrder.orderNumber);
+
+    // Encolar para sincronización si NO se sincronizó con el backend
+    if (!syncedToBackend) {
+      try {
+        const createDto = orderToBackendDto(newOrder);
+        await syncManager.addToQueue({
+          type: "create",
+          entity: "order",
+          entityId: newOrder.id,
+          data: createDto,
+        });
+        console.log("✅ Pedido encolado para sincronización:", newOrder.orderNumber);
+      } catch (error) {
+        console.warn("⚠️ Error encolando pedido para sincronización:", error);
+        // No lanzar error, el pedido ya está guardado localmente
+      }
+    }
+
     return newOrder;
   } catch (error) {
     console.error("Error adding order to IndexedDB:", error);
@@ -1418,7 +2238,286 @@ export const updateOrder = async (
       updatedAt: new Date().toISOString(),
     };
 
+    // Intentar actualizar en el backend si hay conexión
+    if (isOnline()) {
+      try {
+        // Buscar el pedido en el backend por orderNumber para obtener su ObjectId
+        let backendOrderId: string | null = null;
+        try {
+          const backendOrder = await apiClient.getOrderByOrderNumber(existingOrder.orderNumber);
+          if (backendOrder) {
+            backendOrderId = backendOrder.id;
+          }
+        } catch (error) {
+          // El pedido no existe en el backend todavía
+          console.warn(
+            "⚠️ Pedido no encontrado en backend por orderNumber, actualizando solo localmente"
+          );
+        }
+
+        // Si encontramos el pedido en el backend, actualizarlo
+        if (backendOrderId) {
+          const updateDto: UpdateOrderDto = {
+            clientId: updatedOrder.clientId !== existingOrder.clientId ? updatedOrder.clientId : undefined,
+            clientName: updatedOrder.clientName !== existingOrder.clientName ? updatedOrder.clientName : undefined,
+            vendorId: updatedOrder.vendorId !== existingOrder.vendorId ? updatedOrder.vendorId : undefined,
+            vendorName: updatedOrder.vendorName !== existingOrder.vendorName ? updatedOrder.vendorName : undefined,
+            referrerId: updatedOrder.referrerId !== existingOrder.referrerId ? updatedOrder.referrerId : undefined,
+            referrerName: updatedOrder.referrerName !== existingOrder.referrerName ? updatedOrder.referrerName : undefined,
+            products: updatedOrder.products !== existingOrder.products ? updatedOrder.products.map((p) => ({
+              id: p.id,
+              name: p.name,
+              price: p.price,
+              quantity: p.quantity,
+              total: p.total,
+              category: p.category,
+              stock: p.stock,
+              attributes: p.attributes,
+              discount: p.discount,
+              observations: p.observations,
+              images: p.images?.map((img) => ({
+                id: img.id,
+                base64: img.base64,
+                filename: img.filename,
+                type: img.type,
+                uploadedAt: img.uploadedAt,
+                size: img.size,
+              })),
+              availabilityStatus: p.availabilityStatus,
+              manufacturingStatus: p.manufacturingStatus,
+              manufacturingProviderId: p.manufacturingProviderId,
+              manufacturingProviderName: p.manufacturingProviderName,
+              manufacturingStartedAt: p.manufacturingStartedAt,
+              manufacturingCompletedAt: p.manufacturingCompletedAt,
+              manufacturingNotes: p.manufacturingNotes,
+              locationStatus: p.locationStatus,
+            })) : undefined,
+            subtotal: updatedOrder.subtotal !== existingOrder.subtotal ? updatedOrder.subtotal : undefined,
+            taxAmount: updatedOrder.taxAmount !== existingOrder.taxAmount ? updatedOrder.taxAmount : undefined,
+            deliveryCost: updatedOrder.deliveryCost !== existingOrder.deliveryCost ? updatedOrder.deliveryCost : undefined,
+            total: updatedOrder.total !== existingOrder.total ? updatedOrder.total : undefined,
+            subtotalBeforeDiscounts: updatedOrder.subtotalBeforeDiscounts !== existingOrder.subtotalBeforeDiscounts ? updatedOrder.subtotalBeforeDiscounts : undefined,
+            productDiscountTotal: updatedOrder.productDiscountTotal !== existingOrder.productDiscountTotal ? updatedOrder.productDiscountTotal : undefined,
+            generalDiscountAmount: updatedOrder.generalDiscountAmount !== existingOrder.generalDiscountAmount ? updatedOrder.generalDiscountAmount : undefined,
+            paymentType: updatedOrder.paymentType !== existingOrder.paymentType ? updatedOrder.paymentType : undefined,
+            paymentMethod: updatedOrder.paymentMethod !== existingOrder.paymentMethod ? updatedOrder.paymentMethod : undefined,
+            partialPayments: updatedOrder.partialPayments !== existingOrder.partialPayments ? updatedOrder.partialPayments?.map((p) => ({
+              id: p.id,
+              amount: p.amount,
+              method: p.method,
+              date: p.date,
+              images: p.images?.map((img) => ({
+                id: img.id,
+                base64: img.base64,
+                filename: img.filename,
+                type: img.type,
+                uploadedAt: img.uploadedAt,
+                size: img.size,
+              })),
+              paymentDetails: p.paymentDetails ? {
+                pagomovilReference: p.paymentDetails.pagomovilReference,
+                pagomovilBank: p.paymentDetails.pagomovilBank,
+                pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                transferenciaBank: p.paymentDetails.transferenciaBank,
+                transferenciaReference: p.paymentDetails.transferenciaReference,
+                transferenciaDate: p.paymentDetails.transferenciaDate,
+                cashAmount: p.paymentDetails.cashAmount,
+                cashCurrency: p.paymentDetails.cashCurrency,
+                cashReceived: p.paymentDetails.cashReceived,
+                exchangeRate: p.paymentDetails.exchangeRate,
+                originalAmount: p.paymentDetails.originalAmount,
+                originalCurrency: p.paymentDetails.originalCurrency,
+                accountId: p.paymentDetails.accountId,
+                accountNumber: p.paymentDetails.accountNumber,
+                bank: p.paymentDetails.bank,
+                email: p.paymentDetails.email,
+                wallet: p.paymentDetails.wallet,
+              } : undefined,
+            })) : undefined,
+            mixedPayments: updatedOrder.mixedPayments !== existingOrder.mixedPayments ? updatedOrder.mixedPayments?.map((p) => ({
+              id: p.id,
+              amount: p.amount,
+              method: p.method,
+              date: p.date,
+              images: p.images?.map((img) => ({
+                id: img.id,
+                base64: img.base64,
+                filename: img.filename,
+                type: img.type,
+                uploadedAt: img.uploadedAt,
+                size: img.size,
+              })),
+              paymentDetails: p.paymentDetails ? {
+                pagomovilReference: p.paymentDetails.pagomovilReference,
+                pagomovilBank: p.paymentDetails.pagomovilBank,
+                pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                transferenciaBank: p.paymentDetails.transferenciaBank,
+                transferenciaReference: p.paymentDetails.transferenciaReference,
+                transferenciaDate: p.paymentDetails.transferenciaDate,
+                cashAmount: p.paymentDetails.cashAmount,
+                cashCurrency: p.paymentDetails.cashCurrency,
+                cashReceived: p.paymentDetails.cashReceived,
+                exchangeRate: p.paymentDetails.exchangeRate,
+                originalAmount: p.paymentDetails.originalAmount,
+                originalCurrency: p.paymentDetails.originalCurrency,
+                accountId: p.paymentDetails.accountId,
+                accountNumber: p.paymentDetails.accountNumber,
+                bank: p.paymentDetails.bank,
+                email: p.paymentDetails.email,
+                wallet: p.paymentDetails.wallet,
+              } : undefined,
+            })) : undefined,
+            deliveryAddress: updatedOrder.deliveryAddress !== existingOrder.deliveryAddress ? updatedOrder.deliveryAddress : undefined,
+            hasDelivery: updatedOrder.hasDelivery !== existingOrder.hasDelivery ? updatedOrder.hasDelivery : undefined,
+            status: updatedOrder.status !== existingOrder.status ? updatedOrder.status : undefined,
+            observations: updatedOrder.observations !== existingOrder.observations ? updatedOrder.observations : undefined,
+          };
+
+          // Remover campos undefined
+          Object.keys(updateDto).forEach(key => {
+            if (updateDto[key as keyof UpdateOrderDto] === undefined) {
+              delete updateDto[key as keyof UpdateOrderDto];
+            }
+          });
+
+          const backendOrder = await apiClient.updateOrder(backendOrderId, updateDto);
+          const syncedOrder = orderFromBackendDto(backendOrder);
+
+          // Actualizar también en IndexedDB con los datos del backend
+          await db.update("orders", syncedOrder);
+          console.log("✅ Pedido actualizado en backend y IndexedDB:", syncedOrder.orderNumber);
+          return syncedOrder;
+        } else {
+          // El pedido no existe en el backend, actualizar localmente y encolar para sincronización
+          console.log(
+            "⚠️ Pedido no existe en backend, actualizando localmente y encolando para sincronización"
+          );
+          // Continuar para guardar localmente y encolar
+        }
+      } catch (error) {
+        console.warn(
+          "⚠️ Error actualizando pedido en backend, guardando localmente:",
+          error
+        );
+        // Continuar para guardar localmente
+      }
+    }
+
+    // Guardar en IndexedDB
     await db.update("orders", updatedOrder);
+
+    // Encolar para sincronización si el pedido no está en el backend o estamos offline
+    if (!isOnline() || !(await apiClient.getOrderByOrderNumber(existingOrder.orderNumber).then(() => true).catch(() => false))) {
+      try {
+        const updateDto: UpdateOrderDto = {
+          products: updatedOrder.products.map((p) => ({
+            id: p.id,
+            name: p.name,
+            price: p.price,
+            quantity: p.quantity,
+            total: p.total,
+            category: p.category,
+            stock: p.stock,
+            attributes: p.attributes,
+            discount: p.discount,
+            observations: p.observations,
+            images: p.images?.map((img) => ({
+              id: img.id,
+              base64: img.base64,
+              filename: img.filename,
+              type: img.type,
+              uploadedAt: img.uploadedAt,
+              size: img.size,
+            })),
+            availabilityStatus: p.availabilityStatus,
+            manufacturingStatus: p.manufacturingStatus,
+            manufacturingProviderId: p.manufacturingProviderId,
+            manufacturingProviderName: p.manufacturingProviderName,
+            manufacturingStartedAt: p.manufacturingStartedAt,
+            manufacturingCompletedAt: p.manufacturingCompletedAt,
+            manufacturingNotes: p.manufacturingNotes,
+            locationStatus: p.locationStatus,
+          })),
+          partialPayments: updatedOrder.partialPayments?.map((p) => ({
+            id: p.id,
+            amount: p.amount,
+            method: p.method,
+            date: p.date,
+            images: p.images?.map((img) => ({
+              id: img.id,
+              base64: img.base64,
+              filename: img.filename,
+              type: img.type,
+              uploadedAt: img.uploadedAt,
+              size: img.size,
+            })),
+            paymentDetails: p.paymentDetails ? {
+              pagomovilReference: p.paymentDetails.pagomovilReference,
+              pagomovilBank: p.paymentDetails.pagomovilBank,
+              pagomovilPhone: p.paymentDetails.pagomovilPhone,
+              transferenciaBank: p.paymentDetails.transferenciaBank,
+              transferenciaReference: p.paymentDetails.transferenciaReference,
+              transferenciaDate: p.paymentDetails.transferenciaDate,
+              cashAmount: p.paymentDetails.cashAmount,
+              cashCurrency: p.paymentDetails.cashCurrency,
+              cashReceived: p.paymentDetails.cashReceived,
+              exchangeRate: p.paymentDetails.exchangeRate,
+              originalAmount: p.paymentDetails.originalAmount,
+              originalCurrency: p.paymentDetails.originalCurrency,
+              accountId: p.paymentDetails.accountId,
+              accountNumber: p.paymentDetails.accountNumber,
+              bank: p.paymentDetails.bank,
+              email: p.paymentDetails.email,
+              wallet: p.paymentDetails.wallet,
+            } : undefined,
+          })),
+          mixedPayments: updatedOrder.mixedPayments?.map((p) => ({
+            id: p.id,
+            amount: p.amount,
+            method: p.method,
+            date: p.date,
+            images: p.images?.map((img) => ({
+              id: img.id,
+              base64: img.base64,
+              filename: img.filename,
+              type: img.type,
+              uploadedAt: img.uploadedAt,
+              size: img.size,
+            })),
+            paymentDetails: p.paymentDetails ? {
+              pagomovilReference: p.paymentDetails.pagomovilReference,
+              pagomovilBank: p.paymentDetails.pagomovilBank,
+              pagomovilPhone: p.paymentDetails.pagomovilPhone,
+              transferenciaBank: p.paymentDetails.transferenciaBank,
+              transferenciaReference: p.paymentDetails.transferenciaReference,
+              transferenciaDate: p.paymentDetails.transferenciaDate,
+              cashAmount: p.paymentDetails.cashAmount,
+              cashCurrency: p.paymentDetails.cashCurrency,
+              cashReceived: p.paymentDetails.cashReceived,
+              exchangeRate: p.paymentDetails.exchangeRate,
+              originalAmount: p.paymentDetails.originalAmount,
+              originalCurrency: p.paymentDetails.originalCurrency,
+              accountId: p.paymentDetails.accountId,
+              accountNumber: p.paymentDetails.accountNumber,
+              bank: p.paymentDetails.bank,
+              email: p.paymentDetails.email,
+              wallet: p.paymentDetails.wallet,
+            } : undefined,
+          })),
+          status: updatedOrder.status,
+        };
+        await syncManager.addToQueue({
+          type: "update",
+          entity: "order",
+          entityId: id,
+          data: updateDto,
+        });
+        console.log("✅ Pedido encolado para sincronización");
+      } catch (error) {
+        console.warn("⚠️ Error encolando pedido para sincronización:", error);
+      }
+    }
+
     return updatedOrder;
   } catch (error) {
     console.error("Error updating order in IndexedDB:", error);
@@ -1428,9 +2527,625 @@ export const updateOrder = async (
 
 export const deleteOrder = async (id: string): Promise<void> => {
   try {
+    const existingOrder = await getOrder(id);
+    if (!existingOrder) {
+      throw new Error(`Order with id ${id} not found`);
+    }
+
+    let deletedFromBackend = false;
+    let shouldEnqueue = false;
+
+    // Intentar eliminar en el backend primero si hay conexión
+    if (isOnline()) {
+      try {
+        // Buscar el pedido en el backend por orderNumber para obtener su ObjectId
+        let backendOrderId: string | null = null;
+        try {
+          const backendOrder = await apiClient.getOrderByOrderNumber(existingOrder.orderNumber);
+          if (backendOrder) {
+            backendOrderId = backendOrder.id;
+          }
+        } catch (error) {
+          // El pedido no existe en el backend
+          console.warn(
+            "⚠️ Pedido no encontrado en backend por orderNumber, eliminando solo localmente"
+          );
+        }
+
+        // Si encontramos el pedido en el backend, eliminarlo
+        if (backendOrderId) {
+          await apiClient.deleteOrder(backendOrderId);
+          console.log("✅ Pedido eliminado del backend:", existingOrder.orderNumber);
+          deletedFromBackend = true;
+        }
+      } catch (error) {
+        console.warn(
+          "⚠️ Error eliminando pedido en backend, eliminando localmente y encolando:",
+          error
+        );
+        // Si hay un error, necesitamos encolar para sincronización
+        shouldEnqueue = true;
+      }
+    } else {
+      // Si estamos offline, encolar para sincronización
+      shouldEnqueue = true;
+    }
+
+    // Eliminar de IndexedDB
     await db.remove("orders", id);
+    console.log("✅ Pedido eliminado de IndexedDB:", existingOrder.orderNumber);
+
+    // Encolar para sincronización si NO se eliminó del backend
+    if (shouldEnqueue) {
+      try {
+        await syncManager.addToQueue({
+          type: "delete",
+          entity: "order",
+          entityId: id,
+          data: null, // Para delete no necesitamos datos
+        });
+        console.log("✅ Eliminación de pedido encolada para sincronización:", existingOrder.orderNumber);
+      } catch (error) {
+        console.warn("⚠️ Error encolando eliminación de pedido para sincronización:", error);
+        // No lanzar error, el pedido ya fue eliminado localmente
+      }
+    }
   } catch (error) {
     console.error("Error deleting order from IndexedDB:", error);
+    throw error;
+  }
+};
+
+// ===== UNIFIED ORDERS (Pedidos + Presupuestos) =====
+
+// Interfaz unificada para mostrar pedidos y presupuestos juntos
+export interface UnifiedOrder {
+  id: string;
+  orderNumber: string;
+  clientId: string;
+  clientName: string;
+  vendorId: string;
+  vendorName: string;
+  referrerId?: string;
+  referrerName?: string;
+  products: OrderProduct[];
+  subtotal: number;
+  taxAmount: number;
+  deliveryCost: number;
+  total: number;
+  subtotalBeforeDiscounts?: number;
+  productDiscountTotal?: number;
+  generalDiscountAmount?: number;
+  deliveryAddress?: string;
+  hasDelivery: boolean;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  observations?: string;
+  baseCurrency?: "Bs" | "USD" | "EUR";
+  exchangeRatesAtCreation?: {
+    USD?: { rate: number; effectiveDate: string };
+    EUR?: { rate: number; effectiveDate: string };
+  };
+  type: "order" | "budget"; // Para distinguir entre pedido y presupuesto
+  expiresAt?: string; // Solo para presupuestos
+  validForDays?: number; // Solo para presupuestos
+  paymentMethod?: string; // Solo para pedidos
+  saleType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado";
+  deliveryType?: "entrega_programada" | "delivery_express" | "retiro_tienda" | "retiro_almacen";
+  deliveryZone?: "caracas" | "g_g" | "san_antonio_los_teques" | "caucagua_higuerote" | "la_guaira" | "charallave_cua" | "interior_pais";
+  dispatchDate?: string; // Fecha de despacho
+  completedAt?: string; // Fecha de completado
+  partialPayments?: PartialPayment[]; // Para mostrar saldo pendiente / debe en USD en listados
+}
+
+// Función para obtener pedidos y presupuestos unificados
+export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
+  try {
+    const [orders, budgets] = await Promise.all([
+      getOrders(),
+      getBudgets(),
+    ]);
+
+    // Convertir pedidos a formato unificado
+    const unifiedOrders: UnifiedOrder[] = orders.map((order) => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      clientId: order.clientId,
+      clientName: order.clientName,
+      vendorId: order.vendorId,
+      vendorName: order.vendorName,
+      referrerId: order.referrerId,
+      referrerName: order.referrerName,
+      products: order.products,
+      subtotal: order.subtotal,
+      taxAmount: order.taxAmount,
+      deliveryCost: order.deliveryCost,
+      total: order.total,
+      subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
+      productDiscountTotal: order.productDiscountTotal,
+      generalDiscountAmount: order.generalDiscountAmount,
+      deliveryAddress: order.deliveryAddress,
+      hasDelivery: order.hasDelivery,
+      status: order.status,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      observations: order.observations,
+      baseCurrency: order.baseCurrency,
+      exchangeRatesAtCreation: order.exchangeRatesAtCreation,
+      type: "order",
+      paymentMethod: order.paymentMethod,
+      saleType: order.saleType,
+      deliveryType: order.deliveryType,
+      deliveryZone: order.deliveryZone,
+      dispatchDate: order.dispatchDate,
+      completedAt: order.completedAt,
+      partialPayments: order.partialPayments,
+    }));
+
+    // Convertir presupuestos a formato unificado
+    const unifiedBudgets: UnifiedOrder[] = budgets.map((budget) => ({
+      id: budget.id,
+      orderNumber: budget.budgetNumber, // Usar budgetNumber como orderNumber
+      clientId: budget.clientId,
+      clientName: budget.clientName,
+      vendorId: budget.vendorId,
+      vendorName: budget.vendorName,
+      referrerId: budget.referrerId,
+      referrerName: budget.referrerName,
+      products: budget.products,
+      subtotal: budget.subtotal,
+      taxAmount: budget.taxAmount,
+      deliveryCost: budget.deliveryCost,
+      total: budget.total,
+      subtotalBeforeDiscounts: budget.subtotalBeforeDiscounts,
+      productDiscountTotal: budget.productDiscountTotal,
+      generalDiscountAmount: budget.generalDiscountAmount,
+      deliveryAddress: budget.deliveryAddress,
+      hasDelivery: budget.hasDelivery,
+      status: budget.status,
+      createdAt: budget.createdAt,
+      updatedAt: budget.createdAt, // Los presupuestos no tienen updatedAt
+      observations: budget.observations,
+      baseCurrency: budget.baseCurrency,
+      exchangeRatesAtCreation: budget.exchangeRatesAtCreation,
+      type: "budget",
+      expiresAt: budget.expiresAt,
+      validForDays: budget.validForDays,
+    }));
+
+    // Combinar y ordenar por fecha de creación (más recientes primero)
+    const allUnified = [...unifiedOrders, ...unifiedBudgets].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    return allUnified;
+  } catch (error) {
+    console.error("Error loading unified orders:", error);
+    return [];
+  }
+};
+
+// ===== DASHBOARD METRICS =====
+
+export interface DashboardMetrics {
+  completedOrders: number;
+  completedOrdersChange: number;
+  pendingPayments: number;
+  pendingPaymentsChange: number;
+  productsToManufacture: number;
+  productsToManufactureChange: number;
+  averageOrderValue: number;
+}
+
+export interface DashboardMetrics {
+  completedOrders: number;
+  completedOrdersChange: number;
+  pendingPayments: number;
+  pendingPaymentsChange: number;
+  productsToManufacture: number;
+  productsToManufactureChange: number;
+  averageOrderValue: number;
+  // Nuevas métricas
+  totalSalesCount: number; // Total de ventas (cantidad de facturas/notas de despachos)
+  totalInvoiced: number;   // Total facturado (base imponible)
+  totalCollected: number;  // Total cobrado (ingresos reales en el periodo)
+  expiredLayawaysCount: number; // Cantidad de apartados vencidos
+  expiredLayawaysAmount: number; // Monto deuda de apartados vencidos
+}
+
+export const calculateDashboardMetrics = async (
+  period: "day" | "week" | "month" | "year" = "week"
+): Promise<DashboardMetrics> => {
+  const orders = await getOrders();
+
+  // Filtrar por período
+  const now = new Date();
+  const periodStart = new Date();
+
+  // Resetear horas para comparación de días completa
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+
+  switch (period) {
+    case "day":
+      periodStart.setTime(todayStart.getTime());
+      break;
+    case "week":
+      periodStart.setDate(now.getDate() - 7);
+      break;
+    case "month":
+      periodStart.setMonth(now.getMonth() - 1);
+      break;
+    case "year":
+      periodStart.setFullYear(now.getFullYear() - 1);
+      break;
+  }
+
+  // Filtrar órdenes creadas en el periodo (para ventas y facturación)
+  const periodOrders = orders.filter(
+    (order) => new Date(order.createdAt) >= periodStart
+  );
+
+  // Calcular período anterior para comparar cambios
+  const previousPeriodStart = new Date(periodStart);
+  const previousPeriodEnd = new Date(periodStart);
+  let periodDuration = now.getTime() - periodStart.getTime();
+
+  // Ajuste para "day" para que compare con el día anterior (ayer)
+  if (period === "day") {
+    periodDuration = 24 * 60 * 60 * 1000;
+  }
+
+  previousPeriodStart.setTime(periodStart.getTime() - periodDuration);
+
+  const previousPeriodOrders = orders.filter((order) => {
+    const orderDate = new Date(order.createdAt);
+    return orderDate >= previousPeriodStart && orderDate < previousPeriodEnd;
+  });
+
+  // 1. Pedidos completados / Total de Ventas (Cantidad)
+  // Tomar cantidad de clientes facturados (Notas de despacho)
+  // Asumimos que "Por despachar" y "Completada" son las que tienen nota de despacho
+  const completedOrders = periodOrders.filter(
+    (order) => order.status === "Por despachar" || order.status === "Completada"
+  ).length;
+
+  const previousCompletedOrders = previousPeriodOrders.filter(
+    (order) => order.status === "Por despachar" || order.status === "Completada"
+  ).length;
+
+  const completedOrdersChange =
+    previousCompletedOrders > 0
+      ? Math.round(
+        ((completedOrders - previousCompletedOrders) /
+          previousCompletedOrders) *
+        100
+      )
+      : 0;
+
+  // 2. Total Facturado (Base Imponible)
+  // Suma del Subtotal de las ventas del periodo
+  const totalInvoiced = periodOrders
+    .filter((order) => order.status === "Por despachar" || order.status === "Completada" || order.status === "Generado" || order.status === "Generada" || order.status === "Fabricación")
+    // Nota: Incluimos estados activos para facturación, ajustar según requerimiento exacto de "Facturado"
+    // Si "Facturado" es estrictamente nota de despacho, solo usar "Por despachar" y "Completada"
+    // El requerimiento dice "Total de ventas... Notas de despacho", asumiremos consistencia.
+    // Sin embargo, para "Facturado" a veces se considera todo lo vendido.
+    // Vamos a alinear con "Total de ventas" (Notas de despacho) para consistencia
+    .filter((order) => order.status === "Por despachar" || order.status === "Completada")
+    .reduce((sum, order) => sum + (order.subtotal || 0), 0);
+
+  // 3. Total Cobrado (Ingresos reales en el periodo)
+  // Debe incluir todo lo ingresado por nuevas ventas y abonos, independientemente de la fecha de la orden
+  const totalCollected = orders.reduce((total, order) => {
+    const paymentsInPeriod = order.partialPayments?.filter(payment => {
+      const paymentDate = new Date(payment.date);
+      return paymentDate >= periodStart && paymentDate <= now;
+    }) || [];
+
+    const sumPayments = paymentsInPeriod.reduce((sum, p) => sum + (p.amount || 0), 0);
+    return total + sumPayments;
+  }, 0);
+
+  // 4. Abonos por recaudar (Deuda actual general de órdenes activas)
+  const pendingPayments = orders.reduce((total, order) => {
+    if (order.status === "Generado" || order.status === "Generada" || order.status === "Fabricación" || order.status === "Por despachar") {
+      const paidAmount =
+        order.partialPayments?.reduce(
+          (sum, payment) => sum + (payment.amount || 0),
+          0
+        ) || 0;
+      return total + Math.max(0, order.total - paidAmount);
+    }
+    return total;
+  }, 0);
+
+  const previousPendingPayments = previousPeriodOrders.reduce(
+    (total, order) => {
+      if (order.status === "Generado" || order.status === "Generada" || order.status === "Fabricación" || order.status === "Por despachar") {
+        const paidAmount =
+          order.partialPayments?.reduce(
+            (sum, payment) => sum + (payment.amount || 0),
+            0
+          ) || 0;
+        return total + Math.max(0, order.total - paidAmount);
+      }
+      return total;
+    },
+    0
+  );
+
+  const pendingPaymentsChange =
+    previousPendingPayments > 0
+      ? Math.round(
+        ((pendingPayments - previousPendingPayments) /
+          previousPendingPayments) *
+        100
+      )
+      : 0;
+
+  // 5. Sistemas de Apartado (SA) Vencidos
+  // "lo que tenga deuda ya es un SA vencido" -> saldo > 0
+  // "debe reflejar lo vencido, sin cancelación" -> status no cancelado
+  // Solo considerar pedidos con saleType === "sistema_apartado"
+
+  const expiredLayawaysOrders = orders.filter(order => {
+    // SOLO considerar Sistemas de Apartado
+    if (order.saleType !== "sistema_apartado") {
+      return false;
+    }
+
+    // No considerar cancelados
+    if (order.status === "Cancelado") {
+      return false;
+    }
+
+    // "lo que tenga deuda ya es un SA vencido" - verificar deuda pendiente
+    const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+    const pendingAmount = Math.max(0, order.total - paidAmount);
+
+    // Si tiene deuda, está vencido
+    return pendingAmount > 0;
+  });
+
+  const expiredLayawaysCount = expiredLayawaysOrders.length;
+  const expiredLayawaysAmount = expiredLayawaysOrders.reduce((total, order) => {
+    const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+    return total + Math.max(0, order.total - paidAmount);
+  }, 0);
+
+  // Productos por fabricar (Métrica existente)
+  const productsToManufacture = orders.reduce((count, order) => {
+    return (
+      count +
+      order.products.filter((product) => {
+        if (product.locationStatus !== "FABRICACION") {
+          return false;
+        }
+        const manufacturingStatus = product.manufacturingStatus || "debe_fabricar";
+        return manufacturingStatus !== "almacen_no_fabricado";
+      }).length
+    );
+  }, 0);
+
+  // Promedio de pedidos completados (Por despachar o Completada) - Métrica existente
+  const completedOrdersTotal = periodOrders
+    .filter((order) => order.status === "Por despachar" || order.status === "Completada")
+    .reduce((sum, order) => sum + order.total, 0);
+  const averageOrderValue =
+    completedOrders > 0 ? completedOrdersTotal / completedOrders : 0;
+
+  return {
+    completedOrders,
+    completedOrdersChange,
+    pendingPayments,
+    pendingPaymentsChange,
+    productsToManufacture,
+    productsToManufactureChange: 0,
+    averageOrderValue,
+    // Nuevas métricas
+    totalSalesCount: completedOrders, // Es lo mismo que completedOrders (Ventas = Notas de despacho)
+    totalInvoiced,
+    totalCollected,
+    expiredLayawaysCount,
+    expiredLayawaysAmount
+  };
+};
+
+/**
+ * Obtiene todos los Sistemas de Apartado (SA) vencidos
+ * Un SA está vencido si tiene saleType === "sistema_apartado" y tiene deuda pendiente
+ * @returns Array de órdenes con SA vencidos, incluyendo información de días vencidos y deuda
+ */
+export const getExpiredLayaways = async (): Promise<Array<Order & { daysExpired: number; pendingAmount: number }>> => {
+  const orders = await getOrders();
+  const now = new Date();
+
+  const expiredLayaways = orders
+    .filter(order => {
+      // SOLO considerar Sistemas de Apartado
+      if (order.saleType !== "sistema_apartado") {
+        return false;
+      }
+
+      // No considerar cancelados
+      if (order.status === "Cancelado") {
+        return false;
+      }
+
+      // "lo que tenga deuda ya es un SA vencido" - verificar deuda pendiente
+      const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+      const pendingAmount = Math.max(0, order.total - paidAmount);
+
+      return pendingAmount > 0;
+    })
+    .map(order => {
+      const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+      const pendingAmount = Math.max(0, order.total - paidAmount);
+      const orderDate = new Date(order.createdAt);
+      const daysExpired = Math.floor((now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      return {
+        ...order,
+        daysExpired,
+        pendingAmount
+      };
+    })
+    .sort((a, b) => b.daysExpired - a.daysExpired); // Ordenar por días vencidos (más antiguos primero)
+
+  return expiredLayaways;
+};
+
+// ===== BUDGETS STORAGE (IndexedDB) =====
+
+export interface Budget {
+  id: string;
+  budgetNumber: string;
+  clientId: string;
+  clientName: string;
+  vendorId: string;
+  vendorName: string;
+  referrerId?: string;
+  referrerName?: string;
+  products: OrderProduct[];
+  subtotal: number;
+  taxAmount: number;
+  deliveryCost: number;
+  total: number;
+  subtotalBeforeDiscounts?: number;
+  productDiscountTotal?: number;
+  generalDiscountAmount?: number;
+  deliveryAddress?: string;
+  hasDelivery: boolean;
+  status: "Presupuesto" | "Aprobado" | "Rechazado" | "Vencido" | "Convertido";
+  createdAt: string;
+  expiresAt: string;
+  validForDays: number;
+  observations?: string;
+  baseCurrency?: "Bs" | "USD" | "EUR";
+  exchangeRatesAtCreation?: {
+    USD?: { rate: number; effectiveDate: string };
+    EUR?: { rate: number; effectiveDate: string };
+  };
+  convertedToOrderId?: string;
+}
+
+export const getBudgets = async (): Promise<Budget[]> => {
+  try {
+    // Cargar siempre presupuestos locales desde IndexedDB primero (offline-first)
+    const localBudgets = await db.getAll<Budget>("budgets");
+
+    // Si hay conexión, intentar sincronizar con backend (por ahora solo local)
+    if (isOnline()) {
+      // TODO: Cuando el backend esté listo, descomentar:
+      // const backendBudgets = await apiClient.getBudgets();
+      // Hacer merge similar a orders
+    }
+
+    console.log(`✅ Presupuestos cargados desde IndexedDB: ${localBudgets.length}`);
+    return localBudgets;
+  } catch (error) {
+    console.error("Error loading budgets from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const getBudget = async (id: string): Promise<Budget | undefined> => {
+  try {
+    return await db.get<Budget>("budgets", id);
+  } catch (error) {
+    console.error("Error loading budget from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const getBudgetByNumber = async (budgetNumber: string): Promise<Budget | undefined> => {
+  try {
+    const budgets = await getBudgets();
+    return budgets.find((b) => b.budgetNumber === budgetNumber);
+  } catch (error) {
+    console.error("Error loading budget by number from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const getBudgetsByClient = async (clientId: string): Promise<Budget[]> => {
+  try {
+    return await db.getByIndex<Budget>("budgets", "clientId", clientId);
+  } catch (error) {
+    console.error("Error loading budgets by client from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const getBudgetsByStatus = async (status: string): Promise<Budget[]> => {
+  try {
+    return await db.getByIndex<Budget>("budgets", "status", status);
+  } catch (error) {
+    console.error("Error loading budgets by status from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const addBudget = async (
+  budget: Omit<Budget, "id" | "budgetNumber" | "createdAt" | "expiresAt" | "status"> & {
+    validForDays?: number;
+  }
+): Promise<Budget> => {
+  try {
+    const budgets = await getBudgets();
+    const budgetNumber = `PRE-${String(budgets.length + 1).padStart(3, "0")}`;
+
+    const now = new Date();
+    const validForDays = budget.validForDays || 30;
+    const expiresAt = new Date(now);
+    expiresAt.setDate(now.getDate() + validForDays);
+
+    const newBudget: Budget = {
+      ...budget,
+      id: Date.now().toString(),
+      budgetNumber,
+      createdAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      status: "Presupuesto", // Nuevo estado inicial
+      validForDays,
+    };
+
+    await db.add("budgets", newBudget);
+    console.log("✅ Presupuesto guardado en IndexedDB:", newBudget.budgetNumber);
+    return newBudget;
+  } catch (error) {
+    console.error("Error adding budget to IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const updateBudget = async (id: string, updates: Partial<Budget>): Promise<Budget> => {
+  try {
+    const existingBudget = await getBudget(id);
+    if (!existingBudget) {
+      throw new Error(`Budget with id ${id} not found`);
+    }
+
+    const updatedBudget: Budget = {
+      ...existingBudget,
+      ...updates,
+    };
+
+    await db.update("budgets", updatedBudget);
+    return updatedBudget;
+  } catch (error) {
+    console.error("Error updating budget in IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const deleteBudget = async (id: string): Promise<void> => {
+  try {
+    await db.remove("budgets", id);
+  } catch (error) {
+    console.error("Error deleting budget from IndexedDB:", error);
     throw error;
   }
 };
@@ -1513,6 +3228,64 @@ export const deleteClient = async (id: string): Promise<void> => {
 
 // ===== PROVIDERS STORAGE (IndexedDB) =====
 
+// Helper functions para mapear providers entre frontend y backend
+export const providerFromBackendDto = (dto: ProviderResponseDto): Provider => {
+  // Manejar tanto camelCase como PascalCase (por si el backend serializa diferente)
+  const razonSocial = (dto as any).razonSocial || (dto as any).RazonSocial || "";
+  const rif = (dto as any).rif || (dto as any).Rif || "";
+  const nombre = (dto as any).nombre || (dto as any).Nombre || "";
+  const email = (dto as any).email || (dto as any).Email || "";
+  const telefono = (dto as any).telefono || (dto as any).Telefono || "";
+  const direccion = (dto as any).direccion || (dto as any).Direccion || "";
+  const contacto = (dto as any).contacto || (dto as any).Contacto || "";
+  const tipo = (dto as any).tipo || (dto as any).Tipo || "";
+  const estado = (dto as any).estado || (dto as any).Estado || "activo";
+  const createdAt = (dto as any).createdAt || (dto as any).CreatedAt || new Date().toISOString();
+  
+  return {
+    id: dto.id,
+    razonSocial: razonSocial || nombre, // Usar nombre si razonSocial está vacío
+    rif: rif,
+    direccion: direccion || "",
+    telefono: telefono || "",
+    email: email,
+    contacto: contacto,
+    tipo: tipo as Provider["tipo"],
+    estado: (estado.toLowerCase() || "activo") as Provider["estado"],
+    fechaCreacion: createdAt.split("T")[0], // Convertir ISO a fecha YYYY-MM-DD
+  };
+};
+
+export const providerToCreateDto = (provider: Omit<Provider, "id" | "fechaCreacion">): CreateProviderDto => ({
+  rif: provider.rif,
+  nombre: provider.razonSocial, // El backend espera "nombre" y "razonSocial", usamos razonSocial para ambos
+  razonSocial: provider.razonSocial,
+  email: provider.email,
+  telefono: provider.telefono,
+  direccion: provider.direccion,
+  contacto: provider.contacto,
+  tipo: provider.tipo,
+  estado: provider.estado === "activo" ? "Activo" : "Inactivo", // Backend usa PascalCase
+});
+
+export const providerToUpdateDto = (updates: Partial<Provider>): UpdateProviderDto => {
+  const dto: UpdateProviderDto = {};
+  if (updates.rif !== undefined) dto.rif = updates.rif;
+  if (updates.razonSocial !== undefined) {
+    dto.razonSocial = updates.razonSocial;
+    dto.nombre = updates.razonSocial; // Mantener ambos campos sincronizados
+  }
+  if (updates.email !== undefined) dto.email = updates.email;
+  if (updates.telefono !== undefined) dto.telefono = updates.telefono;
+  if (updates.direccion !== undefined) dto.direccion = updates.direccion;
+  if (updates.contacto !== undefined) dto.contacto = updates.contacto;
+  if (updates.tipo !== undefined) dto.tipo = updates.tipo;
+  if (updates.estado !== undefined) {
+    dto.estado = updates.estado === "activo" ? "Activo" : "Inactivo";
+  }
+  return dto;
+};
+
 export const getProviders = async (): Promise<Provider[]> => {
   try {
     return await db.getAll<Provider>("providers");
@@ -1581,6 +3354,35 @@ export const deleteProvider = async (id: string): Promise<void> => {
   } catch (error) {
     console.error("Error deleting provider from IndexedDB:", error);
     throw error;
+  }
+};
+
+// Sincronizar proveedores desde el backend
+export const syncProvidersFromBackend = async (): Promise<Provider[]> => {
+  try {
+    const providersDto = await apiClient.getProviders();
+    const providers: Provider[] = providersDto.map(providerFromBackendDto);
+    
+    // Guardar todos los proveedores en IndexedDB
+    for (const provider of providers) {
+      try {
+        const existing = await getProvider(provider.id);
+        if (existing) {
+          await updateProvider(provider.id, provider);
+        } else {
+          await db.add("providers", provider);
+        }
+      } catch (error) {
+        console.error(`Error syncing provider ${provider.id}:`, error);
+      }
+    }
+    
+    console.log(`✅ ${providers.length} proveedores sincronizados desde el backend`);
+    return providers;
+  } catch (error) {
+    console.error("Error syncing providers from backend:", error);
+    // Si falla, retornar los proveedores locales
+    return getProviders();
   }
 };
 
@@ -1656,6 +3458,92 @@ export const deleteStore = async (id: string): Promise<void> => {
     console.error("Error deleting store from IndexedDB:", error);
     throw error;
   }
+};
+
+// ===== ACCOUNTS STORAGE (IndexedDB) =====
+
+export const getAccounts = async (): Promise<Account[]> => {
+  try {
+    return await db.getAll<Account>("accounts");
+  } catch (error) {
+    console.error("Error loading accounts from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const getAccount = async (id: string): Promise<Account | undefined> => {
+  try {
+    return await db.get<Account>("accounts", id);
+  } catch (error) {
+    console.error("Error loading account from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const addAccount = async (
+  account: Omit<Account, "id" | "createdAt" | "updatedAt">
+): Promise<Account> => {
+  try {
+    const now = new Date().toISOString();
+    const newAccount: Account = {
+      ...account,
+      id: Date.now().toString(),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.add("accounts", newAccount);
+    const displayInfo = newAccount.label || newAccount.code || "Cuenta";
+    console.log("✅ Cuenta guardada en IndexedDB:", displayInfo);
+    return newAccount;
+  } catch (error) {
+    console.error("Error adding account to IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const updateAccount = async (
+  id: string,
+  updates: Partial<Account>
+): Promise<Account> => {
+  try {
+    const existingAccount = await getAccount(id);
+    if (!existingAccount) {
+      throw new Error(`Account with id ${id} not found`);
+    }
+
+    const updatedAccount: Account = {
+      ...existingAccount,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await db.update("accounts", updatedAccount);
+    return updatedAccount;
+  } catch (error) {
+    console.error("Error updating account in IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const deleteAccount = async (id: string): Promise<void> => {
+  try {
+    await db.remove("accounts", id);
+  } catch (error) {
+    console.error("Error deleting account from IndexedDB:", error);
+    throw error;
+  }
+};
+
+// Helper para enmascarar número de cuenta
+export const maskAccountNumber = (accountNumber: string): string => {
+  if (!accountNumber || accountNumber.length < 8) {
+    return accountNumber; // Si es muy corto, retornar tal cual
+  }
+  const first4 = accountNumber.substring(0, 4);
+  const last4 = accountNumber.substring(accountNumber.length - 4);
+  const middle = "*".repeat(Math.max(4, accountNumber.length - 8));
+  return `${first4}${middle}${last4}`;
 };
 
 // ===== HELPER FUNCTIONS =====
@@ -2045,6 +3933,399 @@ export const getReferrers = async (): Promise<Vendor[]> => {
   }
 };
 
+// ===== COMMISSIONS STORAGE (IndexedDB) =====
+
+export interface Commission {
+  id: string;
+  commissionType: "role" | "user"; // Por rol o por usuario
+  role?: string; // Solo si commissionType === "role"
+  userId?: string; // Solo si commissionType === "user"
+  userName?: string; // Nombre del usuario (para display)
+  commissionKind: "percentage" | "net"; // Porcentual o neta
+  value: number; // Valor o cantidad
+  currency: "Bs" | "USD" | "EUR";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getCommissions = async (): Promise<Commission[]> => {
+  try {
+    return await db.getAll<Commission>("commissions");
+  } catch (error) {
+    console.error("Error loading commissions from IndexedDB:", error);
+    return [];
+  }
+};
+
+export const getCommission = async (id: string): Promise<Commission | undefined> => {
+  try {
+    return await db.get<Commission>("commissions", id);
+  } catch (error) {
+    console.error("Error loading commission from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+export const addCommission = async (commission: Omit<Commission, "id" | "createdAt" | "updatedAt">): Promise<Commission> => {
+  try {
+    const newCommission: Commission = {
+      ...commission,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Guardar en IndexedDB (fuente de verdad)
+    await db.add("commissions", newCommission);
+    console.log("✅ Comisión guardada en IndexedDB:", newCommission.id);
+
+    // 2. Sincronizar con backend (importante, pero no bloquea si falla)
+    try {
+      const { syncManager } = await import("./sync-manager");
+      await syncManager.addToQueue({
+        type: "create",
+        entity: "commission",
+        entityId: newCommission.id,
+        data: newCommission,
+      });
+    } catch (syncError) {
+      console.warn("⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):", syncError);
+      // No fallar, IndexedDB es la fuente de verdad
+    }
+
+    return newCommission;
+  } catch (error) {
+    console.error("Error adding commission to IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const updateCommission = async (id: string, updates: Partial<Commission>): Promise<Commission> => {
+  try {
+    const existing = await db.get<Commission>("commissions", id);
+    if (!existing) {
+      throw new Error("Commission not found");
+    }
+    const updated: Commission = {
+      ...existing,
+      ...updates,
+      id, // Asegurar que el ID no cambie
+      updatedAt: new Date().toISOString(),
+    };
+
+    // 1. Actualizar en IndexedDB (fuente de verdad)
+    await db.update("commissions", updated);
+    console.log("✅ Comisión actualizada en IndexedDB:", id);
+
+    // 2. Sincronizar con backend (importante, pero no bloquea si falla)
+    try {
+      const { syncManager } = await import("./sync-manager");
+      await syncManager.addToQueue({
+        type: "update",
+        entity: "commission",
+        entityId: id,
+        data: updated,
+      });
+    } catch (syncError) {
+      console.warn("⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):", syncError);
+      // No fallar, IndexedDB es la fuente de verdad
+    }
+
+    return updated;
+  } catch (error) {
+    console.error("Error updating commission in IndexedDB:", error);
+    throw error;
+  }
+};
+
+export const deleteCommission = async (id: string): Promise<void> => {
+  try {
+    // 1. Eliminar de IndexedDB (fuente de verdad)
+    await db.remove("commissions", id);
+    console.log("✅ Comisión eliminada de IndexedDB:", id);
+
+    // 2. Sincronizar con backend (importante, pero no bloquea si falla)
+    try {
+      const { syncManager } = await import("./sync-manager");
+      await syncManager.addToQueue({
+        type: "delete",
+        entity: "commission",
+        entityId: id,
+        data: { id },
+      });
+    } catch (syncError) {
+      console.warn("⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):", syncError);
+      // No fallar, IndexedDB es la fuente de verdad
+    }
+  } catch (error) {
+    console.error("Error deleting commission from IndexedDB:", error);
+    throw error;
+  }
+};
+
+// ===== PRODUCT COMMISSIONS (Comisiones por Categoría/Familia) =====
+
+export interface ProductCommission {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  commissionValue: number; // 2.5, 5, 7.5, etc.
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getProductCommissions = async (): Promise<ProductCommission[]> => {
+  try {
+    // Intentar obtener del backend via API
+    const response = await apiClient.getProductCommissions();
+    return response;
+  } catch (error) {
+    console.error("Error loading product commissions:", error);
+    return [];
+  }
+};
+
+export const upsertProductCommission = async (
+  data: Omit<ProductCommission, "id" | "createdAt" | "updatedAt">
+): Promise<ProductCommission> => {
+  try {
+    return await apiClient.upsertProductCommission(data);
+  } catch (error) {
+    console.error("Error upserting product commission:", error);
+    throw error;
+  }
+};
+
+export const batchUpsertProductCommissions = async (
+  data: Omit<ProductCommission, "id" | "createdAt" | "updatedAt">[]
+): Promise<ProductCommission[]> => {
+  try {
+    return await apiClient.batchUpsertProductCommissions(data);
+  } catch (error) {
+    console.error("Error batch upserting product commissions:", error);
+    throw error;
+  }
+};
+
+export const deleteProductCommission = async (categoryId: string): Promise<void> => {
+  try {
+    await apiClient.deleteProductCommission(categoryId);
+  } catch (error) {
+    console.error("Error deleting product commission:", error);
+    throw error;
+  }
+};
+
+// ===== SALE TYPE COMMISSION RULES (Reglas de distribución por tipo de venta) =====
+
+export interface SaleTypeCommissionRule {
+  id: string;
+  saleType: string;
+  saleTypeLabel: string;
+  vendorRate: number; // Porcentaje que gana el vendedor de tienda
+  referrerRate: number; // Porcentaje que gana el referido/postventa
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getSaleTypeCommissionRules = async (): Promise<SaleTypeCommissionRule[]> => {
+  try {
+    return await apiClient.getSaleTypeCommissionRules();
+  } catch (error) {
+    console.error("Error loading sale type commission rules:", error);
+    return [];
+  }
+};
+
+export const upsertSaleTypeCommissionRule = async (
+  data: Omit<SaleTypeCommissionRule, "id" | "createdAt" | "updatedAt">
+): Promise<SaleTypeCommissionRule> => {
+  try {
+    return await apiClient.upsertSaleTypeCommissionRule(data);
+  } catch (error) {
+    console.error("Error upserting sale type commission rule:", error);
+    throw error;
+  }
+};
+
+export const batchUpsertSaleTypeCommissionRules = async (
+  data: Omit<SaleTypeCommissionRule, "id" | "createdAt" | "updatedAt">[]
+): Promise<SaleTypeCommissionRule[]> => {
+  try {
+    return await apiClient.batchUpsertSaleTypeCommissionRules(data);
+  } catch (error) {
+    console.error("Error batch upserting sale type commission rules:", error);
+    throw error;
+  }
+};
+
+export const deleteSaleTypeCommissionRule = async (saleType: string): Promise<void> => {
+  try {
+    await apiClient.deleteSaleTypeCommissionRule(saleType);
+  } catch (error) {
+    console.error("Error deleting sale type commission rule:", error);
+    throw error;
+  }
+};
+
+export const seedDefaultSaleTypeRules = async (): Promise<SaleTypeCommissionRule[]> => {
+  try {
+    return await apiClient.seedDefaultSaleTypeRules();
+  } catch (error) {
+    console.error("Error seeding default sale type rules:", error);
+    throw error;
+  }
+};
+
+// ===== COMMISSION CALCULATION FUNCTIONS =====
+
+/**
+ * Calcula la comisión de un producto para un vendedor específico
+ * Basado en las comisiones configuradas en IndexedDB
+ */
+export const calculateProductCommission = async (
+  product: OrderProduct,
+  order: Order,
+  sellerId: string | null
+): Promise<number> => {
+  if (!sellerId) return 0;
+
+  try {
+    // Obtener comisiones y usuarios desde IndexedDB
+    const [commissions, users] = await Promise.all([
+      getCommissions(),
+      getUsers(),
+    ]);
+
+    // Obtener usuario para determinar su rol
+    const user = users.find((u) => u.id === sellerId);
+    if (!user) return 0;
+
+    // Buscar comisión por usuario primero, luego por rol
+    const commission =
+      commissions.find(
+        (c) => c.commissionType === "user" && c.userId === sellerId
+      ) ||
+      commissions.find(
+        (c) => c.commissionType === "role" && c.role === user.role
+      );
+
+    if (!commission) return 0;
+
+    // Calcular monto base (precio del producto después de descuentos)
+    const productTotal = product.total;
+
+    if (commission.commissionKind === "percentage") {
+      return productTotal * (commission.value / 100);
+    } else {
+      // Comisión neta (fija por artículo)
+      return commission.value;
+    }
+  } catch (error) {
+    console.error("Error calculating product commission:", error);
+    return 0;
+  }
+};
+
+/**
+ * Calcula todas las comisiones de un pedido
+ * Retorna un array con las comisiones por producto y vendedor
+ */
+export const calculateOrderCommissions = async (
+  order: Order
+): Promise<
+  Array<{
+    sellerId: string;
+    sellerName: string;
+    productId: string;
+    productName: string;
+    commission: number;
+    isShared: boolean;
+  }>
+> => {
+  const results: Array<{
+    sellerId: string;
+    sellerName: string;
+    productId: string;
+    productName: string;
+    commission: number;
+    isShared: boolean;
+  }> = [];
+
+  const isSharedSale = !!order.referrerId;
+
+  try {
+    // Procesar cada producto del pedido
+    for (const product of order.products) {
+      // Comisión del vendedor principal
+      const vendorCommission = await calculateProductCommission(
+        product,
+        order,
+        order.vendorId
+      );
+
+      results.push({
+        sellerId: order.vendorId,
+        sellerName: order.vendorName,
+        productId: product.id,
+        productName: product.name,
+        commission: isSharedSale ? vendorCommission / 2 : vendorCommission,
+        isShared: isSharedSale,
+      });
+
+      // Si es venta compartida, agregar comisión del referrer
+      if (isSharedSale && order.referrerId) {
+        const referrerCommission = await calculateProductCommission(
+          product,
+          order,
+          order.referrerId
+        );
+
+        results.push({
+          sellerId: order.referrerId,
+          sellerName: order.referrerName || "",
+          productId: product.id,
+          productName: product.name,
+          commission: referrerCommission / 2,
+          isShared: true,
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error calculating order commissions:", error);
+  }
+
+  return results;
+};
+
+/**
+ * Obtiene el tipo de compra de un pedido para el reporte
+ */
+export const getPurchaseType = (order: Order): string => {
+  // Mapear deliveryType a tipo de compra
+  if (order.deliveryType) {
+    const typeMap: Record<string, string> = {
+      entrega_programada: "Entrega",
+      delivery_express: "Delivery express",
+      retiro_tienda: "Retiro por tienda",
+      retiro_almacen: "Retiro por almacén",
+    };
+    return typeMap[order.deliveryType] || order.deliveryType;
+  }
+
+  // Fallback a saleType
+  if (order.saleType) {
+    const typeMap: Record<string, string> = {
+      encargo: "Encargo",
+      entrega: "Entrega",
+      sistema_apartado: "Sistema Apartado",
+    };
+    return typeMap[order.saleType] || order.saleType;
+  }
+
+  return "-";
+};
+
 export const getVendor = async (id: string): Promise<Vendor | undefined> => {
   try {
     // Buscar en usuarios primero
@@ -2062,8 +4343,8 @@ export const getVendor = async (id: string): Promise<Vendor | undefined> => {
             user.role === "Store Seller"
               ? "Vendedor de tienda"
               : user.role === "Online Seller"
-              ? "Vendedor Online"
-              : user.role,
+                ? "Vendedor Online"
+                : user.role,
           type: isVendor ? "vendor" : "referrer",
         };
       }

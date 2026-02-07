@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -116,9 +116,14 @@ export function ProductSelectionDialog({
   }
 
   const handleAddProduct = async (product: Product) => {
-    const productKey = product.id.toString()
-    const quantity = quantities[productKey] || 1
-    const existingProduct = selectedProducts.find((p) => p.id === productKey)
+    const productBaseId = product.id.toString()
+    const quantity = quantities[productBaseId] || 1
+    
+    // Generar ID único para esta instancia del producto
+    // Formato: {productId}-{timestamp}-{randomString}
+    // Esto permite agregar el mismo producto múltiples veces con diferentes atributos
+    const uniqueId = `${productBaseId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    
     const cloneAttributes = (attrs?: Record<string, any>) => {
       if (!attrs) return {}
       const cloned: Record<string, any> = {}
@@ -133,10 +138,7 @@ export function ProductSelectionDialog({
       })
       return cloned
     }
-    const mergedAttributes =
-      existingProduct?.attributes !== undefined
-        ? cloneAttributes(existingProduct.attributes)
-        : cloneAttributes(product.attributes)
+    const mergedAttributes = cloneAttributes(product.attributes)
     
     // Convertir precio del producto a Bs si está en otra moneda
     const productCurrency = product.priceCurrency || "Bs"
@@ -149,7 +151,7 @@ export function ProductSelectionDialog({
     // Preparar producto y abrir modal de edición
     // IMPORTANTE: Guardamos el precio convertido a Bs para todos los cálculos
     const newProduct: OrderProduct = {
-      id: productKey,
+      id: uniqueId, // ID único para esta instancia
       name: product.name,
       price: priceInBs, // Precio ya convertido a Bs
       quantity,
@@ -157,7 +159,8 @@ export function ProductSelectionDialog({
       category: product.category,
       stock: 0, // Los productos se crean bajo demanda, no hay stock
       attributes: mergedAttributes,
-      discount: existingProduct?.discount ?? 0,
+      discount: 0, // Inicializar sin descuento
+      locationStatus: "SIN DEFINIR", // Establecer por defecto "SIN DEFINIR"
     }
     
     setProductToEdit(newProduct)
@@ -165,30 +168,38 @@ export function ProductSelectionDialog({
   }
 
   const handleConfirmAdd = (product: OrderProduct) => {
-    const existingProductIndex = selectedProducts.findIndex((p) => p.id === product.id)
-    let updatedProducts: OrderProduct[]
-
-    if (existingProductIndex >= 0) {
-      updatedProducts = selectedProducts.map((p, index) =>
-        index === existingProductIndex ? product : p,
-      )
-    } else {
-      updatedProducts = [...selectedProducts, product]
-    }
+    // Siempre agregar como nueva instancia ya que cada producto tiene un ID único
+    // Esto permite agregar el mismo producto múltiples veces con diferentes atributos
+    const updatedProducts = [...selectedProducts, product]
 
     onProductsSelect(updatedProducts)
     setIsEditDialogOpen(false)
     setProductToEdit(null)
-    setQuantities((prev) => ({ ...prev, [product.id]: 1 }))
+    
+    // Resetear cantidad para este producto base (extraer ID base antes del primer guión)
+    const productBaseId = product.id.split('-')[0]
+    setQuantities((prev) => ({ ...prev, [productBaseId]: 1 }))
   }
 
   const isProductSelected = (productId: string) => {
-    return selectedProducts.some((p) => p.id === productId)
+    // Verificar si algún producto seleccionado tiene este ID base
+    // Los IDs únicos tienen formato: {productId}-{timestamp}-{random}
+    // Extraemos el ID base (antes del primer guión) para comparar
+    return selectedProducts.some((p) => {
+      const baseId = p.id.split('-')[0]
+      return baseId === productId
+    })
   }
 
   const getSelectedQuantity = (productId: string) => {
-    const selected = selectedProducts.find((p) => p.id === productId)
-    return selected?.quantity || 0
+    // Contar la cantidad total de este producto (puede haber múltiples instancias)
+    // Los IDs únicos tienen formato: {productId}-{timestamp}-{random}
+    // Sumamos las cantidades de todas las instancias que coinciden con este ID base
+    const matchingProducts = selectedProducts.filter((p) => {
+      const baseId = p.id.split('-')[0]
+      return baseId === productId
+    })
+    return matchingProducts.reduce((sum, p) => sum + (p.quantity || 0), 0)
   }
 
   return (
@@ -197,6 +208,9 @@ export function ProductSelectionDialog({
         <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-4xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4">
           <DialogHeader className="pb-2 sm:pb-4">
             <DialogTitle className="text-lg sm:text-xl">Seleccionar Productos</DialogTitle>
+            <DialogDescription>
+              Busca y selecciona los productos que deseas agregar al pedido
+            </DialogDescription>
           </DialogHeader>
 
         <div className="space-y-3 sm:space-y-4">
@@ -223,11 +237,13 @@ export function ProductSelectionDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas las categorías</SelectItem>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.name}>
-                        {category.name}
-                      </SelectItem>
-                    ))}
+                    {categories
+                      .filter((category) => category.name && category.name.trim() !== "")
+                      .map((category) => (
+                        <SelectItem key={category.id} value={category.name}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -294,12 +310,12 @@ export function ProductSelectionDialog({
 
                     <Button
                       onClick={() => handleAddProduct(product)}
-                      variant={isSelected ? "outline" : "default"}
+                      variant="default"
                       className="w-full"
                       size="sm"
                     >
                       <Plus className="w-4 h-4 mr-2" />
-                      {isSelected ? "Actualizar" : "Agregar"}
+                      Agregar
                     </Button>
                   </div>
                 </Card>
@@ -360,10 +376,10 @@ export function ProductSelectionDialog({
                       <Button
                         size="sm"
                         onClick={() => handleAddProduct(product)}
-                          variant={isSelected ? "outline" : "default"}
+                        variant="default"
                       >
                         <Plus className="w-4 h-4 mr-2" />
-                          {isSelected ? "Actualizar" : "Agregar"}
+                        Agregar
                       </Button>
                     </TableCell>
                   </TableRow>

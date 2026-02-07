@@ -20,19 +20,38 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Search, Plus, Eye, Edit, Trash2 } from "lucide-react"
+import { Search, Plus, Eye, Edit, Trash2, X } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { getOrders, deleteOrder, type Order } from "@/lib/storage"
+import { getUnifiedOrders, deleteOrder, deleteBudget, type UnifiedOrder } from "@/lib/storage"
 import { useCurrency } from "@/contexts/currency-context"
+import { usePagination } from "@/hooks/use-pagination"
+import { TablePagination } from "@/components/ui/table-pagination"
+import { ORDER_STATUSES, PAYMENT_METHODS_FILTER } from "@/components/orders/constants"
 
 const getStatusColor = (status: string) => {
   switch (status) {
-    case "Completado":
-      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-    case "Apartado":
+    case "Presupuesto":
+      return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300"
+    case "Por Fabricar":
       return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
-    case "Pendiente":
+    case "En Fabricación":
+    case "Fabricación":
+      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300"
+    case "Almacén":
       return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+    case "Despacho":
+    case "Por despachar":
+      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
+    case "Entregado":
+    case "Completada":
+      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+    case "Declinado":
+    case "Cancelado":
+      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+    case "Generado":
+    case "Generada":
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
     default:
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
   }
@@ -40,20 +59,27 @@ const getStatusColor = (status: string) => {
 
 export default function PedidosPage() {
   const { formatWithPreference, preferredCurrency } = useCurrency()
-  const [orders, setOrders] = useState<Order[]>([])
+  const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [filters, setFilters] = useState({
+    vendor: "all",
+    status: "all",
+    paymentMethod: "all",
+    client: "all",
+  })
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null)
+  const [orderToDelete, setOrderToDelete] = useState<UnifiedOrder | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
+  const [itemsPerPage, setItemsPerPage] = useState(10)
 
   useEffect(() => {
     const loadOrders = async () => {
       try {
         setIsLoading(true)
-        const loadedOrders = await getOrders()
+        const loadedOrders = await getUnifiedOrders()
         setOrders(loadedOrders)
       } catch (error) {
         console.error("Error loading orders:", error)
@@ -83,7 +109,7 @@ export default function PedidosPage() {
 
   // Función para refrescar después de crear un pedido
   const handleOrderCreated = async () => {
-    const loadedOrders = await getOrders()
+    const loadedOrders = await getUnifiedOrders()
     setOrders(loadedOrders)
     setIsNewOrderOpen(false)
   }
@@ -94,43 +120,85 @@ export default function PedidosPage() {
     return orderTotals[orderToDelete.id] || `Bs.${orderToDelete.total.toFixed(2)}`
   }
 
-  const filteredOrders = orders.filter(
-    (order) =>
+  // Obtener valores únicos para los filtros
+  const uniqueVendors = Array.from(new Set(orders.map((o) => o.vendorName))).sort()
+  const uniqueClients = Array.from(new Set(orders.map((o) => o.clientName))).sort()
+  
+  // Usar lista fija de estados y métodos de pago
+  const uniqueStatuses = ORDER_STATUSES.map(s => s.value)
+  const uniquePaymentMethods = [...PAYMENT_METHODS_FILTER]
+
+  const filteredOrders = orders.filter((order) => {
+    // Filtro de búsqueda general (existente)
+    const matchesSearch =
       order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
+
+    // Filtros por columna
+    const matchesVendor = filters.vendor === "all" || order.vendorName === filters.vendor
+    const matchesStatus = filters.status === "all" || order.status === filters.status
+    const matchesPaymentMethod =
+      filters.paymentMethod === "all" || order.paymentMethod === filters.paymentMethod
+    const matchesClient = filters.client === "all" || order.clientName === filters.client
+
+    return matchesSearch && matchesVendor && matchesStatus && matchesPaymentMethod && matchesClient
+  })
+
+  // Paginación
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedOrders,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({
+    data: filteredOrders,
+    itemsPerPage,
+  })
 
   const handleDelete = async () => {
     if (!orderToDelete) return
 
     try {
-      await deleteOrder(orderToDelete.id)
+      // Eliminar según el tipo (pedido o presupuesto)
+      if (orderToDelete.type === "order") {
+        await deleteOrder(orderToDelete.id)
+      } else {
+        await deleteBudget(orderToDelete.id)
+      }
       // Refrescar la lista de pedidos
-      const loadedOrders = await getOrders()
+      const loadedOrders = await getUnifiedOrders()
       setOrders(loadedOrders)
       setIsDeleteDialogOpen(false)
       setOrderToDelete(null)
+      toast.success("Eliminado exitosamente")
     } catch (error) {
       console.error("Error deleting order:", error)
-      toast.error("Error al eliminar el pedido. Por favor intenta nuevamente.")
+      toast.error("Error al eliminar. Por favor intenta nuevamente.")
     }
   }
 
-  const handleView = async (order: Order) => {
-    // Redirigir a la vista de detalle del pedido
-    window.location.href = `/pedidos/${order.orderNumber}`
+  const handleView = async (order: UnifiedOrder) => {
+    // Redirigir según el tipo (pedido o presupuesto)
+    if (order.type === "order") {
+      window.location.href = `/pedidos/${order.orderNumber}`
+    } else {
+      window.location.href = `/presupuestos/${order.orderNumber}`
+    }
   }
 
-  const handleEdit = (order: Order) => {
+  const handleEdit = (order: UnifiedOrder) => {
     // TODO: Implementar edición del pedido
     console.log("Editar pedido:", order)
-    toast.info(`Editar pedido ${order.orderNumber}`, {
+    toast.info(`Editar ${order.type === "order" ? "pedido" : "presupuesto"} ${order.orderNumber}`, {
       description: "Esta funcionalidad será implementada próximamente.",
     })
   }
 
-  const handleDeleteClick = (order: Order) => {
+  const handleDeleteClick = (order: UnifiedOrder) => {
     setOrderToDelete(order)
     setIsDeleteDialogOpen(true)
   }
@@ -167,6 +235,99 @@ export default function PedidosPage() {
                 </Button>
               </div>
 
+              {/* Filtros por columna */}
+              <div className="flex flex-wrap gap-2 items-center">
+                <Select
+                  value={filters.client}
+                  onValueChange={(value) =>
+                    setFilters((prev) => ({ ...prev, client: value }))
+                  }
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Todos los clientes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los clientes</SelectItem>
+                    {uniqueClients.map((client) => (
+                      <SelectItem key={client} value={client}>
+                        {client}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={filters.vendor}
+                  onValueChange={(value) =>
+                    setFilters((prev) => ({ ...prev, vendor: value }))
+                  }
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Todos los vendedores" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los vendedores</SelectItem>
+                    {uniqueVendors.map((vendor) => (
+                      <SelectItem key={vendor} value={vendor}>
+                        {vendor}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={filters.status}
+                  onValueChange={(value) =>
+                    setFilters((prev) => ({ ...prev, status: value }))
+                  }
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Todos los estados" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los estados</SelectItem>
+                    {uniqueStatuses.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={filters.paymentMethod}
+                  onValueChange={(value) =>
+                    setFilters((prev) => ({ ...prev, paymentMethod: value }))
+                  }
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Todos los métodos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los métodos</SelectItem>
+                    {uniquePaymentMethods.map((method) => (
+                      <SelectItem key={method} value={method}>
+                        {method}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {(filters.client !== "all" || filters.vendor !== "all" || filters.status !== "all" || filters.paymentMethod !== "all") && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setFilters({ client: "all", vendor: "all", status: "all", paymentMethod: "all" })
+                    }
+                    className="gap-2"
+                  >
+                    <X className="w-4 h-4" />
+                    Limpiar filtros
+                  </Button>
+                )}
+              </div>
+
               <Card>
                 <CardHeader>
                   <CardTitle>Lista de Pedidos</CardTitle>
@@ -195,7 +356,7 @@ export default function PedidosPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredOrders.map((order) => (
+                        {paginatedOrders.map((order) => (
                           <TableRow key={order.id}>
                             <TableCell className="font-medium">{order.orderNumber}</TableCell>
                             <TableCell>{order.clientName}</TableCell>
@@ -206,7 +367,7 @@ export default function PedidosPage() {
                             <TableCell>
                               <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
                             </TableCell>
-                            <TableCell>{order.paymentMethod}</TableCell>
+                            <TableCell>{order.paymentMethod || (order.type === "budget" ? "N/A" : "-")}</TableCell>
                             <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                             <TableCell>{order.products.length}</TableCell>
                             <TableCell className="text-right">
@@ -243,6 +404,20 @@ export default function PedidosPage() {
                       </TableBody>
                     </Table>
                   )}
+                  
+                  {/* Paginación */}
+                  {!isLoading && filteredOrders.length > 0 && (
+                    <TablePagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      totalItems={totalItems}
+                      startIndex={startIndex}
+                      endIndex={endIndex}
+                      onPageChange={goToPage}
+                      itemsPerPage={itemsPerPage}
+                      onItemsPerPageChange={setItemsPerPage}
+                    />
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -265,9 +440,9 @@ export default function PedidosPage() {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar pedido?</AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar {orderToDelete?.type === "order" ? "pedido" : "presupuesto"}?</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Estás seguro de que deseas eliminar el pedido "{orderToDelete?.orderNumber}"?
+              ¿Estás seguro de que deseas eliminar el {orderToDelete?.type === "order" ? "pedido" : "presupuesto"} "{orderToDelete?.orderNumber}"?
               <br />
               <span className="text-sm text-muted-foreground mt-2 block">
                 Cliente: {orderToDelete?.clientName} - Total: {getDeleteOrderTotal()}

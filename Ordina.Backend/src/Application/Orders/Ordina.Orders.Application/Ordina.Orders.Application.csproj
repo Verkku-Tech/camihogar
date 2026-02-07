@@ -6,4 +6,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Infrastructure\Ordina.Database\Ordina.Database.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SpreadsheetLight" Version="3.5.0" />
+  </ItemGroup>
+
 </Project>

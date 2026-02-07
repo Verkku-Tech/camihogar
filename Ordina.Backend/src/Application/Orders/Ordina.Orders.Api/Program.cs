@@ -1,4 +1,5 @@
 using Ordina.Database.MongoContext;
+using Ordina.Orders.Application.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +11,10 @@ builder.Services.AddProblemDetails();
 
 // Configure MongoDB
 builder.Services.AddMongoDb(builder.Configuration);
+
+// Add Application Services
+builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IOrderService, OrderService>();
 
 // Add CORS
 builder.Services.AddCors(options =>

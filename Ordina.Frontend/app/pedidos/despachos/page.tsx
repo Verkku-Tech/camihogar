@@ -1,0 +1,711 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Sidebar } from "@/components/dashboard/sidebar"
+import { ProtectedRoute } from "@/components/auth/protected-route"
+import { DashboardHeader } from "@/components/dashboard/dashboard-header"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Search, Eye, Truck, CheckCircle, PackageCheck } from "lucide-react"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
+import { formatCurrency } from "@/lib/currency-utils"
+import { OrderGroupCollapsible } from "@/components/orders/order-group-collapsible"
+import { toast } from "sonner"
+import { getUnifiedOrders, getCategories, updateOrder, type UnifiedOrder, type OrderProduct, type Category, type AttributeValue } from "@/lib/storage"
+import { useCurrency } from "@/contexts/currency-context"
+import { useRouter } from "next/navigation"
+import { DELIVERY_TYPES, DELIVERY_ZONES } from "@/components/orders/new-order-dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
+import { usePagination } from "@/hooks/use-pagination"
+import { TablePagination } from "@/components/ui/table-pagination"
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "Por despachar":
+      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
+    case "Completada":
+      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+    case "Generada":
+      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+    case "Fabricación":
+      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300"
+    case "Generado":
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+    default:
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+  }
+}
+
+// Función helper para verificar si un pedido está listo para despachar
+const isOrderReadyForDispatch = (order: UnifiedOrder): boolean => {
+  // Solo pedidos tipo "order" (no presupuestos)
+  if (order.type !== "order") return false
+
+  // Si ya está completado, incluirlo en las notas de despacho
+  if (order.status === "Completada") {
+    return true
+  }
+
+  // Verificar que tenga productos
+  if (!order.products || order.products.length === 0) return false
+
+  // Verificar que todos los productos estén listos
+  return order.products.every((product) => {
+    // Si no tiene locationStatus, considerarlo listo para despacho
+    if (!product.locationStatus) {
+      return true
+    }
+
+    // Si está en tienda, está listo
+    if (product.locationStatus === "EN TIENDA") {
+      return true
+    }
+
+    // Si debe fabricarse, debe estar En almacén (listo para despacho)
+    if (product.locationStatus === "FABRICACION") {
+      return product.manufacturingStatus === "almacen_no_fabricado"
+    }
+
+    // Por defecto, considerar listo
+    return true
+  })
+}
+
+// Calcular saldo pendiente en Bs y equivalente en USD
+function getPendingBalance(order: UnifiedOrder) {
+  const totalPaid = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) ?? 0
+  return Math.max(0, order.total - totalPaid)
+}
+
+function formatPendingInUsd(pendingBs: number, usdRate: number | undefined): string {
+  if (!usdRate || usdRate <= 0) return formatCurrency(pendingBs, "Bs")
+  return formatCurrency(pendingBs / usdRate, "USD")
+}
+
+export default function DespachosPage() {
+  const { formatWithPreference, preferredCurrency, exchangeRates } = useCurrency()
+  const router = useRouter()
+  const [orders, setOrders] = useState<UnifiedOrder[]>([])
+  const [searchTerm, setSearchTerm] = useState("")
+  const [deliveryTypeFilter, setDeliveryTypeFilter] = useState<string>("all")
+  const [deliveryZoneFilter, setDeliveryZoneFilter] = useState<string>("all")
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
+  const usdRate = exchangeRates?.USD?.rate
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
+  const [orderToComplete, setOrderToComplete] = useState<UnifiedOrder | null>(null)
+  const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false)
+  const [isBulkDispatchDialogOpen, setIsBulkDispatchDialogOpen] = useState(false)
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [categories, setCategories] = useState<Category[]>([])
+
+  const toggleOrderExpanded = (orderId: string) => {
+    setExpandedOrders((prev) => {
+      const next = new Set(prev)
+      if (next.has(orderId)) next.delete(orderId)
+      else next.add(orderId)
+      return next
+    })
+  }
+
+  useEffect(() => {
+    const loadOrders = async () => {
+      try {
+        setIsLoading(true)
+        const allOrders = await getUnifiedOrders()
+        // Filtrar solo pedidos listos para despachar (usando la función helper)
+        const readyOrders = allOrders.filter(
+          (order) => isOrderReadyForDispatch(order)
+        )
+        setOrders(readyOrders)
+      } catch (error) {
+        console.error("Error loading dispatch orders:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadOrders()
+  }, [])
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const loaded = await getCategories()
+        setCategories(loaded)
+      } catch (error) {
+        console.error("Error loading categories:", error)
+      }
+    }
+    loadCategories()
+  }, [])
+
+  const getCategoryForProduct = (productCategory: string) =>
+    categories.find(c => c.name === productCategory)
+
+  const getValueLabel = (value: string | AttributeValue): string => {
+    if (typeof value === "string") return value
+    return (value as AttributeValue).label || (value as AttributeValue).id || String(value)
+  }
+
+  const getAttributeValueLabel = (
+    selectedValue: unknown,
+    categoryAttribute: Category["attributes"][0] | undefined
+  ): string => {
+    if (!categoryAttribute) return String(selectedValue)
+    if (categoryAttribute.valueType === "Number") {
+      return selectedValue !== undefined && selectedValue !== null && selectedValue !== ""
+        ? String(selectedValue)
+        : ""
+    }
+    if (!categoryAttribute.values || categoryAttribute.values.length === 0) {
+      return String(selectedValue)
+    }
+    if (Array.isArray(selectedValue)) {
+      const labels: string[] = []
+      selectedValue.forEach((valStr) => {
+        const attributeValue = categoryAttribute.values!.find(
+          (val: string | AttributeValue) => {
+            if (typeof val === "string") return val === valStr
+            return (val as AttributeValue).id === valStr || (val as AttributeValue).label === valStr
+          }
+        )
+        if (attributeValue) {
+          labels.push(getValueLabel(attributeValue as string | AttributeValue))
+        } else {
+          labels.push(String(valStr))
+        }
+      })
+      return labels.join(", ")
+    }
+    const selectedValueStr = String(selectedValue ?? "")
+    if (selectedValueStr) {
+      const attributeValue = categoryAttribute.values.find(
+        (val: string | AttributeValue) => {
+          if (typeof val === "string") return val === selectedValueStr
+          return (val as AttributeValue).id === selectedValueStr || (val as AttributeValue).label === selectedValueStr
+        }
+      )
+      if (attributeValue) return getValueLabel(attributeValue as string | AttributeValue)
+    }
+    return String(selectedValue)
+  }
+
+  const getProductAttributePairs = (product: OrderProduct): { key: string; value: string }[] => {
+    const category = getCategoryForProduct(product.category)
+    if (!product.attributes || Object.keys(product.attributes).length === 0) return []
+    const pairs: { key: string; value: string }[] = []
+    for (const [key, value] of Object.entries(product.attributes)) {
+      if (key.includes("_") && key.split("_").length === 2) continue
+      const categoryAttribute = category?.attributes?.find(
+        attr => attr.id?.toString() === key || attr.title === key
+      )
+      const valueLabel = getAttributeValueLabel(value, categoryAttribute)
+      if (valueLabel && valueLabel.trim() !== "") {
+        pairs.push({
+          key: categoryAttribute?.title || key,
+          value: valueLabel.trim()
+        })
+      }
+    }
+    return pairs
+  }
+
+  const AttributesGrid = ({ pairs, productName }: { pairs: { key: string; value: string }[]; productName?: string }) => {
+    if (pairs.length === 0) return <p className="text-sm text-muted-foreground">Sin atributos</p>
+    return (
+      <div className="space-y-2">
+        {productName && <h4 className="font-semibold text-sm">{productName}</h4>}
+        <div className="grid grid-cols-5 gap-x-4 gap-y-2 text-sm">
+          {pairs.map(({ key, value }) => (
+            <div key={key} className="flex flex-col min-w-0">
+              <span className="text-muted-foreground font-medium">{key}:</span>
+              <span className="text-foreground break-words">{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Actualizar totales cuando cambien los pedidos o la moneda preferida
+  useEffect(() => {
+    const updateTotals = async () => {
+      const totals: Record<string, string> = {}
+      for (const order of orders) {
+        const formatted = await formatWithPreference(order.total, "Bs")
+        totals[order.id] = formatted
+      }
+      setOrderTotals(totals)
+    }
+    if (orders.length > 0) {
+      updateTotals()
+    }
+  }, [orders, preferredCurrency, formatWithPreference])
+
+  const filteredOrders = orders.filter((order) => {
+    // Filtro de búsqueda
+    const matchesSearch =
+      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
+
+    // Filtro por tipo de entrega
+    const matchesDeliveryType =
+      deliveryTypeFilter === "all" ||
+      order.deliveryType === deliveryTypeFilter
+
+    // Filtro por zona de entrega
+    const matchesDeliveryZone =
+      deliveryZoneFilter === "all" ||
+      order.deliveryZone === deliveryZoneFilter
+
+    return matchesSearch && matchesDeliveryType && matchesDeliveryZone
+  })
+
+  // Paginación
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedOrders,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({
+    data: filteredOrders,
+    itemsPerPage,
+  })
+
+  // Manejar selección individual
+  const handleToggleSelect = (orderId: string) => {
+    setSelectedOrders((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId)
+      } else {
+        newSet.add(orderId)
+      }
+      return newSet
+    })
+  }
+
+  // Manejar selección de todos (solo los que no están completados)
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const selectableOrders = paginatedOrders.filter(order => order.status !== "Completada")
+      setSelectedOrders(new Set(selectableOrders.map((order) => order.id)))
+    } else {
+      setSelectedOrders(new Set())
+    }
+  }
+
+  const handleView = (order: UnifiedOrder) => {
+    router.push(`/pedidos/${order.orderNumber}`)
+  }
+
+  // Despachar un pedido individual
+  const handleCompleteDispatch = async () => {
+    if (!orderToComplete) return
+
+    try {
+      // Actualizar el pedido a estado "Completada"
+      await updateOrder(orderToComplete.id, {
+        status: "Completada",
+        dispatchDate: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      })
+
+      // Refrescar la lista
+      const allOrders = await getUnifiedOrders()
+      const readyOrders = allOrders.filter((order) => isOrderReadyForDispatch(order))
+      setOrders(readyOrders)
+      setIsCompleteDialogOpen(false)
+      setOrderToComplete(null)
+      setSelectedOrders((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(orderToComplete.id)
+        return newSet
+      })
+      toast.success("Pedido marcado como completado")
+    } catch (error) {
+      console.error("Error completing dispatch:", error)
+      toast.error("Error al completar el despacho. Por favor intenta nuevamente.")
+    }
+  }
+
+  // Despachar múltiples pedidos
+  const handleBulkDispatch = async () => {
+    if (selectedOrders.size === 0) {
+      toast.error("Por favor selecciona al menos un pedido")
+      return
+    }
+
+    try {
+      const selectedOrderIds = Array.from(selectedOrders)
+      let successCount = 0
+      let errorCount = 0
+
+      for (const orderId of selectedOrderIds) {
+        try {
+          await updateOrder(orderId, {
+            status: "Completada",
+            dispatchDate: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+          })
+          successCount++
+        } catch (error) {
+          console.error(`Error despachando pedido ${orderId}:`, error)
+          errorCount++
+        }
+      }
+
+      // Refrescar la lista
+      const allOrders = await getUnifiedOrders()
+      const readyOrders = allOrders.filter((order) => isOrderReadyForDispatch(order))
+      setOrders(readyOrders)
+      setSelectedOrders(new Set())
+      setIsBulkDispatchDialogOpen(false)
+
+      if (errorCount === 0) {
+        toast.success(`${successCount} pedido(s) despachado(s) exitosamente`)
+      } else {
+        toast.warning(`${successCount} pedido(s) despachado(s), ${errorCount} error(es)`)
+      }
+    } catch (error) {
+      console.error("Error en despacho masivo:", error)
+      toast.error("Error al despachar los pedidos")
+    }
+  }
+
+  const handleCompleteClick = (order: UnifiedOrder) => {
+    setOrderToComplete(order)
+    setIsCompleteDialogOpen(true)
+  }
+
+  // Solo contar pedidos que no están completados para la selección
+  const selectableOrders = paginatedOrders.filter(order => order.status !== "Completada")
+  const allSelected = selectableOrders.length > 0 && selectedOrders.size === selectableOrders.length
+  const someSelected = selectedOrders.size > 0 && selectedOrders.size < selectableOrders.length
+
+  return (
+    <ProtectedRoute>
+      <div className="flex h-screen bg-background">
+        <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
+
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
+
+          <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+            <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
+              <span className="text-green-600 font-medium">Home</span>
+              <span>/</span>
+              <span>Pedidos</span>
+              <span>/</span>
+              <span>Despachos</span>
+            </nav>
+
+            <div className="space-y-6">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row gap-4 justify-between">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                    <Input
+                      placeholder="Buscar pedidos..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  {selectedOrders.size > 0 && (
+                    <Button
+                      onClick={() => setIsBulkDispatchDialogOpen(true)}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <PackageCheck className="w-4 h-4 mr-2" />
+                      Despachar Seleccionados ({selectedOrders.size})
+                    </Button>
+                  )}
+                </div>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="space-y-2 flex-1 max-w-xs">
+                    <Label htmlFor="deliveryTypeFilter">Tipo de Entrega</Label>
+                    <Select
+                      value={deliveryTypeFilter}
+                      onValueChange={setDeliveryTypeFilter}
+                    >
+                      <SelectTrigger id="deliveryTypeFilter">
+                        <SelectValue placeholder="Todos los tipos" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos los tipos</SelectItem>
+                        {DELIVERY_TYPES.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2 flex-1 max-w-xs">
+                    <Label htmlFor="deliveryZoneFilter">Zona de Entrega</Label>
+                    <Select
+                      value={deliveryZoneFilter}
+                      onValueChange={setDeliveryZoneFilter}
+                    >
+                      <SelectTrigger id="deliveryZoneFilter">
+                        <SelectValue placeholder="Todas las zonas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas las zonas</SelectItem>
+                        {DELIVERY_ZONES.map((zone) => (
+                          <SelectItem key={zone.value} value={zone.value}>
+                            {zone.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Truck className="w-5 h-5" />
+                    Pedidos para Despachar
+                  </CardTitle>
+                  <CardDescription>
+                    Lista de pedidos listos para ser despachados y pedidos ya completados. Selecciona uno o varios para despachar.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoading ? (
+                    <div className="text-center py-8">Cargando pedidos...</div>
+                  ) : filteredOrders.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      {searchTerm ? "No se encontraron pedidos" : "No hay pedidos listos para despachar"}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {/* Cabecera de tabla: checkbox "seleccionar todos" solo visible si hay pedidos despachables */}
+                      {filteredOrders.some((order) => order.status !== "Completada") && (
+                        <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground border-b pb-2 mb-2">
+                          <Checkbox
+                            checked={allSelected}
+                            onCheckedChange={handleSelectAll}
+                            aria-label="Seleccionar todos"
+                          />
+                          <span>Seleccionar todos los pedidos para despacho masivo</span>
+                        </div>
+                      )}
+                      {paginatedOrders.map((order) => (
+                        <OrderGroupCollapsible
+                          key={order.id}
+                          orderId={order.id}
+                          orderNumber={order.orderNumber}
+                          clientName={order.clientName}
+                          orderDate={order.createdAt}
+                          productCount={order.products.length}
+                          isExpanded={expandedOrders.has(order.id)}
+                          onOpenChange={(open) =>
+                            open ? setExpandedOrders((s) => new Set(s).add(order.id)) : setExpandedOrders((s) => { const n = new Set(s); n.delete(order.id); return n })
+                          }
+                          showViewDetailsButton={false}
+                          selectControl={
+                            order.status !== "Completada"
+                              ? {
+                                  checked: selectedOrders.has(order.id),
+                                  onCheckedChange: () => handleToggleSelect(order.id),
+                                  "aria-label": `Seleccionar pedido ${order.orderNumber}`,
+                                }
+                              : undefined
+                          }
+                          headerRight={
+                            <>
+                              <span className="text-sm text-muted-foreground hidden sm:inline">
+                                {order.vendorName}
+                              </span>
+                              <span className="font-medium tabular-nums">
+                                {orderTotals[order.id] ?? `Bs.${order.total.toFixed(2)}`}
+                              </span>
+                              <Badge className={getStatusColor(order.status)}>
+                                {order.status}
+                              </Badge>
+                              <span className="text-sm text-muted-foreground">
+                                {new Date(order.createdAt).toLocaleDateString()}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleView(order)
+                                }}
+                              >
+                                <Eye className="w-3 h-3 mr-1" />
+                                Ver Detalles
+                              </Button>
+                              {order.status !== "Completada" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleCompleteClick(order)
+                                  }}
+                                  title="Despachar pedido"
+                                >
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Despachar
+                                </Button>
+                              )}
+                            </>
+                          }
+                        >
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Producto</TableHead>
+                                <TableHead>Categoría</TableHead>
+                                <TableHead>Cantidad</TableHead>
+                                <TableHead>Estado</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {order.products.map((product) => (
+                                <TableRow key={product.id}>
+                                  <TableCell className="font-medium">{product.name}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline">{product.category}</Badge>
+                                  </TableCell>
+                                  <TableCell>{product.quantity}</TableCell>
+                                  <TableCell>
+                                    {(product.manufacturingStatus === "almacen_no_fabricado" ||
+                                      (product.manufacturingStatus as string) === "fabricado") ? (
+                                      <Badge className="bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                                        En almacén
+                                      </Badge>
+                                    ) : product.manufacturingStatus === "fabricando" ? (
+                                      <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
+                                        Fabricando
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-muted text-muted-foreground">-</Badge>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </OrderGroupCollapsible>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Paginación */}
+                  {!isLoading && filteredOrders.length > 0 && (
+                    <TablePagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      totalItems={totalItems}
+                      startIndex={startIndex}
+                      endIndex={endIndex}
+                      onPageChange={goToPage}
+                      itemsPerPage={itemsPerPage}
+                      onItemsPerPageChange={setItemsPerPage}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </main>
+        </div>
+      </div>
+
+      {/* Dialog de confirmación de completado individual */}
+      <AlertDialog open={isCompleteDialogOpen} onOpenChange={setIsCompleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Completar despacho?</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas marcar el pedido "{orderToComplete?.orderNumber}" como completado?
+              <br />
+              <span className="text-sm text-muted-foreground mt-2 block">
+                Cliente: {orderToComplete?.clientName} - Total: {orderToComplete ? (orderTotals[orderToComplete.id] || `Bs.${orderToComplete.total.toFixed(2)}`) : ""}
+              </span>
+              <br />
+              <span className="text-sm font-medium text-green-600 mt-2 block">
+                El pedido cambiará a estado "Completada".
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setOrderToComplete(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleCompleteDispatch}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Completar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog de confirmación de despacho masivo */}
+      <AlertDialog open={isBulkDispatchDialogOpen} onOpenChange={setIsBulkDispatchDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Despachar {selectedOrders.size} pedido(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas marcar {selectedOrders.size} pedido(s) como completados?
+              <br />
+              <span className="text-sm text-muted-foreground mt-2 block">
+                Los pedidos seleccionados cambiarán a estado "Completada".
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsBulkDispatchDialogOpen(false)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleBulkDispatch}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Despachar {selectedOrders.size} Pedido(s)
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </ProtectedRoute>
+  )
+}
+

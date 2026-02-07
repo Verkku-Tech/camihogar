@@ -5,9 +5,17 @@ namespace Ordina.Database.Entities.Provider;
 
 public class Provider
 {
+    //[BsonId]
+    //[BsonRepresentation(BsonType.ObjectId)]
+    //public Guid Id { get; set; }
+    
     [BsonId]
     [BsonRepresentation(BsonType.ObjectId)]
-    public string Id { get; set; } = string.Empty;
+    public ObjectId Id { get; set; }
+    
+
+    [BsonElement("nombre")]
+    public string Nombre { get; set; } = string.Empty;
 
     [BsonElement("razonSocial")]
     public string RazonSocial { get; set; } = string.Empty;
@@ -35,4 +43,7 @@ public class Provider
 
     [BsonElement("fechaCreacion")]
     public DateTime FechaCreacion { get; set; } = DateTime.UtcNow;
+
+    [BsonElement("fechaActualizacion")]
+    public DateTime? FechaActualizacion { get; set; } = DateTime.UtcNow;
 }

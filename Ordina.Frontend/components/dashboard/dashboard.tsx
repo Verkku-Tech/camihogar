@@ -1,15 +1,59 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Sidebar } from "./sidebar"
 import { DashboardHeader } from "./dashboard-header"
 import { MetricsCards } from "./metrics-cards"
 import { OrdersTable } from "./orders-table"
+import { ManufacturingProductsTable } from "./manufacturing-products-table"
+import { BudgetsTable } from "./budgets-table"
+import { DispatchesTable } from "./dispatches-table"
+import { ExpiredLayawaysTable } from "./expired-layaways-table"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
+import { calculateDashboardMetrics, DashboardMetrics } from "@/lib/storage"
+import { Card, CardContent } from "@/components/ui/card"
+import { NewOrderDialog } from "@/components/orders/new-order-dialog"
+
+type Period = "day" | "week" | "month" | "year"
+type Tab = "presupuestos" | "pedidos" | "fabricacion" | "despachos" | "sa-vencidos"
 
 export function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [period, setPeriod] = useState<Period>("day")
+  const [activeTab, setActiveTab] = useState<Tab>("pedidos")
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(true)
+  const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
+
+  useEffect(() => {
+    const loadMetrics = async () => {
+      setIsLoadingMetrics(true)
+      try {
+        const calculatedMetrics = await calculateDashboardMetrics(period)
+        setMetrics(calculatedMetrics)
+      } catch (error) {
+        console.error("Error loading dashboard metrics:", error)
+      } finally {
+        setIsLoadingMetrics(false)
+      }
+    }
+
+    loadMetrics()
+  }, [period])
+
+  const handlePeriodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value as Period
+    setPeriod(value)
+  }
+
+  const EmptyState = ({ message }: { message: string }) => (
+    <Card>
+      <CardContent className="p-6">
+        <p className="text-center text-muted-foreground">{message}</p>
+      </CardContent>
+    </Card>
+  )
 
   return (
     <div className="flex h-screen bg-background">
@@ -35,38 +79,93 @@ export function Dashboard() {
               <p className="text-muted-foreground mt-1">Últimos Pedidos</p>
             </div>
             <div className="flex items-center gap-4 mt-4 sm:mt-0">
-              <select className="px-3 py-2 border border-border rounded-md bg-background text-foreground">
-                <option>Última Semana</option>
-                <option>Último Mes</option>
-                <option>Último Año</option>
+              <select
+                value={period}
+                onChange={handlePeriodChange}
+                className="px-3 py-2 border border-border rounded-md bg-background text-foreground"
+              >
+                <option value="day">Hoy</option>
+                <option value="week">Última Semana</option>
+                <option value="month">Último Mes</option>
+                <option value="year">Último Año</option>
               </select>
             </div>
           </div>
 
           {/* Metrics Cards */}
-          <MetricsCards />
+          {metrics && <MetricsCards metrics={metrics} isLoading={isLoadingMetrics} />}
 
           {/* Orders Section */}
           <div className="mt-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
               <div className="flex items-center space-x-1 mb-4 sm:mb-0">
-                <button className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">Presupuestos</button>
-                <button className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md">Pedidos</button>
-                <button className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">Fabricación</button>
-                <button className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">
+                <button
+                  onClick={() => setActiveTab("presupuestos")}
+                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "presupuestos"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                >
+                  Presupuestos
+                </button>
+                <button
+                  onClick={() => setActiveTab("pedidos")}
+                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "pedidos"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                >
+                  Pedidos
+                </button>
+                <button
+                  onClick={() => setActiveTab("fabricacion")}
+                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "fabricacion"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                >
+                  Fabricación
+                </button>
+                <button
+                  onClick={() => setActiveTab("despachos")}
+                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "despachos"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                >
                   Notas de Despacho
                 </button>
+                <button
+                  onClick={() => setActiveTab("sa-vencidos")}
+                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "sa-vencidos"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                >
+                  SA Vencidos
+                </button>
               </div>
-              <Button className="bg-green-600 hover:bg-green-700 text-white">
+              <Button
+                className="bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => setIsNewOrderOpen(true)}
+              >
                 <Plus className="w-4 h-4 mr-2" />
                 Nuevo Pedido
               </Button>
             </div>
 
-            <OrdersTable />
+            {/* Tab Content */}
+            {activeTab === "pedidos" && <OrdersTable />}
+            {activeTab === "presupuestos" && <BudgetsTable />}
+            {activeTab === "fabricacion" && <ManufacturingProductsTable />}
+            {activeTab === "despachos" && <DispatchesTable />}
+            {activeTab === "sa-vencidos" && <ExpiredLayawaysTable />}
           </div>
         </main>
       </div>
+
+      {/* New Order Dialog */}
+      <NewOrderDialog open={isNewOrderOpen} onOpenChange={setIsNewOrderOpen} />
     </div>
   )
 }

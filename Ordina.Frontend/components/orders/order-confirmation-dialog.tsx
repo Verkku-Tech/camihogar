@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -311,6 +312,7 @@ interface OrderConfirmationDialogProps {
   orderData: {
     clientName: string;
     clientTelefono?: string;
+    clientTelefono2?: string;
     clientEmail?: string;
     clientRutId?: string;
     clientDireccion?: string;
@@ -337,9 +339,27 @@ interface OrderConfirmationDialogProps {
       | "entrega"
       | "retiro_almacen"
       | "retiro_tienda"
-      | "sa";
+      | "sistema_apartado";
+    deliveryType?:
+      | "entrega_programada"
+      | "delivery_express"
+      | "retiro_tienda"
+      | "retiro_almacen";
+    deliveryZone?:
+      | "caracas"
+      | "g_g"
+      | "san_antonio_los_teques"
+      | "caucagua_higuerote"
+      | "la_guaira"
+      | "charallave_cua"
+      | "interior_pais";
     hasDelivery: boolean;
     deliveryAddress?: string;
+    deliveryServices?: {
+      deliveryExpress?: { enabled: boolean; cost: number; currency: Currency };
+      servicioAcarreo?: { enabled: boolean; cost?: number; currency: Currency };
+      servicioArmado?: { enabled: boolean; cost: number; currency: Currency };
+    };
     observations?: string;
   };
 }
@@ -395,14 +415,10 @@ export function OrderConfirmationDialog({
     >
   >({});
 
-  // Definir el orden de los pasos (solo incluir pasos que tienen datos)
+  // Definir el orden de los pasos (solo 2 pasos: general y products)
   const steps: ConfirmationStep[] = [
     "general",
     "products",
-    ...(orderData.observations ? (["observations"] as ConfirmationStep[]) : []),
-    ...(orderData.hasDelivery && orderData.deliveryAddress ? (["delivery"] as ConfirmationStep[]) : []),
-    "payments",
-    "totals",
   ];
 
   // Cargar categorías y productos al abrir el modal
@@ -840,6 +856,9 @@ export function OrderConfirmationDialog({
                         Teléfono del cliente:
                       </span>
                       <p className="font-medium">{orderData.clientTelefono}</p>
+                      {orderData.clientTelefono2 && (
+                        <p className="font-medium text-sm mt-1">{orderData.clientTelefono2}</p>
+                      )}
                     </div>
                   )}
                   {orderData.clientEmail && (
@@ -901,21 +920,85 @@ export function OrderConfirmationDialog({
                         Tipo de Venta:
                       </span>
                       <p className="font-medium">
-                        {orderData.saleType === "delivery_express"
-                          ? "Delivery Express"
-                          : orderData.saleType === "encargo"
+                        {orderData.saleType === "encargo"
                           ? "Encargo"
                           : orderData.saleType === "encargo_entrega"
                           ? "Encargo/Entrega"
                           : orderData.saleType === "entrega"
                           ? "Entrega"
+                          : orderData.saleType === "delivery_express"
+                          ? "Delivery Express"
                           : orderData.saleType === "retiro_almacen"
-                          ? "Retiro x almacén"
+                          ? "Retiro x Almacén"
                           : orderData.saleType === "retiro_tienda"
-                          ? "Retiro x tienda"
-                          : orderData.saleType === "sa"
-                          ? "SA"
+                          ? "Retiro x Tienda"
+                          : orderData.saleType === "sistema_apartado"
+                          ? "Sistema de Apartado"
                           : orderData.saleType}
+                      </p>
+                    </div>
+                  )}
+                  {orderData.deliveryType && (
+                    <div>
+                      <span className="text-sm text-muted-foreground">
+                        Tipo de Entrega:
+                      </span>
+                      <p className="font-medium">
+                        {orderData.deliveryType === "entrega_programada"
+                          ? "Entrega programada"
+                          : orderData.deliveryType === "delivery_express"
+                          ? "Delivery Express"
+                          : orderData.deliveryType === "retiro_tienda"
+                          ? "Retiro por Tienda"
+                          : orderData.deliveryType === "retiro_almacen"
+                          ? "Retiro por almacén"
+                          : orderData.deliveryType}
+                      </p>
+                    </div>
+                  )}
+                  {orderData.deliveryZone && (
+                    <div>
+                      <span className="text-sm text-muted-foreground">
+                        Zona de Entrega:
+                      </span>
+                      <p className="font-medium">
+                        {orderData.deliveryZone === "caracas"
+                          ? "Caracas"
+                          : orderData.deliveryZone === "g_g"
+                          ? "G&G"
+                          : orderData.deliveryZone === "san_antonio_los_teques"
+                          ? "San Antonio-Los Teques"
+                          : orderData.deliveryZone === "caucagua_higuerote"
+                          ? "Caucagua-Higuerote"
+                          : orderData.deliveryZone === "la_guaira"
+                          ? "La Guaira"
+                          : orderData.deliveryZone === "charallave_cua"
+                          ? "Charallave-Cua"
+                          : orderData.deliveryZone === "interior_pais"
+                          ? "Interior del País"
+                          : orderData.deliveryZone}
+                      </p>
+                    </div>
+                  )}
+                  {orderData.hasDelivery && orderData.deliveryServices && (
+                    <div>
+                      <span className="text-sm text-muted-foreground">
+                        Servicios adicionales:
+                      </span>
+                      <p className="font-medium">
+                        {(() => {
+                            const services: string[] = [];
+                            if (orderData.deliveryServices.deliveryExpress?.enabled) {
+                              services.push("Delivery Express");
+                            }
+                            if (orderData.deliveryServices.servicioAcarreo?.enabled) {
+                              services.push("Servicio de Acarreo");
+                            }
+                            if (orderData.deliveryServices.servicioArmado?.enabled) {
+                              services.push("Servicio de Armado");
+                            }
+                            return services.length > 0 ? services.join(", ") : "Sin servicios específicos";
+                          })()}
                       </p>
                     </div>
                   )}
@@ -941,7 +1024,47 @@ export function OrderConfirmationDialog({
                   const breakdown = productBreakdowns[product.id];
                   return (
                     <div key={idx} className="border rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-2">
+                      {/* Estado de ubicación */}
+                      <div className="mb-3 pb-3 border-b">
+                        {(() => {
+                          let badgeText = "Sin Definir";
+                          let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "outline";
+                          let badgeClassName = "text-sm text-muted-foreground";
+
+                          if (product.locationStatus === "SIN DEFINIR" || !product.locationStatus) {
+                            // Mantener valores por defecto (Sin Definir)
+                          } else if (product.locationStatus === "EN TIENDA") {
+                            badgeText = "En Tienda";
+                            badgeVariant = "default";
+                            badgeClassName = "text-sm";
+                          } else if (product.locationStatus === "FABRICACION") {
+                            if (product.manufacturingStatus === "almacen_no_fabricado" || (product.manufacturingStatus as string) === "fabricado") {
+                              badgeText = "En almacén";
+                              badgeVariant = "default";
+                              badgeClassName = "text-sm bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300";
+                            } else if (product.manufacturingStatus === "fabricando") {
+                              badgeText = "En Fabricación";
+                              badgeVariant = "secondary";
+                              badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+                            } else {
+                              badgeText = "Mandar a Fabricar";
+                              badgeVariant = "outline";
+                              badgeClassName = "text-sm text-foreground border-0";
+                            }
+                          }
+
+                          return (
+                            <Badge 
+                              variant={badgeVariant}
+                              className={badgeClassName}
+                            >
+                              {badgeText}
+                            </Badge>
+                          );
+                        })()}
+                      </div>
+                      
+                      <div className="mb-2">
                         <div className="flex-1">
                           <p className="font-semibold text-lg">
                             {product.name}
@@ -949,248 +1072,131 @@ export function OrderConfirmationDialog({
                           <p className="text-sm text-muted-foreground">
                             Cantidad: {product.quantity}
                           </p>
-                          {product.discount && product.discount > 0 && (
-                            <p className="text-sm text-red-600 mt-1">
-                              Descuento: -
-                              {formatCurrency(product.discount, "Bs")}
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <div className="flex flex-col items-end gap-1">
-                          <p className="font-semibold text-lg">
-                              {formatCurrency(
-                                product.total - (product.discount || 0),
-                                "Bs"
-                              )}
-                            </p>
-                            {preferredCurrency !== "Bs" && 
-                             (preferredCurrency === "USD" ? exchangeRates?.USD : exchangeRates?.EUR) && (
-                              <p className="text-sm text-muted-foreground">
-                                {(() => {
-                                  const totalInBs = product.total - (product.discount || 0);
-                                  const rate = preferredCurrency === "USD" 
-                                    ? exchangeRates?.USD?.rate 
-                                    : exchangeRates?.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    return formatCurrency(totalInBs / rate, preferredCurrency);
-                                  }
-                                  return "";
-                                })()}
-                              </p>
-                            )}
-                          </div>
                         </div>
                       </div>
 
-                      {/* Desglose detallado de precio */}
-                      {breakdown && (
-                        <div className="mt-4 pt-4 border-t">
-                          <div className="font-semibold mb-3 text-sm">
-                            Desglose de Precio:
+                      {/* Atributos del producto */}
+                      {product.attributes && Object.keys(product.attributes).length > 0 && (
+                        <div className="mt-3 pt-3 border-t">
+                          <p className="text-sm font-medium mb-2">Atributos:</p>
+                          <div className="text-sm">
+                            {(() => {
+                              const category = categories.find(c => 
+                                c.name === product.category
+                              );
+                              
+                              // Función helper para obtener el label del valor desde los values del atributo
+                              // includeNameForNumeric: si es true, para atributos numéricos incluye el nombre del atributo
+                              const getAttributeValueLabel = (
+                                selectedValue: any,
+                                categoryAttribute: Category["attributes"][0] | undefined,
+                                includeNameForNumeric: boolean = true
+                              ): string => {
+                                if (!categoryAttribute) {
+                                  return String(selectedValue);
+                                }
+
+                                // Si es un atributo numérico, mostrar nombre + valor (ej: "Patas 3")
+                                if (categoryAttribute.valueType === "Number") {
+                                  const numValue = selectedValue !== undefined && selectedValue !== null && selectedValue !== ""
+                                    ? selectedValue.toString()
+                                    : "";
+                                  if (!numValue) return "";
+                                  // Para concatenación, incluir el nombre del atributo
+                                  if (includeNameForNumeric && categoryAttribute.title) {
+                                    return `${categoryAttribute.title} ${numValue}`;
+                                  }
+                                  return numValue;
+                                }
+
+                                // Si no tiene values, mostrar el valor tal cual
+                                if (!categoryAttribute.values || categoryAttribute.values.length === 0) {
+                                  return String(selectedValue);
+                                }
+
+                                // Buscar el valor en los values del atributo
+                                if (Array.isArray(selectedValue)) {
+                                  const labels: string[] = [];
+                                  selectedValue.forEach((valStr) => {
+                                    const attributeValue = categoryAttribute.values!.find(
+                                      (val: string | AttributeValue) => {
+                                        if (typeof val === "string") {
+                                          return val === valStr;
+                                        }
+                                        return val.id === valStr || val.label === valStr;
+                                      }
+                                    );
+                                    if (attributeValue) {
+                                      labels.push(typeof attributeValue === "string" ? attributeValue : attributeValue.label || attributeValue.id || String(attributeValue));
+                                    } else {
+                                      labels.push(String(valStr));
+                                    }
+                                  });
+                                  return labels.join(", ");
+                                } else {
+                                  const selectedValueStr = selectedValue?.toString();
+                                  if (selectedValueStr) {
+                                    const attributeValue = categoryAttribute.values.find(
+                                      (val: string | AttributeValue) => {
+                                        if (typeof val === "string") {
+                                          return val === selectedValueStr;
+                                        }
+                                        return val.id === selectedValueStr || val.label === selectedValueStr;
+                                      }
+                                    );
+                                    if (attributeValue) {
+                                      return typeof attributeValue === "string" 
+                                        ? attributeValue 
+                                        : attributeValue.label || attributeValue.id || String(attributeValue);
+                                    }
+                                  }
+                                  return String(selectedValue);
+                                }
+                              };
+                              
+                              // Recopilar todos los valores de atributos en una sola línea
+                              const attributeValues: string[] = [];
+                              
+                              // Primero, identificar qué atributos son de tipo Product para excluirlos
+                              const productAttributeKeys = new Set<string>();
+                              category?.attributes?.forEach(attr => {
+                                if (attr.valueType === "Product") {
+                                  const attrId = attr.id?.toString() || attr.title;
+                                  if (attrId) {
+                                    productAttributeKeys.add(attrId);
+                                  }
+                                }
+                              });
+                              
+                              Object.entries(product.attributes).forEach(([key, value]) => {
+                                // Ignorar atributos de tipo Product (se manejan por separado)
+                                if (productAttributeKeys.has(key)) {
+                                  return;
+                                }
+                                
+                                // Ignorar claves que son para atributos editados de productos-atributos (formato: attrId_productId)
+                                if (key.includes("_")) {
+                                  const parts = key.split("_");
+                                  if (parts.length === 2 && !isNaN(Number(parts[1])) && productAttributeKeys.has(parts[0])) {
+                                    return;
+                                  }
+                                }
+                                
+                                const categoryAttribute = category?.attributes?.find(
+                                  attr => (attr.id?.toString() === key || attr.title === key) && attr.valueType !== "Product"
+                                );
+                                
+                                const valueLabel = getAttributeValueLabel(value, categoryAttribute);
+                                if (valueLabel && valueLabel.trim() !== "" && valueLabel !== "-") {
+                                  attributeValues.push(valueLabel.trim());
+                                }
+                              });
+                              
+                              return attributeValues.length > 0 
+                                ? attributeValues.join(" + ")
+                                : "Sin atributos";
+                            })()}
                           </div>
-                          {availableCurrenciesProducts.length > 1 ? (
-                            // Mostrar tabla si hay múltiples monedas disponibles
-                            <div className="overflow-x-auto">
-                              <Table>
-                                <TableHeader>
-                                  <TableRow>
-                                    <TableHead className="w-[200px]">
-                                      Concepto
-                                    </TableHead>
-                                    <TableHead className="text-right">
-                                      Monto
-                                    </TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {/* Precio base */}
-                                  <TableRow>
-                                    <TableCell className="text-xs sm:text-sm">
-                                      Precio base:
-                                    </TableCell>
-                                    {renderCurrencyCell(breakdown.basePriceInBs)}
-                                  </TableRow>
-
-                                  {/* Ajustes de atributos normales */}
-                                  {breakdown.attributeAdjustments.length > 0 && (
-                                    <>
-                                      {breakdown.attributeAdjustments.map(
-                                        (adj, adjIdx) => (
-                                          <TableRow key={adjIdx}>
-                                            <TableCell className="text-xs sm:text-sm text-muted-foreground pl-4">
-                                              {adj.name}
-                                              {adj.value ? ` (${adj.value})` : ""}:
-                                            </TableCell>
-                                            {renderCurrencyCell(
-                                              adj.adjustmentInBs,
-                                              adj.adjustmentInBs > 0
-                                                ? "text-green-600 dark:text-green-400"
-                                                : adj.adjustmentInBs < 0
-                                                ? "text-red-600 dark:text-red-400"
-                                                : "text-muted-foreground"
-                                            )}
-                                          </TableRow>
-                                        )
-                                      )}
-                                    </>
-                                  )}
-
-                                  {/* Productos como atributos */}
-                                  {breakdown.productAttributes.length > 0 && (
-                                    <>
-                                      {breakdown.productAttributes.map(
-                                        (prodAttr, prodIdx) => (
-                                          <>
-                                            {/* Precio del producto */}
-                                            <TableRow key={`${prodIdx}-price`}>
-                                              <TableCell className="text-xs sm:text-sm text-muted-foreground pl-4">
-                                                {prodAttr.name}:
-                                              </TableCell>
-                                              {renderCurrencyCell(
-                                                prodAttr.priceInBs,
-                                                "text-green-600 dark:text-green-400"
-                                              )}
-                                            </TableRow>
-                                            {/* Ajustes de atributos del producto */}
-                                            {prodAttr.adjustments.length > 0 && (
-                                              <>
-                                                {prodAttr.adjustments.map(
-                                                  (adj, adjIdx) => (
-                                                    <TableRow key={`${prodIdx}-adj-${adjIdx}`}>
-                                                      <TableCell className="text-xs text-muted-foreground pl-8">
-                                                        {prodAttr.name} - {adj.name}
-                                                        {adj.value
-                                                          ? ` (${adj.value})`
-                                                          : ""}
-                                                        :
-                                                      </TableCell>
-                                                      {renderCurrencyCell(
-                                                        adj.adjustmentInBs,
-                                                        adj.adjustmentInBs > 0
-                                                          ? "text-xs text-green-600 dark:text-green-400"
-                                                          : adj.adjustmentInBs < 0
-                                                          ? "text-xs text-red-600 dark:text-red-400"
-                                                          : "text-xs text-muted-foreground"
-                                                      )}
-                                                    </TableRow>
-                                                  )
-                                                )}
-                                              </>
-                                            )}
-                                          </>
-                                        )
-                                      )}
-                                    </>
-                                  )}
-
-                                  {/* Precio unitario final */}
-                                  <TableRow className="font-semibold border-t-2">
-                                    <TableCell className="text-sm sm:text-base">
-                                      Precio unitario:
-                                    </TableCell>
-                                    {renderCurrencyCell(
-                                      breakdown.unitPriceInBs,
-                                      "text-sm sm:text-base font-semibold"
-                                    )}
-                                  </TableRow>
-                                </TableBody>
-                              </Table>
-                            </div>
-                          ) : (
-                            // Mostrar formato simple si solo hay Bs
-                            <div className="space-y-2 text-sm">
-                          {/* Precio base */}
-                          <div className="flex justify-between">
-                            <span>Precio base:</span>
-                            <span>{breakdown.basePrice}</span>
-                          </div>
-
-                          {/* Ajustes de atributos normales */}
-                          {breakdown.attributeAdjustments.length > 0 && (
-                            <>
-                                  {breakdown.attributeAdjustments.map(
-                                    (adj, adjIdx) => (
-                                      <div
-                                        key={adjIdx}
-                                        className="flex justify-between pl-4"
-                                      >
-                                  <span className="text-muted-foreground">
-                                          {adj.name}
-                                          {adj.value ? ` (${adj.value})` : ""}:
-                                  </span>
-                                  <span className={
-                                    adj.adjustmentInBs !== 0
-                                      ? "text-green-600 dark:text-green-400"
-                                      : "text-muted-foreground"
-                                  }>
-                                    {adj.adjustmentInBs > 0 ? "+" : ""}
-                                    {adj.adjustment}
-                                  </span>
-                                </div>
-                                    )
-                                  )}
-                            </>
-                          )}
-
-                          {/* Productos como atributos */}
-                          {breakdown.productAttributes.length > 0 && (
-                            <>
-                                  {breakdown.productAttributes.map(
-                                    (prodAttr, prodIdx) => (
-                                <div key={prodIdx} className="space-y-1">
-                                  {/* Precio del producto */}
-                                  <div className="flex justify-between pl-4">
-                                          <span className="text-muted-foreground">
-                                            {prodAttr.name}:
-                                          </span>
-                                    <span className="text-green-600 dark:text-green-400">
-                                      +{prodAttr.price}
-                                    </span>
-                                  </div>
-                                  {/* Ajustes de atributos del producto */}
-                                  {prodAttr.adjustments.length > 0 && (
-                                    <>
-                                            {prodAttr.adjustments.map(
-                                              (adj, adjIdx) => (
-                                                <div
-                                                  key={adjIdx}
-                                                  className="flex justify-between pl-8 text-xs"
-                                                >
-                                          <span className="text-muted-foreground">
-                                                    {prodAttr.name} - {adj.name}
-                                                    {adj.value
-                                                      ? ` (${adj.value})`
-                                                      : ""}
-                                                    :
-                                          </span>
-                                          <span className={
-                                            adj.adjustmentInBs !== 0
-                                              ? "text-green-600 dark:text-green-400"
-                                              : "text-muted-foreground"
-                                          }>
-                                            {adj.adjustmentInBs > 0 ? "+" : ""}
-                                            {adj.adjustment}
-                                          </span>
-                                        </div>
-                                              )
-                                            )}
-                                    </>
-                                  )}
-                                </div>
-                                    )
-                                  )}
-                            </>
-                          )}
-
-                          {/* Precio unitario final */}
-                          <Separator className="my-2" />
-                          <div className="flex justify-between font-semibold">
-                            <span>Precio unitario:</span>
-                            <span>{breakdown.unitPrice}</span>
-                          </div>
-                            </div>
-                          )}
                         </div>
                       )}
 
@@ -1209,216 +1215,26 @@ export function OrderConfirmationDialog({
                   );
                 })}
               </div>
-            </CardContent>
-          </Card>
-        );
-
-      case "observations":
-        return (
-          <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/50">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2 text-amber-700 dark:text-amber-300">
-                <FileText className="w-4 h-4" />
-                Observaciones Generales
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm bg-amber-50 dark:bg-amber-950 p-3 rounded whitespace-pre-wrap">
-                {orderData.observations}
-              </p>
-            </CardContent>
-          </Card>
-        );
-
-      case "delivery":
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                Dirección de Entrega
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm">{orderData.deliveryAddress}</p>
-            </CardContent>
-          </Card>
-        );
-
-      case "payments":
-        const totalPaid = orderData.payments.reduce(
-          (sum, p) => sum + (p.amount || 0),
-          0
-        );
-        const pendingBalance = orderData.total - totalPaid;
-        const availableCurrenciesPayments = getAvailableCurrencies();
-        
-        // Determinar la moneda predominante de los pagos
-        let paymentCurrency: Currency | null = null;
-        let paymentRate: number | null = null;
-        
-        if (orderData.payments.length > 0) {
-          // Buscar el primer pago que no sea en Bs
-          for (const payment of orderData.payments) {
-            const originalPayment = getOriginalPaymentAmount(
-              payment,
-              exchangeRates
-            );
-            const currency = originalPayment.currency as Currency;
-            
-            if (currency !== "Bs") {
-              paymentCurrency = currency;
-              // Usar la tasa guardada del pago o la tasa actual
-              paymentRate =
-                payment.paymentDetails?.exchangeRate ||
-                (currency === "USD"
-                  ? exchangeRates?.USD?.rate
-                  : exchangeRates?.EUR?.rate) ||
-                null;
-              break;
-            }
-          }
-        }
-        
-        // Calcular el saldo pendiente en la moneda del pago si aplica
-        let pendingBalanceInPaymentCurrency: string | null = null;
-        if (
-          pendingBalance > 0 &&
-          paymentCurrency &&
-          paymentRate &&
-          paymentRate > 0
-        ) {
-          const convertedBalance = convertFromBs(
-            pendingBalance,
-            paymentCurrency,
-            paymentRate
-          );
-          pendingBalanceInPaymentCurrency = formatCurrency(
-            convertedBalance,
-            paymentCurrency
-          );
-        }
-        
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <DollarSign className="w-4 h-4" />
-                Pagos
-              </CardTitle>
-              {exchangeRates && (exchangeRates.USD || exchangeRates.EUR) && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Tasas del día del pedido:{" "}
-                  {exchangeRates.USD &&
-                    `USD: ${formatCurrency(exchangeRates.USD.rate, "Bs")}`}
-                  {exchangeRates.USD && exchangeRates.USD.effectiveDate && (
-                    <span>
-                      {" "}
-                      (Fecha efectiva:{" "}
-                      {new Date(
-                        exchangeRates.USD.effectiveDate
-                      ).toLocaleDateString()}
-                      )
-                    </span>
-                  )}
-                  {exchangeRates.USD && exchangeRates.EUR && " | "}
-                  {exchangeRates.EUR &&
-                    `EUR: ${formatCurrency(exchangeRates.EUR.rate, "Bs")}`}
-                  {exchangeRates.EUR && exchangeRates.EUR.effectiveDate && (
-                    <span>
-                      {" "}
-                      (Fecha efectiva:{" "}
-                      {new Date(
-                        exchangeRates.EUR.effectiveDate
-                      ).toLocaleDateString()}
-                      )
-                    </span>
-                  )}
-                </p>
-              )}
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {orderData.payments.map((payment, idx) => {
-                  const originalPayment = getOriginalPaymentAmount(
-                    payment,
-                    exchangeRates
-                  );
-                  
-                  // Obtener la tasa de cambio guardada del pago
-                  const paymentExchangeRate =
-                    payment.paymentDetails?.exchangeRate;
-                  const paymentCurrency =
-                    payment.currency || originalPayment.currency;
-                  
-                  return (
-                    <div
-                      key={idx}
-                      className="space-y-1 border-b pb-2 last:border-0"
-                    >
-                      <div className="flex justify-between text-sm">
-                        <span className="font-medium">
-                          {payment.method} ({originalPayment.currency})
-                        </span>
-                        <span className="font-medium">
-                          {formatCurrency(
-                            originalPayment.amount,
-                            originalPayment.currency as Currency
-                          )}
-                        </span>
-                      </div>
-
-                      {/* Mostrar tasa de cambio del día del pago si existe y no es en Bs */}
-                      {paymentExchangeRate &&
-                        paymentCurrency &&
-                        paymentCurrency !== "Bs" && (
-                          <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/30 px-2 py-1 rounded">
-                            💱 Tasa de cambio del día del pago: 1{" "}
-                            {paymentCurrency} ={" "}
-                            {formatCurrency(paymentExchangeRate, "Bs")}
-                            {payment.date && (
-                              <span className="ml-2">
-                                (Fecha del pago:{" "}
-                                {new Date(payment.date).toLocaleDateString()})
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                      {payment.date &&
-                        (!paymentExchangeRate || paymentCurrency === "Bs") && (
-                          <div className="text-xs text-muted-foreground">
-                            Fecha: {new Date(payment.date).toLocaleDateString()}
-                          </div>
-                        )}
-                    </div>
-                  );
-                })}
-                
-                {/* Tabla de resumen de pagos - Similar a la tabla de totales */}
-                {availableCurrenciesPayments.length > 1 && (
-                  <div className="mt-4 overflow-x-auto">
+              
+              {/* Resumen del pedido */}
+              <div className="mt-6 pt-6 border-t">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <DollarSign className="w-4 h-4" />
+                      Resumen del Pedido
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
                     <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[200px]">
-                            Concepto
-                          </TableHead>
-                          <TableHead className="text-right">
-                            Monto
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
                       <TableBody>
                         {/* Total pagado */}
                         <TableRow>
                           <TableCell className="text-xs sm:text-sm">
-                            <span className="font-semibold">
-                              Total pagado:
-                            </span>
+                            Total pagado:
                           </TableCell>
                           {renderCurrencyCell(
-                            totalPaid,
+                            orderData.payments.reduce((sum, p) => sum + (p.amount || 0), 0),
                             "font-semibold"
                           )}
                         </TableRow>
@@ -1431,233 +1247,32 @@ export function OrderConfirmationDialog({
                           {renderCurrencyCell(orderData.total)}
                         </TableRow>
 
-                        {/* Falta / Cambio / Estado */}
-                        <TableRow
-                          className={`font-semibold border-t ${
-                            pendingBalance === 0
-                              ? "text-green-600"
-                              : pendingBalance > 0
-                              ? "text-orange-600"
-                              : "text-blue-600"
-                          }`}
-                        >
-                          <TableCell className="text-sm sm:text-base">
-                            {pendingBalance === 0
-                              ? "Estado:"
-                              : pendingBalance > 0
-                              ? "Falta:"
-                              : "Cambio/Vuelto:"}
+                        {/* Resta por pagar */}
+                        <TableRow className="font-semibold border-t">
+                          <TableCell className="text-xs sm:text-sm">
+                            Falta:
                           </TableCell>
                           {renderCurrencyCell(
-                            Math.abs(pendingBalance),
-                            `text-sm sm:text-base font-semibold ${
-                              pendingBalance === 0
-                                ? "text-green-600"
-                                : pendingBalance > 0
-                                ? "text-orange-600"
-                                : "text-blue-600"
-                            }`
+                            orderData.total - orderData.payments.reduce((sum, p) => sum + (p.amount || 0), 0),
+                            "text-sm sm:text-base font-semibold"
                           )}
                         </TableRow>
                       </TableBody>
                     </Table>
-                    {pendingBalance === 0 && (
-                      <p className="text-xs text-green-600 text-center mt-2">
-                        (Pagado completo)
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Mostrar formato simple si solo hay Bs */}
-                {availableCurrenciesPayments.length === 1 && (
-                  <>
-                <Separator />
-                <div className="flex justify-between font-semibold">
-                  <span>Total Pagado:</span>
-                      <span>{formatCurrency(totalPaid, "Bs")}</span>
-                </div>
-
-                {/* Mostrar saldo pendiente si existe */}
-                {pendingBalance > 0 && (
-                  <>
-                    <Separator />
-                    <div className="flex justify-between items-center bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                      <div className="flex items-center gap-2">
-                        <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-                        <span className="font-semibold text-red-700 dark:text-red-300">
-                          Saldo Pendiente:
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-lg text-red-700 dark:text-red-300">
-                          {formatCurrency(pendingBalance, "Bs")}
-                        </div>
-                        {pendingBalanceInPaymentCurrency && (
-                          <div className="text-sm text-red-600 dark:text-red-400 font-medium">
-                            {pendingBalanceInPaymentCurrency}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                      </>
-                    )}
-                  </>
-                )}
+                  </CardContent>
+                </Card>
               </div>
             </CardContent>
           </Card>
         );
 
+      // Casos eliminados: observations, delivery, payments, totals
+      // Solo quedan: general y products
+      case "observations":
+      case "delivery":
+      case "payments":
       case "totals":
-        const availableCurrencies = getAvailableCurrencies();
-        const subtotalBeforeDiscounts = orderData.subtotal +
-          orderData.productDiscountTotal +
-          orderData.generalDiscountAmount;
-
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Resumen Financiero</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {availableCurrencies.length > 1 ? (
-                // Mostrar tabla si hay múltiples monedas disponibles
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[200px]">
-                          Concepto
-                        </TableHead>
-                        <TableHead className="text-right">
-                          Monto
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {/* Subtotal productos */}
-                      <TableRow>
-                        <TableCell className="text-xs sm:text-sm">
-                          Subtotal productos:
-                        </TableCell>
-                        {renderCurrencyCell(subtotalBeforeDiscounts)}
-                      </TableRow>
-
-                      {/* Descuentos individuales */}
-                      {orderData.productDiscountTotal > 0 && (
-                        <TableRow>
-                          <TableCell className="text-xs sm:text-sm text-red-600">
-                            Descuentos individuales:
-                          </TableCell>
-                          {renderCurrencyCellsNegative(
-                            orderData.productDiscountTotal,
-                            "text-red-600"
-                          )}
-                        </TableRow>
-                      )}
-
-                      {/* Descuento general */}
-                      {orderData.generalDiscountAmount > 0 && (
-                        <TableRow>
-                          <TableCell className="text-xs sm:text-sm text-red-600">
-                            Descuento general:
-                          </TableCell>
-                          {renderCurrencyCellsNegative(
-                            orderData.generalDiscountAmount,
-                            "text-red-600"
-                          )}
-                        </TableRow>
-                      )}
-
-                      {/* Subtotal después de descuentos */}
-                      <TableRow className="font-medium border-t">
-                        <TableCell className="text-xs sm:text-sm">
-                          Subtotal después de descuentos:
-                        </TableCell>
-                        {renderCurrencyCell(orderData.subtotal)}
-                      </TableRow>
-
-                      {/* Impuesto */}
-                      <TableRow>
-                        <TableCell className="text-xs sm:text-sm">
-                          Impuesto (16%):
-                        </TableCell>
-                        {renderCurrencyCell(orderData.taxAmount)}
-                      </TableRow>
-
-                      {/* Gastos de entrega */}
-                      {orderData.deliveryCost > 0 && (
-                        <TableRow>
-                          <TableCell className="text-xs sm:text-sm">
-                            Delivery:
-                          </TableCell>
-                          {renderCurrencyCell(orderData.deliveryCost)}
-                        </TableRow>
-                      )}
-
-                      {/* Total */}
-                      <TableRow className="font-semibold border-t-2">
-                        <TableCell className="text-base sm:text-lg">
-                          Total:
-                        </TableCell>
-                        {renderCurrencyCell(
-                          orderData.total,
-                          "text-base sm:text-lg font-semibold"
-                        )}
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                // Mostrar formato simple si solo hay Bs
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                    <span>
-                      {formatCurrency(subtotalBeforeDiscounts, "Bs")}
-                    </span>
-                </div>
-                {orderData.productDiscountTotal > 0 && (
-                  <div className="flex justify-between text-red-600">
-                    <span>Descuentos individuales:</span>
-                      <span>
-                        -{formatCurrency(orderData.productDiscountTotal, "Bs")}
-                      </span>
-                  </div>
-                )}
-                {orderData.generalDiscountAmount > 0 && (
-                  <div className="flex justify-between text-red-600">
-                    <span>Descuento general:</span>
-                      <span>
-                        -{formatCurrency(orderData.generalDiscountAmount, "Bs")}
-                      </span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span>Subtotal después de descuentos:</span>
-                  <span>{formatCurrency(orderData.subtotal, "Bs")}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Impuesto (16%):</span>
-                  <span>{formatCurrency(orderData.taxAmount, "Bs")}</span>
-                </div>
-                {orderData.deliveryCost > 0 && (
-                  <div className="flex justify-between">
-                    <span>Delivery:</span>
-                    <span>{formatCurrency(orderData.deliveryCost, "Bs")}</span>
-                  </div>
-                )}
-                <Separator />
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Total:</span>
-                  <span>{formatCurrency(orderData.total, "Bs")}</span>
-                </div>
-              </div>
-              )}
-            </CardContent>
-          </Card>
-        );
+        return null;
 
       default:
         return null;
@@ -1675,6 +1290,9 @@ export function OrderConfirmationDialog({
               Paso {currentStepIndex + 1} de {steps.length}
             </Badge>
           </DialogTitle>
+          <DialogDescription>
+            Revisa los detalles del pedido antes de confirmar su creación
+          </DialogDescription>
         </DialogHeader>
 
         {/* Indicador de progreso */}

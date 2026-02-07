@@ -1,6 +1,6 @@
 // Wrapper genérico para IndexedDB
 const DB_NAME = "camihogar_db";
-const DB_VERSION = 6; // Incrementar para agregar api_cache
+const DB_VERSION = 10; // Incrementar para agregar commissions
 
 interface StoreConfig {
   name: string;
@@ -53,6 +53,14 @@ const STORES: StoreConfig[] = [
     indexes: [{ name: "code", keyPath: "code", unique: true }],
   },
   {
+    name: "accounts",
+    keyPath: "id",
+    indexes: [
+      { name: "storeId", keyPath: "storeId" },
+      { name: "accountNumber", keyPath: "accountNumber", unique: true },
+    ],
+  },
+  {
     name: "users",
     keyPath: "id",
     indexes: [{ name: "username", keyPath: "username", unique: true }],
@@ -92,6 +100,26 @@ const STORES: StoreConfig[] = [
     indexes: [
       { name: "endpoint", keyPath: "endpoint" },
       { name: "timestamp", keyPath: "timestamp" },
+    ],
+  },
+  {
+    name: "budgets",
+    keyPath: "id",
+    indexes: [
+      { name: "budgetNumber", keyPath: "budgetNumber", unique: true },
+      { name: "clientId", keyPath: "clientId" },
+      { name: "createdAt", keyPath: "createdAt" },
+      { name: "status", keyPath: "status" },
+      { name: "expiresAt", keyPath: "expiresAt" },
+    ],
+  },
+  {
+    name: "commissions",
+    keyPath: "id",
+    indexes: [
+      { name: "commissionType", keyPath: "commissionType" },
+      { name: "role", keyPath: "role" },
+      { name: "userId", keyPath: "userId" },
     ],
   },
 ];
@@ -214,6 +242,22 @@ export const getAll = async <T>(storeName: string): Promise<T[]> => {
 
 // Actualizar un registro
 export const update = async <T extends { id: string }>(
+  storeName: string,
+  item: T
+): Promise<T> => {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], "readwrite");
+    const objectStore = transaction.objectStore(storeName);
+    const request = objectStore.put(item);
+
+    request.onsuccess = () => resolve(item);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+// Actualizar o agregar un registro (put hace update si existe, add si no)
+export const put = async <T extends { id: string }>(
   storeName: string,
   item: T
 ): Promise<T> => {

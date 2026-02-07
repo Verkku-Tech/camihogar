@@ -1,3 +1,5 @@
+using MongoDB.Bson;
+
 namespace Ordina.Providers.Application.DTOs;
 
 public class ProductResponseDto

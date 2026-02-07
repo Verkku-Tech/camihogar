@@ -7,9 +7,9 @@ const USERS_API_URL_DIRECT =
   process.env.USERS_API_URL ||
   "http://camihogar.eastus.cloudapp.azure.com:8083";
 const PROVIDERS_API_URL_DIRECT =
-  process.env.PROVIDERS_API_URL ||
-  "http://camihogar.eastus.cloudapp.azure.com:8084";
-
+  process.env.PROVIDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8084";
+const ORDERS_API_URL_DIRECT =
+  process.env.NEXT_PUBLIC_ORDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8085";
 export interface ApiError {
   message: string;
   status?: number;
@@ -23,9 +23,9 @@ interface CachedApiResponse {
 }
 
 export class ApiClient {
-  private getBaseUrl(endpoint: string): string {
+  getBaseUrl(endpoint: string): string {
     // Determinar qué servicio usar según el endpoint
-    let service: "security" | "users" | "providers" = "security";
+    let service: "security" | "users" | "providers" | "orders" = "security";
 
     if (endpoint.startsWith("/api/Auth")) {
       service = "security";
@@ -37,9 +37,16 @@ export class ApiClient {
     } else if (
       endpoint.startsWith("/api/categories") ||
       endpoint.startsWith("/api/products") ||
-      endpoint.startsWith("/api/providers")
+      endpoint.startsWith("/api/providers") ||
+      endpoint.startsWith("/api/Providers")
     ) {
       service = "providers";
+    } else if (
+      endpoint.startsWith("/api/orders") ||
+      endpoint.startsWith("/api/Orders") ||
+      endpoint.startsWith("/api/Reports")
+    ) {
+      service = "orders";
     }
 
     // Si estamos en el cliente (navegador) y la página está en HTTPS, usar proxy
@@ -59,6 +66,8 @@ export class ApiClient {
         return USERS_API_URL_DIRECT;
       case "providers":
         return PROVIDERS_API_URL_DIRECT;
+      case "orders":
+        return ORDERS_API_URL_DIRECT;
       default:
         return SECURITY_API_URL_DIRECT;
     }
@@ -73,6 +82,11 @@ export class ApiClient {
       "/api/Users",
       "/api/categories",
       "/api/products",
+      "/api/providers",
+      "/api/Providers",
+      "/api/orders",
+      "/api/Orders",
+      "/api/Reports",
     ];
 
     return availableEndpoints.some((path) => endpoint.startsWith(path));
@@ -218,11 +232,12 @@ export class ApiClient {
     }
 
     // Construir la URL final
-    // Si baseUrl es un proxy (/api/proxy/security), agregar el endpoint sin el / inicial
+    // Si baseUrl es un proxy (/api/proxy/security), enviar el endpoint completo (incluyendo /api/)
+    // El proxy extraerá el servicio y pasará el resto al backend correctamente
     // Si baseUrl es una URL directa (http://...), agregar el endpoint completo
     const isProxy = baseUrl.startsWith("/api/proxy/");
     const finalUrl = isProxy
-      ? `${baseUrl}${endpoint}` // Proxy: /api/proxy/security/api/Auth/login
+      ? `${baseUrl}${endpoint}` // Proxy: /api/proxy/orders/api/Orders (el proxy manejará el path)
       : `${baseUrl}${endpoint}`; // Directo: http://.../api/Auth/login
 
     try {
@@ -481,6 +496,42 @@ export class ApiClient {
     return this.request<UserResponseDto>(`/api/users/username/${username}`);
   }
 
+  async getUserByEmail(email: string) {
+    return this.request<UserResponseDto>(`/api/users/email/${encodeURIComponent(email)}`);
+  }
+
+  async checkUserExistsByEmail(email: string): Promise<boolean> {
+    try {
+      await this.getUserByEmail(email);
+      return true; // Si no lanza error, el usuario existe
+    } catch (error: any) {
+      const errorMessage = error?.message || "";
+      // Si es 404 o contiene "no encontrado", el usuario no existe
+      if (errorMessage.includes("404") || errorMessage.includes("no encontrado") || errorMessage.includes("NotFound")) {
+        return false;
+      }
+      // Para otros errores, asumimos que no existe para no bloquear la creación
+      console.warn("Error verificando correo, asumiendo que no existe:", error);
+      return false;
+    }
+  }
+
+  async checkUserExistsByUsername(username: string): Promise<boolean> {
+    try {
+      await this.getUserByUsername(username);
+      return true; // Si no lanza error, el usuario existe
+    } catch (error: any) {
+      const errorMessage = error?.message || "";
+      // Si es 404 o contiene "no encontrado", el usuario no existe
+      if (errorMessage.includes("404") || errorMessage.includes("no encontrado") || errorMessage.includes("NotFound")) {
+        return false;
+      }
+      // Para otros errores, asumimos que no existe para no bloquear la creación
+      console.warn("Error verificando username, asumiendo que no existe:", error);
+      return false;
+    }
+  }
+
   async createUser(user: CreateUserDto) {
     return this.request<UserResponseDto>("/api/users", {
       method: "POST",
@@ -582,6 +633,237 @@ export class ApiClient {
       method: "DELETE",
     });
   }
+
+  // Providers endpoints
+  async getProviders() {
+    return this.request<ProviderResponseDto[]>("/api/Providers");
+  }
+
+  async getProviderById(id: string) {
+    return this.request<ProviderResponseDto>(`/api/Providers/${id}`);
+  }
+
+  async getProviderByRif(rif: string) {
+    return this.request<ProviderResponseDto>(`/api/Providers/rif/${encodeURIComponent(rif)}`);
+  }
+
+  async getProviderByEmail(email: string) {
+    return this.request<ProviderResponseDto>(`/api/Providers/email/${encodeURIComponent(email)}`);
+  }
+
+  async createProvider(provider: CreateProviderDto) {
+    return this.request<ProviderResponseDto>("/api/Providers", {
+      method: "POST",
+      body: JSON.stringify(provider),
+    });
+  }
+
+  async updateProvider(id: string, provider: UpdateProviderDto) {
+    return this.request<ProviderResponseDto>(`/api/Providers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(provider),
+    });
+  }
+
+  async deleteProvider(id: string) {
+    return this.request<void>(`/api/Providers/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async checkProviderExists(id: string): Promise<boolean> {
+    return this.request<boolean>(`/api/Providers/${id}/exists`);
+  }
+
+  // Orders endpoints
+  
+  /**
+   * Obtiene pedidos con paginación y filtro de sincronización incremental
+   * @param page Número de página (1-indexed, default: 1)
+   * @param pageSize Cantidad de elementos por página (default: 50, max: 100)
+   * @param since Fecha ISO 8601 opcional para obtener solo pedidos modificados desde esa fecha
+   */
+  async getOrdersPaged(page: number = 1, pageSize: number = 50, since?: string) {
+    const params = new URLSearchParams();
+    params.append("page", page.toString());
+    params.append("pageSize", pageSize.toString());
+    if (since) {
+      params.append("since", since);
+    }
+    return this.request<PagedOrdersResponseDto>(`/api/Orders?${params.toString()}`);
+  }
+
+  /**
+   * Obtiene todos los pedidos modificados desde una fecha específica (para sincronización incremental)
+   * Itera automáticamente por todas las páginas
+   * @param since Fecha ISO 8601 para obtener solo pedidos modificados desde esa fecha
+   */
+  async getOrdersSince(since: string): Promise<{ orders: OrderResponseDto[]; serverTimestamp: string }> {
+    const allOrders: OrderResponseDto[] = [];
+    let page = 1;
+    let hasMore = true;
+    let serverTimestamp = "";
+
+    while (hasMore) {
+      const response = await this.getOrdersPaged(page, 50, since);
+      allOrders.push(...response.orders);
+      serverTimestamp = response.serverTimestamp;
+      hasMore = response.hasNextPage;
+      page++;
+    }
+
+    return { orders: allOrders, serverTimestamp };
+  }
+
+  /**
+   * Obtiene todos los pedidos (sin paginación - para compatibilidad o sincronización inicial)
+   * @deprecated Usar getOrdersPaged() para mejor rendimiento
+   */
+  async getOrders() {
+    return this.request<OrderResponseDto[]>("/api/Orders/all");
+  }
+
+  async getOrderById(id: string) {
+    return this.request<OrderResponseDto>(`/api/Orders/${id}`);
+  }
+
+  async getOrderByOrderNumber(orderNumber: string) {
+    return this.request<OrderResponseDto>(
+      `/api/Orders/number/${encodeURIComponent(orderNumber)}`
+    );
+  }
+
+  async getOrdersByClient(clientId: string) {
+    return this.request<OrderResponseDto[]>(
+      `/api/Orders/client/${clientId}`
+    );
+  }
+
+  async getOrdersByStatus(status: string) {
+    return this.request<OrderResponseDto[]>(
+      `/api/Orders/status/${encodeURIComponent(status)}`
+    );
+  }
+
+  async createOrder(order: CreateOrderDto) {
+    return this.request<OrderResponseDto>("/api/Orders", {
+      method: "POST",
+      body: JSON.stringify(order),
+    });
+  }
+
+  async updateOrder(id: string, order: UpdateOrderDto) {
+    return this.request<OrderResponseDto>(`/api/Orders/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(order),
+    });
+  }
+
+  async deleteOrder(id: string) {
+    return this.request<void>(`/api/Orders/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  // ===== PRODUCT COMMISSIONS (Comisiones por Categoría/Familia) =====
+
+  async getProductCommissions(): Promise<ProductCommissionDto[]> {
+    return this.request<ProductCommissionDto[]>("/api/CommissionSettings/ProductCommissions");
+  }
+
+  async getProductCommissionByCategory(categoryId: string): Promise<ProductCommissionDto> {
+    return this.request<ProductCommissionDto>(`/api/CommissionSettings/ProductCommissions/${categoryId}`);
+  }
+
+  async upsertProductCommission(data: CreateProductCommissionDto): Promise<ProductCommissionDto> {
+    return this.request<ProductCommissionDto>("/api/CommissionSettings/ProductCommissions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async batchUpsertProductCommissions(data: CreateProductCommissionDto[]): Promise<ProductCommissionDto[]> {
+    return this.request<ProductCommissionDto[]>("/api/CommissionSettings/ProductCommissions/Batch", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteProductCommission(categoryId: string): Promise<void> {
+    return this.request<void>(`/api/CommissionSettings/ProductCommissions/${categoryId}`, {
+      method: "DELETE",
+    });
+  }
+
+  // ===== SALE TYPE COMMISSION RULES (Reglas de distribución por tipo de venta) =====
+
+  async getSaleTypeCommissionRules(): Promise<SaleTypeCommissionRuleDto[]> {
+    return this.request<SaleTypeCommissionRuleDto[]>("/api/CommissionSettings/SaleTypeRules");
+  }
+
+  async getSaleTypeCommissionRule(saleType: string): Promise<SaleTypeCommissionRuleDto> {
+    return this.request<SaleTypeCommissionRuleDto>(`/api/CommissionSettings/SaleTypeRules/${saleType}`);
+  }
+
+  async upsertSaleTypeCommissionRule(data: CreateSaleTypeCommissionRuleDto): Promise<SaleTypeCommissionRuleDto> {
+    return this.request<SaleTypeCommissionRuleDto>("/api/CommissionSettings/SaleTypeRules", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async batchUpsertSaleTypeCommissionRules(data: CreateSaleTypeCommissionRuleDto[]): Promise<SaleTypeCommissionRuleDto[]> {
+    return this.request<SaleTypeCommissionRuleDto[]>("/api/CommissionSettings/SaleTypeRules/Batch", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSaleTypeCommissionRule(saleType: string): Promise<void> {
+    return this.request<void>(`/api/CommissionSettings/SaleTypeRules/${saleType}`, {
+      method: "DELETE",
+    });
+  }
+
+  async seedDefaultSaleTypeRules(): Promise<SaleTypeCommissionRuleDto[]> {
+    return this.request<SaleTypeCommissionRuleDto[]>("/api/CommissionSettings/SaleTypeRules/SeedDefaults", {
+      method: "POST",
+    });
+  }
+}
+
+// Product Commission Types
+export interface ProductCommissionDto {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  commissionValue: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProductCommissionDto {
+  categoryId: string;
+  categoryName: string;
+  commissionValue: number;
+}
+
+// Sale Type Commission Rule Types
+export interface SaleTypeCommissionRuleDto {
+  id: string;
+  saleType: string;
+  saleTypeLabel: string;
+  vendorRate: number;
+  referrerRate: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSaleTypeCommissionRuleDto {
+  saleType: string;
+  saleTypeLabel: string;
+  vendorRate: number;
+  referrerRate: number;
 }
 
 // Types
@@ -628,6 +910,9 @@ export interface UpdateUserDto {
   role?: string;
   status?: string;
   password?: string;
+  exclusiveCommission?: boolean;
+  baseSalary?: number;
+  baseSalaryCurrency?: string;
 }
 
 // Category Types
@@ -640,6 +925,7 @@ export interface CategoryAttributeDto {
   maxSelections?: number;
   minValue?: number;
   maxValue?: number;
+  required?: boolean; // Indica si el atributo es obligatorio (por defecto true)
 }
 
 export interface AttributeValueDto {
@@ -671,6 +957,7 @@ export interface CreateCategoryAttributeDto {
   maxSelections?: number;
   minValue?: number;
   maxValue?: number;
+  required?: boolean; // Indica si el atributo es obligatorio (por defecto true)
 }
 
 export interface CreateAttributeValueDto {
@@ -698,6 +985,7 @@ export interface UpdateCategoryAttributeDto {
   maxSelections?: number;
   minValue?: number;
   maxValue?: number;
+  required?: boolean; // Indica si el atributo es obligatorio (por defecto true)
 }
 
 export interface UpdateAttributeValueDto {
@@ -761,6 +1049,280 @@ export interface UpdateProductDto {
   status?: string;
   attributes?: { [key: string]: any };
   providerId?: string;
+}
+
+// Provider Types
+export interface ProviderResponseDto {
+  id: string;
+  razonSocial: string;
+  rif: string;
+  nombre: string;
+  email: string;
+  telefono?: string;
+  direccion?: string;
+  contacto: string;
+  tipo: string;
+  estado?: string;
+  createdAt: string;
+  updatedAt?: string;
+  productsCount: number;
+}
+
+export interface CreateProviderDto {
+  rif: string;
+  nombre: string;
+  razonSocial: string;
+  email: string;
+  telefono: string;
+  direccion: string;
+  contacto: string;
+  tipo: string;
+  estado?: string;
+}
+
+export interface UpdateProviderDto {
+  rif?: string;
+  nombre?: string;
+  email?: string;
+  telefono?: string;
+  direccion?: string;
+  estado?: string;
+  razonSocial?: string;
+  contacto?: string;
+  tipo?: string;
+}
+
+// Order Types
+export interface OrderProductDto {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  total: number;
+  category: string;
+  stock: number;
+  attributes?: { [key: string]: any };
+  discount?: number;
+  observations?: string;
+  images?: ProductImageDto[]; // Imágenes de referencia del producto
+  availabilityStatus?: string;
+  manufacturingStatus?: string;
+  manufacturingProviderId?: string;
+  manufacturingProviderName?: string;
+  manufacturingStartedAt?: string;
+  manufacturingCompletedAt?: string;
+  manufacturingNotes?: string;
+  locationStatus?: string;
+}
+
+export interface PaymentDetailsDto {
+  pagomovilReference?: string;
+  pagomovilBank?: string;
+  pagomovilPhone?: string;
+  pagomovilDate?: string;
+  transferenciaBank?: string;
+  transferenciaReference?: string;
+  transferenciaDate?: string;
+  cashAmount?: string;
+  cashCurrency?: "Bs" | "USD" | "EUR";
+  cashReceived?: number;
+  exchangeRate?: number;
+  originalAmount?: number;
+  originalCurrency?: "Bs" | "USD" | "EUR";
+  // Información de cuenta relacionada
+  accountId?: string;
+  accountNumber?: string; // Para cuentas bancarias
+  bank?: string; // Para cuentas bancarias
+  email?: string; // Para cuentas digitales
+  wallet?: string; // Para cuentas digitales
+  // Zelle
+  envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
+}
+
+export interface ProductImageDto {
+  id: string;
+  base64: string; // Imagen en base64 (data:image/jpeg;base64,...)
+  filename: string; // Nombre original del archivo
+  type: "model" | "reference" | "other"; // Tipo de imagen
+  uploadedAt: string; // Fecha de carga (ISO string)
+  size?: number; // Tamaño del archivo en bytes (opcional)
+}
+
+export interface PartialPaymentDto {
+  id: string;
+  amount: number;
+  method: string;
+  date: string;
+  images?: ProductImageDto[]; // Imágenes del comprobante de pago
+  paymentDetails?: PaymentDetailsDto;
+}
+
+export interface OrderResponseDto {
+  id: string;
+  orderNumber: string;
+  clientId: string;
+  clientName: string;
+  vendorId: string;
+  vendorName: string;
+  referrerId?: string;
+  referrerName?: string;
+  products: OrderProductDto[];
+  subtotal: number;
+  taxAmount: number;
+  deliveryCost: number;
+  total: number;
+  subtotalBeforeDiscounts?: number;
+  productDiscountTotal?: number;
+  generalDiscountAmount?: number;
+  paymentType: string;
+  paymentMethod: string;
+  paymentDetails?: PaymentDetailsDto;
+  partialPayments?: PartialPaymentDto[];
+  mixedPayments?: PartialPaymentDto[];
+  deliveryAddress?: string;
+  hasDelivery: boolean;
+  deliveryServices?: {
+    deliveryExpress?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioAcarreo?: {
+      enabled: boolean;
+      cost?: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioArmado?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+  };
+  status: string;
+  productMarkups?: { [key: string]: number };
+  createSupplierOrder?: boolean;
+  observations?: string;
+  saleType?: string;
+  deliveryType?: string;
+  deliveryZone?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Respuesta paginada de pedidos con información de sincronización */
+export interface PagedOrdersResponseDto {
+  /** Lista de pedidos en la página actual */
+  orders: OrderResponseDto[];
+  /** Número de página actual (1-indexed) */
+  page: number;
+  /** Cantidad de elementos por página */
+  pageSize: number;
+  /** Total de elementos (sin paginar) */
+  totalCount: number;
+  /** Total de páginas disponibles */
+  totalPages: number;
+  /** Indica si hay más páginas después de la actual */
+  hasNextPage: boolean;
+  /** Indica si hay páginas anteriores a la actual */
+  hasPreviousPage: boolean;
+  /** Timestamp del servidor para sincronización incremental */
+  serverTimestamp: string;
+}
+
+export interface CreateOrderDto {
+  clientId: string;
+  clientName: string;
+  vendorId: string;
+  vendorName: string;
+  referrerId?: string;
+  referrerName?: string;
+  products: OrderProductDto[];
+  subtotal: number;
+  taxAmount: number;
+  deliveryCost: number;
+  total: number;
+  subtotalBeforeDiscounts?: number;
+  productDiscountTotal?: number;
+  generalDiscountAmount?: number;
+  paymentType: string;
+  paymentMethod: string;
+  paymentDetails?: PaymentDetailsDto;
+  partialPayments?: PartialPaymentDto[];
+  mixedPayments?: PartialPaymentDto[];
+  deliveryAddress?: string;
+  hasDelivery: boolean;
+  deliveryServices?: {
+    deliveryExpress?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioAcarreo?: {
+      enabled: boolean;
+      cost?: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioArmado?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+  };
+  status?: string;
+  productMarkups?: { [key: string]: number };
+  createSupplierOrder?: boolean;
+  observations?: string;
+  saleType?: string;
+  deliveryType?: string;
+  deliveryZone?: string;
+}
+
+export interface UpdateOrderDto {
+  clientId?: string;
+  clientName?: string;
+  vendorId?: string;
+  vendorName?: string;
+  referrerId?: string;
+  referrerName?: string;
+  products?: OrderProductDto[];
+  subtotal?: number;
+  taxAmount?: number;
+  deliveryCost?: number;
+  total?: number;
+  subtotalBeforeDiscounts?: number;
+  productDiscountTotal?: number;
+  generalDiscountAmount?: number;
+  paymentType?: string;
+  paymentMethod?: string;
+  paymentDetails?: PaymentDetailsDto;
+  partialPayments?: PartialPaymentDto[];
+  mixedPayments?: PartialPaymentDto[];
+  deliveryAddress?: string;
+  hasDelivery?: boolean;
+  deliveryServices?: {
+    deliveryExpress?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioAcarreo?: {
+      enabled: boolean;
+      cost?: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+    servicioArmado?: {
+      enabled: boolean;
+      cost: number;
+      currency: "Bs" | "USD" | "EUR";
+    };
+  };
+  status?: string;
+  productMarkups?: { [key: string]: number };
+  createSupplierOrder?: boolean;
+  observations?: string;
+  saleType?: string;
+  deliveryType?: string;
+  deliveryZone?: string;
 }
 
 export const apiClient = new ApiClient();

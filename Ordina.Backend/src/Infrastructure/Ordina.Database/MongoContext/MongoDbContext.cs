@@ -1,6 +1,7 @@
-﻿using MongoDB.Driver;
+using MongoDB.Driver;
 using Ordina.Database.Entities.Category;
 using Ordina.Database.Entities.Client;
+using Ordina.Database.Entities.Commission;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.Entities.Payment;
 using Ordina.Database.Entities.Product;
@@ -20,6 +21,8 @@ public class MongoDbContext
     {
         _database = client.GetDatabase(databaseName);
     }
+
+    public IMongoDatabase Database => _database;
 
     // Colecciones
     public IMongoCollection<Category> Categories =>
@@ -54,4 +57,13 @@ public class MongoDbContext
 
     public IMongoCollection<RefreshToken> RefreshTokens =>
         _database.GetCollection<RefreshToken>("refreshTokens");
+
+    public IMongoCollection<Commission> Commissions =>
+        _database.GetCollection<Commission>("commissions");
+
+    public IMongoCollection<ProductCommission> ProductCommissions =>
+        _database.GetCollection<ProductCommission>("productCommissions");
+
+    public IMongoCollection<SaleTypeCommissionRule> SaleTypeCommissionRules =>
+        _database.GetCollection<SaleTypeCommissionRule>("saleTypeCommissionRules");
 }

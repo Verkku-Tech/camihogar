@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getAll, add, update } from "@/lib/indexeddb";
-import { Plus, Trash2, DollarSign } from "lucide-react";
+import { Plus, Trash2, DollarSign, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ExchangeRate } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
@@ -45,6 +45,18 @@ export function ExchangeRatesPage() {
   useEffect(() => {
     loadRates();
   }, []);
+
+  // Función helper para formatear la tasa de cambio
+  const formatExchangeRate = (rate: number): string => {
+    // Convertir a string y eliminar ceros innecesarios al final
+    const rateStr = rate.toString();
+    if (rateStr.includes('.')) {
+      // Eliminar ceros finales después del punto decimal, pero mantener el punto si hay dígitos antes
+      // Ejemplo: "347.26310000" -> "347.2631", "347.0" -> "347"
+      return rateStr.replace(/\.?0+$/, '');
+    }
+    return rateStr;
+  };
 
   const loadRates = async () => {
     try {
@@ -92,6 +104,13 @@ export function ExchangeRatesPage() {
       };
 
       await add("exchange_rates", newRate);
+      
+      // Activar automáticamente el modo de visualización para la nueva moneda
+      await setPreferredCurrency(formData.toCurrency);
+      
+      // Disparar evento para actualizar el sidebar
+      window.dispatchEvent(new CustomEvent("exchangeRateUpdated"));
+      
       await loadRates();
       setShowForm(false);
       setFormData({
@@ -99,7 +118,7 @@ export function ExchangeRatesPage() {
         rate: "",
         effectiveDate: new Date().toISOString().split("T")[0],
       });
-      toast.success("Tasa de cambio creada exitosamente");
+      toast.success("Tasa de cambio creada exitosamente y marcada como activa. Moneda de visualización activada automáticamente.");
     } catch (error) {
       console.error("Error saving exchange rate:", error);
       toast.error("Error al guardar la tasa de cambio");
@@ -109,6 +128,10 @@ export function ExchangeRatesPage() {
   const handleDeactivate = async (rate: ExchangeRate) => {
     try {
       await update("exchange_rates", { ...rate, isActive: false });
+      
+      // Disparar evento para actualizar el sidebar
+      window.dispatchEvent(new CustomEvent("exchangeRateUpdated"));
+      
       await loadRates();
       toast.success("Tasa desactivada exitosamente");
     } catch (error) {
@@ -161,6 +184,27 @@ export function ExchangeRatesPage() {
         </Button>
       </div>
 
+      {/* Alerta cuando no hay tasas */}
+      {rates.length === 0 && (
+        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/50">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-1">
+                  No hay tasas de cambio configuradas
+                </h3>
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  Es necesario crear al menos una tasa de cambio (USD o EUR) para poder 
+                  realizar conversiones de moneda en pedidos y presupuestos. 
+                  Las tasas se marcan como activas automáticamente al crearlas.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Form para nueva tasa */}
       {showForm && (
         <Card>
@@ -195,17 +239,17 @@ export function ExchangeRatesPage() {
                   <Label>Tasa (Bs por unidad)</Label>
                   <Input
                     type="number"
-                    step="0.01"
+                    step="any"
                     min="0"
                     value={formData.rate}
                     onChange={(e) =>
                       setFormData({ ...formData, rate: e.target.value })
                     }
-                    placeholder="Ej: 38.50"
+                    placeholder="Ej: 347.26310000"
                     required
                   />
                   <p className="text-xs text-muted-foreground">
-                    Ejemplo: 38.50 significa 1 USD = 38.50 Bs
+                    Ejemplo: 347.26310000 significa 1 USD = 347.26310000 Bs
                   </p>
                 </div>
               </div>
@@ -268,7 +312,7 @@ export function ExchangeRatesPage() {
                       <TableCell className="font-medium">
                         {rate.toCurrency === "USD" ? "💵 Dólares" : "💶 Euros"}
                       </TableCell>
-                      <TableCell>{rate.rate.toFixed(2)} Bs</TableCell>
+                      <TableCell>{formatExchangeRate(rate.rate)} Bs</TableCell>
                       <TableCell>
                         {new Date(rate.createdAt).toLocaleDateString()}
                       </TableCell>

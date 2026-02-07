@@ -1,4 +1,4 @@
-﻿using MongoDB.Bson;
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Ordina.Database.Entities.User;
@@ -30,4 +30,15 @@ public class User
 
     [BsonElement("passwordHash")]
     public string? PasswordHash { get; set; } // Para autenticación
+
+    // Campos para comisiones
+    [BsonElement("exclusiveCommission")]
+    public bool ExclusiveCommission { get; set; } = false; // Vendedores que NO comparten comisión con referidos
+
+    [BsonElement("baseSalary")]
+    [BsonRepresentation(BsonType.Decimal128)]
+    public decimal BaseSalary { get; set; } = 0; // Sueldo fijo del vendedor
+
+    [BsonElement("baseSalaryCurrency")]
+    public string BaseSalaryCurrency { get; set; } = "USD"; // Moneda del sueldo
 }

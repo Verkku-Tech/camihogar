@@ -177,7 +177,7 @@ El proyecto incluye un pipeline de CI/CD configurado con GitHub Actions para des
 **Archivo:** `.github/workflows/deploy-rpi.yml`
 
 **Configuración:**
-- **Trigger:** Push a la rama `ci/cd`
+- **Trigger:** Push a la rama `develop`
 - **Runner:** Self-hosted en Linux ARM64 (Raspberry Pi)
 - **Concurrencia:** Un solo despliegue a la vez
 
@@ -192,8 +192,8 @@ El proyecto incluye un pipeline de CI/CD configurado con GitHub Actions para des
 
 **Para desplegar:**
 ```bash
-git checkout ci/cd
-git push origin ci/cd
+git checkout develop
+git push origin develop
 ```
 
 El workflow se ejecutará automáticamente y desplegará todos los servicios en el RPI.
@@ -215,11 +215,11 @@ El workflow se ejecutará automáticamente y desplegará todos los servicios en 
 
 ## 🤝 Contribución
 
-1. Crear una rama desde `main` o `ci/cd`
+1. Crear una rama desde `main`
 2. Realizar los cambios
 3. Ejecutar `pnpm lint` antes de hacer commit
 4. Crear un Pull Request
-5. Para desplegar: hacer push a la rama `ci/cd` (despliegue automático)
+5. Para desplegar: hacer push a la rama `develop` (despliegue automático)
 
 ## 🔍 Troubleshooting
 

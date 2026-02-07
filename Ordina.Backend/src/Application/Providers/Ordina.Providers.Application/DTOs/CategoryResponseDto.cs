@@ -10,6 +10,7 @@ public class CategoryAttributeDto
     public int? MaxSelections { get; set; }
     public decimal? MinValue { get; set; } // For "Number" type
     public decimal? MaxValue { get; set; } // For "Number" type (REQUIRED when ValueType is "Number")
+    public bool? Required { get; set; } // Indica si el atributo es obligatorio (por defecto true)
 }
 
 public class AttributeValueDto

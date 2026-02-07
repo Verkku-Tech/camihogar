@@ -1,13 +1,18 @@
+using MongoDB.Bson;
+
 namespace Ordina.Providers.Domain;
 
 public class Provider
 {
-    public Guid Id { get; set; }
-    public string Name { get; set; } = string.Empty;
+    public ObjectId Id { get; set; }
+    public string Rif { get; set; } = string.Empty;
+    public string Nombre { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
-    public string? Phone { get; set; }
-    public string? Address { get; set; }
-    public bool IsActive { get; set; } = true;
+    public string? Telefono { get; set; }
+    public string? Direccion { get; set; }
+    public string? RazonSocial { get; set; } = string.Empty;
+    public string Contacto { get; set; } = string.Empty;
+    public string Estado { get; set; } = "Activo";
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 

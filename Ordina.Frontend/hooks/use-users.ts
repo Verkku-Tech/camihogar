@@ -130,7 +130,7 @@ export function useUsers(options: UseUsersOptions = {}) {
         createdAt: new Date().toISOString(),
       }
 
-      // Guardar en IndexedDB inmediatamente
+      // Guardar en IndexedDB inmediatamente (offline-first)
       await db.add('users', newUser)
       setUsers(prev => [...prev, newUser])
 
@@ -172,14 +172,16 @@ export function useUsers(options: UseUsersOptions = {}) {
             createdAt: createdUser.createdAt,
           }
         } catch (apiError) {
-          // Si falla, agregar a cola de sincronización
+          // Si falla el backend, mantener el usuario local y agregar a cola
+          // El usuario ya está guardado localmente, así que no lanzamos error
           await syncManager.addToQueue({
             type: 'create',
             entity: 'user',
             entityId: tempId,
             data: userData,
           })
-          throw apiError
+          // Retornar el usuario local aunque falle el backend
+          return newUser
         }
       } else {
         // Sin conexión, agregar a cola
@@ -254,7 +256,53 @@ export function useUsers(options: UseUsersOptions = {}) {
             createdAt: apiUser.createdAt,
           }
         } catch (apiError) {
-          // Si falla, agregar a cola
+          // Si falla, verificar si el cambio realmente se guardó en el backend
+          try {
+            const verifyUser = await apiClient.getUserById(id)
+            // Comparar campos actualizados
+            const dataMatches = 
+              (!userData.name || verifyUser.name === userData.name) &&
+              (!userData.username || verifyUser.username === userData.username) &&
+              (!userData.email || verifyUser.email === userData.email) &&
+              (!userData.role || verifyUser.role === userData.role) &&
+              (!userData.status || verifyUser.status === userData.status)
+            
+            if (dataMatches) {
+              // El cambio sí se guardó, actualizar local y retornar éxito
+              console.log('✅ Cambio verificado en backend a pesar del error inicial')
+              await db.update('users', {
+                id: verifyUser.id,
+                username: verifyUser.username,
+                email: verifyUser.email,
+                name: verifyUser.name,
+                role: verifyUser.role,
+                status: verifyUser.status,
+                createdAt: verifyUser.createdAt,
+              })
+              setUsers(prev => prev.map(u => u.id === id ? {
+                id: verifyUser.id,
+                username: verifyUser.username,
+                email: verifyUser.email,
+                name: verifyUser.name,
+                role: verifyUser.role,
+                status: verifyUser.status,
+                createdAt: verifyUser.createdAt,
+              } : u))
+              return {
+                id: verifyUser.id,
+                username: verifyUser.username,
+                email: verifyUser.email,
+                name: verifyUser.name,
+                role: verifyUser.role,
+                status: verifyUser.status,
+                createdAt: verifyUser.createdAt,
+              }
+            }
+          } catch {
+            // No se pudo verificar, continuar con el flujo de error original
+          }
+          
+          // Si no se pudo verificar o el cambio no se guardó, agregar a cola
           await syncManager.addToQueue({
             type: 'update',
             entity: 'user',

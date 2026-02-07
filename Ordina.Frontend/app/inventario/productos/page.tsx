@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation"
 import { ProductWizardDialog } from "@/components/inventory/product-wizard-dialog"
 import { DeleteProductDialog } from "@/components/inventory/delete-product-dialog"
 import { EditProductDialog } from "@/components/inventory/edit-product-dialog"
-import { getProducts, deleteProduct, type Product } from "@/lib/storage"
+import { getProducts, deleteProduct, getCategories, type Product } from "@/lib/storage"
 import { useCurrency } from "@/contexts/currency-context"
 import { Currency } from "@/lib/currency-utils"
 
@@ -119,6 +119,36 @@ export default function ProductosPage() {
     }
   }
 
+  const handleNewProduct = async () => {
+    try {
+      // Verificar si hay categorías antes de abrir el modal
+      const categories = await getCategories()
+      
+      if (categories.length === 0) {
+        toast.error(
+          "No hay categorías disponibles",
+          {
+            description: "Debes crear al menos una categoría antes de crear un producto.",
+            duration: 5000,
+          }
+        )
+        return // No abrir el modal
+      }
+      
+      // Si hay categorías, abrir el modal normalmente
+      setShowProductWizard(true)
+    } catch (error) {
+      console.error("Error checking categories:", error)
+      toast.error(
+        "Error al verificar categorías",
+        {
+          description: "No se pudo verificar si hay categorías disponibles.",
+          duration: 5000,
+        }
+      )
+    }
+  }
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
@@ -142,7 +172,7 @@ export default function ProductosPage() {
                 <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Productos</h1>
                 <p className="text-muted-foreground">Gestiona tu inventario de productos</p>
               </div>
-              <Button onClick={() => setShowProductWizard(true)} className="w-full sm:w-auto">
+              <Button onClick={handleNewProduct} className="w-full sm:w-auto">
                 <Plus className="w-4 h-4 mr-2" />
                 Nuevo Producto
               </Button>

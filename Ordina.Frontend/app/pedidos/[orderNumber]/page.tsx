@@ -48,6 +48,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
+import { ImageGallery } from "@/components/orders/image-gallery";
 
 // Función helper para obtener el monto original del pago en su moneda
 const getOriginalPaymentAmount = (
@@ -355,12 +356,20 @@ const calculateDetailedAttributeAdjustments = (
 
 function getStatusColor(status: string) {
   switch (status) {
-    case "Completado":
-      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
-    case "Apartado":
-      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
-    case "Pendiente":
+    case "Presupuesto":
+      return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300";
+    case "Generado":
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+    case "Generada":
       return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
+    case "Fabricación":
+      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+    case "Por despachar":
+      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
+    case "Completada":
+      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+    case "Cancelado":
+      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300";
     default:
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
   }
@@ -1048,14 +1057,57 @@ export default function OrderDetailPage() {
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     Volver
                   </Button>
-                  <div>
-                    <h1 className="text-2xl font-bold">
-                      Pedido {order.orderNumber}
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(order.createdAt).toLocaleString()}
-                    </p>
-                  </div>
+                  <HoverCard openDelay={300} closeDelay={100}>
+                    <HoverCardTrigger asChild>
+                      <div className="cursor-help border-b border-dashed border-transparent hover:border-muted-foreground/40 pb-0.5 transition-colors">
+                        <h1 className="text-2xl font-bold">
+                          Pedido {order.orderNumber}
+                        </h1>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(order.createdAt).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Pasa el cursor para ver resumen del pedido
+                        </p>
+                      </div>
+                    </HoverCardTrigger>
+                    <HoverCardContent className="min-w-[320px] max-w-[min(420px,95vw)]" align="start">
+                      <div className="space-y-2">
+                        <h4 className="font-semibold text-sm">Resumen del pedido</h4>
+                        <p className="text-sm"><span className="text-muted-foreground">Cliente:</span> {order.clientName}</p>
+                        <p className="text-sm"><span className="text-muted-foreground">Vendedor:</span> {order.vendorName}</p>
+                        <p className="text-sm"><span className="text-muted-foreground">Total:</span>{" "}
+                          <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline" />
+                        </p>
+                        {order.partialPayments && order.partialPayments.length > 0 && (() => {
+                          const totalPaid = order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                          const pending = order.total - totalPaid;
+                          if (pending > 0) {
+                            return (
+                              <p className="text-sm text-red-600 dark:text-red-400">
+                                <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
+                                <CurrencyDisplay amountInBs={pending} exchangeRates={localExchangeRates} inline className="inline font-medium" />
+                              </p>
+                            );
+                          }
+                          return null;
+                        })()}
+                        {(!order.partialPayments || order.partialPayments.length === 0) && (
+                          <p className="text-sm text-red-600 dark:text-red-400">
+                            <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
+                            <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline font-medium" />
+                          </p>
+                        )}
+                        {order.deliveryAddress && (
+                          <p className="text-sm"><span className="text-muted-foreground">Dirección:</span> {order.deliveryAddress}</p>
+                        )}
+                        <p className="text-sm"><span className="text-muted-foreground">Productos:</span> {order.products.length}</p>
+                        {order.observations && (
+                          <p className="text-sm"><span className="text-muted-foreground">Observaciones:</span> {order.observations.slice(0, 80)}{order.observations.length > 80 ? "…" : ""}</p>
+                        )}
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
                 </div>
                 <Badge className={getStatusColor(order.status)}>
                   {order.status}
@@ -1182,10 +1234,69 @@ export default function OrderDetailPage() {
                   <div className="space-y-4">
                     {order.products.map((product, idx) => {
                       const breakdown = productBreakdowns[product.id];
+                      
+                      // DEBUG: Verificar imágenes de productos
+                      if (product.images && product.images.length > 0) {
+                        console.log(`📸 Producto ${idx} (${product.name}) tiene ${product.images.length} imágenes:`, product.images);
+                      } else {
+                        console.log(`⚠️ Producto ${idx} (${product.name}) NO tiene imágenes:`, product.images);
+                      }
+                      
                       return (
                         <HoverCard key={idx} openDelay={200} closeDelay={100}>
                           <HoverCardTrigger asChild>
                             <div className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                              {/* Estado de ubicación */}
+                              <div className="mb-3 pb-3 border-b">
+                                {(() => {
+                                  let badgeText = "Sin definir";
+                                  let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "secondary";
+                                  let badgeClassName = "text-sm";
+
+                                  // Normalizar locationStatus para comparación (trim y manejar ambos formatos)
+                                  const locationStatus = product.locationStatus?.trim();
+                                  
+                                  // Debug temporal: descomentar para ver qué valor está llegando
+                                  // if (product.name) console.log(`Product: ${product.name}, locationStatus: "${locationStatus}", raw: "${product.locationStatus}"`);
+                                  
+                                  // Verificar si es "EN TIENDA" (ambos formatos)
+                                  if (locationStatus === "en_tienda" || locationStatus === "EN TIENDA") {
+                                    badgeText = "En Tienda";
+                                    badgeVariant = "default";
+                                  } 
+                                  // Verificar si es "FABRICACION"
+                                  // También verificar variaciones con espacios o mayúsculas/minúsculas
+                                  else if (
+                                    locationStatus === "FABRICACION" ||
+                                    locationStatus?.toUpperCase() === "FABRICACION" ||
+                                    (locationStatus && locationStatus.toLowerCase().includes("fabric"))
+                                  ) {
+                                    if (product.manufacturingStatus === "almacen_no_fabricado" || (product.manufacturingStatus as string) === "fabricado") {
+                                      badgeText = "En almacén";
+                                      badgeVariant = "default";
+                                      badgeClassName = "text-sm bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300";
+                                    } else if (product.manufacturingStatus === "fabricando") {
+                                      badgeText = "En Fabricación";
+                                      badgeVariant = "secondary";
+                                      badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+                                    } else {
+                                      badgeText = "Mandar a Fabricar";
+                                      badgeVariant = "outline";
+                                      badgeClassName = "text-sm text-foreground border-0";
+                                    }
+                                  }
+
+                                  return (
+                                    <Badge 
+                                      variant={badgeVariant}
+                                      className={badgeClassName}
+                                    >
+                                      {badgeText}
+                                    </Badge>
+                                  );
+                                })()}
+                              </div>
+                              
                               <div className="flex justify-between items-start mb-2">
                                 <div className="flex-1">
                                   <p className="font-semibold text-lg">
@@ -1244,7 +1355,8 @@ export default function OrderDetailPage() {
                               {/* Ajustes de atributos normales */}
                               {breakdown.attributeAdjustments.length > 0 && (
                                 <>
-                                  {breakdown.attributeAdjustments.map(
+                                  {breakdown.attributeAdjustments
+                                    .map(
                                     (
                                       adj: {
                                         name: string;
@@ -1317,7 +1429,8 @@ export default function OrderDetailPage() {
                                         {/* Ajustes de atributos del producto */}
                                         {prodAttr.adjustments.length > 0 && (
                                           <>
-                                            {prodAttr.adjustments.map(
+                                            {prodAttr.adjustments
+                                              .map(
                                               (
                                                 adj: {
                                                   name: string;
@@ -1339,8 +1452,10 @@ export default function OrderDetailPage() {
                                                     :
                                                   </span>
                                                   <span className={
-                                                    adj.adjustmentValue !== 0
+                                                    adj.adjustmentValue > 0
                                                       ? "text-green-600 dark:text-green-400"
+                                                      : adj.adjustmentValue < 0
+                                                      ? "text-red-600 dark:text-red-400"
                                                       : "text-muted-foreground"
                                                   }>
                                                     {adj.adjustmentValue > 0 ? "+" : ""}
@@ -1429,6 +1544,17 @@ export default function OrderDetailPage() {
                               )}
                             </div>
                           </HoverCardContent>
+                          
+                          {/* Imágenes del Producto - FUERA del HoverCardTrigger para mejor visibilidad */}
+                          {product.images && product.images.length > 0 && (
+                            <div className="mt-3 pt-3 border-t">
+                              <ImageGallery 
+                                images={product.images} 
+                                title="Imágenes de referencia"
+                                maxThumbnails={3}
+                              />
+                            </div>
+                          )}
                         </HoverCard>
                       );
                     })}
@@ -1688,6 +1814,17 @@ export default function OrderDetailPage() {
                                     ).toLocaleDateString()}
                                   </div>
                                 )}
+
+                              {/* Comprobante de Pago - Imágenes */}
+                              {payment.images && payment.images.length > 0 && (
+                                <div className="mt-2 pt-2 border-t">
+                                  <ImageGallery 
+                                    images={payment.images} 
+                                    title={`Comprobante de ${payment.method}`}
+                                    maxThumbnails={2}
+                                  />
+                                </div>
+                              )}
                             </div>
                           );
                         }
@@ -1752,6 +1889,17 @@ export default function OrderDetailPage() {
                                   {new Date(payment.date).toLocaleDateString()}
                                 </div>
                               )}
+
+                            {/* Comprobante de Pago - Imágenes */}
+                            {payment.images && payment.images.length > 0 && (
+                              <div className="mt-2 pt-2 border-t">
+                                <ImageGallery 
+                                  images={payment.images} 
+                                  title={`Comprobante de ${payment.method}`}
+                                  maxThumbnails={2}
+                                />
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -1764,24 +1912,31 @@ export default function OrderDetailPage() {
                         />
                       </div>
 
-                      {/* Mostrar saldo pendiente si existe */}
+                      {/* Mostrar saldo pendiente si existe (en USD cuando hay tasa, para ver cuánto debe) */}
                       {formattedPendingBalance && (
                         <>
                           <Separator />
-                          <div className="flex justify-between items-center bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3">
-                            <div className="flex items-center gap-2">
-                              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-                              <span className="font-semibold text-red-700 dark:text-red-300">
-                                Saldo Pendiente:
-                              </span>
+                          <div className="space-y-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                                <span className="font-semibold text-red-700 dark:text-red-300">
+                                  Saldo pendiente (lo que debe el cliente):
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <CurrencyDisplay 
+                                  amountInBs={order.total - order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)} 
+                                  exchangeRates={localExchangeRates}
+                                  className="font-bold text-lg text-red-700 dark:text-red-300"
+                                />
+                              </div>
                             </div>
-                            <div className="text-right">
-                              <CurrencyDisplay 
-                                amountInBs={order.total - order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)} 
-                                exchangeRates={localExchangeRates}
-                                className="font-bold text-lg text-red-700 dark:text-red-300"
-                              />
-                            </div>
+                            {localExchangeRates?.USD?.rate && (
+                              <p className="text-xs text-red-600/90 dark:text-red-400/90">
+                                Monto a pagar en dólares (tasa del día del pedido aplicada)
+                              </p>
+                            )}
                           </div>
                         </>
                       )}
@@ -1803,23 +1958,23 @@ export default function OrderDetailPage() {
                     <CardContent>
                       <div className="space-y-2">
                         <p className="text-sm text-muted-foreground">
-                          Este pedido aún no tiene pagos registrados.
+                          Este pedido aún no tiene pagos registrados. Total a pagar (lo que debe el cliente):
                         </p>
                         <div className="flex justify-between items-center">
                           <span className="font-semibold text-red-700 dark:text-red-300">
-                            Total Pendiente:
+                            Total pendiente:
                           </span>
-                          <div className="text-right">
-                            <div className="font-bold text-xl text-red-700 dark:text-red-300">
-                              {formatCurrency(order.total, "Bs")}
-                            </div>
-                            {selectedCurrency && selectedCurrency !== "Bs" && (
-                              <div className="text-sm text-red-600 dark:text-red-400 font-medium">
-                                {formattedPendingBalance}
-                              </div>
-                            )}
-                          </div>
+                          <CurrencyDisplay 
+                            amountInBs={order.total} 
+                            exchangeRates={localExchangeRates}
+                            className="font-bold text-lg text-red-700 dark:text-red-300"
+                          />
                         </div>
+                        {localExchangeRates?.USD?.rate && (
+                          <p className="text-xs text-red-600/90 dark:text-red-400/90">
+                            Mostrado en USD cuando hay tasa disponible; equivalente en Bs entre paréntesis.
+                          </p>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

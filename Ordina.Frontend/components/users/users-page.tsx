@@ -58,6 +58,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUsers } from "@/hooks/use-users";
+import { apiClient } from "@/lib/api-client";
 import type { CreateUserDto, UpdateUserDto } from "@/lib/api-client";
 
 // Helper para mapear roles entre el formato del componente y el formato de API
@@ -170,78 +171,255 @@ export function UsersPage() {
   });
 
   const handleCreateUser = async () => {
+    // Validar campos obligatorios
+    if (!formData.fullName.trim()) {
+      toast.error("El nombre completo es requerido");
+      return;
+    }
+
+    if (!formData.username.trim()) {
+      toast.error("El nombre de usuario es requerido");
+      return;
+    }
+
+    // Validar correo: obligatorio y formato válido
+    if (!formData.email.trim()) {
+      toast.error("El correo electrónico es requerido");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email.trim())) {
+      toast.error("El formato del correo electrónico no es válido");
+      return;
+    }
+
+    if (!formData.role) {
+      toast.error("El rol es requerido");
+      return;
+    }
+
+    if (!formData.password) {
+      toast.error("La contraseña es requerida");
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       toast.error("Las contraseñas no coinciden");
       return;
     }
 
-    const existingUser = users.find(
-      (u) => u.email === formData.email || u.username === formData.username
+    // Validar correo y username existentes (local y backend si hay conexión)
+    const emailToCheck = formData.email.trim().toLowerCase();
+    const usernameToCheck = formData.username.trim().toLowerCase();
+
+    // Verificar en lista local
+    const existingUserLocal = users.find(
+      (u) => u.email.toLowerCase() === emailToCheck || u.username.toLowerCase() === usernameToCheck
     );
-    if (existingUser) {
-      toast.error("El correo electrónico o nombre de usuario ya existe");
+    if (existingUserLocal) {
+      const field = existingUserLocal.email.toLowerCase() === emailToCheck ? "correo electrónico" : "nombre de usuario";
+      toast.error(`El ${field} ya existe`);
       return;
+    }
+
+    // Si hay conexión, verificar en backend también
+    if (isOnline) {
+      try {
+        const emailExists = await apiClient.checkUserExistsByEmail(formData.email.trim());
+        if (emailExists) {
+          toast.error("El correo electrónico ya existe");
+          return;
+        }
+
+        const usernameExists = await apiClient.checkUserExistsByUsername(formData.username.trim());
+        if (usernameExists) {
+          toast.error("El nombre de usuario ya existe");
+          return;
+        }
+      } catch (error) {
+        console.warn("Error verificando usuario en backend, continuando con validación local:", error);
+      }
     }
 
     try {
       const createUserDto: CreateUserDto = {
-        name: formData.fullName,
-        username: formData.username,
-        email: formData.email,
+        name: formData.fullName.trim(),
+        username: formData.username.trim(),
+        email: formData.email.trim(),
         role: mapRoleToApi(formData.role),
-        status: mapStatusToApi(formData.status) || "active", // Por defecto "active" si no se especifica
+        status: mapStatusToApi(formData.status) || "active",
         password: formData.password,
       };
-      await createUser(createUserDto);
-      setIsCreateDialogOpen(false);
-      resetForm();
-      toast.success("Usuario creado exitosamente");
-      if (!isOnline) {
-        toast.info(
-          "Usuario creado localmente. Se sincronizará cuando vuelva la conexión."
-        );
+      
+      const createdUser = await createUser(createUserDto);
+      
+      // Solo mostrar éxito si realmente se creó
+      if (createdUser) {
+        setIsCreateDialogOpen(false);
+        resetForm();
+        toast.success("Usuario creado exitosamente");
+        if (!isOnline) {
+          toast.info(
+            "Usuario creado localmente. Se sincronizará cuando vuelva la conexión."
+          );
+        }
       }
     } catch (error: any) {
       console.error("Error creating user:", error);
-      toast.error(error.message || "Error al crear el usuario");
+      
+      // Manejar errores específicos del backend
+      let errorMessage = "Error al crear el usuario";
+      if (error.message) {
+        if (error.message.includes("ya existe") || error.message.includes("Ya existe")) {
+          errorMessage = error.message;
+        } else if (error.message.includes("correo") || error.message.includes("email")) {
+          errorMessage = error.message;
+        } else if (error.message.includes("username") || error.message.includes("usuario")) {
+          errorMessage = error.message;
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      toast.error(errorMessage);
     }
   };
 
   const handleEditUser = async () => {
     if (!editingUser) return;
 
-    const existingUser = users.find(
-      (u) =>
-        (u.email === formData.email || u.username === formData.username) &&
-        u.id !== editingUser.id
-    );
-    if (existingUser) {
-      toast.error("El correo electrónico o nombre de usuario ya existe");
+    // Validar campos obligatorios
+    if (!formData.fullName.trim()) {
+      toast.error("El nombre completo es requerido");
       return;
+    }
+
+    if (!formData.username.trim()) {
+      toast.error("El nombre de usuario es requerido");
+      return;
+    }
+
+    // Validar correo: obligatorio y formato válido
+    if (!formData.email.trim()) {
+      toast.error("El correo electrónico es requerido");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email.trim())) {
+      toast.error("El formato del correo electrónico no es válido");
+      return;
+    }
+
+    if (!formData.role) {
+      toast.error("El rol es requerido");
+      return;
+    }
+
+    // Validar contraseñas si se está cambiando
+    if (formData.password && formData.password !== formData.confirmPassword) {
+      toast.error("Las contraseñas no coinciden");
+      return;
+    }
+
+    // Validar correo y username existentes (excluyendo el usuario actual)
+    const emailToCheck = formData.email.trim().toLowerCase();
+    const usernameToCheck = formData.username.trim().toLowerCase();
+
+    // Verificar en lista local
+    const existingUserLocal = users.find(
+      (u) =>
+        u.id !== editingUser.id &&
+        (u.email.toLowerCase() === emailToCheck || u.username.toLowerCase() === usernameToCheck)
+    );
+    if (existingUserLocal) {
+      const field = existingUserLocal.email.toLowerCase() === emailToCheck ? "correo electrónico" : "nombre de usuario";
+      toast.error(`El ${field} ya existe`);
+      return;
+    }
+
+    // Si hay conexión, verificar en backend también
+    if (isOnline) {
+      try {
+        const emailExists = await apiClient.checkUserExistsByEmail(formData.email.trim());
+        if (emailExists) {
+          // Verificar que no sea el mismo usuario
+          try {
+            const existingByEmail = await apiClient.getUserByEmail(formData.email.trim());
+            if (existingByEmail && existingByEmail.id !== editingUser.id) {
+              toast.error("El correo electrónico ya existe");
+              return;
+            }
+          } catch {
+            // Si hay error al obtener, asumimos que es otro usuario
+            toast.error("El correo electrónico ya existe");
+            return;
+          }
+        }
+
+        const usernameExists = await apiClient.checkUserExistsByUsername(formData.username.trim());
+        if (usernameExists) {
+          // Verificar que no sea el mismo usuario
+          try {
+            const existingByUsername = await apiClient.getUserByUsername(formData.username.trim());
+            if (existingByUsername && existingByUsername.id !== editingUser.id) {
+              toast.error("El nombre de usuario ya existe");
+              return;
+            }
+          } catch {
+            // Si hay error al obtener, asumimos que es otro usuario
+            toast.error("El nombre de usuario ya existe");
+            return;
+          }
+        }
+      } catch (error) {
+        console.warn("Error verificando usuario en backend, continuando con validación local:", error);
+      }
     }
 
     try {
       const updateUserDto: UpdateUserDto = {
-        name: formData.fullName,
-        username: formData.username,
-        email: formData.email,
+        name: formData.fullName.trim(),
+        username: formData.username.trim(),
+        email: formData.email.trim(),
         role: mapRoleToApi(formData.role),
         status: mapStatusToApi(formData.status),
         ...(formData.password && { password: formData.password }),
       };
-      await updateUser(editingUser.id, updateUserDto);
-      setIsEditDialogOpen(false);
-      setEditingUser(null);
-      resetForm();
-      toast.success("Usuario actualizado exitosamente");
-      if (!isOnline) {
-        toast.info(
-          "Usuario actualizado localmente. Se sincronizará cuando vuelva la conexión."
-        );
+      
+      const updatedUser = await updateUser(editingUser.id, updateUserDto);
+      
+      // Solo mostrar éxito si realmente se actualizó
+      if (updatedUser) {
+        setIsEditDialogOpen(false);
+        setEditingUser(null);
+        resetForm();
+        toast.success("Usuario actualizado exitosamente");
+        if (!isOnline) {
+          toast.info(
+            "Usuario actualizado localmente. Se sincronizará cuando vuelva la conexión."
+          );
+        }
       }
     } catch (error: any) {
       console.error("Error updating user:", error);
-      toast.error(error.message || "Error al actualizar el usuario");
+      
+      // Manejar errores específicos del backend
+      let errorMessage = "Error al actualizar el usuario";
+      if (error.message) {
+        if (error.message.includes("ya existe") || error.message.includes("Ya existe")) {
+          errorMessage = error.message;
+        } else if (error.message.includes("correo") || error.message.includes("email")) {
+          errorMessage = error.message;
+        } else if (error.message.includes("username") || error.message.includes("usuario")) {
+          errorMessage = error.message;
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      toast.error(errorMessage);
     }
   };
 

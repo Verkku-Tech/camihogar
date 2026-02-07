@@ -1,4 +1,4 @@
-﻿using MongoDB.Bson;
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Ordina.Database.Entities.Order;
@@ -38,4 +38,32 @@ public class OrderProduct
 
     [BsonElement("observations")]
     public string? Observations { get; set; } // Observaciones específicas del producto
+
+    // Campos de fabricación
+    [BsonElement("availabilityStatus")]
+    public string? AvailabilityStatus { get; set; } // "disponible" | "no_disponible"
+
+    [BsonElement("manufacturingStatus")]
+    public string? ManufacturingStatus { get; set; } // "debe_fabricar" | "fabricando" | "almacen_no_fabricado" (3 estados; último = En almacén)
+
+    [BsonElement("manufacturingProviderId")]
+    public string? ManufacturingProviderId { get; set; }
+
+    [BsonElement("manufacturingProviderName")]
+    public string? ManufacturingProviderName { get; set; }
+
+    [BsonElement("manufacturingStartedAt")]
+    public DateTime? ManufacturingStartedAt { get; set; }
+
+    [BsonElement("manufacturingCompletedAt")]
+    public DateTime? ManufacturingCompletedAt { get; set; }
+
+    [BsonElement("manufacturingNotes")]
+    public string? ManufacturingNotes { get; set; }
+
+    [BsonElement("locationStatus")]
+    public string? LocationStatus { get; set; } // "EN TIENDA" | "FABRICACION" | null/empty
+
+    [BsonElement("images")]
+    public List<ProductImage>? Images { get; set; } // Imágenes del producto
 }

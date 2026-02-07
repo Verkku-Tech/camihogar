@@ -18,6 +18,9 @@ import {
   Tags,
   Box,
   DollarSign,
+  Truck,
+  CreditCard,
+  Percent,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -31,31 +34,40 @@ interface SidebarProps {
 
 const navigation = [
   { id: "dashboard", name: "Dashboard", href: "/", icon: Home },
-  { id: "pedidos", name: "Pedidos", href: "/pedidos", icon: ShoppingCart },
   { id: "proveedores", name: "Proveedores", href: "/proveedores", icon: Users },
   { id: "clientes", name: "Clientes", href: "/clientes", icon: UserCheck },
   { id: "tiendas", name: "Tiendas", href: "/tiendas", icon: Building2 },
+  { id: "cuentas", name: "Cuentas", href: "/cuentas", icon: CreditCard },
   { id: "reportes", name: "Reportes", href: "/reportes", icon: BarChart3 },
+]
+
+const ordersSubmenu = [
+  { id: "pedidos-list", name: "Pedidos", href: "/pedidos", icon: ShoppingCart },
+  { id: "despachos", name: "Despachos", href: "/pedidos/despachos", icon: Truck },
 ]
 
 const inventorySubmenu = [
   { id: "categorias", name: "Categorías", href: "/inventario/categorias", icon: Tags },
   { id: "productos", name: "Productos", href: "/inventario/productos", icon: Box },
+  { id: "fabricacion", name: "Fabricación", href: "/inventario/fabricacion", icon: Package },
 ]
 
 const configurationSubmenu = [
   { id: "usuarios", name: "Usuarios", href: "/configuracion/usuarios", icon: Users },
   { id: "navegacion", name: "Navegación", href: "/configuracion/navegacion", icon: Navigation },
   { id: "tasas", name: "Tasas de Cambio", href: "/configuracion/tasas", icon: DollarSign },
+  { id: "comisiones", name: "Comisiones", href: "/configuracion/comisiones", icon: Percent },
 ]
 
 export function Sidebar({ open, onOpenChange }: SidebarProps) {
   const pathname = usePathname()
   const [configOpen, setConfigOpen] = useState(pathname.startsWith("/configuracion"))
   const [inventoryOpen, setInventoryOpen] = useState(pathname.startsWith("/inventario"))
+  const [ordersOpen, setOrdersOpen] = useState(pathname.startsWith("/pedidos"))
   const { isNavigationItemActive } = useNavigation()
 
   const visibleNavigation = navigation.filter((item) => isNavigationItemActive(item.id))
+  const visibleOrdersSubmenu = ordersSubmenu.filter((item) => isNavigationItemActive(item.id))
   const visibleInventorySubmenu = inventorySubmenu.filter((item) => isNavigationItemActive(item.id))
   const visibleConfigurationSubmenu = configurationSubmenu.filter((item) => isNavigationItemActive(item.id))
 
@@ -82,7 +94,7 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
 
         <nav className="mt-6 px-3">
           <ul className="space-y-1">
-            {visibleNavigation.map((item) => {
+            {visibleNavigation.filter((item) => item.id !== "reportes").map((item) => {
               const isCurrent = pathname === item.href
 
               return (
@@ -149,6 +161,75 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
                 )}
               </li>
             )}
+
+            {visibleOrdersSubmenu.length > 0 && (
+              <li>
+                <button
+                  onClick={() => setOrdersOpen(!ordersOpen)}
+                  className={cn(
+                    "flex items-center w-full px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                    pathname.startsWith("/pedidos")
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  )}
+                >
+                  <ShoppingCart className="w-5 h-5 mr-3" />
+                  Pedidos
+                  {ordersOpen ? (
+                    <ChevronDown className="w-4 h-4 ml-auto" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 ml-auto" />
+                  )}
+                </button>
+
+                {ordersOpen && (
+                  <ul className="mt-1 ml-6 space-y-1">
+                    {visibleOrdersSubmenu.map((item) => {
+                      const isCurrent = pathname === item.href
+
+                      return (
+                        <li key={item.name}>
+                          <Link
+                            href={item.href}
+                            className={cn(
+                              "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                              isCurrent
+                                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                            )}
+                          >
+                            <item.icon className="w-4 h-4 mr-3" />
+                            {item.name}
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </li>
+            )}
+
+            {visibleNavigation.filter((item) => item.id === "reportes").map((item) => {
+              const isCurrent = pathname === item.href
+
+              return (
+                <li key={item.name}>
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      "flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                      isCurrent
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    )}
+                  >
+                    <item.icon className="w-5 h-5 mr-3" />
+                    {item.name}
+                  </Link>
+                </li>
+              )
+            })}
+
 
             {visibleConfigurationSubmenu.length > 0 && (
               <li>

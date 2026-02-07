@@ -34,7 +34,20 @@ export default function LoginPage() {
       router.push("/")
     } catch (err: any) {
       // Mostrar el mensaje de error real del backend
-      const errorMessage = err.message || "Error al iniciar sesión"
+      let errorMessage = "Error al iniciar sesión"
+      
+      if (err) {
+        if (typeof err === "string") {
+          errorMessage = err
+        } else if (err instanceof Error) {
+          errorMessage = err.message || errorMessage
+        } else if (err.message) {
+          errorMessage = err.message
+        } else if (typeof err === "object" && "message" in err) {
+          errorMessage = String(err.message)
+        }
+      }
+      
       toast.error(errorMessage)
     } finally {
       setIsLoading(false)
