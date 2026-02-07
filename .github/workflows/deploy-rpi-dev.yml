@@ -2,7 +2,7 @@ name: Deploy Camihogar (RPi)
 
 on:
   push:
-    branches: ["develop"]
+    branches: ["main"]
 
 concurrency:
   group: camihogar-rpi
@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: [self-hosted, Linux, ARM64, vm]
+    runs-on: [self-hosted, Linux, ARM64, rpi]
     steps:
       - uses: actions/checkout@v4
 
@@ -65,7 +65,7 @@ jobs:
           if docker compose up -d --build --remove-orphans 2>/dev/null; then
             echo "✓ Despliegue exitoso sin sudo"
           else
-            echo "⚠️  Usando sudo para docker compose."
+            echo "⚠️  Usando sudo para docker compose"
             sudo docker compose up -d --build --remove-orphans
           fi
 
