@@ -1464,6 +1464,16 @@ export interface ProductImage {
   mimeType?: string; // Tipo MIME: "image/jpeg", "image/png", "application/pdf", etc.
 }
 
+// Registro de refabricación (historial)
+export interface RefabricationRecord {
+  reason: string; // Razón de la refabricación
+  date: string; // Fecha de la refabricación (ISO string)
+  previousProviderId?: string; // ID del proveedor anterior
+  previousProviderName?: string; // Nombre del proveedor anterior
+  newProviderId?: string; // ID del nuevo proveedor
+  newProviderName?: string; // Nombre del nuevo proveedor
+}
+
 export interface OrderProduct {
   id: string;
   name: string;
@@ -1484,6 +1494,10 @@ export interface OrderProduct {
   manufacturingStartedAt?: string; // Fecha de inicio de fabricación
   manufacturingCompletedAt?: string; // Fecha de finalización de fabricación
   manufacturingNotes?: string; // Notas de fabricación
+  // Campos de refabricación (cuando un producto en almacén se devuelve a fabricación)
+  refabricationReason?: string; // Razón de la última refabricación
+  refabricatedAt?: string; // Fecha de última refabricación (ISO string)
+  refabricationHistory?: RefabricationRecord[]; // Historial de refabricaciones
   // Estado de ubicación del producto
   locationStatus?: "SIN DEFINIR" | "EN TIENDA" | "FABRICACION"; // Estado de ubicación
 }

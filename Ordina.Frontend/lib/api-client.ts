@@ -1112,6 +1112,10 @@ export interface OrderProductDto {
   manufacturingStartedAt?: string;
   manufacturingCompletedAt?: string;
   manufacturingNotes?: string;
+  // Campos de refabricación
+  refabricationReason?: string; // Razón de la última refabricación
+  refabricatedAt?: string; // Fecha de última refabricación (ISO string)
+  refabricationHistory?: RefabricationRecordDto[]; // Historial de refabricaciones
   locationStatus?: string;
 }
 
@@ -1146,6 +1150,16 @@ export interface ProductImageDto {
   type: "model" | "reference" | "other"; // Tipo de imagen
   uploadedAt: string; // Fecha de carga (ISO string)
   size?: number; // Tamaño del archivo en bytes (opcional)
+}
+
+// Registro de refabricación (historial)
+export interface RefabricationRecordDto {
+  reason: string; // Razón de la refabricación
+  date: string; // Fecha de la refabricación (ISO string)
+  previousProviderId?: string; // ID del proveedor anterior
+  previousProviderName?: string; // Nombre del proveedor anterior
+  newProviderId?: string; // ID del nuevo proveedor
+  newProviderName?: string; // Nombre del nuevo proveedor
 }
 
 export interface PartialPaymentDto {
