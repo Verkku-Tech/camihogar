@@ -154,7 +154,8 @@ public class ReportService : IReportService
                 Fabricante = row.Fabricante,
                 Cantidad = row.Cantidad,
                 Descripcion = row.Descripcion,
-                Observaciones = row.Observaciones
+                ObservacionesVendedor = row.ObservacionesVendedor,
+                ObservacionesFabricante = row.ObservacionesFabricante
             }).ToList();
         }
         catch (Exception ex)
@@ -211,14 +212,15 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 5, "Fabricante");
                 sl.SetCellValue(1, 6, "Cantidad");
                 sl.SetCellValue(1, 7, "Descripción");
-                sl.SetCellValue(1, 8, "Observaciones");
+                sl.SetCellValue(1, 8, "Obs. Vendedor");
+                sl.SetCellValue(1, 9, "Obs. Fabricante");
 
                 // Estilo de headers - solo negrita por ahora
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 8; col++)
+                for (int col = 1; col <= 9; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -234,7 +236,8 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 5, item.Fabricante);
                     sl.SetCellValue(row, 6, item.Cantidad);
                     sl.SetCellValue(row, 7, item.Descripcion);
-                    sl.SetCellValue(row, 8, item.Observaciones);
+                    sl.SetCellValue(row, 8, item.ObservacionesVendedor);
+                    sl.SetCellValue(row, 9, item.ObservacionesFabricante);
                     row++;
                 }
 
@@ -246,7 +249,8 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(5, 25);  // Fabricante
                 sl.SetColumnWidth(6, 10);  // Cantidad
                 sl.SetColumnWidth(7, 50);  // Descripción
-                sl.SetColumnWidth(8, 40);  // Observaciones
+                sl.SetColumnWidth(8, 35);  // Obs. Vendedor
+                sl.SetColumnWidth(9, 35);  // Obs. Fabricante
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
@@ -378,7 +382,8 @@ public class ReportService : IReportService
                     Fabricante = manufacturerName,
                     Cantidad = product.Quantity,
                     Descripcion = await FormatProductDescriptionAsync(product),
-                    Observaciones = product.Observations ?? string.Empty
+                    ObservacionesVendedor = product.Observations ?? string.Empty,
+                    ObservacionesFabricante = product.ManufacturingNotes ?? string.Empty
                 });
             }
         }
@@ -673,7 +678,8 @@ public class ReportService : IReportService
         public string Fabricante { get; set; } = string.Empty;
         public int Cantidad { get; set; }
         public string Descripcion { get; set; } = string.Empty;
-        public string Observaciones { get; set; } = string.Empty;
+        public string ObservacionesVendedor { get; set; } = string.Empty;
+        public string ObservacionesFabricante { get; set; } = string.Empty;
     }
 
     public async Task<List<PaymentReportRowDto>> GetPaymentsReportDataAsync(

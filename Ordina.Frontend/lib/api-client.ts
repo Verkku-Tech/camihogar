@@ -10,6 +10,8 @@ const PROVIDERS_API_URL_DIRECT =
   process.env.PROVIDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8084";
 const ORDERS_API_URL_DIRECT =
   process.env.NEXT_PUBLIC_ORDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8085";
+const STORES_API_URL_DIRECT =
+  process.env.NEXT_PUBLIC_STORES_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8087";
 export interface ApiError {
   message: string;
   status?: number;
@@ -25,7 +27,7 @@ interface CachedApiResponse {
 export class ApiClient {
   getBaseUrl(endpoint: string): string {
     // Determinar qué servicio usar según el endpoint
-    let service: "security" | "users" | "providers" | "orders" = "security";
+    let service: "security" | "users" | "providers" | "orders" | "stores" = "security";
 
     if (endpoint.startsWith("/api/Auth")) {
       service = "security";
@@ -47,6 +49,11 @@ export class ApiClient {
       endpoint.startsWith("/api/Reports")
     ) {
       service = "orders";
+    } else if (
+      endpoint.startsWith("/api/accounts") ||
+      endpoint.startsWith("/api/Accounts")
+    ) {
+      service = "stores";
     }
 
     // Si estamos en el cliente (navegador) y la página está en HTTPS, usar proxy
@@ -68,6 +75,8 @@ export class ApiClient {
         return PROVIDERS_API_URL_DIRECT;
       case "orders":
         return ORDERS_API_URL_DIRECT;
+      case "stores":
+        return STORES_API_URL_DIRECT;
       default:
         return SECURITY_API_URL_DIRECT;
     }
@@ -830,6 +839,94 @@ export class ApiClient {
       method: "POST",
     });
   }
+
+  // ===== ACCOUNTS ENDPOINTS =====
+
+  async getAccounts(storeId?: string, isActive?: boolean): Promise<AccountResponseDto[]> {
+    const params = new URLSearchParams();
+    if (storeId) params.append('storeId', storeId);
+    if (isActive !== undefined) params.append('isActive', isActive.toString());
+    
+    const response = await this.request<AccountResponseDto[]>(
+      `/api/Accounts?${params.toString()}`
+    );
+    return response;
+  }
+
+  async getAccountById(id: string): Promise<AccountResponseDto> {
+    return this.request<AccountResponseDto>(`/api/Accounts/${id}`);
+  }
+
+  async createAccount(account: CreateAccountDto): Promise<AccountResponseDto> {
+    return this.request<AccountResponseDto>('/api/Accounts', {
+      method: 'POST',
+      body: JSON.stringify(account),
+    });
+  }
+
+  async updateAccount(id: string, account: UpdateAccountDto): Promise<AccountResponseDto> {
+    return this.request<AccountResponseDto>(`/api/Accounts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(account),
+    });
+  }
+
+  async deleteAccount(id: string): Promise<void> {
+    return this.request<void>(`/api/Accounts/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // ===== STORES ENDPOINTS =====
+
+  async getStores(status?: string): Promise<StoreResponseDto[]> {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    
+    const queryString = params.toString();
+    const endpoint = `/api/stores${queryString ? `?${queryString}` : ''}`;
+    
+    return this.request<StoreResponseDto[]>(endpoint, {
+      method: 'GET',
+    });
+  }
+
+  async getStore(id: string): Promise<StoreResponseDto> {
+    const endpoint = `/api/stores/${id}`;
+    return this.request<StoreResponseDto>(endpoint, {
+      method: 'GET',
+    });
+  }
+
+  async getStoreByCode(code: string): Promise<StoreResponseDto> {
+    const endpoint = `/api/stores/by-code/${code}`;
+    return this.request<StoreResponseDto>(endpoint, {
+      method: 'GET',
+    });
+  }
+
+  async createStore(dto: CreateStoreDto): Promise<StoreResponseDto> {
+    const endpoint = '/api/stores';
+    return this.request<StoreResponseDto>(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  async updateStore(id: string, dto: UpdateStoreDto): Promise<StoreResponseDto> {
+    const endpoint = `/api/stores/${id}`;
+    return this.request<StoreResponseDto>(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  async deleteStore(id: string): Promise<void> {
+    const endpoint = `/api/stores/${id}`;
+    return this.request<void>(endpoint, {
+      method: 'DELETE',
+    });
+  }
 }
 
 // Product Commission Types
@@ -1069,14 +1166,14 @@ export interface ProviderResponseDto {
 }
 
 export interface CreateProviderDto {
-  rif: string;
   nombre: string;
-  razonSocial: string;
-  email: string;
   telefono: string;
-  direccion: string;
-  contacto: string;
-  tipo: string;
+  rif?: string;
+  razonSocial?: string;
+  email?: string;
+  direccion?: string;
+  contacto?: string;
+  tipo?: string;
   estado?: string;
 }
 
@@ -1337,6 +1434,76 @@ export interface UpdateOrderDto {
   saleType?: string;
   deliveryType?: string;
   deliveryZone?: string;
+}
+
+// ===== ACCOUNTS DTOs =====
+export interface AccountResponseDto {
+  id: string;
+  code: string;
+  label: string;
+  storeId: string;
+  isForeign: boolean;
+  accountType: string;
+  email?: string;
+  wallet?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAccountDto {
+  code: string;
+  label: string;
+  storeId: string;
+  isForeign: boolean;
+  accountType: string;
+  email?: string;
+  wallet?: string;
+  isActive?: boolean;
+}
+
+export interface UpdateAccountDto {
+  code?: string;
+  label?: string;
+  storeId?: string;
+  isForeign?: boolean;
+  accountType?: string;
+  email?: string;
+  wallet?: string;
+  isActive?: boolean;
+}
+
+export interface StoreResponseDto {
+  id: string;
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  email: string;
+  rif: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStoreDto {
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  email: string;
+  rif: string;
+  status?: string;
+}
+
+export interface UpdateStoreDto {
+  name?: string;
+  code?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  rif?: string;
+  status?: string;
 }
 
 export const apiClient = new ApiClient();

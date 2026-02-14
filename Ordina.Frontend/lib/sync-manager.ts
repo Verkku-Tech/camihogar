@@ -88,9 +88,24 @@ class SyncManager {
         await db.update('sync_queue', operation)
         console.log(`✅ Operación sincronizada: ${operation.type} ${operation.entity}`)
       } catch (error: any) {
+        // Si es un error de validación (400), no reintentar
+        const errorMsg = error?.message || ''
+        const isValidationError = 
+          errorMsg.includes('is required') ||
+          errorMsg.includes('validation error') ||
+          errorMsg.includes('400')
+        
+        if (isValidationError) {
+          operation.status = 'failed'
+          operation.error = errorMsg
+          await db.update('sync_queue', operation)
+          console.error(`❌ Error de validación permanente, no se reintentará:`, errorMsg)
+          continue
+        }
+
         operation.retryCount++
         operation.status = operation.retryCount >= 3 ? 'failed' : 'pending'
-        operation.error = error.message
+        operation.error = errorMsg
         await db.update('sync_queue', operation)
         console.error(`❌ Error sincronizando operación:`, error)
       }

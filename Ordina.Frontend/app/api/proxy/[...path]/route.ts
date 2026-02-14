@@ -6,6 +6,7 @@ const API_BASE_URLS: Record<string, string> = {
   users: process.env.USERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8083',
   providers: process.env.PROVIDERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8084',
   orders: process.env.ORDERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8085',
+  stores: process.env.STORES_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8087',
 };
 
 async function handleRequest(
@@ -18,7 +19,7 @@ async function handleRequest(
   
   if (!apiBaseUrl) {
     return NextResponse.json(
-      { error: 'Invalid service. Available services: security, users, providers, orders' },
+      { error: 'Invalid service. Available services: security, users, providers, orders, stores' },
       { status: 400 }
     );
   }

@@ -18,6 +18,12 @@ import type {
   ProviderResponseDto,
   CreateProviderDto,
   UpdateProviderDto,
+  AccountResponseDto,
+  CreateAccountDto,
+  UpdateAccountDto,
+  StoreResponseDto,
+  CreateStoreDto,
+  UpdateStoreDto,
 } from "./api-client";
 import { syncManager } from "./sync-manager";
 
@@ -3402,15 +3408,6 @@ export const syncProvidersFromBackend = async (): Promise<Provider[]> => {
 
 // ===== STORES STORAGE (IndexedDB) =====
 
-export const getStores = async (): Promise<Store[]> => {
-  try {
-    return await db.getAll<Store>("stores");
-  } catch (error) {
-    console.error("Error loading stores from IndexedDB:", error);
-    return [];
-  }
-};
-
 export const getStore = async (id: string): Promise<Store | undefined> => {
   try {
     return await db.get<Store>("stores", id);
@@ -3420,65 +3417,86 @@ export const getStore = async (id: string): Promise<Store | undefined> => {
   }
 };
 
-export const addStore = async (
-  store: Omit<Store, "id" | "createdAt" | "updatedAt">
-): Promise<Store> => {
-  try {
-    const now = new Date().toISOString();
-    const newStore: Store = {
-      ...store,
-      id: Date.now().toString(),
-      createdAt: now,
-      updatedAt: now,
-    };
+// Helper para convertir Account a formato backend DTO
+const accountToBackendDto = (account: Account): CreateAccountDto => ({
+  code: account.code,
+  label: account.label,
+  storeId: account.storeId,
+  isForeign: account.isForeign,
+  accountType: account.accountType,
+  email: account.email,
+  wallet: account.wallet,
+  isActive: account.isActive,
+});
 
-    await db.add("stores", newStore);
-    console.log("✅ Tienda guardada en IndexedDB:", newStore.name);
-    return newStore;
-  } catch (error) {
-    console.error("Error adding store to IndexedDB:", error);
-    throw error;
-  }
-};
-
-export const updateStore = async (
-  id: string,
-  updates: Partial<Store>
-): Promise<Store> => {
-  try {
-    const existingStore = await getStore(id);
-    if (!existingStore) {
-      throw new Error(`Store with id ${id} not found`);
-    }
-
-    const updatedStore: Store = {
-      ...existingStore,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
-
-    await db.update("stores", updatedStore);
-    return updatedStore;
-  } catch (error) {
-    console.error("Error updating store in IndexedDB:", error);
-    throw error;
-  }
-};
-
-export const deleteStore = async (id: string): Promise<void> => {
-  try {
-    await db.remove("stores", id);
-  } catch (error) {
-    console.error("Error deleting store from IndexedDB:", error);
-    throw error;
-  }
-};
-
-// ===== ACCOUNTS STORAGE (IndexedDB) =====
+// Helper para convertir backend DTO a formato frontend
+const accountFromBackendDto = (dto: AccountResponseDto): Account => ({
+  id: dto.id,
+  code: dto.code,
+  label: dto.label,
+  storeId: dto.storeId,
+  isForeign: dto.isForeign,
+  accountType: dto.accountType,
+  email: dto.email,
+  wallet: dto.wallet,
+  isActive: dto.isActive,
+  createdAt: dto.createdAt,
+  updatedAt: dto.updatedAt,
+});
 
 export const getAccounts = async (): Promise<Account[]> => {
   try {
-    return await db.getAll<Account>("accounts");
+    // Cargar siempre cuentas locales desde IndexedDB primero (offline-first)
+    const localAccounts = await db.getAll<Account>("accounts");
+
+    // Si hay conexión, intentar sincronizar con backend y hacer merge
+    if (isOnline()) {
+      try {
+        const backendAccounts = await apiClient.getAccounts();
+        const backendAccountsMapped = backendAccounts.map(accountFromBackendDto);
+
+        // Hacer merge: usar ID como clave única
+        const accountsMap = new Map<string, Account>();
+
+        // Primero agregar cuentas locales
+        for (const account of localAccounts) {
+          accountsMap.set(account.id, account);
+        }
+
+        // Luego agregar/actualizar con cuentas del backend (estas tienen prioridad)
+        for (const account of backendAccountsMapped) {
+          accountsMap.set(account.id, account);
+
+          // Guardar/actualizar en IndexedDB
+          try {
+            await db.put("accounts", account);
+            console.log(`✅ Cuenta sincronizada: ${account.label} (ID: ${account.id})`);
+          } catch (error) {
+            console.error(`❌ Error guardando cuenta ${account.label}:`, error);
+          }
+        }
+
+        const mergedAccounts = Array.from(accountsMap.values());
+        console.log(
+          `✅ Cuentas: ${localAccounts.length} locales + ${backendAccounts.length} del backend = ${mergedAccounts.length} totales`
+        );
+
+        return mergedAccounts;
+      } catch (error) {
+        console.warn(
+          "⚠️ Error cargando cuentas del backend, usando solo IndexedDB:",
+          error
+        );
+        // Si falla el backend, retornar cuentas locales
+        return localAccounts;
+      }
+    }
+
+    // Si está offline, solo retornar cuentas locales
+    console.log(
+      `✅ Cuentas cargadas desde IndexedDB: ${localAccounts.length}`
+    );
+    return localAccounts;
   } catch (error) {
     console.error("Error loading accounts from IndexedDB:", error);
     return [];
@@ -3498,6 +3516,31 @@ export const addAccount = async (
   account: Omit<Account, "id" | "createdAt" | "updatedAt">
 ): Promise<Account> => {
   try {
+    // Primero intentar crear en backend si hay conexión
+    if (isOnline()) {
+      try {
+        const createDto: CreateAccountDto = accountToBackendDto({
+          ...account,
+          id: "", // No necesitamos ID para crear
+          createdAt: "",
+          updatedAt: "",
+        } as Account);
+        
+        const backendAccount = await apiClient.createAccount(createDto);
+        
+        // Usar la cuenta del backend
+        const newAccount: Account = accountFromBackendDto(backendAccount);
+
+        await db.add("accounts", newAccount);
+        console.log("✅ Cuenta guardada en IndexedDB y backend:", newAccount.label);
+        return newAccount;
+      } catch (error) {
+        console.warn("⚠️ Error creando cuenta en backend, guardando solo localmente:", error);
+        // Continuar guardando localmente
+      }
+    }
+
+    // Guardar localmente
     const now = new Date().toISOString();
     const newAccount: Account = {
       ...account,
@@ -3526,6 +3569,32 @@ export const updateAccount = async (
       throw new Error(`Account with id ${id} not found`);
     }
 
+    // Intentar actualizar en backend si hay conexión
+    if (isOnline()) {
+      try {
+        const updateDto: UpdateAccountDto = {
+          code: updates.code,
+          label: updates.label,
+          storeId: updates.storeId,
+          isForeign: updates.isForeign,
+          accountType: updates.accountType,
+          email: updates.email,
+          wallet: updates.wallet,
+          isActive: updates.isActive,
+        };
+
+        const backendAccount = await apiClient.updateAccount(id, updateDto);
+        const updatedAccount = accountFromBackendDto(backendAccount);
+
+        await db.update("accounts", updatedAccount);
+        console.log("✅ Cuenta actualizada en IndexedDB y backend:", updatedAccount.label);
+        return updatedAccount;
+      } catch (error) {
+        console.warn("⚠️ Error actualizando cuenta en backend, actualizando solo localmente:", error);
+        // Continuar actualizando localmente
+      }
+    }
+
     const updatedAccount: Account = {
       ...existingAccount,
       ...updates,
@@ -3542,10 +3611,152 @@ export const updateAccount = async (
 
 export const deleteAccount = async (id: string): Promise<void> => {
   try {
+    // Intentar eliminar en backend si hay conexión
+    if (isOnline()) {
+      try {
+        await apiClient.deleteAccount(id);
+        console.log("✅ Cuenta eliminada del backend");
+      } catch (error) {
+        console.warn("⚠️ Error eliminando cuenta del backend:", error);
+        // No fallar si no se puede eliminar del backend
+      }
+    }
+
     await db.remove("accounts", id);
+    console.log("✅ Cuenta eliminada de IndexedDB");
   } catch (error) {
     console.error("Error deleting account from IndexedDB:", error);
     throw error;
+  }
+};
+
+// Funciones de conversión para Stores
+export const storeToBackendDto = (store: Omit<Store, "id" | "createdAt" | "updatedAt">): CreateStoreDto => ({
+  name: store.name,
+  code: store.code,
+  address: store.address,
+  phone: store.phone,
+  email: store.email,
+  rif: store.rif,
+  status: store.status,
+});
+
+export const storeFromBackendDto = (dto: StoreResponseDto): Store => ({
+  id: dto.id,
+  name: dto.name,
+  code: dto.code,
+  address: dto.address,
+  phone: dto.phone,
+  email: dto.email,
+  rif: dto.rif,
+  status: dto.status as "active" | "inactive",
+  createdAt: dto.createdAt,
+  updatedAt: dto.updatedAt,
+});
+
+// Función de sincronización mejorada para Stores
+export const getStores = async (): Promise<Store[]> => {
+  try {
+    // Intentar obtener del backend primero
+    const backendStores = await apiClient.getStores();
+    const backendStoresConverted = backendStores.map(storeFromBackendDto);
+    
+    // Guardar en IndexedDB
+    await Promise.all(backendStoresConverted.map(store => db.put("stores", store)));
+    
+    return backendStoresConverted;
+  } catch (error) {
+    console.warn("Error al obtener tiendas del backend, usando IndexedDB:", error);
+    // Fallback a IndexedDB
+    return await db.getAll<Store>("stores");
+  }
+};
+
+export const addStore = async (
+  store: Omit<Store, "id" | "createdAt" | "updatedAt">
+): Promise<Store> => {
+  try {
+    // Crear en backend primero
+    const backendDto = storeToBackendDto(store);
+    const createdStoreDto = await apiClient.createStore(backendDto);
+    const createdStore = storeFromBackendDto(createdStoreDto);
+    
+    // Guardar en IndexedDB
+    await db.add("stores", createdStore);
+    console.log("✅ Tienda creada en backend y guardada en IndexedDB:", createdStore.name);
+    return createdStore;
+  } catch (error) {
+    console.error("Error creando tienda en backend, guardando solo en IndexedDB:", error);
+    // Fallback a IndexedDB
+    const now = new Date().toISOString();
+    const newStore: Store = {
+      ...store,
+      id: Date.now().toString(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    
+    await db.add("stores", newStore);
+    console.log("✅ Tienda guardada en IndexedDB:", newStore.name);
+    return newStore;
+  }
+};
+
+export const updateStore = async (
+  id: string,
+  updates: Partial<Store>
+): Promise<Store> => {
+  try {
+    // Actualizar en backend primero
+    const backendDto: UpdateStoreDto = {};
+    if (updates.name !== undefined) backendDto.name = updates.name;
+    if (updates.code !== undefined) backendDto.code = updates.code;
+    if (updates.address !== undefined) backendDto.address = updates.address;
+    if (updates.phone !== undefined) backendDto.phone = updates.phone;
+    if (updates.email !== undefined) backendDto.email = updates.email;
+    if (updates.rif !== undefined) backendDto.rif = updates.rif;
+    if (updates.status !== undefined) backendDto.status = updates.status;
+    
+    const updatedStoreDto = await apiClient.updateStore(id, backendDto);
+    const updatedStore = storeFromBackendDto(updatedStoreDto);
+    
+    // Actualizar en IndexedDB
+    await db.put("stores", updatedStore);
+    console.log("✅ Tienda actualizada en backend y IndexedDB:", updatedStore.name);
+    return updatedStore;
+  } catch (error) {
+    console.error("Error actualizando tienda en backend, actualizando solo en IndexedDB:", error);
+    // Fallback a IndexedDB
+    const existingStore = await db.get<Store>("stores", id);
+    if (!existingStore) {
+      throw new Error(`Tienda con ID ${id} no encontrada`);
+    }
+    
+    const updatedStore = {
+      ...existingStore,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    
+    await db.put("stores", updatedStore);
+    console.log("✅ Tienda actualizada en IndexedDB:", updatedStore.name);
+    return updatedStore;
+  }
+};
+
+export const deleteStore = async (id: string): Promise<void> => {
+  try {
+    // Eliminar del backend primero
+    await apiClient.deleteStore(id);
+    
+    // Eliminar de IndexedDB
+    await db.remove("stores", id);
+    console.log("✅ Tienda eliminada de backend e IndexedDB");
+  } catch (error) {
+    console.error("Error eliminando tienda del backend, eliminando solo de IndexedDB:", error);
+    // Fallback a IndexedDB
+    await db.remove("stores", id);
+    console.log("✅ Tienda eliminada de IndexedDB");
   }
 };
 
