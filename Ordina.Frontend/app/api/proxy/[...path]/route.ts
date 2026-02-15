@@ -3,11 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 // URLs base de las APIs (sin NEXT_PUBLIC porque son del servidor)
 // URLs base de las APIs (sin NEXT_PUBLIC porque son del servidor)
 const API_BASE_URLS: Record<string, string> = {
-  security: process.env.SECURITY_API_URL || 'http://localhost:5054', // 'http://camihogar.eastus.cloudapp.azure.com:8082',
-  users: process.env.USERS_API_URL || 'http://localhost:5222', // 'http://camihogar.eastus.cloudapp.azure.com:8083',
-  providers: process.env.PROVIDERS_API_URL || 'http://localhost:5108', // 'http://camihogar.eastus.cloudapp.azure.com:8084',
-  orders: process.env.ORDERS_API_URL || 'http://localhost:5093', // 'http://camihogar.eastus.cloudapp.azure.com:8085',
-  stores: process.env.STORES_API_URL || 'http://localhost:5000', // 'http://camihogar.eastus.cloudapp.azure.com:8087',
+  security: process.env.SECURITY_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8082',
+  users: process.env.USERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8083',
+  providers: process.env.PROVIDERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8084',
+  orders: process.env.ORDERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8085',
+  stores: process.env.STORES_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8087',
 };
 
 async function handleRequest(

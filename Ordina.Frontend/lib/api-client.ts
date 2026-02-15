@@ -1,17 +1,15 @@
 // API Client para comunicación con el backend
 // URLs base para cada microservicio (solo para servidor/SSR)
 const SECURITY_API_URL_DIRECT =
-  process.env.SECURITY_API_URL || "http://localhost:5054";
-//"http://camihogar.eastus.cloudapp.azure.com:8082";
+  process.env.SECURITY_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8082";
 const USERS_API_URL_DIRECT =
-  process.env.USERS_API_URL || "http://localhost:5222";
-//"http://camihogar.eastus.cloudapp.azure.com:8083";
+  process.env.USERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8083";
 const PROVIDERS_API_URL_DIRECT =
-  process.env.PROVIDERS_API_URL || "http://localhost:5108";//"http://camihogar.eastus.cloudapp.azure.com:8084";
+  process.env.PROVIDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8084";
 const ORDERS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_ORDERS_API_URL || "http://localhost:5093";//"http://camihogar.eastus.cloudapp.azure.com:8085";
+  process.env.NEXT_PUBLIC_ORDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8085";
 const STORES_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_STORES_API_URL || "http://localhost:5000"; //"http://camihogar.eastus.cloudapp.azure.com:8087";
+  process.env.NEXT_PUBLIC_STORES_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8087";
 
 export interface PagedResult<T> {
   items: T[];
