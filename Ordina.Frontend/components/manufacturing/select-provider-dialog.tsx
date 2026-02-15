@@ -16,13 +16,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { getProviders, type Provider } from "@/lib/storage"
 import { toast } from "sonner"
 import type { OrderProduct } from "@/lib/storage"
+import { AlertTriangle } from "lucide-react"
 
 interface SelectProviderDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   product: OrderProduct | null
   orderId: string
-  onConfirm: (providerId: string, providerName: string, notes?: string) => void
+  onConfirm: (providerId: string, providerName: string, notes?: string, refabricationReason?: string) => void
+  isRefabrication?: boolean // Indica si es una refabricación desde almacén
 }
 
 export function SelectProviderDialog({
@@ -31,10 +33,12 @@ export function SelectProviderDialog({
   product,
   orderId,
   onConfirm,
+  isRefabrication = false,
 }: SelectProviderDialogProps) {
   const [providers, setProviders] = useState<Provider[]>([])
   const [selectedProviderId, setSelectedProviderId] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
+  const [refabricationReason, setRefabricationReason] = useState<string>("")
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
@@ -57,6 +61,7 @@ export function SelectProviderDialog({
       // Reset
       setSelectedProviderId("")
       setNotes("")
+      setRefabricationReason("")
     }
   }, [open])
 
@@ -66,26 +71,56 @@ export function SelectProviderDialog({
       return
     }
 
+    // Validar razón de refabricación si es refabricación
+    if (isRefabrication && !refabricationReason.trim()) {
+      toast.error("Por favor indica la razón de la refabricación")
+      return
+    }
+
     const provider = providers.find(p => p.id === selectedProviderId)
     if (!provider) {
       toast.error("Proveedor no encontrado")
       return
     }
 
-    onConfirm(provider.id, provider.razonSocial, notes)
+    onConfirm(
+      provider.id, 
+      provider.razonSocial, 
+      notes, 
+      isRefabrication ? refabricationReason.trim() : undefined
+    )
   }
+
+  // Textos dinámicos según el modo
+  const dialogTitle = isRefabrication 
+    ? "Reiniciar Fabricación" 
+    : "Seleccionar Proveedor para Fabricación"
+  
+  const dialogDescription = isRefabrication
+    ? product 
+      ? <>El producto <strong>{product.name}</strong> será enviado nuevamente a fabricación.</>
+      : <>Los productos seleccionados serán enviados nuevamente a fabricación.</>
+    : product 
+      ? <>Selecciona el proveedor que fabricará: <strong>{product.name}</strong></>
+      : <>Selecciona el proveedor para los productos seleccionados</>
+
+  const confirmButtonText = isRefabrication
+    ? product ? "Confirmar Refabricación" : "Confirmar Refabricación Masiva"
+    : product ? "Confirmar Fabricación" : "Confirmar Fabricación Masiva"
+
+  // Deshabilitar botón si falta proveedor o (si es refabricación) falta razón
+  const isConfirmDisabled = !selectedProviderId || isLoading || (isRefabrication && !refabricationReason.trim())
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Seleccionar Proveedor para Fabricación</DialogTitle>
+          <DialogTitle className={isRefabrication ? "flex items-center gap-2 text-orange-600" : ""}>
+            {isRefabrication && <AlertTriangle className="w-5 h-5" />}
+            {dialogTitle}
+          </DialogTitle>
           <DialogDescription>
-            {product ? (
-              <>Selecciona el proveedor que fabricará: <strong>{product.name}</strong></>
-            ) : (
-              <>Selecciona el proveedor para los productos seleccionados</>
-            )}
+            {dialogDescription}
           </DialogDescription>
         </DialogHeader>
 
@@ -115,7 +150,7 @@ export function SelectProviderDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="notes">Notas (opcional)</Label>
+            <Label htmlFor="notes">Notas al proveedor (opcional)</Label>
             <Textarea
               id="notes"
               placeholder="Notas adicionales sobre la fabricación..."
@@ -124,18 +159,42 @@ export function SelectProviderDialog({
               rows={3}
             />
           </div>
+
+          {/* Campo de razón de refabricación - solo visible cuando isRefabrication es true */}
+          {isRefabrication && (
+            <div className="space-y-2">
+              <Label htmlFor="refabricationReason" className="flex items-center gap-1">
+                <span className="text-orange-600">*</span>
+                Razón de la refabricación
+              </Label>
+              <Textarea
+                id="refabricationReason"
+                placeholder="Ej: Defecto en acabado, cliente rechazó producto, daño en transporte..."
+                value={refabricationReason}
+                onChange={(e) => setRefabricationReason(e.target.value)}
+                rows={3}
+                className="border-orange-200 focus:border-orange-400 focus:ring-orange-400"
+              />
+              <p className="text-xs text-muted-foreground">
+                Este campo es obligatorio. Indica por qué el producto debe ser refabricado.
+              </p>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleConfirm} disabled={!selectedProviderId || isLoading}>
-            {product ? "Confirmar Fabricación" : "Confirmar Fabricación Masiva"}
+          <Button 
+            onClick={handleConfirm} 
+            disabled={isConfirmDisabled}
+            className={isRefabrication ? "bg-orange-600 hover:bg-orange-700" : ""}
+          >
+            {confirmButtonText}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
-

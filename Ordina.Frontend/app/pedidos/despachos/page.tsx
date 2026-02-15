@@ -58,6 +58,25 @@ const getStatusColor = (status: string) => {
 }
 
 // Función helper para verificar si un pedido está listo para despachar
+// Función helper para verificar si un producto está listo para despacho
+const isProductReadyForDispatch = (product: OrderProduct): boolean => {
+  if (product.locationStatus === "DESPACHADO") return false // Ya está despachado
+
+  // Si no tiene locationStatus, considerarlo listo (legacy/simple products)
+  if (!product.locationStatus) return true
+
+  // Si está en tienda, está listo
+  if (product.locationStatus === "EN TIENDA") return true
+
+  // Si debe fabricarse, debe estar En almacén (listo para despacho)
+  if (product.locationStatus === "FABRICACION") {
+    return product.manufacturingStatus === "almacen_no_fabricado"
+  }
+
+  return true
+}
+
+// Función helper para verificar si un pedido está listo para despachar (al menos un producto)
 const isOrderReadyForDispatch = (order: UnifiedOrder): boolean => {
   // Solo pedidos tipo "order" (no presupuestos)
   if (order.type !== "order") return false
@@ -70,26 +89,9 @@ const isOrderReadyForDispatch = (order: UnifiedOrder): boolean => {
   // Verificar que tenga productos
   if (!order.products || order.products.length === 0) return false
 
-  // Verificar que todos los productos estén listos
-  return order.products.every((product) => {
-    // Si no tiene locationStatus, considerarlo listo para despacho
-    if (!product.locationStatus) {
-      return true
-    }
-
-    // Si está en tienda, está listo
-    if (product.locationStatus === "EN TIENDA") {
-      return true
-    }
-
-    // Si debe fabricarse, debe estar En almacén (listo para despacho)
-    if (product.locationStatus === "FABRICACION") {
-      return product.manufacturingStatus === "almacen_no_fabricado"
-    }
-
-    // Por defecto, considerar listo
-    return true
-  })
+  // El pedido aparece si tiene AL MENOS UN producto listo para despacho (y no despachado aún)
+  // O si todos los productos ya están despachados (para que aparezca como completado eventualmente)
+  return order.products.some(p => isProductReadyForDispatch(p) || p.locationStatus === "DESPACHADO")
 }
 
 // Calcular saldo pendiente en Bs y equivalente en USD
@@ -300,24 +302,44 @@ export default function DespachosPage() {
     itemsPerPage,
   })
 
-  // Manejar selección individual
+  // Manejar selección individual (select all ready products of the order)
   const handleToggleSelect = (orderId: string) => {
-    setSelectedOrders((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(orderId)) {
-        newSet.delete(orderId)
+    const order = orders.find(o => o.id === orderId)
+    if (!order) return
+
+    const readyProducts = order.products.filter(p => isProductReadyForDispatch(p) && p.locationStatus !== "DESPACHADO")
+    const readyProductKeys = readyProducts.map(p => `${order.id}|${p.id}`)
+
+    // Check if all ready products are currently selected
+    const allReadySelected = readyProductKeys.length > 0 && readyProductKeys.every(key => selectedOrders.has(key))
+
+    setSelectedOrders(prev => {
+      const next = new Set(prev)
+      if (allReadySelected) {
+        // Deselect all
+        readyProductKeys.forEach(key => next.delete(key))
       } else {
-        newSet.add(orderId)
+        // Select all
+        readyProductKeys.forEach(key => next.add(key))
       }
-      return newSet
+      return next
     })
   }
 
   // Manejar selección de todos (solo los que no están completados)
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      const selectableOrders = paginatedOrders.filter(order => order.status !== "Completada")
-      setSelectedOrders(new Set(selectableOrders.map((order) => order.id)))
+      const allKeys = new Set<string>()
+      paginatedOrders.forEach(order => {
+        if (order.status !== "Completada") {
+          order.products.forEach(p => {
+            if (isProductReadyForDispatch(p) && p.locationStatus !== "DESPACHADO") {
+              allKeys.add(`${order.id}|${p.id}`)
+            }
+          })
+        }
+      })
+      setSelectedOrders(allKeys)
     } else {
       setSelectedOrders(new Set())
     }
@@ -327,16 +349,54 @@ export default function DespachosPage() {
     router.push(`/pedidos/${order.orderNumber}`)
   }
 
-  // Despachar un pedido individual
+  // Despachar un pedido individual (respetando selección o todos los listos)
   const handleCompleteDispatch = async () => {
     if (!orderToComplete) return
 
     try {
-      // Actualizar el pedido a estado "Completada"
+      // 1. Identificar productos a despachar
+      // Buscar si hay productos seleccionados para este pedido
+      const selectedProductIds = Array.from(selectedOrders)
+        .filter(key => key.startsWith(`${orderToComplete.id}|`))
+        .map(key => key.split("|")[1])
+
+      let productsToDispatch: OrderProduct[] = []
+
+      if (selectedProductIds.length > 0) {
+        // Opción A: Despachar SOLO los seleccionados
+        productsToDispatch = orderToComplete.products.filter(p => selectedProductIds.includes(p.id))
+      } else {
+        // Opción B: Si no hay nada seleccionado, despachar TODOS los que estén LISTOS
+        productsToDispatch = orderToComplete.products.filter(p => isProductReadyForDispatch(p) && p.locationStatus !== "DESPACHADO")
+      }
+
+      if (productsToDispatch.length === 0) {
+        toast.warning("No hay productos listos para despachar en este pedido.")
+        setIsCompleteDialogOpen(false)
+        return
+      }
+
+      // 2. Actualizar estado de los productos (solo los identificados)
+      const dispatchingIds = new Set(productsToDispatch.map(p => p.id))
+
+      const updatedProducts = orderToComplete.products.map(p => {
+        if (dispatchingIds.has(p.id)) {
+          return { ...p, locationStatus: "DESPACHADO" as const }
+        }
+        return p
+      })
+
+      // 3. Verificar si el pedido se completa totalmente
+      // Un pedido está completo si TODOS sus productos tienen status DESPACHADO (o legacy finished)
+      const allDispatched = updatedProducts.every(p =>
+        p.locationStatus === "DESPACHADO"
+      )
+
       await updateOrder(orderToComplete.id, {
-        status: "Completada",
-        dispatchDate: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
+        products: updatedProducts,
+        status: allDispatched ? "Completada" : (orderToComplete.status as any),
+        dispatchDate: allDispatched ? new Date().toISOString() : orderToComplete.dispatchDate,
+        completedAt: allDispatched ? new Date().toISOString() : orderToComplete.completedAt,
       })
 
       // Refrescar la lista
@@ -345,40 +405,99 @@ export default function DespachosPage() {
       setOrders(readyOrders)
       setIsCompleteDialogOpen(false)
       setOrderToComplete(null)
+
+      // Limpiar selección de este pedido
       setSelectedOrders((prev) => {
         const newSet = new Set(prev)
-        newSet.delete(orderToComplete.id)
+        Array.from(newSet).forEach(key => {
+          if (key.startsWith(`${orderToComplete.id}|`)) newSet.delete(key)
+        })
         return newSet
       })
-      toast.success("Pedido marcado como completado")
+
+      const msg = allDispatched
+        ? "Pedido completado exitosamente"
+        : `Despachados ${productsToDispatch.length} producto(s)`
+      toast.success(msg)
     } catch (error) {
       console.error("Error completing dispatch:", error)
       toast.error("Error al completar el despacho. Por favor intenta nuevamente.")
     }
   }
 
-  // Despachar múltiples pedidos
-  const handleBulkDispatch = async () => {
+
+
+  // Manejar despacho de productos seleccionados (parcial o total)
+  const handleDispatchSelectedProducts = async () => {
     if (selectedOrders.size === 0) {
-      toast.error("Por favor selecciona al menos un pedido")
+      toast.error("Por favor selecciona al menos un producto para despachar")
       return
     }
 
     try {
-      const selectedOrderIds = Array.from(selectedOrders)
+      setIsLoading(true)
+      const selectedItems = Array.from(selectedOrders)
+      const ordersToUpdate = new Set<string>()
+
+      // Agrupar productos por pedido
+      const productsByOrder: Record<string, string[]> = {}
+      selectedItems.forEach(item => {
+        // Formato esperado: "orderId|productId"
+        // Si no tiene pipe, es un orderId completo (selección antigua) -> convertir a todos los productos listos
+        if (!item.includes("|")) {
+          const order = orders.find(o => o.id === item)
+          if (order) {
+            if (!productsByOrder[item]) productsByOrder[item] = []
+            order.products.forEach(p => {
+              if (isProductReadyForDispatch(p)) {
+                productsByOrder[item].push(p.id)
+              }
+            })
+            ordersToUpdate.add(item)
+          }
+          return
+        }
+
+        const [orderId, productId] = item.split("|")
+        if (!productsByOrder[orderId]) productsByOrder[orderId] = []
+        productsByOrder[orderId].push(productId)
+        ordersToUpdate.add(orderId)
+      })
+
       let successCount = 0
       let errorCount = 0
 
-      for (const orderId of selectedOrderIds) {
+      for (const orderId of ordersToUpdate) {
         try {
-          await updateOrder(orderId, {
-            status: "Completada",
-            dispatchDate: new Date().toISOString(),
-            completedAt: new Date().toISOString(),
+          const order = orders.find(o => o.id === orderId)
+          if (!order) continue
+
+          const productsToDispatch = productsByOrder[orderId]
+          if (!productsToDispatch || productsToDispatch.length === 0) continue
+
+          // Actualizar estado de los productos seleccionados
+          const updatedProducts = order.products.map(p => {
+            if (productsToDispatch.includes(p.id)) {
+              return { ...p, locationStatus: "DESPACHADO" as const }
+            }
+            return p
           })
-          successCount++
+
+          // Verificar si TODOS los productos están ahora despachados
+          const allDispatched = updatedProducts.every(p =>
+            p.locationStatus === "DESPACHADO"
+          )
+
+          await updateOrder(orderId, {
+            products: updatedProducts,
+            status: allDispatched ? "Completada" : (order.status as any),
+            dispatchDate: allDispatched ? new Date().toISOString() : order.dispatchDate,
+            completedAt: allDispatched ? new Date().toISOString() : order.completedAt,
+          })
+
+          successCount += productsToDispatch.length
         } catch (error) {
-          console.error(`Error despachando pedido ${orderId}:`, error)
+          console.error(`Error actualizando pedido ${orderId}:`, error)
           errorCount++
         }
       }
@@ -391,14 +510,27 @@ export default function DespachosPage() {
       setIsBulkDispatchDialogOpen(false)
 
       if (errorCount === 0) {
-        toast.success(`${successCount} pedido(s) despachado(s) exitosamente`)
+        toast.success(`${successCount} producto(s) despachado(s) exitosamente`)
       } else {
-        toast.warning(`${successCount} pedido(s) despachado(s), ${errorCount} error(es)`)
+        toast.warning(`${successCount} producto(s) despachado(s), ${errorCount} error(es)`)
       }
     } catch (error) {
-      console.error("Error en despacho masivo:", error)
-      toast.error("Error al despachar los pedidos")
+      console.error("Error en despacho:", error)
+      toast.error("Error al procesar el despacho")
+    } finally {
+      setIsLoading(false)
     }
+  }
+
+  // Helper para alternar selección de producto
+  const handleToggleProduct = (orderId: string, productId: string) => {
+    const key = `${orderId}|${productId}`
+    setSelectedOrders(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
   const handleCompleteClick = (order: UnifiedOrder) => {
@@ -522,109 +654,164 @@ export default function DespachosPage() {
                           <span>Seleccionar todos los pedidos para despacho masivo</span>
                         </div>
                       )}
-                      {paginatedOrders.map((order) => (
-                        <OrderGroupCollapsible
-                          key={order.id}
-                          orderId={order.id}
-                          orderNumber={order.orderNumber}
-                          clientName={order.clientName}
-                          orderDate={order.createdAt}
-                          productCount={order.products.length}
-                          isExpanded={expandedOrders.has(order.id)}
-                          onOpenChange={(open) =>
-                            open ? setExpandedOrders((s) => new Set(s).add(order.id)) : setExpandedOrders((s) => { const n = new Set(s); n.delete(order.id); return n })
-                          }
-                          showViewDetailsButton={false}
-                          selectControl={
-                            order.status !== "Completada"
-                              ? {
-                                  checked: selectedOrders.has(order.id),
+                      {paginatedOrders.map((order) => {
+                        // Calculate if order is selected (all ready products are selected)
+                        const readyProducts = order.products.filter(p => isProductReadyForDispatch(p) && p.locationStatus !== "DESPACHADO")
+                        const readyProductKeys = readyProducts.map(p => `${order.id}|${p.id}`)
+                        const isSelected = readyProducts.length > 0 && readyProductKeys.every(key => selectedOrders.has(key))
+                        // Partially selected: some but not all
+                        const isPartiallySelected = readyProducts.length > 0 && readyProductKeys.some(key => selectedOrders.has(key)) && !isSelected
+
+                        return (
+                          <OrderGroupCollapsible
+                            key={order.id}
+                            orderId={order.id}
+                            orderNumber={order.orderNumber}
+                            clientName={order.clientName}
+                            orderDate={order.createdAt}
+                            productCount={order.products.length}
+                            isExpanded={expandedOrders.has(order.id)}
+                            onOpenChange={(open) =>
+                              open ? setExpandedOrders((s) => new Set(s).add(order.id)) : setExpandedOrders((s) => { const n = new Set(s); n.delete(order.id); return n })
+                            }
+                            showViewDetailsButton={false}
+                            selectControl={
+                              order.status !== "Completada"
+                                ? {
+                                  checked: isSelected ? true : isPartiallySelected ? "indeterminate" : false,
                                   onCheckedChange: () => handleToggleSelect(order.id),
-                                  "aria-label": `Seleccionar pedido ${order.orderNumber}`,
+                                  "aria-label": `Seleccionar productos listos del pedido ${order.orderNumber}`,
+                                  disabled: readyProducts.length === 0
                                 }
-                              : undefined
-                          }
-                          headerRight={
-                            <>
-                              <span className="text-sm text-muted-foreground hidden sm:inline">
-                                {order.vendorName}
-                              </span>
-                              <span className="font-medium tabular-nums">
-                                {orderTotals[order.id] ?? `Bs.${order.total.toFixed(2)}`}
-                              </span>
-                              <Badge className={getStatusColor(order.status)}>
-                                {order.status}
-                              </Badge>
-                              <span className="text-sm text-muted-foreground">
-                                {new Date(order.createdAt).toLocaleDateString()}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleView(order)
-                                }}
-                              >
-                                <Eye className="w-3 h-3 mr-1" />
-                                Ver Detalles
-                              </Button>
-                              {order.status !== "Completada" && (
+                                : undefined
+                            }
+                            headerRight={
+                              <>
+                                <span className="text-sm text-muted-foreground hidden sm:inline">
+                                  {order.vendorName}
+                                </span>
+                                <span className="font-medium tabular-nums">
+                                  {orderTotals[order.id] ?? `Bs.${order.total.toFixed(2)}`}
+                                </span>
+                                <Badge className={getStatusColor(order.status)}>
+                                  {order.status}
+                                </Badge>
+                                <span className="text-sm text-muted-foreground">
+                                  {new Date(order.createdAt).toLocaleDateString()}
+                                </span>
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                                  className="h-7 text-xs"
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    handleCompleteClick(order)
+                                    handleView(order)
                                   }}
-                                  title="Despachar pedido"
                                 >
-                                  <CheckCircle className="w-3 h-3 mr-1" />
-                                  Despachar
+                                  <Eye className="w-3 h-3 mr-1" />
+                                  Ver Detalles
                                 </Button>
-                              )}
-                            </>
-                          }
-                        >
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Producto</TableHead>
-                                <TableHead>Categoría</TableHead>
-                                <TableHead>Cantidad</TableHead>
-                                <TableHead>Estado</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {order.products.map((product) => (
-                                <TableRow key={product.id}>
-                                  <TableCell className="font-medium">{product.name}</TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline">{product.category}</Badge>
-                                  </TableCell>
-                                  <TableCell>{product.quantity}</TableCell>
-                                  <TableCell>
-                                    {(product.manufacturingStatus === "almacen_no_fabricado" ||
-                                      (product.manufacturingStatus as string) === "fabricado") ? (
-                                      <Badge className="bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200">
-                                        En almacén
-                                      </Badge>
-                                    ) : product.manufacturingStatus === "fabricando" ? (
-                                      <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
-                                        Fabricando
-                                      </Badge>
-                                    ) : (
-                                      <Badge className="bg-muted text-muted-foreground">-</Badge>
-                                    )}
-                                  </TableCell>
+                                {order.status !== "Completada" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleCompleteClick(order)
+                                    }}
+                                    title="Despachar productos seleccionados o listos"
+                                  >
+                                    <CheckCircle className="w-3 h-3 mr-1" />
+                                    Despachar
+                                  </Button>
+                                )}
+                              </>
+                            }
+                          >
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="w-[50px]"></TableHead>
+                                  <TableHead>Producto</TableHead>
+                                  <TableHead>Categoría</TableHead>
+                                  <TableHead>Cantidad</TableHead>
+                                  <TableHead>Estado</TableHead>
                                 </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </OrderGroupCollapsible>
-                      ))}
+                              </TableHeader>
+                              <TableBody>
+                                {order.products.map((product) => {
+                                  const isReady = isProductReadyForDispatch(product)
+                                  const isDispatched = product.locationStatus === "DESPACHADO"
+                                  const isProductSelected = selectedOrders.has(`${order.id}|${product.id}`)
+
+                                  return (
+                                    <HoverCard key={product.id} openDelay={200} closeDelay={100}>
+                                      <HoverCardTrigger asChild>
+                                        <TableRow
+                                          className={`hover:bg-muted/50 cursor-pointer ${isDispatched ? 'bg-green-50/50 dark:bg-green-900/10' : ''}`}
+                                          onClick={(e) => {
+                                            if (isReady && !isDispatched) {
+                                              handleToggleProduct(order.id, product.id)
+                                            }
+                                          }}
+                                        >
+                                          <TableCell className="w-[50px]">
+                                            <Checkbox
+                                              checked={isProductSelected || isDispatched}
+                                              disabled={!isReady || isDispatched}
+                                              onCheckedChange={() => handleToggleProduct(order.id, product.id)}
+                                              onClick={(e) => e.stopPropagation()}
+                                            />
+                                          </TableCell>
+                                          <TableCell className="font-medium">
+                                            <div className="flex flex-col">
+                                              <span>{product.name}</span>
+                                              {isDispatched && (
+                                                <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                                                  <CheckCircle className="w-3 h-3" /> Despachado
+                                                </span>
+                                              )}
+                                            </div>
+                                          </TableCell>
+                                          <TableCell>
+                                            <Badge variant="outline">{product.category}</Badge>
+                                          </TableCell>
+                                          <TableCell>{product.quantity}</TableCell>
+                                          <TableCell>
+                                            {(product.manufacturingStatus === "almacen_no_fabricado" ||
+                                              (product.manufacturingStatus as string) === "fabricado") ? (
+                                              <Badge className="bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                                                En almacén
+                                              </Badge>
+                                            ) : product.manufacturingStatus === "fabricando" ? (
+                                              <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
+                                                Fabricando
+                                              </Badge>
+                                            ) : product.locationStatus === "EN TIENDA" ? (
+                                              <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+                                                En Tienda
+                                              </Badge>
+                                            ) : (
+                                              <Badge className="bg-muted text-muted-foreground">-</Badge>
+                                            )}
+                                          </TableCell>
+                                        </TableRow>
+                                      </HoverCardTrigger>
+                                      <HoverCardContent className="min-w-[480px] max-w-[min(640px,95vw)] w-max" align="start">
+                                        <AttributesGrid
+                                          pairs={getProductAttributePairs(product)}
+                                          productName={product.name}
+                                        />
+                                      </HoverCardContent>
+                                    </HoverCard>
+                                  )
+                                })}
+                              </TableBody>
+                            </Table>
+                          </OrderGroupCollapsible>
+                        )
+                      })}
                     </div>
                   )}
 
@@ -652,16 +839,16 @@ export default function DespachosPage() {
       <AlertDialog open={isCompleteDialogOpen} onOpenChange={setIsCompleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Completar despacho?</AlertDialogTitle>
+            <AlertDialogTitle>¿Despachar productos?</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Estás seguro de que deseas marcar el pedido "{orderToComplete?.orderNumber}" como completado?
+              ¿Estás seguro de que deseas despachar los productos seleccionados o listos del pedido "{orderToComplete?.orderNumber}"?
               <br />
               <span className="text-sm text-muted-foreground mt-2 block">
                 Cliente: {orderToComplete?.clientName} - Total: {orderToComplete ? (orderTotals[orderToComplete.id] || `Bs.${orderToComplete.total.toFixed(2)}`) : ""}
               </span>
               <br />
               <span className="text-sm font-medium text-green-600 mt-2 block">
-                El pedido cambiará a estado "Completada".
+                Los productos se marcarán como "Despachado". Si todos se completan, el pedido pasará a "Completada".
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -669,26 +856,26 @@ export default function DespachosPage() {
             <AlertDialogCancel onClick={() => setOrderToComplete(null)}>
               Cancelar
             </AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleCompleteDispatch}
               className="bg-green-600 hover:bg-green-700"
             >
-              Completar
+              Despachar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Dialog de confirmación de despacho masivo */}
+      {/* Dialog de confirmación de despacho de productos seleccionados */}
       <AlertDialog open={isBulkDispatchDialogOpen} onOpenChange={setIsBulkDispatchDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Despachar {selectedOrders.size} pedido(s)?</AlertDialogTitle>
+            <AlertDialogTitle>¿Despachar {selectedOrders.size} producto(s)?</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Estás seguro de que deseas marcar {selectedOrders.size} pedido(s) como completados?
+              ¿Estás seguro de que deseas marcar {selectedOrders.size} producto(s) como despachados?
               <br />
               <span className="text-sm text-muted-foreground mt-2 block">
-                Los pedidos seleccionados cambiarán a estado "Completada".
+                Los productos seleccionados se marcarán como "Despachado". Si todos los productos de un pedido se despachan, el pedido cambiará a estado "Completada".
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -696,11 +883,11 @@ export default function DespachosPage() {
             <AlertDialogCancel onClick={() => setIsBulkDispatchDialogOpen(false)}>
               Cancelar
             </AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleBulkDispatch}
+            <AlertDialogAction
+              onClick={handleDispatchSelectedProducts}
               className="bg-green-600 hover:bg-green-700"
             >
-              Despachar {selectedOrders.size} Pedido(s)
+              Despachar Productos
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

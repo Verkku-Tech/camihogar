@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   AlertDialog,
@@ -412,6 +412,9 @@ export function ProvidersPage() {
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Crear Nuevo Proveedor</DialogTitle>
+              <DialogDescription>
+                Completa los datos para registrar un nuevo proveedor. Los campos marcados con * son obligatorios.
+              </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -447,7 +450,7 @@ export function ProvidersPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="telefono">Teléfono</Label>
+                  <Label htmlFor="telefono">Teléfono *</Label>
                   <Input
                     id="telefono"
                     value={formData.telefono}
@@ -504,7 +507,7 @@ export function ProvidersPage() {
               </Button>
               <Button
                 onClick={handleCreateProvider}
-                disabled={!formData.razonSocial}
+                disabled={!formData.razonSocial.trim() || !formData.telefono.trim()}
                 className="bg-indigo-600 hover:bg-indigo-700"
               >
                 Crear Proveedor
@@ -645,6 +648,9 @@ export function ProvidersPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Proveedor</DialogTitle>
+            <DialogDescription>
+              Modifica los datos del proveedor. Los campos marcados con * son obligatorios.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -680,7 +686,7 @@ export function ProvidersPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-telefono">Teléfono</Label>
+                <Label htmlFor="edit-telefono">Teléfono *</Label>
                 <Input
                   id="edit-telefono"
                   value={formData.telefono}
@@ -737,7 +743,7 @@ export function ProvidersPage() {
             </Button>
             <Button
               onClick={handleEditProvider}
-              disabled={!formData.razonSocial}
+              disabled={!formData.razonSocial.trim() || !formData.telefono.trim()}
               className="bg-indigo-600 hover:bg-indigo-700"
             >
               Guardar Cambios

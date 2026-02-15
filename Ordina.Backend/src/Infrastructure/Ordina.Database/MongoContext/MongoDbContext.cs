@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Ordina.Database.Entities.Account;
 using Ordina.Database.Entities.Category;
 using Ordina.Database.Entities.Client;
 using Ordina.Database.Entities.Commission;
@@ -42,6 +43,9 @@ public class MongoDbContext
 
     public IMongoCollection<Store> Stores =>
         _database.GetCollection<Store>("stores");
+
+    public IMongoCollection<Account> Accounts =>
+        _database.GetCollection<Account>("accounts");
 
     public IMongoCollection<User> Users =>
         _database.GetCollection<User>("users");

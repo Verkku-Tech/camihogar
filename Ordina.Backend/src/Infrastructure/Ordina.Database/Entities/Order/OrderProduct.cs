@@ -61,6 +61,16 @@ public class OrderProduct
     [BsonElement("manufacturingNotes")]
     public string? ManufacturingNotes { get; set; }
 
+    // Campos de refabricación (cuando un producto en almacén se devuelve a fabricación)
+    [BsonElement("refabricationReason")]
+    public string? RefabricationReason { get; set; } // Razón de la última refabricación
+
+    [BsonElement("refabricatedAt")]
+    public DateTime? RefabricatedAt { get; set; } // Fecha de última refabricación
+
+    [BsonElement("refabricationHistory")]
+    public List<RefabricationRecord>? RefabricationHistory { get; set; } // Historial de refabricaciones
+
     [BsonElement("locationStatus")]
     public string? LocationStatus { get; set; } // "EN TIENDA" | "FABRICACION" | null/empty
 

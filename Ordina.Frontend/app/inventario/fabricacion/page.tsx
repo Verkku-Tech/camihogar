@@ -28,7 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight } from "lucide-react"
+import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight, RotateCcw } from "lucide-react"
 import { toast } from "sonner"
 import { getOrders, getOrder, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder } from "@/lib/storage"
 import {
@@ -68,6 +68,8 @@ export default function FabricacionPage() {
   const [bulkFabricatedDialogOpen, setBulkFabricatedDialogOpen] = useState(false)
   const [bulkSelectedProvider, setBulkSelectedProvider] = useState<{ id: string; name: string } | null>(null)
   const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [isRefabrication, setIsRefabrication] = useState(false) // Indica si el modal se abre para refabricación
+  const [bulkIsRefabrication, setBulkIsRefabrication] = useState(false) // Indica si el modal masivo es para refabricación
   const router = useRouter()
 
   // Cargar pedidos y categorías
@@ -327,11 +329,19 @@ export default function FabricacionPage() {
     }
     
     setSelectedProduct({ orderId, product })
+    setIsRefabrication(false) // No es refabricación
+    setSelectProviderDialogOpen(true)
+  }
+
+  // Manejar click en "Reiniciar Fabricación" (desde almacén)
+  const handleRefabricationClick = (orderId: string, product: OrderProduct) => {
+    setSelectedProduct({ orderId, product })
+    setIsRefabrication(true) // Es refabricación
     setSelectProviderDialogOpen(true)
   }
 
   // Confirmar fabricación con proveedor
-  const handleConfirmManufacture = async (providerId: string, providerName: string, notes?: string) => {
+  const handleConfirmManufacture = async (providerId: string, providerName: string, notes?: string, refabricationReason?: string) => {
     if (!selectedProduct) return
 
     try {
@@ -341,15 +351,40 @@ export default function FabricacionPage() {
       const productIndex = order.products.findIndex(p => p.id === selectedProduct.product.id)
       if (productIndex === -1) throw new Error("Producto no encontrado")
 
-      // Actualizar producto
-      const updatedProduct = {
-        ...order.products[productIndex],
+      const currentProduct = order.products[productIndex]
+
+      // Construir el producto actualizado
+      const updatedProduct: OrderProduct = {
+        ...currentProduct,
         availabilityStatus: "no_disponible" as const,
         manufacturingStatus: "fabricando" as const,
         manufacturingProviderId: providerId,
         manufacturingProviderName: providerName,
         manufacturingStartedAt: new Date().toISOString(),
         manufacturingNotes: notes,
+        // Limpiar fecha de completado ya que vuelve a fabricación
+        manufacturingCompletedAt: undefined,
+      }
+
+      // Si es refabricación, agregar campos adicionales y actualizar historial
+      if (isRefabrication && refabricationReason) {
+        updatedProduct.refabricationReason = refabricationReason
+        updatedProduct.refabricatedAt = new Date().toISOString()
+        
+        // Agregar al historial de refabricaciones
+        const historyRecord = {
+          reason: refabricationReason,
+          date: new Date().toISOString(),
+          previousProviderId: currentProduct.manufacturingProviderId,
+          previousProviderName: currentProduct.manufacturingProviderName,
+          newProviderId: providerId,
+          newProviderName: providerName,
+        }
+        
+        updatedProduct.refabricationHistory = [
+          ...(currentProduct.refabricationHistory || []),
+          historyRecord,
+        ]
       }
 
       const updatedProducts = [...order.products]
@@ -364,9 +399,14 @@ export default function FabricacionPage() {
       const loadedOrders = await getOrders()
       setOrders(loadedOrders)
 
-      toast.success(`Producto en fabricación con ${providerName}`)
+      const successMessage = isRefabrication 
+        ? `Producto reiniciado a fabricación con ${providerName}`
+        : `Producto en fabricación con ${providerName}`
+      toast.success(successMessage)
+      
       setSelectProviderDialogOpen(false)
       setSelectedProduct(null)
+      setIsRefabrication(false)
     } catch (error: any) {
       console.error("Error updating manufacturing status:", error)
       toast.error(error.message || "Error al actualizar el estado de fabricación")
@@ -543,7 +583,7 @@ export default function FabricacionPage() {
   }
 
   // Ejecutar acción masiva de fabricación
-  const executeBulkManufacture = async (providerId: string, providerName: string, notes?: string) => {
+  const executeBulkManufacture = async (providerId: string, providerName: string, notes?: string, _refabricationReason?: string) => {
     const selectedKeys = Array.from(selectedProducts)
     let successCount = 0
     let errorCount = 0
@@ -681,6 +721,120 @@ export default function FabricacionPage() {
     })
   }
 
+  // Obtener productos seleccionados válidos para refabricación (en almacén)
+  const getSelectedProductsForRefabrication = () => {
+    return Array.from(selectedProducts).filter(key => {
+      const [orderId, productId] = key.split('|')
+      const row = productRows.find(r => r.orderId === orderId && r.product.id === productId)
+      return row && row.status === "almacen_no_fabricado"
+    })
+  }
+
+  // Manejar click en "Reiniciar Fabricación" (masivo)
+  const handleBulkRefabrication = () => {
+    if (selectedProducts.size === 0) {
+      toast.error("Por favor selecciona al menos un producto")
+      return
+    }
+
+    // Filtrar solo productos que estén en "almacen_no_fabricado"
+    const validProducts = getSelectedProductsForRefabrication()
+
+    if (validProducts.length === 0) {
+      toast.error("Solo se pueden refabricar productos con estado 'En almacén'")
+      return
+    }
+
+    setBulkIsRefabrication(true)
+    setBulkManufactureDialogOpen(true)
+  }
+
+  // Ejecutar acción masiva de refabricación
+  const executeBulkRefabrication = async (providerId: string, providerName: string, notes?: string, refabricationReason?: string) => {
+    if (!refabricationReason) {
+      toast.error("La razón de refabricación es obligatoria")
+      return
+    }
+
+    const selectedKeys = getSelectedProductsForRefabrication()
+    let successCount = 0
+    let errorCount = 0
+
+    for (const key of selectedKeys) {
+      const [orderId, productId] = key.split('|')
+      try {
+        const order = await getOrder(orderId)
+        if (!order) {
+          errorCount++
+          continue
+        }
+
+        const productIndex = order.products.findIndex(p => p.id === productId)
+        if (productIndex === -1) {
+          errorCount++
+          continue
+        }
+
+        const currentProduct = order.products[productIndex]
+
+        // Solo actualizar productos que estén en almacén
+        if (currentProduct.manufacturingStatus !== "almacen_no_fabricado" &&
+            (currentProduct.manufacturingStatus as string) !== "fabricado") {
+          continue
+        }
+
+        // Agregar al historial de refabricaciones
+        const historyRecord = {
+          reason: refabricationReason,
+          date: new Date().toISOString(),
+          previousProviderId: currentProduct.manufacturingProviderId,
+          previousProviderName: currentProduct.manufacturingProviderName,
+          newProviderId: providerId,
+          newProviderName: providerName,
+        }
+
+        const updatedProduct: OrderProduct = {
+          ...currentProduct,
+          availabilityStatus: "no_disponible" as const,
+          manufacturingStatus: "fabricando" as const,
+          manufacturingProviderId: providerId,
+          manufacturingProviderName: providerName,
+          manufacturingStartedAt: new Date().toISOString(),
+          manufacturingNotes: notes,
+          manufacturingCompletedAt: undefined,
+          refabricationReason: refabricationReason,
+          refabricatedAt: new Date().toISOString(),
+          refabricationHistory: [
+            ...(currentProduct.refabricationHistory || []),
+            historyRecord,
+          ],
+        }
+
+        const updatedProducts = [...order.products]
+        updatedProducts[productIndex] = updatedProduct
+
+        await updateOrder(order.id, { products: updatedProducts })
+        successCount++
+      } catch (error) {
+        console.error(`Error refabricando producto ${productId}:`, error)
+        errorCount++
+      }
+    }
+
+    // Refrescar
+    const loadedOrders = await getOrders()
+    setOrders(loadedOrders)
+    setSelectedProducts(new Set())
+    setBulkManufactureDialogOpen(false)
+    setBulkIsRefabrication(false)
+
+    if (errorCount === 0) {
+      toast.success(`${successCount} producto(s) reiniciado(s) a fabricación`)
+    } else {
+      toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+    }
+  }
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
@@ -733,7 +887,7 @@ export default function FabricacionPage() {
                     </div>
 
                     <Select value={filterStatus} onValueChange={(v: any) => setFilterStatus(v)}>
-                      <SelectTrigger className="w-full sm:w-48">
+                      <SelectTrigger className="w-full sm:w-56">
                         <SelectValue placeholder="Todos los estados" />
                       </SelectTrigger>
                       <SelectContent>
@@ -745,7 +899,7 @@ export default function FabricacionPage() {
                     </Select>
 
                     <Select value={filterProvider} onValueChange={setFilterProvider}>
-                      <SelectTrigger className="w-full sm:w-48">
+                      <SelectTrigger className="w-full sm:w-56">
                         <SelectValue placeholder="Todos los proveedores" />
                       </SelectTrigger>
                       <SelectContent>
@@ -782,6 +936,15 @@ export default function FabricacionPage() {
                       >
                         <CheckCircle2 className="w-4 h-4 mr-2" />
                         Marcar como Fabricado ({getSelectedProductsForFabricated().length})
+                      </Button>
+                    )}
+                    {getSelectedProductsForRefabrication().length > 0 && (
+                      <Button
+                        onClick={handleBulkRefabrication}
+                        variant="destructive"
+                      >
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Reiniciar Fabricación ({getSelectedProductsForRefabrication().length})
                       </Button>
                     )}
                     <Button
@@ -1000,6 +1163,19 @@ export default function FabricacionPage() {
                                                   En almacén
                                                 </Button>
                                               )}
+                                              {row.status === "almacen_no_fabricado" && (
+                                                <Button
+                                                  size="sm"
+                                                  variant="destructive"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    handleRefabricationClick(row.orderId, row.product)
+                                                  }}
+                                                >
+                                                  <RotateCcw className="w-4 h-4 mr-1" />
+                                                  Reiniciar
+                                                </Button>
+                                              )}
                                             </div>
                                           </TableCell>
                                         </TableRow>
@@ -1044,19 +1220,27 @@ export default function FabricacionPage() {
       {/* Modal de selección de proveedor (individual) */}
       <SelectProviderDialog
         open={selectProviderDialogOpen}
-        onOpenChange={setSelectProviderDialogOpen}
+        onOpenChange={(open) => {
+          setSelectProviderDialogOpen(open)
+          if (!open) setIsRefabrication(false)
+        }}
         product={selectedProduct?.product || null}
         orderId={selectedProduct?.orderId || ""}
         onConfirm={handleConfirmManufacture}
+        isRefabrication={isRefabrication}
       />
 
       {/* Modal de selección de proveedor (masivo) */}
       <SelectProviderDialog
         open={bulkManufactureDialogOpen}
-        onOpenChange={setBulkManufactureDialogOpen}
+        onOpenChange={(open) => {
+          setBulkManufactureDialogOpen(open)
+          if (!open) setBulkIsRefabrication(false)
+        }}
         product={null}
         orderId=""
-        onConfirm={executeBulkManufacture}
+        onConfirm={bulkIsRefabrication ? executeBulkRefabrication : executeBulkManufacture}
+        isRefabrication={bulkIsRefabrication}
       />
 
       {/* Dialog de confirmación para marcar como En almacén (masivo) */}

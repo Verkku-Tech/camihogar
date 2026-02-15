@@ -5,6 +5,7 @@ namespace Ordina.Database.Repositories;
 public interface IClientRepository
 {
     Task<Client?> GetByIdAsync(string id);
+    Task<(IEnumerable<Client> Items, long TotalCount)> GetAllAsync(int page, int pageSize, string? search);
     Task<IEnumerable<Client>> GetAllAsync();
     Task<Client?> GetByRutIdAsync(string rutId);
     Task<IEnumerable<Client>> GetByEstadoAsync(string estado);
