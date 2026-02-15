@@ -3,7 +3,7 @@ import * as db from "./indexeddb"
 export interface SyncOperation {
   id: string
   type: 'create' | 'update' | 'delete'
-  entity: 'user' | 'order' | 'product' | 'category' | 'client' | 'provider' | 'store' | 'commission'
+  entity: 'user' | 'order' | 'product' | 'category' | 'client' | 'provider' | 'store' | 'commission' | 'client'
   entityId: string
   data: any
   timestamp: number
@@ -19,7 +19,7 @@ class SyncManager {
   constructor() {
     // Inicializar con valor seguro para SSR
     this.isOnline = typeof window !== 'undefined' ? navigator.onLine : true
-    
+
     // Detectar cambios de conexión
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => {
@@ -90,11 +90,11 @@ class SyncManager {
       } catch (error: any) {
         // Si es un error de validación (400), no reintentar
         const errorMsg = error?.message || ''
-        const isValidationError = 
+        const isValidationError =
           errorMsg.includes('is required') ||
           errorMsg.includes('validation error') ||
           errorMsg.includes('400')
-        
+
         if (isValidationError) {
           operation.status = 'failed'
           operation.error = errorMsg
@@ -114,7 +114,7 @@ class SyncManager {
 
   private async executeSyncOperation(operation: SyncOperation): Promise<void> {
     const { apiClient } = await import('./api-client')
-    
+
     try {
       // Si la operación viene de la cola del SW, tiene formato diferente
       if (operation.data && operation.data.url && operation.data.method) {
@@ -167,7 +167,7 @@ class SyncManager {
                 // Es un ID local, resolver el ObjectId del backend
                 const { resolveCategoryBackendId } = await import('./storage')
                 const backendCategoryId = await resolveCategoryBackendId(productData.category)
-                
+
                 if (backendCategoryId) {
                   productData.categoryId = backendCategoryId
                 } else {
@@ -177,7 +177,7 @@ class SyncManager {
                 }
               }
             }
-            
+
             await apiClient.createProduct(productData)
             break
           case 'update':
@@ -264,7 +264,7 @@ class SyncManager {
             const pending = await this.getPendingOperations()
             for (const op of pending) {
               if (op.entity === 'provider' && op.entityId === operation.entityId && op.id !== operation.id) {
-                ;(op as any).entityId = newProvider.id
+                ; (op as any).entityId = newProvider.id
                 op.data = { ...(op.data || {}), id: newProvider.id }
                 await db.update('sync_queue', op)
               }
@@ -309,8 +309,8 @@ class SyncManager {
         // Nota: El backend debe tener endpoints para recibir comisiones
         // Por ahora, intentamos sincronizar pero no fallamos si no existe el endpoint
         try {
-          const token = typeof window !== "undefined" 
-            ? localStorage.getItem("auth_token") 
+          const token = typeof window !== "undefined"
+            ? localStorage.getItem("auth_token")
             : null
 
           if (!token) {
@@ -319,17 +319,17 @@ class SyncManager {
 
           // Determinar URL base según el servicio (orders para comisiones)
           const isHttps = typeof window !== "undefined" && window.location.protocol === "https:"
-          const baseUrl = isHttps 
+          const baseUrl = isHttps
             ? "/api/proxy/orders"
             : "http://localhost:5093" // URL directa para desarrollo
 
-          const url = operation.type === 'delete' 
+          const url = operation.type === 'delete'
             ? `${baseUrl}/api/Commissions/${operation.entityId}`
             : `${baseUrl}/api/Commissions`
 
-          const method = operation.type === 'create' ? 'POST' 
-            : operation.type === 'update' ? 'PUT' 
-            : 'DELETE'
+          const method = operation.type === 'create' ? 'POST'
+            : operation.type === 'update' ? 'PUT'
+              : 'DELETE'
 
           const response = await fetch(url, {
             method,
@@ -359,7 +359,22 @@ class SyncManager {
         return
       }
 
-      // Para otras entidades (clients, etc.)
+      if (operation.entity === 'client') {
+        switch (operation.type) {
+          case 'create':
+            await apiClient.createClient(operation.data)
+            break
+          case 'update':
+            await apiClient.updateClient(operation.entityId, operation.data)
+            break
+          case 'delete':
+            await apiClient.deleteClient(operation.entityId)
+            break
+        }
+        return
+      }
+
+      // Para otras entidades (store, etc.)
       // No hacer nada todavía - se implementará cuando el backend esté listo
       console.log(`⚠️ Sincronización de ${operation.entity} no implementada aún - se guardará para cuando el backend esté listo`)
       // No lanzar error, solo loggear - la app sigue funcionando offline
@@ -372,8 +387,8 @@ class SyncManager {
   // Ejecutar petición encolada desde el Service Worker
   private async executeQueuedRequest(requestData: any): Promise<void> {
     try {
-      const token = typeof window !== "undefined" 
-        ? localStorage.getItem("auth_token") 
+      const token = typeof window !== "undefined"
+        ? localStorage.getItem("auth_token")
         : null
 
       const headers: HeadersInit = {
@@ -424,7 +439,7 @@ class SyncManager {
 
   startPeriodicSync() {
     if (typeof window === 'undefined') return
-    
+
     // Sincronizar cada 30 segundos si hay conexión
     this.syncInterval = setInterval(() => {
       if (this.isOnline) {

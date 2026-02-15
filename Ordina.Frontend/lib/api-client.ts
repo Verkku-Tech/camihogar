@@ -1,17 +1,66 @@
 // API Client para comunicación con el backend
 // URLs base para cada microservicio (solo para servidor/SSR)
 const SECURITY_API_URL_DIRECT =
-  process.env.SECURITY_API_URL ||
-  "http://camihogar.eastus.cloudapp.azure.com:8082";
+  process.env.SECURITY_API_URL || "http://localhost:5054";
+//"http://camihogar.eastus.cloudapp.azure.com:8082";
 const USERS_API_URL_DIRECT =
-  process.env.USERS_API_URL ||
-  "http://camihogar.eastus.cloudapp.azure.com:8083";
+  process.env.USERS_API_URL || "http://localhost:5222";
+//"http://camihogar.eastus.cloudapp.azure.com:8083";
 const PROVIDERS_API_URL_DIRECT =
-  process.env.PROVIDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8084";
+  process.env.PROVIDERS_API_URL || "http://localhost:5108";//"http://camihogar.eastus.cloudapp.azure.com:8084";
 const ORDERS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_ORDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8085";
+  process.env.NEXT_PUBLIC_ORDERS_API_URL || "http://localhost:5093";//"http://camihogar.eastus.cloudapp.azure.com:8085";
 const STORES_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_STORES_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8087";
+  process.env.NEXT_PUBLIC_STORES_API_URL || "http://localhost:5000"; //"http://camihogar.eastus.cloudapp.azure.com:8087";
+
+export interface PagedResult<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface ClientResponseDto {
+  id: string;
+  nombreRazonSocial: string;
+  apodo?: string;
+  rutId: string;
+  direccion: string;
+  telefono: string;
+  telefono2?: string;
+  email?: string;
+  tipoCliente: string;
+  estado: string;
+  fechaCreacion: string;
+  tieneNotasDespacho: boolean;
+}
+
+export interface CreateClientDto {
+  nombreRazonSocial: string;
+  apodo?: string;
+  rutId: string;
+  direccion: string;
+  telefono: string;
+  telefono2?: string;
+  email?: string;
+  tipoCliente: string;
+  estado: string;
+  tieneNotasDespacho: boolean;
+}
+
+export interface UpdateClientDto {
+  nombreRazonSocial?: string;
+  apodo?: string;
+  rutId?: string;
+  direccion?: string;
+  telefono?: string;
+  telefono2?: string;
+  email?: string;
+  tipoCliente?: string;
+  estado?: string;
+  tieneNotasDespacho?: boolean;
+}
 export interface ApiError {
   message: string;
   status?: number;
@@ -29,11 +78,14 @@ export class ApiClient {
     // Determinar qué servicio usar según el endpoint
     let service: "security" | "users" | "providers" | "orders" | "stores" = "security";
 
+    console.log(`[ApiClient] Resolving service for endpoint: "${endpoint}"`);
+
     if (endpoint.startsWith("/api/Auth")) {
       service = "security";
     } else if (
       endpoint.startsWith("/api/users") ||
-      endpoint.startsWith("/api/Users")
+      endpoint.startsWith("/api/Users") ||
+      endpoint.startsWith("/api/clients")
     ) {
       service = "users";
     } else if (
@@ -46,15 +98,22 @@ export class ApiClient {
     } else if (
       endpoint.startsWith("/api/orders") ||
       endpoint.startsWith("/api/Orders") ||
+      endpoint.startsWith("/api/CommissionSettings") ||
+      endpoint.startsWith("/api/commissionSettings") ||
+      endpoint.toLowerCase().includes("/api/commissionsettings") ||
       endpoint.startsWith("/api/Reports")
     ) {
       service = "orders";
     } else if (
       endpoint.startsWith("/api/accounts") ||
-      endpoint.startsWith("/api/Accounts")
+      endpoint.startsWith("/api/Accounts") ||
+      endpoint.startsWith("/api/stores") ||
+      endpoint.startsWith("/api/Stores")
     ) {
       service = "stores";
     }
+
+    console.log(`[ApiClient] Resolved service "${service}" for endpoint "${endpoint}"`);
 
     // Si estamos en el cliente (navegador) y la página está en HTTPS, usar proxy
     if (typeof window !== "undefined") {
@@ -89,6 +148,7 @@ export class ApiClient {
       "/api/Auth",
       "/api/users",
       "/api/Users",
+      "/api/clients",
       "/api/categories",
       "/api/products",
       "/api/providers",
@@ -96,6 +156,12 @@ export class ApiClient {
       "/api/orders",
       "/api/Orders",
       "/api/Reports",
+      "/api/stores",
+      "/api/Stores",
+      "/api/accounts",
+      "/api/Accounts",
+      "/api/CommissionSettings",
+      "/api/commissionSettings",
     ];
 
     return availableEndpoints.some((path) => endpoint.startsWith(path));
@@ -179,7 +245,8 @@ export class ApiClient {
       else if (endpoint.includes("/categories")) entity = "category";
       else if (endpoint.includes("/clients")) entity = "client";
       else if (endpoint.includes("/providers")) entity = "provider";
-      else if (endpoint.includes("/stores")) entity = "store";
+      else if (endpoint.includes("/providers")) entity = "provider";
+      else if (endpoint.includes("/stores") || endpoint.includes("/accounts")) entity = "store";
 
       // Determinar tipo de operación
       let type: "create" | "update" | "delete" = "create";
@@ -213,7 +280,7 @@ export class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit & { silent?: boolean } = {}
   ): Promise<T> {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
@@ -263,7 +330,7 @@ export class ApiClient {
           const errorData = await response
             .json()
             .catch(() => ({ message: "Usuario o contraseña incorrectos" }));
-          
+
           let errorMessage = errorData.message || "Usuario o contraseña incorrectos";
           if (errorData.errors || errorData.title) {
             const errors: string[] = [];
@@ -284,10 +351,10 @@ export class ApiClient {
             }
             errorMessage = errors.length > 0 ? errors.join("; ") : errorMessage;
           }
-          
+
           throw new Error(errorMessage);
         }
-        
+
         // Para otros endpoints, intentar refresh token
         const refreshed = await this.refreshToken();
         if (refreshed) {
@@ -327,7 +394,7 @@ export class ApiClient {
         const errorData = await response
           .json()
           .catch(() => ({ message: response.statusText }));
-        
+
         // Si es un ModelState (validación de ASP.NET), extraer los mensajes
         let errorMessage = errorData.message || `Error: ${response.statusText}`;
         if (errorData.errors || errorData.title) {
@@ -350,14 +417,16 @@ export class ApiClient {
           }
           errorMessage = errors.length > 0 ? errors.join("; ") : errorMessage;
         }
-        
-        console.error("❌ Error del backend:", {
-          status: response.status,
-          statusText: response.statusText,
-          errorData,
-          errorMessage,
-        });
-        
+
+        if (!options.silent) {
+          console.error("❌ Error del backend:", {
+            status: response.status,
+            statusText: response.statusText,
+            errorData,
+            errorMessage,
+          });
+        }
+
         throw new Error(errorMessage);
       }
 
@@ -380,7 +449,7 @@ export class ApiClient {
         const contentType = response.headers.get("content-type");
         const location = response.headers.get("location");
         console.log("📥 Respuesta 201 Created:", { contentType, location });
-        
+
         if (contentType && contentType.includes("application/json")) {
           try {
             const data = await response.json();
@@ -501,17 +570,17 @@ export class ApiClient {
     return this.request<UserResponseDto>(`/api/users/${id}`);
   }
 
-  async getUserByUsername(username: string) {
-    return this.request<UserResponseDto>(`/api/users/username/${username}`);
+  async getUserByUsername(username: string, silent: boolean = false) {
+    return this.request<UserResponseDto>(`/api/users/username/${username}`, { silent });
   }
 
-  async getUserByEmail(email: string) {
-    return this.request<UserResponseDto>(`/api/users/email/${encodeURIComponent(email)}`);
+  async getUserByEmail(email: string, silent: boolean = false) {
+    return this.request<UserResponseDto>(`/api/users/email/${encodeURIComponent(email)}`, { silent });
   }
 
   async checkUserExistsByEmail(email: string): Promise<boolean> {
     try {
-      await this.getUserByEmail(email);
+      await this.getUserByEmail(email, true);
       return true; // Si no lanza error, el usuario existe
     } catch (error: any) {
       const errorMessage = error?.message || "";
@@ -527,7 +596,7 @@ export class ApiClient {
 
   async checkUserExistsByUsername(username: string): Promise<boolean> {
     try {
-      await this.getUserByUsername(username);
+      await this.getUserByUsername(username, true);
       return true; // Si no lanza error, el usuario existe
     } catch (error: any) {
       const errorMessage = error?.message || "";
@@ -680,12 +749,66 @@ export class ApiClient {
     });
   }
 
+
+
   async checkProviderExists(id: string): Promise<boolean> {
     return this.request<boolean>(`/api/Providers/${id}/exists`);
   }
 
+  // Clients endpoints
+  async getClientsPaged(page: number = 1, pageSize: number = 10, search?: string) {
+    const params = new URLSearchParams();
+    params.append("page", page.toString());
+    params.append("pageSize", pageSize.toString());
+    if (search) {
+      params.append("search", search);
+    }
+
+    const response = await this.request<PagedResult<ClientResponseDto>>(`/api/clients?${params.toString()}`);
+
+    // Side effect: Cachear clientes individuales para acceso offline
+    if (response && response.items && response.items.length > 0) {
+      try {
+        const { put } = await import("./indexeddb");
+        await Promise.all(response.items.map(client => put("clients", client)));
+      } catch (e) {
+        console.warn("Error cacheando clientes:", e);
+      }
+    }
+
+    return response;
+  }
+
+  async getClientById(id: string) {
+    return this.request<ClientResponseDto>(`/api/clients/${id}`);
+  }
+
+  async getClientByRut(rut: string) {
+    return this.request<ClientResponseDto>(`/api/clients/rut/${encodeURIComponent(rut)}`);
+  }
+
+  async createClient(client: CreateClientDto) {
+    return this.request<ClientResponseDto>("/api/clients", {
+      method: "POST",
+      body: JSON.stringify(client),
+    });
+  }
+
+  async updateClient(id: string, client: UpdateClientDto) {
+    return this.request<ClientResponseDto>(`/api/clients/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(client),
+    });
+  }
+
+  async deleteClient(id: string) {
+    return this.request<void>(`/api/clients/${id}`, {
+      method: "DELETE",
+    });
+  }
+
   // Orders endpoints
-  
+
   /**
    * Obtiene pedidos con paginación y filtro de sincronización incremental
    * @param page Número de página (1-indexed, default: 1)
@@ -846,7 +969,7 @@ export class ApiClient {
     const params = new URLSearchParams();
     if (storeId) params.append('storeId', storeId);
     if (isActive !== undefined) params.append('isActive', isActive.toString());
-    
+
     const response = await this.request<AccountResponseDto[]>(
       `/api/Accounts?${params.toString()}`
     );
@@ -882,10 +1005,10 @@ export class ApiClient {
   async getStores(status?: string): Promise<StoreResponseDto[]> {
     const params = new URLSearchParams();
     if (status) params.append('status', status);
-    
+
     const queryString = params.toString();
     const endpoint = `/api/stores${queryString ? `?${queryString}` : ''}`;
-    
+
     return this.request<StoreResponseDto[]>(endpoint, {
       method: 'GET',
     });

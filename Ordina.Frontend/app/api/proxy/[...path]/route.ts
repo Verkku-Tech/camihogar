@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // URLs base de las APIs (sin NEXT_PUBLIC porque son del servidor)
+// URLs base de las APIs (sin NEXT_PUBLIC porque son del servidor)
 const API_BASE_URLS: Record<string, string> = {
-  security: process.env.SECURITY_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8082',
-  users: process.env.USERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8083',
-  providers: process.env.PROVIDERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8084',
-  orders: process.env.ORDERS_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8085',
-  stores: process.env.STORES_API_URL || 'http://camihogar.eastus.cloudapp.azure.com:8087',
+  security: process.env.SECURITY_API_URL || 'http://localhost:5054', // 'http://camihogar.eastus.cloudapp.azure.com:8082',
+  users: process.env.USERS_API_URL || 'http://localhost:5222', // 'http://camihogar.eastus.cloudapp.azure.com:8083',
+  providers: process.env.PROVIDERS_API_URL || 'http://localhost:5108', // 'http://camihogar.eastus.cloudapp.azure.com:8084',
+  orders: process.env.ORDERS_API_URL || 'http://localhost:5093', // 'http://camihogar.eastus.cloudapp.azure.com:8085',
+  stores: process.env.STORES_API_URL || 'http://localhost:5000', // 'http://camihogar.eastus.cloudapp.azure.com:8087',
 };
 
 async function handleRequest(
@@ -16,7 +17,7 @@ async function handleRequest(
 ) {
   const [service, ...rest] = params.path;
   const apiBaseUrl = API_BASE_URLS[service];
-  
+
   if (!apiBaseUrl) {
     return NextResponse.json(
       { error: 'Invalid service. Available services: security, users, providers, orders, stores' },
@@ -35,7 +36,7 @@ async function handleRequest(
     // No viene con /api/: ['Orders'] → /api/Orders
     path = `/api/${rest.join('/')}`;
   }
-  
+
   const searchParams = request.nextUrl.search;
   const url = `${apiBaseUrl}${path}${searchParams}`;
 
@@ -70,27 +71,27 @@ async function handleRequest(
     // Detectar si es un archivo binario (Excel, PDF, imágenes, etc.)
     const contentType = response.headers.get('Content-Type') || '';
     const isBinary = contentType.includes('application/vnd.openxmlformats-officedocument') ||
-                     contentType.includes('application/pdf') ||
-                     contentType.includes('application/octet-stream') ||
-                     contentType.includes('image/') ||
-                     contentType.includes('application/excel') ||
-                     contentType.includes('application/x-excel') ||
-                     contentType.includes('application/x-msexcel');
+      contentType.includes('application/pdf') ||
+      contentType.includes('application/octet-stream') ||
+      contentType.includes('image/') ||
+      contentType.includes('application/excel') ||
+      contentType.includes('application/x-excel') ||
+      contentType.includes('application/x-msexcel');
 
     if (isBinary) {
       // Para archivos binarios, devolver el blob directamente
       const blob = await response.blob();
-      
+
       // Copiar headers importantes de la respuesta
       const responseHeaders = new Headers();
       responseHeaders.set('Content-Type', contentType);
-      
+
       // Copiar content-disposition si existe (para el nombre del archivo)
       const contentDisposition = response.headers.get('Content-Disposition');
       if (contentDisposition) {
         responseHeaders.set('Content-Disposition', contentDisposition);
       }
-      
+
       return new NextResponse(blob, {
         status: response.status,
         headers: responseHeaders,
@@ -120,9 +121,9 @@ async function handleRequest(
   } catch (error) {
     console.error('Proxy error:', error);
     return NextResponse.json(
-      { 
-        error: 'Proxy error', 
-        message: error instanceof Error ? error.message : 'Unknown error' 
+      {
+        error: 'Proxy error',
+        message: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     );

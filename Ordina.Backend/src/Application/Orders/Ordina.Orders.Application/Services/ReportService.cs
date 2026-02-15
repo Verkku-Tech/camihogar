@@ -293,7 +293,7 @@ public class ReportService : IReportService
         {
             // Filtrar por número de pedido si se especifica
             if (!string.IsNullOrWhiteSpace(orderNumber) && 
-                !order.OrderNumber.Equals(orderNumber, StringComparison.OrdinalIgnoreCase))
+                !(order.OrderNumber ?? "").Equals(orderNumber, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -315,76 +315,88 @@ public class ReportService : IReportService
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
                 var search = searchTerm.ToLowerInvariant();
-                var matchesOrder = order.OrderNumber.ToLowerInvariant().Contains(search);
-                var matchesClient = order.ClientName.ToLowerInvariant().Contains(search);
+                var matchesOrder = (order.OrderNumber ?? "").ToLowerInvariant().Contains(search);
+                var matchesClient = (order.ClientName ?? "").ToLowerInvariant().Contains(search);
                 orderMatchesSearchByOrderOrClient = matchesOrder || matchesClient;
             }
 
+            if (order.Products == null) continue;
+
             foreach (var product in order.Products)
             {
-                // Solo productos que deben mandarse a fabricar (aceptar "mandar_a_fabricar" y "FABRICACION")
-                if (!IsFabricationLocation(product.LocationStatus))
+                try
                 {
-                    continue;
-                }
-
-                // Determinar el estado real del producto
-                var productStatus = NormalizeManufacturingStatus(product.ManufacturingStatus);
-
-                // Filtrar por el estado solicitado
-                if (!productStatus.Equals(normalizedStatus, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                // Obtener nombre del fabricante
-                string? manufacturerName = product.ManufacturingProviderName ?? "-";
-
-                // Si se especifica manufacturerId, filtrar
-                if (!string.IsNullOrWhiteSpace(manufacturerId))
-                {
-                    if (string.IsNullOrWhiteSpace(product.ManufacturingProviderId) ||
-                        product.ManufacturingProviderId != manufacturerId)
+                    // Solo productos que deben mandarse a fabricar (aceptar "mandar_a_fabricar" y "FABRICACION")
+                    if (!IsFabricationLocation(product.LocationStatus))
                     {
                         continue;
                     }
-                }
 
-                // Si hay término de búsqueda y la orden no coincide por pedido/cliente,
-                // verificar que el producto específico coincida
-                if (!string.IsNullOrWhiteSpace(searchTerm) && !orderMatchesSearchByOrderOrClient)
-                {
-                    var search = searchTerm.ToLowerInvariant();
-                    var matchesProductName = product.Name.ToLowerInvariant().Contains(search);
-                    
-                    if (!matchesProductName)
+                    // Determinar el estado real del producto
+                    var productStatus = NormalizeManufacturingStatus(product.ManufacturingStatus);
+
+                    // Filtrar por el estado solicitado
+                    if (!productStatus.Equals(normalizedStatus, StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
+
+                    // Obtener nombre del fabricante
+                    string? manufacturerName = product.ManufacturingProviderName ?? "-";
+
+                    // Si se especifica manufacturerId, filtrar
+                    if (!string.IsNullOrWhiteSpace(manufacturerId))
+                    {
+                        if (string.IsNullOrWhiteSpace(product.ManufacturingProviderId) ||
+                            product.ManufacturingProviderId != manufacturerId)
+                        {
+                            continue;
+                        }
+                    }
+
+                    // Si hay término de búsqueda y la orden no coincide por pedido/cliente,
+                    // verificar que el producto específico coincida
+                    if (!string.IsNullOrWhiteSpace(searchTerm) && !orderMatchesSearchByOrderOrClient)
+                    {
+                        var search = searchTerm.ToLowerInvariant();
+                        var matchesProductName = (product.Name ?? "").ToLowerInvariant().Contains(search);
+                        
+                        if (!matchesProductName)
+                        {
+                            continue;
+                        }
+                    }
+
+                    // Obtener etiqueta del estado
+                    var estadoLabel = productStatus switch
+                    {
+                        "debe_fabricar" => "Por Fabricar",
+                        "fabricando" => "Fabricando",
+                        "almacen_no_fabricado" => "En almacén",
+                        "fabricado" => "En almacén", // legacy
+                        _ => productStatus
+                    };
+
+                    reportData.Add(new ManufacturingReportRow
+                    {
+                        Fecha = order.CreatedAt.ToString("yyyy-MM-dd"),
+                        Pedido = order.OrderNumber ?? string.Empty,
+                        Estado = estadoLabel,
+                        Cliente = order.ClientName ?? string.Empty,
+                        Fabricante = manufacturerName,
+                        Cantidad = product.Quantity,
+                        Descripcion = await FormatProductDescriptionAsync(product),
+                        ObservacionesVendedor = product.Observations ?? string.Empty,
+                        ObservacionesFabricante = product.ManufacturingNotes ?? string.Empty
+                    });
                 }
-
-                // Obtener etiqueta del estado
-                var estadoLabel = productStatus switch
+                catch (Exception ex)
                 {
-                    "debe_fabricar" => "Por Fabricar",
-                    "fabricando" => "Fabricando",
-                    "almacen_no_fabricado" => "En almacén",
-                    "fabricado" => "En almacén", // legacy
-                    _ => productStatus
-                };
-
-                reportData.Add(new ManufacturingReportRow
-                {
-                    Fecha = order.CreatedAt.ToString("yyyy-MM-dd"),
-                    Pedido = order.OrderNumber,
-                    Estado = estadoLabel,
-                    Cliente = order.ClientName,
-                    Fabricante = manufacturerName,
-                    Cantidad = product.Quantity,
-                    Descripcion = await FormatProductDescriptionAsync(product),
-                    ObservacionesVendedor = product.Observations ?? string.Empty,
-                    ObservacionesFabricante = product.ManufacturingNotes ?? string.Empty
-                });
+                     _logger.LogError(ex, "Error procesando producto en reporte. Orden: {OrderNumber}, Producto: {ProductName}", 
+                        order.OrderNumber ?? "Unknown", product.Name ?? "Unknown");
+                     // Continuar con el siguiente producto
+                     continue;
+                }
             }
         }
 
@@ -423,7 +435,7 @@ public class ReportService : IReportService
     // Método simplificado: ahora los valores ya son labels, solo necesitamos formatearlos
     private async Task<string> FormatProductDescriptionAsync(OrderProduct product)
     {
-        var parts = new List<string> { product.Name };
+        var parts = new List<string> { product.Name ?? "Producto sin nombre" };
 
         if (product.Attributes == null || product.Attributes.Count == 0)
         {

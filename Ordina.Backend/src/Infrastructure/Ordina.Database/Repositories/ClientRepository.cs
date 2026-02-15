@@ -1,3 +1,4 @@
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Ordina.Database.Entities.Client;
 using Ordina.Database.MongoContext;
@@ -18,9 +19,33 @@ public class ClientRepository : IClientRepository
         return await _collection.Find(c => c.Id == id).FirstOrDefaultAsync();
     }
 
+    public async Task<(IEnumerable<Client> Items, long TotalCount)> GetAllAsync(int page, int pageSize, string? search)
+    {
+        var filter = Builders<Client>.Filter.Empty;
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var regex = new BsonRegularExpression(search, "i");
+            filter = Builders<Client>.Filter.Or(
+                Builders<Client>.Filter.Regex(x => x.NombreRazonSocial, regex),
+                Builders<Client>.Filter.Regex(x => x.RutId, regex),
+                Builders<Client>.Filter.Regex(x => x.Apodo, regex)
+            );
+        }
+
+        var totalCount = await _collection.CountDocumentsAsync(filter);
+        
+        var items = await _collection.Find(filter)
+            .Skip((page - 1) * pageSize)
+            .Limit(pageSize)
+            .ToListAsync();
+
+        return (items, totalCount);
+    }
+
     public async Task<IEnumerable<Client>> GetAllAsync()
     {
-        return await _collection.Find(_ => true).ToListAsync();
+        return await _collection.Find(Builders<Client>.Filter.Empty).ToListAsync();
     }
 
     public async Task<Client?> GetByRutIdAsync(string rutId)
