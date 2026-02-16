@@ -1,15 +1,64 @@
 // API Client para comunicación con el backend
 // URLs base para cada microservicio (solo para servidor/SSR)
 const SECURITY_API_URL_DIRECT =
-  process.env.SECURITY_API_URL ||
-  "http://camihogar.eastus.cloudapp.azure.com:8082";
+  process.env.SECURITY_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8082";
 const USERS_API_URL_DIRECT =
-  process.env.USERS_API_URL ||
-  "http://camihogar.eastus.cloudapp.azure.com:8083";
+  process.env.USERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8083";
 const PROVIDERS_API_URL_DIRECT =
   process.env.PROVIDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8084";
 const ORDERS_API_URL_DIRECT =
   process.env.NEXT_PUBLIC_ORDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8085";
+const STORES_API_URL_DIRECT =
+  process.env.NEXT_PUBLIC_STORES_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8087";
+
+export interface PagedResult<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface ClientResponseDto {
+  id: string;
+  nombreRazonSocial: string;
+  apodo?: string;
+  rutId: string;
+  direccion: string;
+  telefono: string;
+  telefono2?: string;
+  email?: string;
+  tipoCliente: string;
+  estado: string;
+  fechaCreacion: string;
+  tieneNotasDespacho: boolean;
+}
+
+export interface CreateClientDto {
+  nombreRazonSocial: string;
+  apodo?: string;
+  rutId: string;
+  direccion: string;
+  telefono: string;
+  telefono2?: string;
+  email?: string;
+  tipoCliente: string;
+  estado: string;
+  tieneNotasDespacho: boolean;
+}
+
+export interface UpdateClientDto {
+  nombreRazonSocial?: string;
+  apodo?: string;
+  rutId?: string;
+  direccion?: string;
+  telefono?: string;
+  telefono2?: string;
+  email?: string;
+  tipoCliente?: string;
+  estado?: string;
+  tieneNotasDespacho?: boolean;
+}
 export interface ApiError {
   message: string;
   status?: number;
@@ -25,13 +74,16 @@ interface CachedApiResponse {
 export class ApiClient {
   getBaseUrl(endpoint: string): string {
     // Determinar qué servicio usar según el endpoint
-    let service: "security" | "users" | "providers" | "orders" = "security";
+    let service: "security" | "users" | "providers" | "orders" | "stores" = "security";
+
+    console.log(`[ApiClient] Resolving service for endpoint: "${endpoint}"`);
 
     if (endpoint.startsWith("/api/Auth")) {
       service = "security";
     } else if (
       endpoint.startsWith("/api/users") ||
-      endpoint.startsWith("/api/Users")
+      endpoint.startsWith("/api/Users") ||
+      endpoint.startsWith("/api/clients")
     ) {
       service = "users";
     } else if (
@@ -44,10 +96,22 @@ export class ApiClient {
     } else if (
       endpoint.startsWith("/api/orders") ||
       endpoint.startsWith("/api/Orders") ||
+      endpoint.startsWith("/api/CommissionSettings") ||
+      endpoint.startsWith("/api/commissionSettings") ||
+      endpoint.toLowerCase().includes("/api/commissionsettings") ||
       endpoint.startsWith("/api/Reports")
     ) {
       service = "orders";
+    } else if (
+      endpoint.startsWith("/api/accounts") ||
+      endpoint.startsWith("/api/Accounts") ||
+      endpoint.startsWith("/api/stores") ||
+      endpoint.startsWith("/api/Stores")
+    ) {
+      service = "stores";
     }
+
+    console.log(`[ApiClient] Resolved service "${service}" for endpoint "${endpoint}"`);
 
     // Si estamos en el cliente (navegador) y la página está en HTTPS, usar proxy
     if (typeof window !== "undefined") {
@@ -68,6 +132,8 @@ export class ApiClient {
         return PROVIDERS_API_URL_DIRECT;
       case "orders":
         return ORDERS_API_URL_DIRECT;
+      case "stores":
+        return STORES_API_URL_DIRECT;
       default:
         return SECURITY_API_URL_DIRECT;
     }
@@ -80,6 +146,7 @@ export class ApiClient {
       "/api/Auth",
       "/api/users",
       "/api/Users",
+      "/api/clients",
       "/api/categories",
       "/api/products",
       "/api/providers",
@@ -87,6 +154,12 @@ export class ApiClient {
       "/api/orders",
       "/api/Orders",
       "/api/Reports",
+      "/api/stores",
+      "/api/Stores",
+      "/api/accounts",
+      "/api/Accounts",
+      "/api/CommissionSettings",
+      "/api/commissionSettings",
     ];
 
     return availableEndpoints.some((path) => endpoint.startsWith(path));
@@ -170,7 +243,8 @@ export class ApiClient {
       else if (endpoint.includes("/categories")) entity = "category";
       else if (endpoint.includes("/clients")) entity = "client";
       else if (endpoint.includes("/providers")) entity = "provider";
-      else if (endpoint.includes("/stores")) entity = "store";
+      else if (endpoint.includes("/providers")) entity = "provider";
+      else if (endpoint.includes("/stores") || endpoint.includes("/accounts")) entity = "store";
 
       // Determinar tipo de operación
       let type: "create" | "update" | "delete" = "create";
@@ -204,7 +278,7 @@ export class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit & { silent?: boolean } = {}
   ): Promise<T> {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
@@ -254,7 +328,7 @@ export class ApiClient {
           const errorData = await response
             .json()
             .catch(() => ({ message: "Usuario o contraseña incorrectos" }));
-          
+
           let errorMessage = errorData.message || "Usuario o contraseña incorrectos";
           if (errorData.errors || errorData.title) {
             const errors: string[] = [];
@@ -275,10 +349,10 @@ export class ApiClient {
             }
             errorMessage = errors.length > 0 ? errors.join("; ") : errorMessage;
           }
-          
+
           throw new Error(errorMessage);
         }
-        
+
         // Para otros endpoints, intentar refresh token
         const refreshed = await this.refreshToken();
         if (refreshed) {
@@ -318,7 +392,7 @@ export class ApiClient {
         const errorData = await response
           .json()
           .catch(() => ({ message: response.statusText }));
-        
+
         // Si es un ModelState (validación de ASP.NET), extraer los mensajes
         let errorMessage = errorData.message || `Error: ${response.statusText}`;
         if (errorData.errors || errorData.title) {
@@ -341,14 +415,16 @@ export class ApiClient {
           }
           errorMessage = errors.length > 0 ? errors.join("; ") : errorMessage;
         }
-        
-        console.error("❌ Error del backend:", {
-          status: response.status,
-          statusText: response.statusText,
-          errorData,
-          errorMessage,
-        });
-        
+
+        if (!options.silent) {
+          console.error("❌ Error del backend:", {
+            status: response.status,
+            statusText: response.statusText,
+            errorData,
+            errorMessage,
+          });
+        }
+
         throw new Error(errorMessage);
       }
 
@@ -371,7 +447,7 @@ export class ApiClient {
         const contentType = response.headers.get("content-type");
         const location = response.headers.get("location");
         console.log("📥 Respuesta 201 Created:", { contentType, location });
-        
+
         if (contentType && contentType.includes("application/json")) {
           try {
             const data = await response.json();
@@ -492,17 +568,17 @@ export class ApiClient {
     return this.request<UserResponseDto>(`/api/users/${id}`);
   }
 
-  async getUserByUsername(username: string) {
-    return this.request<UserResponseDto>(`/api/users/username/${username}`);
+  async getUserByUsername(username: string, silent: boolean = false) {
+    return this.request<UserResponseDto>(`/api/users/username/${username}`, { silent });
   }
 
-  async getUserByEmail(email: string) {
-    return this.request<UserResponseDto>(`/api/users/email/${encodeURIComponent(email)}`);
+  async getUserByEmail(email: string, silent: boolean = false) {
+    return this.request<UserResponseDto>(`/api/users/email/${encodeURIComponent(email)}`, { silent });
   }
 
   async checkUserExistsByEmail(email: string): Promise<boolean> {
     try {
-      await this.getUserByEmail(email);
+      await this.getUserByEmail(email, true);
       return true; // Si no lanza error, el usuario existe
     } catch (error: any) {
       const errorMessage = error?.message || "";
@@ -518,7 +594,7 @@ export class ApiClient {
 
   async checkUserExistsByUsername(username: string): Promise<boolean> {
     try {
-      await this.getUserByUsername(username);
+      await this.getUserByUsername(username, true);
       return true; // Si no lanza error, el usuario existe
     } catch (error: any) {
       const errorMessage = error?.message || "";
@@ -671,12 +747,66 @@ export class ApiClient {
     });
   }
 
+
+
   async checkProviderExists(id: string): Promise<boolean> {
     return this.request<boolean>(`/api/Providers/${id}/exists`);
   }
 
+  // Clients endpoints
+  async getClientsPaged(page: number = 1, pageSize: number = 10, search?: string) {
+    const params = new URLSearchParams();
+    params.append("page", page.toString());
+    params.append("pageSize", pageSize.toString());
+    if (search) {
+      params.append("search", search);
+    }
+
+    const response = await this.request<PagedResult<ClientResponseDto>>(`/api/clients?${params.toString()}`);
+
+    // Side effect: Cachear clientes individuales para acceso offline
+    if (response && response.items && response.items.length > 0) {
+      try {
+        const { put } = await import("./indexeddb");
+        await Promise.all(response.items.map(client => put("clients", client)));
+      } catch (e) {
+        console.warn("Error cacheando clientes:", e);
+      }
+    }
+
+    return response;
+  }
+
+  async getClientById(id: string) {
+    return this.request<ClientResponseDto>(`/api/clients/${id}`);
+  }
+
+  async getClientByRut(rut: string) {
+    return this.request<ClientResponseDto>(`/api/clients/rut/${encodeURIComponent(rut)}`);
+  }
+
+  async createClient(client: CreateClientDto) {
+    return this.request<ClientResponseDto>("/api/clients", {
+      method: "POST",
+      body: JSON.stringify(client),
+    });
+  }
+
+  async updateClient(id: string, client: UpdateClientDto) {
+    return this.request<ClientResponseDto>(`/api/clients/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(client),
+    });
+  }
+
+  async deleteClient(id: string) {
+    return this.request<void>(`/api/clients/${id}`, {
+      method: "DELETE",
+    });
+  }
+
   // Orders endpoints
-  
+
   /**
    * Obtiene pedidos con paginación y filtro de sincronización incremental
    * @param page Número de página (1-indexed, default: 1)
@@ -828,6 +958,94 @@ export class ApiClient {
   async seedDefaultSaleTypeRules(): Promise<SaleTypeCommissionRuleDto[]> {
     return this.request<SaleTypeCommissionRuleDto[]>("/api/CommissionSettings/SaleTypeRules/SeedDefaults", {
       method: "POST",
+    });
+  }
+
+  // ===== ACCOUNTS ENDPOINTS =====
+
+  async getAccounts(storeId?: string, isActive?: boolean): Promise<AccountResponseDto[]> {
+    const params = new URLSearchParams();
+    if (storeId) params.append('storeId', storeId);
+    if (isActive !== undefined) params.append('isActive', isActive.toString());
+
+    const response = await this.request<AccountResponseDto[]>(
+      `/api/Accounts?${params.toString()}`
+    );
+    return response;
+  }
+
+  async getAccountById(id: string): Promise<AccountResponseDto> {
+    return this.request<AccountResponseDto>(`/api/Accounts/${id}`);
+  }
+
+  async createAccount(account: CreateAccountDto): Promise<AccountResponseDto> {
+    return this.request<AccountResponseDto>('/api/Accounts', {
+      method: 'POST',
+      body: JSON.stringify(account),
+    });
+  }
+
+  async updateAccount(id: string, account: UpdateAccountDto): Promise<AccountResponseDto> {
+    return this.request<AccountResponseDto>(`/api/Accounts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(account),
+    });
+  }
+
+  async deleteAccount(id: string): Promise<void> {
+    return this.request<void>(`/api/Accounts/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // ===== STORES ENDPOINTS =====
+
+  async getStores(status?: string): Promise<StoreResponseDto[]> {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+
+    const queryString = params.toString();
+    const endpoint = `/api/stores${queryString ? `?${queryString}` : ''}`;
+
+    return this.request<StoreResponseDto[]>(endpoint, {
+      method: 'GET',
+    });
+  }
+
+  async getStore(id: string): Promise<StoreResponseDto> {
+    const endpoint = `/api/stores/${id}`;
+    return this.request<StoreResponseDto>(endpoint, {
+      method: 'GET',
+    });
+  }
+
+  async getStoreByCode(code: string): Promise<StoreResponseDto> {
+    const endpoint = `/api/stores/by-code/${code}`;
+    return this.request<StoreResponseDto>(endpoint, {
+      method: 'GET',
+    });
+  }
+
+  async createStore(dto: CreateStoreDto): Promise<StoreResponseDto> {
+    const endpoint = '/api/stores';
+    return this.request<StoreResponseDto>(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  async updateStore(id: string, dto: UpdateStoreDto): Promise<StoreResponseDto> {
+    const endpoint = `/api/stores/${id}`;
+    return this.request<StoreResponseDto>(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    });
+  }
+
+  async deleteStore(id: string): Promise<void> {
+    const endpoint = `/api/stores/${id}`;
+    return this.request<void>(endpoint, {
+      method: 'DELETE',
     });
   }
 }
@@ -1069,14 +1287,14 @@ export interface ProviderResponseDto {
 }
 
 export interface CreateProviderDto {
-  rif: string;
   nombre: string;
-  razonSocial: string;
-  email: string;
   telefono: string;
-  direccion: string;
-  contacto: string;
-  tipo: string;
+  rif?: string;
+  razonSocial?: string;
+  email?: string;
+  direccion?: string;
+  contacto?: string;
+  tipo?: string;
   estado?: string;
 }
 
@@ -1112,6 +1330,10 @@ export interface OrderProductDto {
   manufacturingStartedAt?: string;
   manufacturingCompletedAt?: string;
   manufacturingNotes?: string;
+  // Campos de refabricación
+  refabricationReason?: string; // Razón de la última refabricación
+  refabricatedAt?: string; // Fecha de última refabricación (ISO string)
+  refabricationHistory?: RefabricationRecordDto[]; // Historial de refabricaciones
   locationStatus?: string;
 }
 
@@ -1146,6 +1368,16 @@ export interface ProductImageDto {
   type: "model" | "reference" | "other"; // Tipo de imagen
   uploadedAt: string; // Fecha de carga (ISO string)
   size?: number; // Tamaño del archivo en bytes (opcional)
+}
+
+// Registro de refabricación (historial)
+export interface RefabricationRecordDto {
+  reason: string; // Razón de la refabricación
+  date: string; // Fecha de la refabricación (ISO string)
+  previousProviderId?: string; // ID del proveedor anterior
+  previousProviderName?: string; // Nombre del proveedor anterior
+  newProviderId?: string; // ID del nuevo proveedor
+  newProviderName?: string; // Nombre del nuevo proveedor
 }
 
 export interface PartialPaymentDto {
@@ -1323,6 +1555,76 @@ export interface UpdateOrderDto {
   saleType?: string;
   deliveryType?: string;
   deliveryZone?: string;
+}
+
+// ===== ACCOUNTS DTOs =====
+export interface AccountResponseDto {
+  id: string;
+  code: string;
+  label: string;
+  storeId: string;
+  isForeign: boolean;
+  accountType: string;
+  email?: string;
+  wallet?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAccountDto {
+  code: string;
+  label: string;
+  storeId: string;
+  isForeign: boolean;
+  accountType: string;
+  email?: string;
+  wallet?: string;
+  isActive?: boolean;
+}
+
+export interface UpdateAccountDto {
+  code?: string;
+  label?: string;
+  storeId?: string;
+  isForeign?: boolean;
+  accountType?: string;
+  email?: string;
+  wallet?: string;
+  isActive?: boolean;
+}
+
+export interface StoreResponseDto {
+  id: string;
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  email: string;
+  rif: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStoreDto {
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  email: string;
+  rif: string;
+  status?: string;
+}
+
+export interface UpdateStoreDto {
+  name?: string;
+  code?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  rif?: string;
+  status?: string;
 }
 
 export const apiClient = new ApiClient();

@@ -104,16 +104,14 @@ public class ProviderService : IProviderService
                 throw new ArgumentNullException(nameof(createProviderDto));
             }
 
-            if (string.IsNullOrWhiteSpace(createProviderDto.Rif))
+            // Verificar RIF único solo si se proporciona
+            if (!string.IsNullOrWhiteSpace(createProviderDto.Rif))
             {
-                throw new ArgumentException("El RIF no puede estar vacío", nameof(createProviderDto.Rif));
-            }
-
-            // Verificar RIF único (case insensitive)
-            var existingByRif = await _providerRepository.GetByRifAsync(createProviderDto.Rif.Trim());
-            if (existingByRif != null)
-            {
-                throw new InvalidOperationException($"Ya existe un proveedor con el RIF '{createProviderDto.Rif}'");
+                var existingByRif = await _providerRepository.GetByRifAsync(createProviderDto.Rif.Trim());
+                if (existingByRif != null)
+                {
+                    throw new InvalidOperationException($"Ya existe un proveedor con el RIF '{createProviderDto.Rif}'");
+                }
             }
 
             // Verificar email único si se proporciona
@@ -268,7 +266,7 @@ public class ProviderService : IProviderService
         return new ProviderResponseDto
         {
             Id = provider.Id.ToString(),
-            RazonSocial = provider.RazonSocial,
+            RazonSocial = provider.RazonSocial ?? provider.Nombre,
             Nombre = provider.Nombre,
             Rif = provider.Rif,
             Direccion = provider.Direccion,
@@ -287,14 +285,14 @@ public class ProviderService : IProviderService
     {
         return new Provider
         {
-            RazonSocial = dto.RazonSocial,
+            RazonSocial = dto.RazonSocial ?? dto.Nombre,
             Nombre = dto.Nombre,
-            Rif = dto.Rif.Trim(),
-            Direccion = dto.Direccion ?? string.Empty,
-            Telefono = dto.Telefono ?? string.Empty,
-            Email = dto.Email?.Trim() ?? string.Empty,
-            Contacto = dto.Contacto ?? string.Empty,
-            Tipo = dto.Tipo ?? string.Empty,
+            Rif = dto.Rif?.Trim(),
+            Direccion = dto.Direccion,
+            Telefono = dto.Telefono,
+            Email = dto.Email?.Trim(),
+            Contacto = dto.Contacto,
+            Tipo = dto.Tipo,
             Estado = dto.Estado ?? "Activo"
         };
     }

@@ -18,6 +18,13 @@ import type {
   ProviderResponseDto,
   CreateProviderDto,
   UpdateProviderDto,
+  ClientResponseDto,
+  AccountResponseDto,
+  CreateAccountDto,
+  UpdateAccountDto,
+  StoreResponseDto,
+  CreateStoreDto,
+  UpdateStoreDto,
 } from "./api-client";
 import { syncManager } from "./sync-manager";
 
@@ -281,14 +288,14 @@ const setLastSyncTimestamp = async (entity: string, timestamp: string): Promise<
  */
 const shouldDoFullSync = async (entity: string, forceFullSync: boolean = false): Promise<boolean> => {
   if (forceFullSync) return true;
-  
+
   const lastSync = await getLastSyncTimestamp(entity);
   if (!lastSync) return true; // Nunca se ha sincronizado
-  
+
   // También hacer sync completa si han pasado más de 24 horas
   const lastSyncDate = new Date(lastSync);
   const hoursSinceLastSync = (Date.now() - lastSyncDate.getTime()) / (1000 * 60 * 60);
-  
+
   return hoursSinceLastSync > 24;
 };
 
@@ -307,7 +314,7 @@ const shouldSync = async (entity: string): Promise<boolean> => {
   try {
     const metadata = await db.get<SyncMetadata>("app_settings", `sync_${entity}`);
     if (!metadata?.lastSyncDate) return true;
-    
+
     const timeSinceLastSync = Date.now() - new Date(metadata.lastSyncDate).getTime();
     return timeSinceLastSync >= MIN_SYNC_INTERVAL_MS;
   } catch {
@@ -358,7 +365,7 @@ export const getCategories = async (): Promise<Category[]> => {
               mappedCategory.id += 1;
             }
           }
-          
+
           idSet.add(mappedCategory.id);
 
           // Verificar si ya existe una categoría con el mismo nombre
@@ -1464,6 +1471,16 @@ export interface ProductImage {
   mimeType?: string; // Tipo MIME: "image/jpeg", "image/png", "application/pdf", etc.
 }
 
+// Registro de refabricación (historial)
+export interface RefabricationRecord {
+  reason: string; // Razón de la refabricación
+  date: string; // Fecha de la refabricación (ISO string)
+  previousProviderId?: string; // ID del proveedor anterior
+  previousProviderName?: string; // Nombre del proveedor anterior
+  newProviderId?: string; // ID del nuevo proveedor
+  newProviderName?: string; // Nombre del nuevo proveedor
+}
+
 export interface OrderProduct {
   id: string;
   name: string;
@@ -1484,8 +1501,12 @@ export interface OrderProduct {
   manufacturingStartedAt?: string; // Fecha de inicio de fabricación
   manufacturingCompletedAt?: string; // Fecha de finalización de fabricación
   manufacturingNotes?: string; // Notas de fabricación
+  // Campos de refabricación (cuando un producto en almacén se devuelve a fabricación)
+  refabricationReason?: string; // Razón de la última refabricación
+  refabricatedAt?: string; // Fecha de última refabricación (ISO string)
+  refabricationHistory?: RefabricationRecord[]; // Historial de refabricaciones
   // Estado de ubicación del producto
-  locationStatus?: "SIN DEFINIR" | "EN TIENDA" | "FABRICACION"; // Estado de ubicación
+  locationStatus?: "SIN DEFINIR" | "EN TIENDA" | "FABRICACION" | "DESPACHADO"; // Estado de ubicación
 }
 
 export interface PartialPayment {
@@ -2050,7 +2071,7 @@ export const getOrders = async (forceFullSync: boolean = false): Promise<Order[]
           newServerTimestamp = response.serverTimestamp;
           hasMore = response.hasNextPage;
           page++;
-          
+
           // Log de progreso
           console.log(`📥 Página ${page - 1}: ${mappedOrders.length} pedidos (total: ${allOrders.length}/${response.totalCount})`);
         }
@@ -3150,11 +3171,41 @@ export const deleteBudget = async (id: string): Promise<void> => {
   }
 };
 
+// Helper for Client mapping
+export const clientFromBackendDto = (dto: ClientResponseDto): Client => ({
+  id: dto.id,
+  nombreRazonSocial: dto.nombreRazonSocial,
+  apodo: dto.apodo,
+  rutId: dto.rutId,
+  direccion: dto.direccion,
+  telefono: dto.telefono,
+  telefono2: dto.telefono2,
+  email: dto.email,
+  tipoCliente: (dto.tipoCliente?.toLowerCase() as Client["tipoCliente"]) || "particular",
+  estado: (dto.estado?.toLowerCase() as Client["estado"]) || "activo",
+  fechaCreacion: dto.fechaCreacion,
+  tieneNotasDespacho: dto.tieneNotasDespacho,
+});
+
 // ===== CLIENTS STORAGE (IndexedDB) =====
 
 export const getClients = async (): Promise<Client[]> => {
   try {
-    return await db.getAll<Client>("clients");
+    const localClients = await db.getAll<Client>("clients");
+
+    // Si no hay clientes locales y estamos online, intentar obtener del backend
+    if (localClients.length === 0 && isOnline()) {
+      try {
+        console.log("Empty local clients, fetching from backend...");
+        // Obtener una página grande para llenar el cache inicial
+        const result = await apiClient.getClientsPaged(1, 1000);
+        return (result.items || []).map(clientFromBackendDto);
+      } catch (error) {
+        console.warn("Error fetching clients from backend on empty cache fallback:", error);
+      }
+    }
+
+    return localClients;
   } catch (error) {
     console.error("Error loading clients from IndexedDB:", error);
     return [];
@@ -3241,7 +3292,7 @@ export const providerFromBackendDto = (dto: ProviderResponseDto): Provider => {
   const tipo = (dto as any).tipo || (dto as any).Tipo || "";
   const estado = (dto as any).estado || (dto as any).Estado || "activo";
   const createdAt = (dto as any).createdAt || (dto as any).CreatedAt || new Date().toISOString();
-  
+
   return {
     id: dto.id,
     razonSocial: razonSocial || nombre, // Usar nombre si razonSocial está vacío
@@ -3288,7 +3339,25 @@ export const providerToUpdateDto = (updates: Partial<Provider>): UpdateProviderD
 
 export const getProviders = async (): Promise<Provider[]> => {
   try {
-    return await db.getAll<Provider>("providers");
+    const localProviders = await db.getAll<Provider>("providers");
+
+    // Si no hay proveedores locales y estamos online, intentar obtener del backend
+    if (localProviders.length === 0 && isOnline()) {
+      try {
+        console.log("Empty local providers, fetching from backend...");
+        const providersDto = await apiClient.getProviders();
+        const providers = providersDto.map(providerFromBackendDto);
+
+        // Guardar en IndexedDB para futuras consultas
+        await Promise.all(providers.map(p => db.put("providers", p)));
+
+        return providers;
+      } catch (error) {
+        console.warn("Error fetching providers from backend on empty cache fallback:", error);
+      }
+    }
+
+    return localProviders;
   } catch (error) {
     console.error("Error loading providers from IndexedDB:", error);
     return [];
@@ -3362,7 +3431,7 @@ export const syncProvidersFromBackend = async (): Promise<Provider[]> => {
   try {
     const providersDto = await apiClient.getProviders();
     const providers: Provider[] = providersDto.map(providerFromBackendDto);
-    
+
     // Guardar todos los proveedores en IndexedDB
     for (const provider of providers) {
       try {
@@ -3376,7 +3445,7 @@ export const syncProvidersFromBackend = async (): Promise<Provider[]> => {
         console.error(`Error syncing provider ${provider.id}:`, error);
       }
     }
-    
+
     console.log(`✅ ${providers.length} proveedores sincronizados desde el backend`);
     return providers;
   } catch (error) {
@@ -3388,15 +3457,6 @@ export const syncProvidersFromBackend = async (): Promise<Provider[]> => {
 
 // ===== STORES STORAGE (IndexedDB) =====
 
-export const getStores = async (): Promise<Store[]> => {
-  try {
-    return await db.getAll<Store>("stores");
-  } catch (error) {
-    console.error("Error loading stores from IndexedDB:", error);
-    return [];
-  }
-};
-
 export const getStore = async (id: string): Promise<Store | undefined> => {
   try {
     return await db.get<Store>("stores", id);
@@ -3406,65 +3466,86 @@ export const getStore = async (id: string): Promise<Store | undefined> => {
   }
 };
 
-export const addStore = async (
-  store: Omit<Store, "id" | "createdAt" | "updatedAt">
-): Promise<Store> => {
-  try {
-    const now = new Date().toISOString();
-    const newStore: Store = {
-      ...store,
-      id: Date.now().toString(),
-      createdAt: now,
-      updatedAt: now,
-    };
+// Helper para convertir Account a formato backend DTO
+const accountToBackendDto = (account: Account): CreateAccountDto => ({
+  code: account.code,
+  label: account.label,
+  storeId: account.storeId,
+  isForeign: account.isForeign,
+  accountType: account.accountType,
+  email: account.email,
+  wallet: account.wallet,
+  isActive: account.isActive,
+});
 
-    await db.add("stores", newStore);
-    console.log("✅ Tienda guardada en IndexedDB:", newStore.name);
-    return newStore;
-  } catch (error) {
-    console.error("Error adding store to IndexedDB:", error);
-    throw error;
-  }
-};
-
-export const updateStore = async (
-  id: string,
-  updates: Partial<Store>
-): Promise<Store> => {
-  try {
-    const existingStore = await getStore(id);
-    if (!existingStore) {
-      throw new Error(`Store with id ${id} not found`);
-    }
-
-    const updatedStore: Store = {
-      ...existingStore,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
-
-    await db.update("stores", updatedStore);
-    return updatedStore;
-  } catch (error) {
-    console.error("Error updating store in IndexedDB:", error);
-    throw error;
-  }
-};
-
-export const deleteStore = async (id: string): Promise<void> => {
-  try {
-    await db.remove("stores", id);
-  } catch (error) {
-    console.error("Error deleting store from IndexedDB:", error);
-    throw error;
-  }
-};
-
-// ===== ACCOUNTS STORAGE (IndexedDB) =====
+// Helper para convertir backend DTO a formato frontend
+const accountFromBackendDto = (dto: AccountResponseDto): Account => ({
+  id: dto.id,
+  code: dto.code,
+  label: dto.label,
+  storeId: dto.storeId,
+  isForeign: dto.isForeign,
+  accountType: dto.accountType,
+  email: dto.email,
+  wallet: dto.wallet,
+  isActive: dto.isActive,
+  createdAt: dto.createdAt,
+  updatedAt: dto.updatedAt,
+});
 
 export const getAccounts = async (): Promise<Account[]> => {
   try {
-    return await db.getAll<Account>("accounts");
+    // Cargar siempre cuentas locales desde IndexedDB primero (offline-first)
+    const localAccounts = await db.getAll<Account>("accounts");
+
+    // Si hay conexión, intentar sincronizar con backend y hacer merge
+    if (isOnline()) {
+      try {
+        const backendAccounts = await apiClient.getAccounts();
+        const backendAccountsMapped = backendAccounts.map(accountFromBackendDto);
+
+        // Hacer merge: usar ID como clave única
+        const accountsMap = new Map<string, Account>();
+
+        // Primero agregar cuentas locales
+        for (const account of localAccounts) {
+          accountsMap.set(account.id, account);
+        }
+
+        // Luego agregar/actualizar con cuentas del backend (estas tienen prioridad)
+        for (const account of backendAccountsMapped) {
+          accountsMap.set(account.id, account);
+
+          // Guardar/actualizar en IndexedDB
+          try {
+            await db.put("accounts", account);
+            console.log(`✅ Cuenta sincronizada: ${account.label} (ID: ${account.id})`);
+          } catch (error) {
+            console.error(`❌ Error guardando cuenta ${account.label}:`, error);
+          }
+        }
+
+        const mergedAccounts = Array.from(accountsMap.values());
+        console.log(
+          `✅ Cuentas: ${localAccounts.length} locales + ${backendAccounts.length} del backend = ${mergedAccounts.length} totales`
+        );
+
+        return mergedAccounts;
+      } catch (error) {
+        console.warn(
+          "⚠️ Error cargando cuentas del backend, usando solo IndexedDB:",
+          error
+        );
+        // Si falla el backend, retornar cuentas locales
+        return localAccounts;
+      }
+    }
+
+    // Si está offline, solo retornar cuentas locales
+    console.log(
+      `✅ Cuentas cargadas desde IndexedDB: ${localAccounts.length}`
+    );
+    return localAccounts;
   } catch (error) {
     console.error("Error loading accounts from IndexedDB:", error);
     return [];
@@ -3484,6 +3565,31 @@ export const addAccount = async (
   account: Omit<Account, "id" | "createdAt" | "updatedAt">
 ): Promise<Account> => {
   try {
+    // Primero intentar crear en backend si hay conexión
+    if (isOnline()) {
+      try {
+        const createDto: CreateAccountDto = accountToBackendDto({
+          ...account,
+          id: "", // No necesitamos ID para crear
+          createdAt: "",
+          updatedAt: "",
+        } as Account);
+
+        const backendAccount = await apiClient.createAccount(createDto);
+
+        // Usar la cuenta del backend
+        const newAccount: Account = accountFromBackendDto(backendAccount);
+
+        await db.add("accounts", newAccount);
+        console.log("✅ Cuenta guardada en IndexedDB y backend:", newAccount.label);
+        return newAccount;
+      } catch (error) {
+        console.warn("⚠️ Error creando cuenta en backend, guardando solo localmente:", error);
+        // Continuar guardando localmente
+      }
+    }
+
+    // Guardar localmente
     const now = new Date().toISOString();
     const newAccount: Account = {
       ...account,
@@ -3512,6 +3618,32 @@ export const updateAccount = async (
       throw new Error(`Account with id ${id} not found`);
     }
 
+    // Intentar actualizar en backend si hay conexión
+    if (isOnline()) {
+      try {
+        const updateDto: UpdateAccountDto = {
+          code: updates.code,
+          label: updates.label,
+          storeId: updates.storeId,
+          isForeign: updates.isForeign,
+          accountType: updates.accountType,
+          email: updates.email,
+          wallet: updates.wallet,
+          isActive: updates.isActive,
+        };
+
+        const backendAccount = await apiClient.updateAccount(id, updateDto);
+        const updatedAccount = accountFromBackendDto(backendAccount);
+
+        await db.update("accounts", updatedAccount);
+        console.log("✅ Cuenta actualizada en IndexedDB y backend:", updatedAccount.label);
+        return updatedAccount;
+      } catch (error) {
+        console.warn("⚠️ Error actualizando cuenta en backend, actualizando solo localmente:", error);
+        // Continuar actualizando localmente
+      }
+    }
+
     const updatedAccount: Account = {
       ...existingAccount,
       ...updates,
@@ -3528,10 +3660,152 @@ export const updateAccount = async (
 
 export const deleteAccount = async (id: string): Promise<void> => {
   try {
+    // Intentar eliminar en backend si hay conexión
+    if (isOnline()) {
+      try {
+        await apiClient.deleteAccount(id);
+        console.log("✅ Cuenta eliminada del backend");
+      } catch (error) {
+        console.warn("⚠️ Error eliminando cuenta del backend:", error);
+        // No fallar si no se puede eliminar del backend
+      }
+    }
+
     await db.remove("accounts", id);
+    console.log("✅ Cuenta eliminada de IndexedDB");
   } catch (error) {
     console.error("Error deleting account from IndexedDB:", error);
     throw error;
+  }
+};
+
+// Funciones de conversión para Stores
+export const storeToBackendDto = (store: Omit<Store, "id" | "createdAt" | "updatedAt">): CreateStoreDto => ({
+  name: store.name,
+  code: store.code,
+  address: store.address,
+  phone: store.phone,
+  email: store.email,
+  rif: store.rif,
+  status: store.status,
+});
+
+export const storeFromBackendDto = (dto: StoreResponseDto): Store => ({
+  id: dto.id,
+  name: dto.name,
+  code: dto.code,
+  address: dto.address,
+  phone: dto.phone,
+  email: dto.email,
+  rif: dto.rif,
+  status: dto.status as "active" | "inactive",
+  createdAt: dto.createdAt,
+  updatedAt: dto.updatedAt,
+});
+
+// Función de sincronización mejorada para Stores
+export const getStores = async (): Promise<Store[]> => {
+  try {
+    // Intentar obtener del backend primero
+    const backendStores = await apiClient.getStores();
+    const backendStoresConverted = backendStores.map(storeFromBackendDto);
+
+    // Guardar en IndexedDB
+    await Promise.all(backendStoresConverted.map(store => db.put("stores", store)));
+
+    return backendStoresConverted;
+  } catch (error) {
+    console.warn("Error al obtener tiendas del backend, usando IndexedDB:", error);
+    // Fallback a IndexedDB
+    return await db.getAll<Store>("stores");
+  }
+};
+
+export const addStore = async (
+  store: Omit<Store, "id" | "createdAt" | "updatedAt">
+): Promise<Store> => {
+  try {
+    // Crear en backend primero
+    const backendDto = storeToBackendDto(store);
+    const createdStoreDto = await apiClient.createStore(backendDto);
+    const createdStore = storeFromBackendDto(createdStoreDto);
+
+    // Guardar en IndexedDB
+    await db.add("stores", createdStore);
+    console.log("✅ Tienda creada en backend y guardada en IndexedDB:", createdStore.name);
+    return createdStore;
+  } catch (error) {
+    console.error("Error creando tienda en backend, guardando solo en IndexedDB:", error);
+    // Fallback a IndexedDB
+    const now = new Date().toISOString();
+    const newStore: Store = {
+      ...store,
+      id: Date.now().toString(),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.add("stores", newStore);
+    console.log("✅ Tienda guardada en IndexedDB:", newStore.name);
+    return newStore;
+  }
+};
+
+export const updateStore = async (
+  id: string,
+  updates: Partial<Store>
+): Promise<Store> => {
+  try {
+    // Actualizar en backend primero
+    const backendDto: UpdateStoreDto = {};
+    if (updates.name !== undefined) backendDto.name = updates.name;
+    if (updates.code !== undefined) backendDto.code = updates.code;
+    if (updates.address !== undefined) backendDto.address = updates.address;
+    if (updates.phone !== undefined) backendDto.phone = updates.phone;
+    if (updates.email !== undefined) backendDto.email = updates.email;
+    if (updates.rif !== undefined) backendDto.rif = updates.rif;
+    if (updates.status !== undefined) backendDto.status = updates.status;
+
+    const updatedStoreDto = await apiClient.updateStore(id, backendDto);
+    const updatedStore = storeFromBackendDto(updatedStoreDto);
+
+    // Actualizar en IndexedDB
+    await db.put("stores", updatedStore);
+    console.log("✅ Tienda actualizada en backend y IndexedDB:", updatedStore.name);
+    return updatedStore;
+  } catch (error) {
+    console.error("Error actualizando tienda en backend, actualizando solo en IndexedDB:", error);
+    // Fallback a IndexedDB
+    const existingStore = await db.get<Store>("stores", id);
+    if (!existingStore) {
+      throw new Error(`Tienda con ID ${id} no encontrada`);
+    }
+
+    const updatedStore = {
+      ...existingStore,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await db.put("stores", updatedStore);
+    console.log("✅ Tienda actualizada en IndexedDB:", updatedStore.name);
+    return updatedStore;
+  }
+};
+
+export const deleteStore = async (id: string): Promise<void> => {
+  try {
+    // Eliminar del backend primero
+    await apiClient.deleteStore(id);
+
+    // Eliminar de IndexedDB
+    await db.remove("stores", id);
+    console.log("✅ Tienda eliminada de backend e IndexedDB");
+  } catch (error) {
+    console.error("Error eliminando tienda del backend, eliminando solo de IndexedDB:", error);
+    // Fallback a IndexedDB
+    await db.remove("stores", id);
+    console.log("✅ Tienda eliminada de IndexedDB");
   }
 };
 
