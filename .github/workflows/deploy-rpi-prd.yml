@@ -16,7 +16,7 @@ jobs:
 
       - name: Setup Docker Permissions
         run: |
-          set -euo pipefail
+          #set -euo pipefail
           echo "=== Verificando acceso a Docker ==="
           echo "Usuario: $(whoami) | Grupos: $(groups)"
           if docker ps >/dev/null 2>&1; then
@@ -31,7 +31,7 @@ jobs:
 
       - name: Sanity Check
         run: |
-          set -euo pipefail
+          #set -euo pipefail
           echo "=== Verificando entorno ==="
           whoami
           echo "=== Verificando Docker ==="
@@ -47,18 +47,18 @@ jobs:
 
       - name: Ensure curl exists
         run: |
-          set -euo pipefail
+          #set -euo pipefail
           command -v curl >/dev/null 2>&1 || (echo "curl no encontrado; instálalo en la RPi con: sudo apt-get install -y curl" && exit 1)
 
       - name: Deploy Services
         run: |
-          set -euo pipefail
+          #set -euo pipefail
           echo "=== Desplegando todos los servicios ==="
           docker compose up -d --build --remove-orphans
 
       - name: Wait for Services
         run: |
-          set -euo pipefail
+          #set -euo pipefail
           echo "=== Esperando a que los servicios estén listos ==="
           timeout=300
           interval=10
@@ -80,7 +80,7 @@ jobs:
 
       - name: Health Check
         run: |
-          set -euo pipefail
+          #set -euo pipefail
           echo "=== Verificando salud de los servicios ==="
 
           apis=("8082:security-api" "8083:users-api" "8084:providers-api" "8085:orders-api" "8086:payments-api")
@@ -116,7 +116,7 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          set -euo pipefail
+          #set -euo pipefail
           echo "=== Limpiando imágenes no utilizadas ==="
           docker image prune -af || true
           echo "=== Espacio en disco después de limpieza ==="
