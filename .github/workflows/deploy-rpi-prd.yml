@@ -1,4 +1,4 @@
-name: Deploy Camihogar (RPi)
+name: Deploy Camihogar PRD (RPi)
 
 on:
   push:
