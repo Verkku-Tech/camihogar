@@ -17,19 +17,15 @@ jobs:
       - name: Setup Docker Permissions
         run: |
           set -euo pipefail
-          echo "== Configurando permisos de Docker =="
-          # Verificar acceso a Docker
+          echo "=== Verificando acceso a Docker ==="
+          echo "Usuario: $(whoami) | Grupos: $(groups)"
           if docker ps >/dev/null 2>&1; then
-            echo "✓ Docker accesible sin sudo"
-          elif sudo docker ps >/dev/null 2>&1; then
-            echo "⚠️  Docker requiere sudo"
-            # Agregar usuario al grupo docker para futuras ejecuciones
-            if ! groups | grep -q docker; then
-              echo "Agregando usuario al grupo docker..."
-              sudo usermod -aG docker $USER || true
-            fi
+            echo "✓ Docker accesible (usuario en grupo docker)"
           else
-            echo "✗ No se puede acceder a Docker"
+            echo "✗ El usuario no puede usar Docker. En la RPi ejecuta:"
+            echo "  sudo usermod -aG docker runner"
+            echo "  sudo systemctl restart actions.runner.Verkku-Tech-camihogar.camihogar-prd.service"
+            docker ps
             exit 1
           fi
 
@@ -39,35 +35,26 @@ jobs:
           echo "=== Verificando entorno ==="
           whoami
           echo "=== Verificando Docker ==="
-          docker --version || sudo docker --version
-          docker compose version || sudo docker compose version
+          docker --version
+          docker compose version
           echo "=== Verificando espacio en disco ==="
           df -h
           echo "=== Verificando directorios ==="
           ls -la Ordina.Backend
           ls -la Ordina.Frontend
           echo "=== Verificando conectividad Docker ==="
-          docker ps || sudo docker ps
+          docker ps
 
       - name: Ensure curl exists
         run: |
           set -euo pipefail
-          if ! command -v curl >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y curl
-          fi
+          command -v curl >/dev/null 2>&1 || (echo "curl no encontrado; instálalo en la RPi con: sudo apt-get install -y curl" && exit 1)
 
       - name: Deploy Services
         run: |
           set -euo pipefail
           echo "=== Desplegando todos los servicios ==="
-          # Intentar sin sudo primero, si falla usar sudo
-          if docker compose up -d --build --remove-orphans 2>/dev/null; then
-            echo "✓ Despliegue exitoso sin sudo"
-          else
-            echo "⚠️  Usando sudo para docker compose"
-            sudo docker compose up -d --build --remove-orphans
-          fi
+          docker compose up -d --build --remove-orphans
 
       - name: Wait for Services
         run: |
@@ -79,7 +66,7 @@ jobs:
 
           while [ $elapsed -lt $timeout ]; do
             # si todos están "running" y no hay "restarting"/"exited", consideramos OK
-            if (docker compose ps --format json 2>/dev/null || sudo docker compose ps --format json 2>/dev/null) | grep -q '"State":"running"'; then
+            if docker compose ps --format json 2>/dev/null | grep -q '"State":"running"'; then
               echo "Contenedores running detectados. Continuando..."
               break
             fi
@@ -89,7 +76,7 @@ jobs:
           done
 
           echo "=== Estado de contenedores ==="
-          docker compose ps || sudo docker compose ps
+          docker compose ps
 
       - name: Health Check
         run: |
@@ -119,8 +106,8 @@ jobs:
 
           if [ $failed -gt 0 ]; then
             echo "⚠️  Algunos servicios no están respondiendo correctamente"
-            docker compose ps || sudo docker compose ps || true
-            docker compose logs --tail=80 || sudo docker compose logs --tail=80 || true
+            docker compose ps || true
+            docker compose logs --tail=80 || true
             exit 1
           fi
 
@@ -131,6 +118,6 @@ jobs:
         run: |
           set -euo pipefail
           echo "=== Limpiando imágenes no utilizadas ==="
-          docker image prune -af || sudo docker image prune -af || true
+          docker image prune -af || true
           echo "=== Espacio en disco después de limpieza ==="
           df -h
