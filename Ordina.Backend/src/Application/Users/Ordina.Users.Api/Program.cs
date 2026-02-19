@@ -110,6 +110,9 @@ builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.JwtBearer
         };
     });
 
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, Ordina.Users.Api.Authorization.PermissionPolicyProvider>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Ordina.Users.Api.Authorization.PermissionAuthorizationHandler>();
+
 builder.Services.AddAuthorization();
 
 var app = builder.Build();

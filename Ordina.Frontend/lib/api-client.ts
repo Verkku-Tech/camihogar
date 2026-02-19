@@ -85,6 +85,7 @@ export class ApiClient {
     } else if (
       endpoint.startsWith("/api/users") ||
       endpoint.startsWith("/api/Users") ||
+      endpoint.startsWith("/api/Roles") ||
       endpoint.startsWith("/api/clients")
     ) {
       service = "users";
@@ -158,6 +159,7 @@ export class ApiClient {
       "/api/users",
       "/api/Users",
       "/api/clients",
+      "/api/Roles",
       "/api/categories",
       "/api/products",
       "/api/providers",
@@ -641,6 +643,39 @@ export class ApiClient {
     return this.request<{ success: boolean }>(`/api/users/${id}`, {
       method: "DELETE",
     });
+  }
+
+  // Roles endpoints
+  async getRoles() {
+    return this.request<RoleResponseDto[]>("/api/Roles");
+  }
+
+  async getRoleById(id: string) {
+    return this.request<RoleResponseDto>(`/api/Roles/${id}`);
+  }
+
+  async createRole(role: CreateRoleDto) {
+    return this.request<RoleResponseDto>("/api/Roles", {
+      method: "POST",
+      body: JSON.stringify(role),
+    });
+  }
+
+  async updateRole(id: string, role: UpdateRoleDto) {
+    return this.request<RoleResponseDto>(`/api/Roles/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(role),
+    });
+  }
+
+  async deleteRole(id: string) {
+    return this.request<void>(`/api/Roles/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getAllPermissions() {
+    return this.request<string[]>("/api/Roles/permissions");
   }
 
   // Categories endpoints
@@ -1137,6 +1172,7 @@ export interface UserDto {
   role: string;
   name: string;
   status: string;
+  permissions: string[];
 }
 
 export interface UserResponseDto {
@@ -1147,6 +1183,7 @@ export interface UserResponseDto {
   role: string;
   status: string;
   createdAt?: string;
+  permissions?: string[];
 }
 
 export interface CreateUserDto {
@@ -1168,6 +1205,25 @@ export interface UpdateUserDto {
   exclusiveCommission?: boolean;
   baseSalary?: number;
   baseSalaryCurrency?: string;
+}
+
+export interface RoleResponseDto {
+  id: string;
+  name: string;
+  permissions: string[];
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateRoleDto {
+  name: string;
+  permissions: string[];
+}
+
+export interface UpdateRoleDto {
+  name?: string;
+  permissions?: string[];
 }
 
 // Category Types

@@ -9,6 +9,7 @@ public static class DatabaseSeeder
         await PaymentMethodSeeder.SeedAsync(context);
         await VendorSeeder.SeedAsync(context);
         await UserSeeder.SeedAsync(context);
+        await RoleSeeder.SeedAsync(context);
         // Agregar más seeders aquí cuando los crees
     }
 }

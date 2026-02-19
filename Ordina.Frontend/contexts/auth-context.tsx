@@ -9,9 +9,10 @@ interface User {
   id: string
   username: string
   email: string
-  role: "Super Administrator" | "Administrator" | "Supervisor" | "Store Seller" | "Online Seller"
+  role: string
   name: string
   status: "active" | "inactive"
+  permissions: string[]
 }
 
 interface AuthContextType {
@@ -22,6 +23,7 @@ interface AuthContextType {
   login: (username: string, password: string, rememberMe?: boolean) => Promise<void>
   logout: () => void
   refreshToken: () => Promise<void>
+  hasPermission: (permission: string) => boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -31,9 +33,10 @@ function mapUserDtoToUser(dto: UserDto): User {
     id: dto.id,
     username: dto.username,
     email: dto.email,
-    role: dto.role as User["role"],
+    role: dto.role,
     name: dto.name,
     status: dto.status as "active" | "inactive",
+    permissions: dto.permissions || [],
   }
 }
 
@@ -234,6 +237,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const hasPermission = useCallback(
+    (permission: string) => {
+      if (!user) return false
+      // Super Administrator has all permissions
+      if (user.role === "Super Administrator") return true
+      return user.permissions?.includes(permission) || false
+    },
+    [user],
+  )
+
   const refreshToken = useCallback(async () => {
     await attemptRefreshToken()
   }, [attemptRefreshToken])
@@ -246,6 +259,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     login,
     logout,
     refreshToken,
+    hasPermission,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

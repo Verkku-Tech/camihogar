@@ -42,7 +42,10 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
           if (eur) ratesObj.EUR = eur;
         }
 
-        setPreferredCurrencyState(currency);
+        // Determine default currency: Force USD if available, else Bs
+        const activeCurrency: Currency = ratesObj.USD ? "USD" : "Bs";
+
+        setPreferredCurrencyState(activeCurrency);
         setExchangeRates(ratesObj as any);
       } catch (error) {
         console.error("Error loading currency preference:", error);
@@ -70,6 +73,9 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
           if (eur) ratesObj.EUR = eur;
         }
 
+        // Auto-switch based on availability during periodic refresh
+        const activeCurrency: Currency = ratesObj.USD ? "USD" : "Bs";
+        setPreferredCurrencyState(activeCurrency);
         setExchangeRates(ratesObj as any);
       } catch (error) {
         console.error("Error reloading exchange rates:", error);

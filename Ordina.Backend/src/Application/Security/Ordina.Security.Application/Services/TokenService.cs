@@ -17,7 +17,7 @@ public class TokenService : ITokenService
         _configuration = configuration;
     }
 
-    public string GenerateToken(User user)
+    public string GenerateToken(User user, List<string> permissions)
     {
         var key = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
@@ -34,6 +34,11 @@ public class TokenService : ITokenService
         if (!string.IsNullOrEmpty(user.Role))
         {
             claims.Add(new Claim(ClaimTypes.Role, user.Role));
+        }
+
+        foreach (var permission in permissions)
+        {
+            claims.Add(new Claim("permissions", permission));
         }
 
         var expiryMinutes = int.Parse(_configuration["Jwt:ExpiryInMinutes"] ?? "15");

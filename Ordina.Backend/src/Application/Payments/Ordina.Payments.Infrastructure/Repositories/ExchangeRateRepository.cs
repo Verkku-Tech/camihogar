@@ -63,7 +63,12 @@ namespace Ordina.Payments.Infrastructure.Repositories
 
         public async Task<IEnumerable<DomainExchangeRate>> GetAllActiveAsync()
         {
-            var filter = Builders<MongoExchangeRate>.Filter.Eq(r => r.IsActive, true);
+            // Use Venezuela time (UTC-4) to determine "Today"
+            var today = DateTime.UtcNow.AddHours(-4).Date;
+            var filter = Builders<MongoExchangeRate>.Filter.And(
+                Builders<MongoExchangeRate>.Filter.Eq(r => r.IsActive, true),
+                Builders<MongoExchangeRate>.Filter.Gte(r => r.EffectiveDate, today)
+            );
             var sort = Builders<MongoExchangeRate>.Sort.Descending(r => r.EffectiveDate);
             var results = await _context.ExchangeRates.Find(filter).Sort(sort).ToListAsync();
             
@@ -72,10 +77,12 @@ namespace Ordina.Payments.Infrastructure.Repositories
 
         public async Task<DomainExchangeRate?> GetLatestRateAsync(string fromCurrency, string toCurrency)
         {
+            var today = DateTime.UtcNow.AddHours(-4).Date;
             var filter = Builders<MongoExchangeRate>.Filter.And(
                 Builders<MongoExchangeRate>.Filter.Eq(r => r.FromCurrency, fromCurrency),
                 Builders<MongoExchangeRate>.Filter.Eq(r => r.ToCurrency, toCurrency),
-                Builders<MongoExchangeRate>.Filter.Eq(r => r.IsActive, true)
+                Builders<MongoExchangeRate>.Filter.Eq(r => r.IsActive, true),
+                Builders<MongoExchangeRate>.Filter.Gte(r => r.EffectiveDate, today)
             );
             
             var sort = Builders<MongoExchangeRate>.Sort.Descending(r => r.EffectiveDate);

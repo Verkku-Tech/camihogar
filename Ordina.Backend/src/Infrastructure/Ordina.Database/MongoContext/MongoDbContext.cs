@@ -11,6 +11,7 @@ using Ordina.Database.Entities.RefreshToken;
 using Ordina.Database.Entities.Store;
 using Ordina.Database.Entities.User;
 using Ordina.Database.Entities.Vendor;
+using Ordina.Database.Entities.Role;
 
 namespace Ordina.Database.MongoContext;
 
@@ -73,4 +74,7 @@ public class MongoDbContext
 
     public IMongoCollection<ExchangeRate> ExchangeRates =>
         _database.GetCollection<ExchangeRate>("exchangeRates");
+
+    public IMongoCollection<Role> Roles =>
+        _database.GetCollection<Role>("roles");
 }

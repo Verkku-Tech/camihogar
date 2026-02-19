@@ -9,6 +9,7 @@ import { Plus, Edit, Trash2, Tags } from "lucide-react"
 import { toast } from "sonner"
 import { CategoryFormDialog } from "@/components/inventory/category-form-dialog"
 import { DeleteCategoryDialog } from "@/components/inventory/delete-category-dialog"
+import { PermissionGuard } from "@/components/auth/permission-guard"
 import { getCategories, addCategory, updateCategory, deleteCategory, type Category } from "@/lib/storage"
 
 export default function CategoriasPage() {
@@ -110,10 +111,12 @@ export default function CategoriasPage() {
                   Gestiona las categorías de productos
                 </p>
               </div>
-              <Button onClick={handleNewCategory} className="w-full sm:w-auto">
-                <Plus className="w-4 h-4 mr-2" />
-                Nueva Categoría
-              </Button>
+              <PermissionGuard permission="products.create">
+                <Button onClick={handleNewCategory} className="w-full sm:w-auto">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Nueva Categoría
+                </Button>
+              </PermissionGuard>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -126,12 +129,16 @@ export default function CategoriasPage() {
                         <CardTitle className="text-lg">{category.name}</CardTitle>
                       </div>
                       <div className="flex space-x-1">
-                        <Button variant="ghost" size="sm" onClick={() => handleEditCategory(category)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(category)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <PermissionGuard permission="products.update">
+                          <Button variant="ghost" size="sm" onClick={() => handleEditCategory(category)}>
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                        </PermissionGuard>
+                        <PermissionGuard permission="products.delete">
+                          <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(category)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </PermissionGuard>
                       </div>
                     </div>
                     <CardDescription>{category.description}</CardDescription>
@@ -152,7 +159,7 @@ export default function CategoriasPage() {
             </div>
           </div>
         </main>
-      </div>
+      </div >
 
       <CategoryFormDialog
         open={showCategoryForm}
@@ -167,6 +174,6 @@ export default function CategoriasPage() {
         category={categoryToDelete}
         onConfirm={handleDeleteCategory}
       />
-    </div>
+    </div >
   )
 }
