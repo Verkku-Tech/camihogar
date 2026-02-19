@@ -3,12 +3,12 @@ import { NextRequest, NextResponse } from 'next/server';
 // URLs base de las APIs (sin NEXT_PUBLIC porque son del servidor)
 // URLs base de las APIs (sin NEXT_PUBLIC porque son del servidor)
 const API_BASE_URLS: Record<string, string> = {
-  security: process.env.SECURITY_API_URL || 'http://localhost:5054',
-  users: process.env.USERS_API_URL || 'http://localhost:5222',
-  providers: process.env.PROVIDERS_API_URL || 'http://localhost:5108',
-  orders: process.env.ORDERS_API_URL || 'http://localhost:5093',
-  payments: process.env.PAYMENTS_API_URL || 'http://localhost:5297',
-  stores: process.env.STORES_API_URL || 'http://localhost:5000',
+  security: process.env.NEXT_PUBLIC_SECURITY_API_URL || 'http://localhost:5054',
+  users: process.env.NEXT_PUBLIC_USERS_API_URL || 'http://localhost:5222',
+  providers: process.env.NEXT_PUBLIC_PROVIDERS_API_URL || 'http://localhost:5108',
+  orders: process.env.NEXT_PUBLIC_ORDERS_API_URL || 'http://localhost:5093',
+  payments: process.env.NEXT_PUBLIC_PAYMENTS_API_URL || 'http://localhost:5297',
+  stores: process.env.NEXT_PUBLIC_STORES_API_URL || 'http://localhost:5000',
 };
 
 async function handleRequest(

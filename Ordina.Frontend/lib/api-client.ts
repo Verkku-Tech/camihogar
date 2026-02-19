@@ -1,13 +1,13 @@
 // API Client para comunicación con el backend
 // URLs base para cada microservicio (solo para servidor/SSR)
 const SECURITY_API_URL_DIRECT =
-  process.env.SECURITY_API_URL || "http://localhost:5054";
+  process.env.NEXT_PUBLIC_SECURITY_API_URL || "http://localhost:5054";
 const USERS_API_URL_DIRECT =
-  process.env.USERS_API_URL || "http://localhost:5222";
+  process.env.NEXT_PUBLIC_USERS_API_URL || "http://localhost:5222";
 const PROVIDERS_API_URL_DIRECT =
-  process.env.PROVIDERS_API_URL || " http://localhost:5108";
+  process.env.NEXT_PUBLIC_PROVIDERS_API_URL || "http://localhost:5108";
 const ORDERS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_ORDERS_API_URL || " http://localhost:5093";
+  process.env.NEXT_PUBLIC_ORDERS_API_URL || "http://localhost:5093";
 const STORES_API_URL_DIRECT =
   process.env.NEXT_PUBLIC_STORES_API_URL || "http://localhost:5000";
 const PAYMENTS_API_URL_DIRECT =
