@@ -1,6 +1,5 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Inter, JetBrains_Mono } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
 import { AuthProvider } from "@/contexts/auth-context"
 import { NavigationProvider } from "@/contexts/navigation-context"
@@ -10,15 +9,6 @@ import { RegisterServiceWorker } from "@/components/pwa/register-sw"
 import { InstallPrompt } from "@/components/pwa/install-prompt"
 import "./globals.css"
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-})
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-})
 
 export const metadata: Metadata = {
   title: "CamiHogar - Sistema de Gestión de Pedidos",
@@ -63,7 +53,15 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="es" suppressHydrationWarning className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
+    <html lang="es" suppressHydrationWarning className="antialiased">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body>
         <RegisterServiceWorker />
         <InstallPrompt />
