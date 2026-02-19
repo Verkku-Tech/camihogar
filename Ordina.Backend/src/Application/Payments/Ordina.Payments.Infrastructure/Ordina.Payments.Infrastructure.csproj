@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ordina.Payments.Domain\Ordina.Payments.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Infrastructure\Ordina.Database\Ordina.Database.csproj" />
   </ItemGroup>
 
 </Project>

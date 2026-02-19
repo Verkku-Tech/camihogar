@@ -25,7 +25,7 @@ import {
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { getAll } from "@/lib/indexeddb";
+
 import { ExchangeRate } from "@/lib/currency-utils";
 import { useRouter } from "next/navigation";
 
@@ -33,27 +33,42 @@ interface DashboardHeaderProps {
   onMenuClick: () => void;
 }
 
+import { CurrencyCalculatorDialog } from "@/components/currency/currency-calculator-dialog";
+import { Calculator } from "lucide-react";
+
+// ... existing imports ...
+
 export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const { user, logout } = useAuth();
   const router = useRouter();
   const [hasActiveExchangeRates, setHasActiveExchangeRates] = useState(true);
+  const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // ... existing useEffects ...
+
   // Verificar si hay tasas de cambio activas
   useEffect(() => {
     const checkExchangeRates = async () => {
       try {
-        const allRates = await getAll<ExchangeRate>("exchange_rates");
-        const activeRates = allRates.filter((r) => r.isActive);
-        setHasActiveExchangeRates(activeRates.length > 0);
+        const { ApiClient } = await import("@/lib/api-client");
+        const client = new ApiClient();
+        const activeRates = await client.getActiveExchangeRates();
+        setHasActiveExchangeRates(activeRates && activeRates.length > 0);
       } catch (error) {
         console.error("Error checking exchange rates:", error);
-        setHasActiveExchangeRates(true); // Por defecto asumir que hay tasas
+        // Si hay error (ej: backend caído), asumimos que no hay tasas para alertar al usuario
+        // O podríamos dejarlo en true para no molestar. 
+        // En este caso, si falla el check, mejor mostrar alerta si no estamos seguros, o false?
+        // El código original ponía true en catch. Si falla el backend, quizás no queremos bloquear.
+        // Pero si el usuario dice que "no muestra notificación", es porque quiere verla.
+        // Si falla la conexión, hasActiveExchangeRates = false mostraría la alerta.
+        setHasActiveExchangeRates(false);
       }
     };
 
@@ -85,6 +100,17 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
     logout();
   };
 
+  const CalculatorButton = () => (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => setIsCalculatorOpen(true)}
+      title="Calculadora de Divisas"
+    >
+      <Calculator className="w-5 h-5" />
+    </Button>
+  );
+
   if (!mounted) {
     return (
       <header className="h-16 bg-background border-b border-border flex items-center justify-between px-4 lg:px-6">
@@ -103,7 +129,11 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Buscar..." className="pl-10 w-64" />
           </div>
+
+          <CalculatorButton />
+
           <DropdownMenu>
+            {/* ... Bell Dropdown ... */}
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="relative">
                 <Bell className="w-5 h-5" />
@@ -123,7 +153,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
                           No hay tasas de cambio configuradas
                         </p>
                         <p className="text-xs text-amber-700 dark:text-amber-300 mb-3">
-                          Es necesario crear al menos una tasa de cambio (USD o EUR) para poder 
+                          Es necesario crear al menos una tasa de cambio (USD o EUR) para poder
                           realizar conversiones de moneda en pedidos y presupuestos.
                         </p>
                         <Button
@@ -181,6 +211,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        <CurrencyCalculatorDialog open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen} />
       </header>
     );
   }
@@ -204,6 +235,8 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           <Input placeholder="Buscar..." className="pl-10 w-64" />
         </div>
 
+        <CalculatorButton />
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="relative">
@@ -224,7 +257,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
                         No hay tasas de cambio configuradas
                       </p>
                       <p className="text-xs text-amber-700 dark:text-amber-300 mb-3">
-                        Es necesario crear al menos una tasa de cambio (USD o EUR) para poder 
+                        Es necesario crear al menos una tasa de cambio (USD o EUR) para poder
                         realizar conversiones de moneda en pedidos y presupuestos.
                       </p>
                       <Button
@@ -299,6 +332,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      <CurrencyCalculatorDialog open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen} />
     </header>
   );
 }

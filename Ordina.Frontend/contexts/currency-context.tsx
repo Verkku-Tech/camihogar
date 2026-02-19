@@ -23,12 +23,27 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const loadPreference = async () => {
       try {
-        const [currency, rates] = await Promise.all([
+        const { ApiClient } = await import("@/lib/api-client");
+        const client = new ApiClient();
+
+        // Cargar preferencia y tasas en paralelo
+        const [currency, activeRates] = await Promise.all([
           getCurrencyPreference(),
-          getActiveExchangeRates(),
+          client.getActiveExchangeRates(),
         ]);
+
+        // Convertir array de tasas a objeto { USD: ..., EUR: ... }
+        const ratesObj: { USD?: any; EUR?: any } = {};
+        if (Array.isArray(activeRates)) {
+          const usd = activeRates.find((r: any) => r.toCurrency === "USD");
+          if (usd) ratesObj.USD = usd;
+
+          const eur = activeRates.find((r: any) => r.toCurrency === "EUR");
+          if (eur) ratesObj.EUR = eur;
+        }
+
         setPreferredCurrencyState(currency);
-        setExchangeRates(rates);
+        setExchangeRates(ratesObj as any);
       } catch (error) {
         console.error("Error loading currency preference:", error);
       } finally {
@@ -42,8 +57,20 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const rates = await getActiveExchangeRates();
-        setExchangeRates(rates);
+        const { ApiClient } = await import("@/lib/api-client");
+        const client = new ApiClient();
+        const activeRates = await client.getActiveExchangeRates();
+
+        const ratesObj: { USD?: any; EUR?: any } = {};
+        if (Array.isArray(activeRates)) {
+          const usd = activeRates.find((r: any) => r.toCurrency === "USD");
+          if (usd) ratesObj.USD = usd;
+
+          const eur = activeRates.find((r: any) => r.toCurrency === "EUR");
+          if (eur) ratesObj.EUR = eur;
+        }
+
+        setExchangeRates(ratesObj as any);
       } catch (error) {
         console.error("Error reloading exchange rates:", error);
       }

@@ -1,15 +1,17 @@
 // API Client para comunicación con el backend
 // URLs base para cada microservicio (solo para servidor/SSR)
 const SECURITY_API_URL_DIRECT =
-  process.env.SECURITY_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8082";
+  process.env.SECURITY_API_URL || "http://localhost:5054";
 const USERS_API_URL_DIRECT =
-  process.env.USERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8083";
+  process.env.USERS_API_URL || "http://localhost:5222";
 const PROVIDERS_API_URL_DIRECT =
-  process.env.PROVIDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8084";
+  process.env.PROVIDERS_API_URL || " http://localhost:5108";
 const ORDERS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_ORDERS_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8085";
+  process.env.NEXT_PUBLIC_ORDERS_API_URL || " http://localhost:5093";
 const STORES_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_STORES_API_URL || "http://camihogar.eastus.cloudapp.azure.com:8087";
+  process.env.NEXT_PUBLIC_STORES_API_URL || "http://localhost:5000";
+const PAYMENTS_API_URL_DIRECT =
+  process.env.NEXT_PUBLIC_PAYMENTS_API_URL || "http://localhost:5297";
 
 export interface PagedResult<T> {
   items: T[];
@@ -74,7 +76,7 @@ interface CachedApiResponse {
 export class ApiClient {
   getBaseUrl(endpoint: string): string {
     // Determinar qué servicio usar según el endpoint
-    let service: "security" | "users" | "providers" | "orders" | "stores" = "security";
+    let service: "security" | "users" | "providers" | "orders" | "stores" | "payments" = "security";
 
     console.log(`[ApiClient] Resolving service for endpoint: "${endpoint}"`);
 
@@ -109,6 +111,13 @@ export class ApiClient {
       endpoint.startsWith("/api/Stores")
     ) {
       service = "stores";
+    } else if (
+      endpoint.startsWith("/api/ExchangeRates") ||
+      endpoint.startsWith("/api/exchangerates") ||
+      endpoint.startsWith("/api/payments") ||
+      endpoint.startsWith("/api/Payments")
+    ) {
+      service = "payments";
     }
 
     console.log(`[ApiClient] Resolved service "${service}" for endpoint "${endpoint}"`);
@@ -134,6 +143,8 @@ export class ApiClient {
         return ORDERS_API_URL_DIRECT;
       case "stores":
         return STORES_API_URL_DIRECT;
+      case "payments":
+        return PAYMENTS_API_URL_DIRECT;
       default:
         return SECURITY_API_URL_DIRECT;
     }
@@ -160,6 +171,10 @@ export class ApiClient {
       "/api/Accounts",
       "/api/CommissionSettings",
       "/api/commissionSettings",
+      "/api/ExchangeRates",
+      "/api/exchangerates",
+      "/api/Payments",
+      "/api/payments",
     ];
 
     return availableEndpoints.some((path) => endpoint.startsWith(path));
@@ -796,6 +811,28 @@ export class ApiClient {
     return this.request<ClientResponseDto>(`/api/clients/${id}`, {
       method: "PUT",
       body: JSON.stringify(client),
+    });
+  }
+
+  // Exchange Rates endpoints
+  async getActiveExchangeRates() {
+    return this.request<any[]>("/api/ExchangeRates/active");
+  }
+
+  async getLatestExchangeRate(toCurrency: string, fromCurrency: string = "Bs") {
+    return this.request<any>(
+      `/api/ExchangeRates/active/${toCurrency}?fromCurrency=${fromCurrency}`
+    );
+  }
+
+  async setExchangeRate(data: {
+    fromCurrency: string;
+    toCurrency: string;
+    rate: number;
+  }) {
+    return this.request<any>("/api/ExchangeRates", {
+      method: "POST",
+      body: JSON.stringify(data),
     });
   }
 

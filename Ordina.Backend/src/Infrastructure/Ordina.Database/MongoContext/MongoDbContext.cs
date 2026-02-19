@@ -70,4 +70,7 @@ public class MongoDbContext
 
     public IMongoCollection<SaleTypeCommissionRule> SaleTypeCommissionRules =>
         _database.GetCollection<SaleTypeCommissionRule>("saleTypeCommissionRules");
+
+    public IMongoCollection<ExchangeRate> ExchangeRates =>
+        _database.GetCollection<ExchangeRate>("exchangeRates");
 }

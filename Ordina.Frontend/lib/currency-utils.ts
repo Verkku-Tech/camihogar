@@ -19,16 +19,10 @@ export const getLatestExchangeRate = async (
   toCurrency: "USD" | "EUR"
 ): Promise<ExchangeRate | null> => {
   try {
-    const rates = await getAll<ExchangeRate>("exchange_rates");
-    const activeRates = rates
-      .filter((r) => r.toCurrency === toCurrency && r.isActive)
-      .sort(
-        (a, b) =>
-          new Date(b.effectiveDate).getTime() -
-          new Date(a.effectiveDate).getTime()
-      );
-
-    return activeRates[0] || null;
+    const { ApiClient } = await import("./api-client");
+    const client = new ApiClient();
+    const rate = await client.getLatestExchangeRate(toCurrency);
+    return rate || null;
   } catch (error) {
     console.error("Error getting exchange rate:", error);
     return null;
@@ -41,29 +35,22 @@ export const getActiveExchangeRates = async (): Promise<{
   EUR?: ExchangeRate;
 }> => {
   try {
-    const rates = await getAll<ExchangeRate>("exchange_rates");
-    const activeRates = rates.filter((r) => r.isActive);
+    const { ApiClient } = await import("./api-client");
+    const client = new ApiClient();
+    const rates = await client.getActiveExchangeRates();
 
-    const usdRate = activeRates
-      .filter((r) => r.toCurrency === "USD")
-      .sort(
-        (a, b) =>
-          new Date(b.effectiveDate).getTime() -
-          new Date(a.effectiveDate).getTime()
-      )[0];
+    // Convertir array a objeto { USD: ..., EUR: ... }
+    const result: { USD?: ExchangeRate; EUR?: ExchangeRate } = {};
 
-    const eurRate = activeRates
-      .filter((r) => r.toCurrency === "EUR")
-      .sort(
-        (a, b) =>
-          new Date(b.effectiveDate).getTime() -
-          new Date(a.effectiveDate).getTime()
-      )[0];
+    if (Array.isArray(rates)) {
+      const usdRate = rates.find(r => r.toCurrency === "USD");
+      if (usdRate) result.USD = usdRate;
 
-    return {
-      USD: usdRate || undefined,
-      EUR: eurRate || undefined,
-    };
+      const eurRate = rates.find(r => r.toCurrency === "EUR");
+      if (eurRate) result.EUR = eurRate;
+    }
+
+    return result;
   } catch (error) {
     console.error("Error getting active exchange rates:", error);
     return {};
@@ -160,12 +147,12 @@ export const convertProductPriceToBs = async (
   rates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
 ): Promise<number> => {
   if (currency === "Bs") return price;
-  
+
   // Si no se proporcionan las tasas, obtenerlas
   if (!rates) {
     rates = await getActiveExchangeRates();
   }
-  
+
   if (currency === "USD") {
     const rate = rates.USD?.rate;
     if (!rate || rate <= 0) {
@@ -174,7 +161,7 @@ export const convertProductPriceToBs = async (
     }
     return price * rate;
   }
-  
+
   if (currency === "EUR") {
     const rate = rates.EUR?.rate;
     if (!rate || rate <= 0) {
@@ -183,7 +170,7 @@ export const convertProductPriceToBs = async (
     }
     return price * rate;
   }
-  
+
   return price;
 };
 
@@ -212,8 +199,8 @@ export const formatCurrencyWithUsdPrimaryFromOrder = async (
   let usdRate: number | null = null;
 
   // PRIORIDAD 1: Usar la tasa del pedido/presupuesto (más confiable)
-  if (orderOrBudget?.exchangeRatesAtCreation?.USD?.rate && 
-      orderOrBudget.exchangeRatesAtCreation.USD.rate > 0) {
+  if (orderOrBudget?.exchangeRatesAtCreation?.USD?.rate &&
+    orderOrBudget.exchangeRatesAtCreation.USD.rate > 0) {
     usdRate = orderOrBudget.exchangeRatesAtCreation.USD.rate;
   }
 

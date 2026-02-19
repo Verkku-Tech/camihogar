@@ -303,6 +303,7 @@ services:
       - NEXT_PUBLIC_USERS_API_URL=${NEXT_PUBLIC_USERS_API_URL:-http://localhost:8083}
       - NEXT_PUBLIC_PROVIDERS_API_URL=${NEXT_PUBLIC_PROVIDERS_API_URL:-http://localhost:8084}
       - NEXT_PUBLIC_ORDERS_API_URL=${NEXT_PUBLIC_ORDERS_API_URL:-http://localhost:8085}
+      - NEXT_PUBLIC_PAYMENTS_API_URL=${NEXT_PUBLIC_PAYMENTS_API_URL:-http://localhost:8086}
       - NEXT_PUBLIC_STORES_API_URL=${NEXT_PUBLIC_STORES_API_URL:-http://localhost:8087}
       #- NEXT_PUBLIC_ORDERS_API_URL=${NEXT_PUBLIC_ORDERS_API_URL:-http://camihogar.eastus.cloudapp.azure.com:8085}
     restart: unless-stopped
@@ -312,6 +313,8 @@ services:
       users-api:
         condition: service_healthy
       providers-api:
+        condition: service_healthy
+      payments-api:
         condition: service_healthy
     networks:
       - ordina-network
