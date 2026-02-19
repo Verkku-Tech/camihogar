@@ -70,7 +70,22 @@ public static class PaymentMethodSeeder
             }
         };
 
-        await collection.InsertManyAsync(paymentMethods);
+        foreach (var method in paymentMethods)
+        {
+            var filter = Builders<PaymentMethod>.Filter.Eq(x => x.Name, method.Name);
+            var update = Builders<PaymentMethod>.Update
+                .SetOnInsert(x => x.Id, method.Id) // Keep existing ID if present, else use new
+                .Set(x => x.Name, method.Name)
+                .Set(x => x.Type, method.Type)
+                .Set(x => x.IsActive, method.IsActive)
+                .SetOnInsert(x => x.CreatedAt, method.CreatedAt); // Preserve creation date
+
+            await collection.UpdateOneAsync(
+                filter, 
+                update, 
+                new UpdateOptions { IsUpsert = true }
+            );
+        }
     }
 }
 

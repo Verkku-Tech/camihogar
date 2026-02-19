@@ -9,9 +9,9 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
-      - NEXT_PUBLIC_SECURITY_API_URL=http://camihogar.eastus.cloudapp.azure.com:8082
-      - NEXT_PUBLIC_USERS_API_URL=http://camihogar.eastus.cloudapp.azure.com:8083
-      - NEXT_PUBLIC_PROVIDERS_API_URL=http://camihogar.eastus.cloudapp.azure.com:8084
+      - NEXT_PUBLIC_SECURITY_API_URL=${NEXT_PUBLIC_SECURITY_API_URL:-http://localhost:8082}
+      - NEXT_PUBLIC_USERS_API_URL=${NEXT_PUBLIC_USERS_API_URL:-http://localhost:8083}
+      - NEXT_PUBLIC_PROVIDERS_API_URL=${NEXT_PUBLIC_PROVIDERS_API_URL:-http://localhost:8084}
     restart: unless-stopped
     healthcheck:
       test:
