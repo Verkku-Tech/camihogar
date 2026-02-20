@@ -19,4 +19,8 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\Application\Users\Ordina.Users.Domain\Ordina.Users.Domain.csproj" />
+  </ItemGroup>
+
 </Project>

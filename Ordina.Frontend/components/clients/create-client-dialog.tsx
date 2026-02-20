@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { addClient, getClients, type Client } from "@/lib/storage"
+import { apiClient, type ClientResponseDto, type CreateClientDto } from "@/lib/api-client"
 
 const tipoClienteOptions = [
   { value: "particular", label: "Particular" },
@@ -18,11 +18,11 @@ const tipoClienteOptions = [
 interface CreateClientDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onClientCreated?: (client: Client) => void
+  onClientCreated?: (client: ClientResponseDto) => void
 }
 
 export function CreateClientDialog({ open, onOpenChange, onClientCreated }: CreateClientDialogProps) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CreateClientDto>({
     nombreRazonSocial: "",
     apodo: "",
     rutId: "",
@@ -30,7 +30,9 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
     telefono: "",
     telefono2: "",
     email: "",
-    tipoCliente: "particular" as Client["tipoCliente"],
+    tipoCliente: "particular",
+    estado: "activo",
+    tieneNotasDespacho: false
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -42,37 +44,34 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
 
     try {
       setIsSubmitting(true)
-      
-      // Verificar si el RUT/ID ya existe
-      const existingClients = await getClients()
-      const documentExists = existingClients.some((c) => c.rutId === formData.rutId)
-      
-      if (documentExists) {
-        toast.error("El RUT/ID ya existe en el sistema")
-        setIsSubmitting(false)
-        return
-      }
 
-      const newClient = await addClient({
-        ...formData,
-        estado: "activo" as const,
-      })
+      // La verificación de duplicados la hace el backend y la captura el catch
+      // pero para UX rápida, podríamos intentar buscar por RUT primero si tuviéramos endpoint específico
+      // o confiar en el backend (mejor para consistencia)
+
+      const newClient = await apiClient.createClient(formData)
 
       toast.success("Cliente creado exitosamente")
-      
+
       // Resetear formulario
       resetForm()
-      
+
       // Cerrar diálogo
       onOpenChange(false)
-      
+
       // Notificar al componente padre
       if (onClientCreated) {
         onClientCreated(newClient)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating client:", error)
-      toast.error("Error al crear el cliente")
+      // Mejorar mensaje de error si es posible
+      const message = error.message || "Error desconocido"
+      if (message.includes("409") || message.includes("duplicate") || message.includes("exists")) {
+        toast.error("El RUT/ID ya existe en el sistema")
+      } else {
+        toast.error("Error al crear el cliente: " + message)
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -88,6 +87,8 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
       telefono2: "",
       email: "",
       tipoCliente: "particular",
+      estado: "activo",
+      tieneNotasDespacho: false
     })
   }
 
@@ -119,13 +120,10 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
             <Label htmlFor="apodo">Apodo (Código RRSS)</Label>
             <Input
               id="apodo"
-              value={formData.apodo}
+              value={formData.apodo || ""}
               onChange={(e) => setFormData({ ...formData, apodo: e.target.value })}
               placeholder="Código identificador para herramientas de RRSS (opcional)"
             />
-            <p className="text-xs text-muted-foreground">
-              Código identificador usado en herramientas de manejo de conversaciones de redes sociales
-            </p>
           </div>
 
           <div className="space-y-2">
@@ -164,7 +162,7 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
               <Label htmlFor="telefono2">Teléfono de Contacto 2 (opcional)</Label>
               <Input
                 id="telefono2"
-                value={formData.telefono2}
+                value={formData.telefono2 || ""}
                 onChange={(e) => setFormData({ ...formData, telefono2: e.target.value })}
                 placeholder="+58 424 555-0123"
               />
@@ -176,7 +174,7 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
             <Input
               id="email"
               type="email"
-              value={formData.email}
+              value={formData.email || ""}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="cliente@email.com"
             />
@@ -186,7 +184,7 @@ export function CreateClientDialog({ open, onOpenChange, onClientCreated }: Crea
             <Label htmlFor="tipoCliente">Tipo de Cliente *</Label>
             <Select
               value={formData.tipoCliente}
-              onValueChange={(value: Client["tipoCliente"]) => setFormData({ ...formData, tipoCliente: value })}
+              onValueChange={(value) => setFormData({ ...formData, tipoCliente: value })}
             >
               <SelectTrigger>
                 <SelectValue />

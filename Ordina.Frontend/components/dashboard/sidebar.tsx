@@ -21,11 +21,13 @@ import {
   Truck,
   CreditCard,
   Percent,
+  Shield,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import { useNavigation } from "@/contexts/navigation-context"
+import { useAuth } from "@/contexts/auth-context"
 
 interface SidebarProps {
   open: boolean
@@ -56,8 +58,26 @@ const configurationSubmenu = [
   { id: "usuarios", name: "Usuarios", href: "/configuracion/usuarios", icon: Users },
   { id: "navegacion", name: "Navegación", href: "/configuracion/navegacion", icon: Navigation },
   { id: "tasas", name: "Tasas de Cambio", href: "/configuracion/tasas", icon: DollarSign },
-  { id: "comisiones", name: "Comisiones", href: "/configuracion/comisiones", icon: Percent },
+  { id: "comisiones", name: "Comisiones", href: "/configuracion/comisiones", icon: Percent, permission: "settings.company.manage" },
+  { id: "roles", name: "Roles y Permisos", href: "/configuracion/roles", icon: Shield, permission: "roles.read" },
 ]
+
+const permissionMap: Record<string, string | string[]> = {
+  "dashboard": [], // Public
+  "proveedores": "providers.read",
+  "clientes": "clients.read",
+  "tiendas": "settings.company.manage", // Only admins manage stores
+  "cuentas": "finance.accounts.read",
+  "reportes": ["reports.dispatch.view", "reports.commissions.view", "reports.manufacturing.view", "reports.payments.detailed.view"], // Show if any
+  "pedidos-list": "orders.read",
+  "despachos": "dispatch.read",
+  "categorias": "products.read",
+  "productos": "products.read",
+  "fabricacion": "inventory.movements.view",
+  "usuarios": "users.read",
+  "navegacion": "settings.system.manage",
+  "tasas": "settings.currency.manage",
+}
 
 export function Sidebar({ open, onOpenChange }: SidebarProps) {
   const pathname = usePathname()
@@ -65,11 +85,46 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
   const [inventoryOpen, setInventoryOpen] = useState(pathname.startsWith("/inventario"))
   const [ordersOpen, setOrdersOpen] = useState(pathname.startsWith("/pedidos"))
   const { isNavigationItemActive } = useNavigation()
+  const { hasPermission, user } = useAuth()
 
-  const visibleNavigation = navigation.filter((item) => isNavigationItemActive(item.id))
-  const visibleOrdersSubmenu = ordersSubmenu.filter((item) => isNavigationItemActive(item.id))
-  const visibleInventorySubmenu = inventorySubmenu.filter((item) => isNavigationItemActive(item.id))
-  const visibleConfigurationSubmenu = configurationSubmenu.filter((item) => isNavigationItemActive(item.id))
+  const checkPermission = (id: string, itemPermission?: string) => {
+    // If it's the dashboard, it's always allowed
+    if (id === "dashboard") return true;
+
+    // Check specific permission in item if exists
+    if (itemPermission) {
+      return hasPermission(itemPermission);
+    }
+
+    // Check in map
+    const required = permissionMap[id];
+    if (!required) return true; // Default allow if not mapped? Or deny? Let's say allow for now unless mapped.
+    // Actually better to be strict? No, let's be mapped-based.
+
+    if (Array.isArray(required)) {
+      if (required.length === 0) return true;
+      return required.some(p => hasPermission(p));
+    }
+
+    return hasPermission(required);
+  }
+
+  const visibleNavigation = navigation.filter((item) => isNavigationItemActive(item.id) && checkPermission(item.id));
+
+  // Filter submenus
+  const visibleOrdersSubmenu = ordersSubmenu.filter((item) => isNavigationItemActive(item.id) && checkPermission(item.id));
+  const visibleInventorySubmenu = inventorySubmenu.filter((item) => isNavigationItemActive(item.id) && checkPermission(item.id));
+
+  // Configuration submenu has permissions directly in the array as well?
+  // Let's use the checkPermission function which handles both (if we added permission prop to items above)
+  // For configuration, we updated the array to include 'permission' prop.
+  // But wait, I only updated configurationSubmenu in the chunk above. I need to update checkPermission to handle the item object or pass permission.
+
+  const visibleConfigurationSubmenu = configurationSubmenu.filter((item) => {
+    // @ts-ignore
+    const perm = item.permission;
+    return isNavigationItemActive(item.id) && checkPermission(item.id, perm);
+  });
 
   return (
     <>

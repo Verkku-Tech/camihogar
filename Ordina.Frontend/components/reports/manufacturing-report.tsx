@@ -24,7 +24,8 @@ interface ManufacturingReportRow {
   fabricante: string
   cantidad: number
   descripcion: string
-  observaciones: string
+  observacionesVendedor: string
+  observacionesFabricante: string
 }
 
 export function ManufacturingReport() {
@@ -147,7 +148,8 @@ export function ManufacturingReport() {
           fabricante: row.Fabricante || row.fabricante,
           cantidad: row.Cantidad || row.cantidad || 0,
           descripcion: row.Descripcion || row.descripcion || "",
-          observaciones: row.Observaciones || row.observaciones || "",
+          observacionesVendedor: row.ObservacionesVendedor || row.observacionesVendedor || "",
+          observacionesFabricante: row.ObservacionesFabricante || row.observacionesFabricante || "",
         }))
         console.log("📋 Datos mapeados:", mappedData)
         
@@ -722,7 +724,8 @@ export function ManufacturingReport() {
                       <TableHead className="font-medium text-muted-foreground">Fabricante</TableHead>
                       <TableHead className="font-medium text-muted-foreground">Cantidad</TableHead>
                       <TableHead className="font-medium text-muted-foreground">Descripción</TableHead>
-                      <TableHead className="font-medium text-muted-foreground">Observaciones</TableHead>
+                      <TableHead className="font-medium text-muted-foreground">Obs. Vendedor</TableHead>
+                      <TableHead className="font-medium text-muted-foreground">Obs. Fabricante</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -761,7 +764,10 @@ export function ManufacturingReport() {
                         <TableCell className="text-sm text-center">{row.cantidad}</TableCell>
                         <TableCell className="text-sm">{row.descripcion}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {row.observaciones || "-"}
+                          {row.observacionesVendedor || "-"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {row.observacionesFabricante || "-"}
                         </TableCell>
                       </TableRow>
                     ))}

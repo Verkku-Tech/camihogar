@@ -18,25 +18,25 @@ public class Provider
     public string Nombre { get; set; } = string.Empty;
 
     [BsonElement("razonSocial")]
-    public string RazonSocial { get; set; } = string.Empty;
+    public string? RazonSocial { get; set; }
 
     [BsonElement("rif")]
-    public string Rif { get; set; } = string.Empty;
+    public string? Rif { get; set; }
 
     [BsonElement("direccion")]
-    public string Direccion { get; set; } = string.Empty;
+    public string? Direccion { get; set; }
 
     [BsonElement("telefono")]
     public string Telefono { get; set; } = string.Empty;
 
     [BsonElement("email")]
-    public string Email { get; set; } = string.Empty;
+    public string? Email { get; set; }
 
     [BsonElement("contacto")]
-    public string Contacto { get; set; } = string.Empty;
+    public string? Contacto { get; set; }
 
     [BsonElement("tipo")]
-    public string Tipo { get; set; } = string.Empty; // "materia-prima" | "servicios" | "productos-terminados"
+    public string? Tipo { get; set; } // "materia-prima" | "servicios" | "productos-terminados"
 
     [BsonElement("estado")]
     public string Estado { get; set; } = "activo"; // "activo" | "inactivo"

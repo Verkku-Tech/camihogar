@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Ordina.Database.Entities.Account;
 using Ordina.Database.Entities.Category;
 using Ordina.Database.Entities.Client;
 using Ordina.Database.Entities.Commission;
@@ -10,6 +11,7 @@ using Ordina.Database.Entities.RefreshToken;
 using Ordina.Database.Entities.Store;
 using Ordina.Database.Entities.User;
 using Ordina.Database.Entities.Vendor;
+using Ordina.Database.Entities.Role;
 
 namespace Ordina.Database.MongoContext;
 
@@ -43,6 +45,9 @@ public class MongoDbContext
     public IMongoCollection<Store> Stores =>
         _database.GetCollection<Store>("stores");
 
+    public IMongoCollection<Account> Accounts =>
+        _database.GetCollection<Account>("accounts");
+
     public IMongoCollection<User> Users =>
         _database.GetCollection<User>("users");
 
@@ -66,4 +71,10 @@ public class MongoDbContext
 
     public IMongoCollection<SaleTypeCommissionRule> SaleTypeCommissionRules =>
         _database.GetCollection<SaleTypeCommissionRule>("saleTypeCommissionRules");
+
+    public IMongoCollection<ExchangeRate> ExchangeRates =>
+        _database.GetCollection<ExchangeRate>("exchangeRates");
+
+    public IMongoCollection<Role> Roles =>
+        _database.GetCollection<Role>("roles");
 }

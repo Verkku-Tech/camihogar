@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Ordina.Payments.Domain;
+using Ordina.Payments.Domain.Entities;
 
 namespace Ordina.Payments.Infrastructure;
 
@@ -12,6 +13,7 @@ public class PaymentsDbContext : DbContext
     // DbSets para las entidades del dominio Payments
     public DbSet<Payment> Payments { get; set; }
     public DbSet<PaymentMethod> PaymentMethods { get; set; }
+    public DbSet<ExchangeRate> ExchangeRates { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +62,21 @@ public class PaymentsDbContext : DbContext
             entity.HasIndex(e => e.Name).IsUnique();
             entity.HasIndex(e => e.Type);
             entity.HasIndex(e => e.CreatedAt);
+        });
+
+        // Configuración de ExchangeRate
+        modelBuilder.Entity<ExchangeRate>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
+            entity.Property(e => e.FromCurrency).IsRequired().HasMaxLength(3);
+            entity.Property(e => e.ToCurrency).IsRequired().HasMaxLength(3);
+            entity.Property(e => e.Rate).HasColumnType("decimal(18,4)");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("NOW()");
+
+            // Índices
+            entity.HasIndex(e => e.IsActive);
+            entity.HasIndex(e => new { e.FromCurrency, e.ToCurrency, e.IsActive });
         });
 
         // Datos semilla para development

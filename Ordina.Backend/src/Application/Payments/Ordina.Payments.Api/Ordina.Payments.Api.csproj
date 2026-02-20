@@ -9,11 +9,14 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.6" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.6" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\Infrastructure\Ordina.ServiceDefaults\Ordina.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\..\Infrastructure\Ordina.Database\Ordina.Database.csproj" />
+    <ProjectReference Include="..\Ordina.Payments.Application\Ordina.Payments.Application.csproj" />
+    <ProjectReference Include="..\Ordina.Payments.Infrastructure\Ordina.Payments.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

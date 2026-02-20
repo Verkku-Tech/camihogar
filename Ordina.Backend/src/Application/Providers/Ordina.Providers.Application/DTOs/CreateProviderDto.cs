@@ -9,35 +9,29 @@ namespace Ordina.Providers.Application.DTOs
 {
     public class CreateProviderDto
     {
-        [Required]
         [StringLength(20)]
-        public string Rif { get; set; } = string.Empty;
+        public string? Rif { get; set; }
 
         [Required]
         [StringLength(200)]
         public string Nombre { get; set; } = string.Empty;
 
-        [Required]
-        public string RazonSocial { get; set; } = string.Empty;
+        public string? RazonSocial { get; set; }
 
-        [Required]
         [EmailAddress]
         [StringLength(100)]
-        public string Email { get; set; } = string.Empty;
+        public string? Email { get; set; }
 
-        [StringLength(20)]
         [Required]
+        [StringLength(20)]
         public string Telefono { get; set; } = string.Empty;
 
         [StringLength(500)]
-        [Required]
-        public string Direccion { get; set; } = string.Empty;
+        public string? Direccion { get; set; }
 
-        [Required]
-        public string Contacto { get; set; } = string.Empty;
+        public string? Contacto { get; set; }
 
-        [Required]
-        public string Tipo { get; set; } = string.Empty;
+        public string? Tipo { get; set; }
 
         public string Estado { get; set; } = "Activo";
 

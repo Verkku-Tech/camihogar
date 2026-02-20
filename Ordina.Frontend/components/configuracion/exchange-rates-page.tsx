@@ -30,6 +30,7 @@ import { getAll, add, update } from "@/lib/indexeddb";
 import { Plus, Trash2, DollarSign, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ExchangeRate } from "@/lib/currency-utils";
+import { ApiClient } from "@/lib/api-client";
 import { useCurrency } from "@/contexts/currency-context";
 import { Switch } from "@/components/ui/switch";
 export function ExchangeRatesPage() {
@@ -60,16 +61,13 @@ export function ExchangeRatesPage() {
 
   const loadRates = async () => {
     try {
-      const allRates = await getAll<ExchangeRate>("exchange_rates");
-      setRates(
-        allRates.sort(
-          (a, b) =>
-            new Date(b.effectiveDate).getTime() -
-            new Date(a.effectiveDate).getTime()
-        )
-      );
+      const client = new ApiClient();
+      // Obtener tasas activas desde el API
+      const activeRates = await client.getActiveExchangeRates();
+      setRates(activeRates);
     } catch (error) {
       console.error("Error loading exchange rates:", error);
+      toast.error("Error al cargar las tasas de cambio");
     }
   };
 
@@ -77,40 +75,21 @@ export function ExchangeRatesPage() {
     e.preventDefault();
 
     try {
-      // Desactivar tasas anteriores de la misma moneda
-      const existingRates = rates.filter(
-        (r) => r.toCurrency === formData.toCurrency && r.isActive
-      );
+      const client = new ApiClient();
 
-      for (const rate of existingRates) {
-        await update("exchange_rates", { ...rate, isActive: false });
-      }
-
-      // Disparar evento después de desactivar tasas anteriores
-      if (existingRates.length > 0) {
-        window.dispatchEvent(new CustomEvent("exchangeRateUpdated"));
-      }
-
-      // Crear nueva tasa
-      const newRate: ExchangeRate = {
-        id: crypto.randomUUID(),
+      // Crear nueva tasa en el backend
+      await client.setExchangeRate({
         fromCurrency: "Bs",
         toCurrency: formData.toCurrency,
-        rate: parseFloat(formData.rate),
-        effectiveDate: formData.effectiveDate,
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+        rate: parseFloat(formData.rate)
+      });
 
-      await add("exchange_rates", newRate);
-      
       // Activar automáticamente el modo de visualización para la nueva moneda
       await setPreferredCurrency(formData.toCurrency);
-      
-      // Disparar evento para actualizar el sidebar
+
+      // Disparar evento para actualizar el sidebar y otros componentes
       window.dispatchEvent(new CustomEvent("exchangeRateUpdated"));
-      
+
       await loadRates();
       setShowForm(false);
       setFormData({
@@ -118,27 +97,15 @@ export function ExchangeRatesPage() {
         rate: "",
         effectiveDate: new Date().toISOString().split("T")[0],
       });
-      toast.success("Tasa de cambio creada exitosamente y marcada como activa. Moneda de visualización activada automáticamente.");
-    } catch (error) {
+      toast.success("Tasa de cambio creada exitosamente. Moneda de visualización activada automáticamente.");
+    } catch (error: any) {
       console.error("Error saving exchange rate:", error);
-      toast.error("Error al guardar la tasa de cambio");
+      const errorMessage = error.message || "Error al guardar la tasa de cambio";
+      toast.error(errorMessage);
     }
   };
 
-  const handleDeactivate = async (rate: ExchangeRate) => {
-    try {
-      await update("exchange_rates", { ...rate, isActive: false });
-      
-      // Disparar evento para actualizar el sidebar
-      window.dispatchEvent(new CustomEvent("exchangeRateUpdated"));
-      
-      await loadRates();
-      toast.success("Tasa desactivada exitosamente");
-    } catch (error) {
-      console.error("Error deactivating rate:", error);
-      toast.error("Error al desactivar la tasa");
-    }
-  };
+
 
   const handleCurrencyToggle = async (
     currency: "USD" | "EUR",
@@ -149,8 +116,7 @@ export function ExchangeRatesPage() {
         // Activar esta moneda (desactiva automáticamente Bolívar)
         await setPreferredCurrency(currency);
         toast.success(
-          `Moneda de visualización cambiada a ${
-            currency === "USD" ? "Dólares" : "Euros"
+          `Moneda de visualización cambiada a ${currency === "USD" ? "Dólares" : "Euros"
           }`
         );
       } else {
@@ -195,8 +161,8 @@ export function ExchangeRatesPage() {
                   No hay tasas de cambio configuradas
                 </h3>
                 <p className="text-sm text-amber-700 dark:text-amber-300">
-                  Es necesario crear al menos una tasa de cambio (USD o EUR) para poder 
-                  realizar conversiones de moneda en pedidos y presupuestos. 
+                  Es necesario crear al menos una tasa de cambio (USD o EUR) para poder
+                  realizar conversiones de moneda en pedidos y presupuestos.
                   Las tasas se marcan como activas automáticamente al crearlas.
                 </p>
               </div>
@@ -300,7 +266,6 @@ export function ExchangeRatesPage() {
                   <TableHead className="text-center">
                     Moneda de Visualización
                   </TableHead>
-                  <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -330,15 +295,6 @@ export function ExchangeRatesPage() {
                           />
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeactivate(rate)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -351,9 +307,8 @@ export function ExchangeRatesPage() {
             <p className="text-sm text-muted-foreground text-center">
               {preferredCurrency === "Bs"
                 ? "La moneda de visualización actual es Bolívares (por defecto). Activa un checkbox para cambiar."
-                : `La moneda de visualización actual es ${
-                    preferredCurrency === "USD" ? "Dólares" : "Euros"
-                  }. Desactiva todos los checkboxes para volver a Bolívares.`}
+                : `La moneda de visualización actual es ${preferredCurrency === "USD" ? "Dólares" : "Euros"
+                }. Desactiva todos los checkboxes para volver a Bolívares.`}
             </p>
           </CardContent>
         )}

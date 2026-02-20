@@ -14,17 +14,20 @@ public class AuthService : IAuthService
     private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly ITokenService _tokenService;
     private readonly IConfiguration _configuration;
+    private readonly IRoleRepository _roleRepository;
 
     public AuthService(
         IUserRepository userRepository,
         IRefreshTokenRepository refreshTokenRepository,
         ITokenService tokenService,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IRoleRepository roleRepository)
     {
         _userRepository = userRepository;
         _refreshTokenRepository = refreshTokenRepository;
         _tokenService = tokenService;
         _configuration = configuration;
+        _roleRepository = roleRepository;
     }
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request)
@@ -49,8 +52,19 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("Usuario o contraseña incorrectos");
         }
 
+        // Obtener permisos del rol
+        var permissions = new List<string>();
+        if (!string.IsNullOrEmpty(user.Role))
+        {
+            var role = await _roleRepository.GetByNameAsync(user.Role);
+            if (role != null)
+            {
+                permissions = role.Permissions;
+            }
+        }
+
         // Generar tokens (el rol ya viene en la entidad MongoDB User.Role)
-        var token = _tokenService.GenerateToken(user);
+        var token = _tokenService.GenerateToken(user, permissions);
         var refreshTokenValue = _tokenService.GenerateRefreshToken();
 
         var expiryMinutes = int.Parse(_configuration["Jwt:ExpiryInMinutes"] ?? "480");
@@ -80,7 +94,8 @@ public class AuthService : IAuthService
                 Email = user.Email,
                 Role = user.Role ?? "Sin rol asignado",
                 Name = user.Name,
-                Status = user.Status
+                Status = user.Status,
+                Permissions = permissions
             }
         };
 
@@ -108,8 +123,19 @@ public class AuthService : IAuthService
         storedToken.IsRevoked = true;
         await _refreshTokenRepository.UpdateAsync(storedToken);
 
+        // Obtener permisos del rol
+        var permissions = new List<string>();
+        if (!string.IsNullOrEmpty(user.Role))
+        {
+            var role = await _roleRepository.GetByNameAsync(user.Role);
+            if (role != null)
+            {
+                permissions = role.Permissions;
+            }
+        }
+
         // Generar nuevos tokens
-        var newToken = _tokenService.GenerateToken(user);
+        var newToken = _tokenService.GenerateToken(user, permissions);
         var newRefreshTokenValue = _tokenService.GenerateRefreshToken();
 
         // Guardar nuevo refresh token

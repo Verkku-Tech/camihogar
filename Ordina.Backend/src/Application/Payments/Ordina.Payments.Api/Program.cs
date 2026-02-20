@@ -11,6 +11,10 @@ builder.Services.AddProblemDetails();
 // Configure MongoDB
 builder.Services.AddMongoDb(builder.Configuration);
 
+// Register Services and Repositories
+builder.Services.AddScoped<Ordina.Payments.Domain.Repositories.IExchangeRateRepository, Ordina.Payments.Infrastructure.Repositories.ExchangeRateRepository>();
+builder.Services.AddScoped<Ordina.Payments.Application.Interfaces.IExchangeRateService, Ordina.Payments.Application.Services.ExchangeRateService>();
+
 // Add CORS
 builder.Services.AddCors(options =>
 {
