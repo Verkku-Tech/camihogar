@@ -1,17 +1,17 @@
 // API Client para comunicación con el backend
 // URLs base para cada microservicio (solo para servidor/SSR)
 const SECURITY_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_SECURITY_API_URL;
+  process.env.NEXT_PUBLIC_SECURITY_API_URL ?? "";
 const USERS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_USERS_API_URL;
+  process.env.NEXT_PUBLIC_USERS_API_URL ?? "";
 const PROVIDERS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_PROVIDERS_API_URL;
+  process.env.NEXT_PUBLIC_PROVIDERS_API_URL ?? "";
 const ORDERS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_ORDERS_API_URL;
+  process.env.NEXT_PUBLIC_ORDERS_API_URL ?? "";
 const STORES_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_STORES_API_URL
+  process.env.NEXT_PUBLIC_STORES_API_URL ?? "";
 const PAYMENTS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_PAYMENTS_API_URL
+  process.env.NEXT_PUBLIC_PAYMENTS_API_URL ?? "";
 
 export interface PagedResult<T> {
   items: T[];
