@@ -299,13 +299,13 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
-      - NEXT_PUBLIC_SECURITY_API_URL=${NEXT_PUBLIC_SECURITY_API_URL:-http://localhost:8082}
-      - NEXT_PUBLIC_USERS_API_URL=${NEXT_PUBLIC_USERS_API_URL:-http://localhost:8083}
-      - NEXT_PUBLIC_PROVIDERS_API_URL=${NEXT_PUBLIC_PROVIDERS_API_URL:-http://localhost:8084}
-      - NEXT_PUBLIC_ORDERS_API_URL=${NEXT_PUBLIC_ORDERS_API_URL:-http://localhost:8085}
-      - NEXT_PUBLIC_PAYMENTS_API_URL=${NEXT_PUBLIC_PAYMENTS_API_URL:-http://localhost:8086}
-      - NEXT_PUBLIC_STORES_API_URL=${NEXT_PUBLIC_STORES_API_URL:-http://localhost:8087}
-      #- NEXT_PUBLIC_ORDERS_API_URL=${NEXT_PUBLIC_ORDERS_API_URL:-http://camihogar.eastus.cloudapp.azure.com:8085}
+      # URLs internas: el proxy del frontend corre dentro del contenedor y debe usar nombres de servicio Docker
+      - NEXT_PUBLIC_SECURITY_API_URL=${NEXT_PUBLIC_SECURITY_API_URL:-http://security-api:8082}
+      - NEXT_PUBLIC_USERS_API_URL=${NEXT_PUBLIC_USERS_API_URL:-http://users-api:8083}
+      - NEXT_PUBLIC_PROVIDERS_API_URL=${NEXT_PUBLIC_PROVIDERS_API_URL:-http://providers-api:8084}
+      - NEXT_PUBLIC_ORDERS_API_URL=${NEXT_PUBLIC_ORDERS_API_URL:-http://orders-api:8085}
+      - NEXT_PUBLIC_PAYMENTS_API_URL=${NEXT_PUBLIC_PAYMENTS_API_URL:-http://payments-api:8086}
+      - NEXT_PUBLIC_STORES_API_URL=${NEXT_PUBLIC_STORES_API_URL:-http://stores-api:8087}
     restart: unless-stopped
     depends_on:
       security-api:
