@@ -22,9 +22,10 @@ public class ImportController : ControllerBase
     }
 
     /// <summary>
-    /// Importa productos y categorías desde un archivo Excel (.xlsx).
-    /// Cada pestaña del archivo representa una categoría.
-    /// Columna C = Atributo | Columna D = Nombre del producto | Columna E = Precio de venta.
+    /// Importa categorías, atributos y productos desde un archivo Excel (.xlsx).
+    /// Cada pestaña = una categoría.  El encabezado se auto-detecta.
+    /// Col B = Productos | Col C = Atributo | Col D = Valor | Col E = Ajuste de precio.
+    /// Productos se crean con precio 0; el precio lo definen los atributos.
     /// </summary>
     [HttpPost("import")]
     [RequestSizeLimit(10 * 1024 * 1024)]
@@ -55,8 +56,10 @@ public class ImportController : ControllerBase
             var result = await _importService.ImportProductsFromExcelAsync(stream, currency);
 
             _logger.LogInformation(
-                "Importación completada: {Sheets} hojas, {Categories} categorías",
-                result.TotalSheets, result.TotalCategoriesCreated + result.TotalCategoriesUpdated);
+                "Importación completada: {Sheets} hojas, {Categories} categorías, {Products} productos",
+                result.TotalSheets,
+                result.TotalCategoriesCreated + result.TotalCategoriesUpdated,
+                result.TotalProductsCreated);
 
             return Ok(result);
         }

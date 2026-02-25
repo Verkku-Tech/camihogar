@@ -39,6 +39,62 @@ public class ProductsController : ControllerBase
     }
 
     /// <summary>
+    /// Obtiene productos paginados con filtros opcionales server-side.
+    /// </summary>
+    [HttpGet("paginated")]
+    [ProducesResponseType(typeof(PaginatedResultDto<ProductListItemDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PaginatedResultDto<ProductListItemDto>>> GetPaginated(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? search = null,
+        [FromQuery] string? categoryId = null,
+        [FromQuery] string? status = null)
+    {
+        try
+        {
+            if (page < 1) page = 1;
+            if (pageSize < 1) pageSize = 20;
+            if (pageSize > 100) pageSize = 100;
+
+            var result = await _productService.GetPaginatedAsync(page, pageSize, search, categoryId, status);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener productos paginados");
+            return StatusCode(500, new { message = "Error interno del servidor al obtener productos" });
+        }
+    }
+
+    /// <summary>
+    /// Busca productos por nombre, SKU o categoría (max 20 resultados, sin paginar).
+    /// Ideal para autocompletado en comboboxes.
+    /// </summary>
+    [HttpGet("search")]
+    [ProducesResponseType(typeof(IEnumerable<ProductListItemDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IEnumerable<ProductListItemDto>>> Search(
+        [FromQuery] string q,
+        [FromQuery] int limit = 20)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(q))
+                return Ok(Array.Empty<ProductListItemDto>());
+
+            if (limit < 1) limit = 1;
+            if (limit > 50) limit = 50;
+
+            var results = await _productService.SearchAsync(q, limit);
+            return Ok(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al buscar productos con término '{Query}'", q);
+            return StatusCode(500, new { message = "Error interno del servidor al buscar productos" });
+        }
+    }
+
+    /// <summary>
     /// Obtiene productos por categoría
     /// </summary>
     /// <param name="categoryId">ID de la categoría</param>

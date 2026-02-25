@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 // URLs base de las APIs (sin NEXT_PUBLIC porque son del servidor)
 const API_BASE_URLS: Record<string, string | undefined> = {
-  security: process.env.NEXT_PUBLIC_SECURITY_API_URL,
+  security: process.env.NEXT_PUBLIC_SECURITY_API_URL ,
   users: process.env.NEXT_PUBLIC_USERS_API_URL,
-  providers: process.env.NEXT_PUBLIC_PROVIDERS_API_URL,
+  providers: process.env.NEXT_PUBLIC_PROVIDERS_API_URL ,
   orders: process.env.NEXT_PUBLIC_ORDERS_API_URL,
   payments: process.env.NEXT_PUBLIC_PAYMENTS_API_URL,
   stores: process.env.NEXT_PUBLIC_STORES_API_URL,

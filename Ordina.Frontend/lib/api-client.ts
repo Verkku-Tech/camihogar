@@ -742,6 +742,32 @@ export class ApiClient {
     return this.request<ProductResponseDto[]>("/api/products");
   }
 
+  async getProductsPaginated(params: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    categoryId?: string;
+    status?: string;
+  } = {}) {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", params.page.toString());
+    if (params.pageSize) query.set("pageSize", params.pageSize.toString());
+    if (params.search) query.set("search", params.search);
+    if (params.categoryId) query.set("categoryId", params.categoryId);
+    if (params.status) query.set("status", params.status);
+    const qs = query.toString();
+    return this.request<PaginatedResultDto<ProductListItemDto>>(
+      `/api/products/paginated${qs ? `?${qs}` : ""}`,
+    );
+  }
+
+  async searchProducts(q: string, limit = 20) {
+    const query = new URLSearchParams({ q, limit: limit.toString() });
+    return this.request<ProductListItemDto[]>(
+      `/api/products/search?${query.toString()}`,
+    );
+  }
+
   async getProductById(id: string) {
     return this.request<ProductResponseDto>(`/api/products/${id}`);
   }
@@ -1486,11 +1512,35 @@ export interface UpdateProductDto {
   providerId?: string;
 }
 
+export interface PaginatedResultDto<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+export interface ProductListItemDto {
+  id: string;
+  name: string;
+  categoryId: string;
+  category: string;
+  price: number;
+  priceCurrency?: string;
+  stock: number;
+  status: string;
+  sku: string;
+}
+
 export interface ImportProductsResultDto {
   totalSheets: number;
   totalCategoriesCreated: number;
   totalCategoriesUpdated: number;
   totalValuesAdded: number;
+  totalProductsCreated: number;
+  totalProductsSkipped: number;
   sheets: SheetImportResultDto[];
 }
 
@@ -1500,6 +1550,8 @@ export interface SheetImportResultDto {
   categoryCreated: boolean;
   categoryUpdated: boolean;
   valuesAdded: number;
+  productsCreated: number;
+  productsSkipped: number;
   errors: string[];
 }
 

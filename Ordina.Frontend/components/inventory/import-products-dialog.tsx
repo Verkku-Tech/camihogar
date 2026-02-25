@@ -85,13 +85,14 @@ export function ImportProductsDialog({
 
       const errors = res.sheets.reduce((s, sh) => s + sh.errors.length, 0)
       const cats = res.totalCategoriesCreated + res.totalCategoriesUpdated
+      const prods = res.totalProductsCreated
       if (errors > 0) {
         toast.warning("Importación completada con errores", {
-          description: `${cats} categoría(s) procesada(s), ${res.totalValuesAdded} valor(es) agregado(s). ${errors} error(es).`,
+          description: `${cats} categoría(s), ${prods} producto(s) creado(s), ${res.totalValuesAdded} valor(es). ${errors} error(es).`,
         })
       } else {
         toast.success("Importación completada", {
-          description: `${cats} categoría(s) procesada(s), ${res.totalValuesAdded} valor(es) agregado(s).`,
+          description: `${cats} categoría(s), ${prods} producto(s) creado(s), ${res.totalValuesAdded} valor(es).`,
         })
       }
       onImportComplete?.()
@@ -124,7 +125,7 @@ export function ImportProductsDialog({
         onOpenChange(newOpen);
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Importar Categorías desde Excel</DialogTitle>
         </DialogHeader>
@@ -132,8 +133,9 @@ export function ImportProductsDialog({
         {state === "done" && result ? (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {result.totalCategoriesCreated + result.totalCategoriesUpdated} categoría(s) procesada(s) ·{" "}
-              {result.totalValuesAdded} valor(es) agregado(s) ·{" "}
+              {result.totalCategoriesCreated + result.totalCategoriesUpdated} categoría(s) ·{" "}
+              {result.totalProductsCreated} producto(s) creado(s) ·{" "}
+              {result.totalValuesAdded} valor(es) ·{" "}
               {result.totalSheets} hoja(s)
             </p>
             <div className="max-h-64 overflow-auto rounded-md border">
@@ -142,6 +144,7 @@ export function ImportProductsDialog({
                   <TableRow>
                     <TableHead>Hoja</TableHead>
                     <TableHead className="w-20">Categoría</TableHead>
+                    <TableHead className="w-16">Prod.</TableHead>
                     <TableHead className="w-16">Valores</TableHead>
                     <TableHead className="w-16">Errores</TableHead>
                   </TableRow>
@@ -149,7 +152,7 @@ export function ImportProductsDialog({
                 <TableBody>
                   {result.sheets.map((s) => (
                     <TableRow key={s.sheetName}>
-                      <TableCell className="font-medium truncate max-w-[140px]" title={s.sheetName}>
+                      <TableCell className="font-medium truncate max-w-[120px]" title={s.sheetName}>
                         {s.sheetName}
                       </TableCell>
                       <TableCell>
@@ -159,6 +162,17 @@ export function ImportProductsDialog({
                           <Badge variant="outline">Actualizada</Badge>
                         ) : (
                           <Badge variant="outline">Sin cambios</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {s.productsCreated > 0 ? (
+                          <span className="font-medium">{s.productsCreated}</span>
+                        ) : s.productsSkipped > 0 ? (
+                          <span className="text-muted-foreground" title={`${s.productsSkipped} ya existían`}>
+                            {s.productsSkipped} dup
+                          </span>
+                        ) : (
+                          "-"
                         )}
                       </TableCell>
                       <TableCell>{s.valuesAdded}</TableCell>
