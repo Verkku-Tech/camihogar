@@ -43,10 +43,15 @@ async function handleRequest(
   const searchParams = request.nextUrl.search;
   const url = `${apiBaseUrl}${path}${searchParams}`;
 
+  const incomingContentType = request.headers.get("Content-Type") || "";
+  const isMultipart = incomingContentType.includes("multipart/form-data");
+
   // Preparar headers
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
+  const headers: HeadersInit = {};
+
+  if (!isMultipart) {
+    headers["Content-Type"] = "application/json";
+  }
 
   // Copiar Authorization header si existe
   const authHeader = request.headers.get("Authorization");
@@ -55,10 +60,19 @@ async function handleRequest(
   }
 
   // Obtener body si existe (para POST, PUT, PATCH)
-  let body: string | undefined;
+  let body: BodyInit | undefined;
   if (method !== "GET" && method !== "DELETE") {
     try {
-      body = await request.text();
+      if (isMultipart) {
+        const formData = await request.formData();
+        const outgoing = new FormData();
+        for (const [key, value] of formData.entries()) {
+          outgoing.append(key, value);
+        }
+        body = outgoing;
+      } else {
+        body = await request.text();
+      }
     } catch {
       // No body o error al leerlo
     }
