@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit, Trash2, Package, Search, ArrowLeft, Filter } from "lucide-react"
+import { Plus, Edit, Trash2, Package, Search, ArrowLeft, Filter, FileSpreadsheet, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -14,19 +14,16 @@ import { useRouter } from "next/navigation"
 import { ProductWizardDialog } from "@/components/inventory/product-wizard-dialog"
 import { DeleteProductDialog } from "@/components/inventory/delete-product-dialog"
 import { EditProductDialog } from "@/components/inventory/edit-product-dialog"
+import { ImportProductsDialog } from "@/components/inventory/import-products-dialog"
 import { PermissionGuard } from "@/components/auth/permission-guard"
-import { getProducts, deleteProduct, getCategories, type Product } from "@/lib/storage"
+import { deleteProduct, getCategories, invalidateProductCache, type Product, type Category } from "@/lib/storage"
+import { apiClient, type ProductListItemDto, type PaginatedResultDto } from "@/lib/api-client"
 import { useCurrency } from "@/contexts/currency-context"
 import { Currency } from "@/lib/currency-utils"
 
-// Componente para mostrar precio con conversión
-function ProductPrice({
-  price,
-  currency
-}: {
-  price: number;
-  currency?: Currency
-}) {
+const PAGE_SIZE = 20
+
+function ProductPrice({ price, currency }: { price: number; currency?: Currency }) {
   const { formatWithPreference } = useCurrency()
   const [displayPrice, setDisplayPrice] = useState("")
 
@@ -40,57 +37,99 @@ function ProductPrice({
 export default function ProductosPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showProductWizard, setShowProductWizard] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedStatus, setSelectedStatus] = useState<string>("all")
-  const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+
+  const [products, setProducts] = useState<ProductListItemDto[]>([])
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const router = useRouter()
 
+  // Cargar categorias para el filtro dinamico
   useEffect(() => {
-    const loadProducts = async () => {
-      try {
-        const loadedProducts = await getProducts()
-        setProducts(loadedProducts)
-      } catch (error) {
-        console.error("Error loading products:", error)
-      }
-    }
-    loadProducts()
+    getCategories().then(setCategories).catch(console.error)
   }, [])
 
-  const filteredProducts = products.filter((product) => {
-    const matchesSearch =
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesCategory = selectedCategory === "all" || product.category === selectedCategory
-    const matchesStatus = selectedStatus === "all" || product.status === selectedStatus
+  const fetchProducts = useCallback(async (p: number, search: string, catId: string, status: string) => {
+    setIsLoading(true)
+    try {
+      const result: PaginatedResultDto<ProductListItemDto> = await apiClient.getProductsPaginated({
+        page: p,
+        pageSize: PAGE_SIZE,
+        search: search || undefined,
+        categoryId: catId !== "all" ? catId : undefined,
+        status: status !== "all" ? status : undefined,
+      })
+      setProducts(result.items)
+      setTotalPages(result.totalPages)
+      setTotalCount(result.totalCount)
+      setPage(result.page)
+    } catch (error) {
+      console.error("Error loading products:", error)
+      toast.error("Error al cargar productos")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
-    return matchesSearch && matchesCategory && matchesStatus
-  })
+  // Fetch con debounce para busqueda
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      fetchProducts(1, searchTerm, selectedCategory, selectedStatus)
+    }, 300)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [searchTerm, selectedCategory, selectedStatus, fetchProducts])
+
+  const handlePageChange = (newPage: number) => {
+    fetchProducts(newPage, searchTerm, selectedCategory, selectedStatus)
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "Disponible":
-        return "bg-green-100 text-green-800"
-      case "Agotado":
-        return "bg-red-100 text-red-800"
-      case "Descontinuado":
-        return "bg-gray-100 text-gray-800"
-      default:
-        return "bg-gray-100 text-gray-800"
+      case "Disponible": case "active": return "bg-green-100 text-green-800"
+      case "Agotado": case "out_of_stock": return "bg-red-100 text-red-800"
+      case "Descontinuado": case "inactive": return "bg-gray-100 text-gray-800"
+      default: return "bg-gray-100 text-gray-800"
     }
   }
 
-  const handleDeleteProduct = (product: Product) => {
-    setSelectedProduct(product)
+  const handleDeleteProduct = (product: ProductListItemDto) => {
+    setSelectedProduct({
+      id: parseInt(product.id) || 0,
+      name: product.name,
+      category: product.category,
+      price: product.price,
+      priceCurrency: product.priceCurrency as Currency | undefined,
+      stock: product.stock,
+      status: product.status,
+      sku: product.sku,
+    })
     setShowDeleteDialog(true)
   }
 
-  const handleEditProduct = (product: Product) => {
-    setSelectedProduct(product)
+  const handleEditProduct = (product: ProductListItemDto) => {
+    setSelectedProduct({
+      id: parseInt(product.id) || 0,
+      name: product.name,
+      category: product.category,
+      price: product.price,
+      priceCurrency: product.priceCurrency as Currency | undefined,
+      stock: product.stock,
+      status: product.status,
+      sku: product.sku,
+    })
     setShowEditDialog(true)
   }
 
@@ -98,8 +137,8 @@ export default function ProductosPage() {
     if (selectedProduct) {
       try {
         await deleteProduct(selectedProduct.id)
-        const loadedProducts = await getProducts()
-        setProducts(loadedProducts)
+        invalidateProductCache()
+        fetchProducts(page, searchTerm, selectedCategory, selectedStatus)
       } catch (error) {
         console.error("Error deleting product:", error)
         toast.error("Error al eliminar el producto")
@@ -110,43 +149,29 @@ export default function ProductosPage() {
   }
 
   const handleProductSaved = async () => {
-    try {
-      const loadedProducts = await getProducts()
-      setProducts(loadedProducts)
-      setShowProductWizard(false)
-      setShowEditDialog(false)
-    } catch (error) {
-      console.error("Error loading products:", error)
-    }
+    invalidateProductCache()
+    fetchProducts(page, searchTerm, selectedCategory, selectedStatus)
+    setShowProductWizard(false)
+    setShowEditDialog(false)
   }
 
   const handleNewProduct = async () => {
     try {
-      // Verificar si hay categorías antes de abrir el modal
-      const categories = await getCategories()
-
-      if (categories.length === 0) {
-        toast.error(
-          "No hay categorías disponibles",
-          {
-            description: "Debes crear al menos una categoría antes de crear un producto.",
-            duration: 5000,
-          }
-        )
-        return // No abrir el modal
+      const cats = await getCategories()
+      if (cats.length === 0) {
+        toast.error("No hay categorías disponibles", {
+          description: "Debes crear al menos una categoría antes de crear un producto.",
+          duration: 5000,
+        })
+        return
       }
-
-      // Si hay categorías, abrir el modal normalmente
       setShowProductWizard(true)
     } catch (error) {
       console.error("Error checking categories:", error)
-      toast.error(
-        "Error al verificar categorías",
-        {
-          description: "No se pudo verificar si hay categorías disponibles.",
-          duration: 5000,
-        }
-      )
+      toast.error("Error al verificar categorías", {
+        description: "No se pudo verificar si hay categorías disponibles.",
+        duration: 5000,
+      })
     }
   }
 
@@ -164,29 +189,40 @@ export default function ProductosPage() {
               <span>/</span>
               <span>Productos</span>
             </nav>
-            <div className="flex items-center gap-4 mb-6">
-              <Button variant="ghost" onClick={() => router.back()} className="w-full sm:w-auto">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Volver
-              </Button>
-              <div className="flex-1">
-                <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Productos</h1>
-                <p className="text-muted-foreground">Gestiona tu inventario de productos</p>
+            <div className="flex flex-col gap-4 mb-6">
+              <div className="flex items-center gap-4">
+                <Button variant="ghost" onClick={() => router.back()} className="w-full sm:w-auto shrink-0">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Volver
+                </Button>
+                <div className="flex-1 min-w-0 text-left">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Productos</h1>
+                  <p className="text-muted-foreground">
+                    Gestiona tu inventario de productos
+                    {totalCount > 0 && <span className="ml-1">({totalCount})</span>}
+                  </p>
+                </div>
               </div>
+              <PermissionGuard permission="products.create">
+                <div className="flex flex-wrap gap-2 justify-start">
+                <Button onClick={handleNewProduct} className="w-full sm:w-auto">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Nuevo Producto
+                </Button>
+                <Button variant="outline" onClick={() => setShowImportDialog(true)} className="w-full sm:w-auto">
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Importar Excel
+                </Button>
+                </div>
+              </PermissionGuard>
             </div>
-            <PermissionGuard permission="products.create">
-              <Button onClick={handleNewProduct} className="w-full sm:w-auto">
-                <Plus className="w-4 h-4 mr-2" />
-                Nuevo Producto
-              </Button>
-            </PermissionGuard>
           </div>
 
           <div className="mb-6 space-y-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
               <Input
-                placeholder="Buscar productos..."
+                placeholder="Buscar por nombre, SKU o categoría..."
                 className="pl-10"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -205,8 +241,11 @@ export default function ProductosPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas las categorías</SelectItem>
-                  <SelectItem value="Camas">Camas</SelectItem>
-                  <SelectItem value="Muebles">Muebles</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id.toString()}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -216,6 +255,7 @@ export default function ProductosPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los estados</SelectItem>
+                  <SelectItem value="active">Activo</SelectItem>
                   <SelectItem value="Disponible">Disponible</SelectItem>
                   <SelectItem value="Agotado">Agotado</SelectItem>
                   <SelectItem value="Descontinuado">Descontinuado</SelectItem>
@@ -239,68 +279,103 @@ export default function ProductosPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredProducts.length === 0 ? (
-              <Card className="p-8 text-center sm:col-span-2 xl:col-span-3">
-                <CardContent>
-                  <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium mb-2">No se encontraron productos</h3>
-                  <p className="text-muted-foreground">
-                    {searchTerm || selectedCategory !== "all" || selectedStatus !== "all"
-                      ? "Intenta ajustar los filtros de búsqueda"
-                      : "Comienza agregando tu primer producto"}
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              filteredProducts.map((product) => (
-                <Card key={product.id} className="hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex items-center space-x-3">
-                        <Package className="w-5 h-5 text-primary" />
-                        <div>
-                          <CardTitle className="text-lg">{product.name}</CardTitle>
-                          <CardDescription>SKU: {product.sku}</CardDescription>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <span className="ml-3 text-muted-foreground">Cargando productos...</span>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {products.length === 0 ? (
+                  <Card className="p-8 text-center sm:col-span-2 xl:col-span-3">
+                    <CardContent>
+                      <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-medium mb-2">No se encontraron productos</h3>
+                      <p className="text-muted-foreground">
+                        {searchTerm || selectedCategory !== "all" || selectedStatus !== "all"
+                          ? "Intenta ajustar los filtros de búsqueda"
+                          : "Comienza agregando tu primer producto"}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  products.map((product) => (
+                    <Card key={product.id} className="hover:shadow-md transition-shadow">
+                      <CardHeader className="pb-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="flex items-center space-x-3">
+                            <Package className="w-5 h-5 text-primary" />
+                            <div>
+                              <CardTitle className="text-lg">{product.name}</CardTitle>
+                              <CardDescription>SKU: {product.sku}</CardDescription>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className={getStatusColor(product.status)}>{product.status}</Badge>
+                            <div className="flex space-x-1">
+                              <PermissionGuard permission="products.update">
+                                <Button variant="ghost" size="sm" onClick={() => handleEditProduct(product)}>
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                              </PermissionGuard>
+                              <PermissionGuard permission="products.delete">
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteProduct(product)}>
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </PermissionGuard>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge className={getStatusColor(product.status)}>{product.status}</Badge>
-                        <div className="flex space-x-1">
-                          <PermissionGuard permission="products.update">
-                            <Button variant="ghost" size="sm" onClick={() => handleEditProduct(product)}>
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                          </PermissionGuard>
-                          <PermissionGuard permission="products.delete">
-                            <Button variant="ghost" size="sm" onClick={() => handleDeleteProduct(product)}>
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </PermissionGuard>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Categoría:</span>
+                            <p className="font-medium break-words">{product.category}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Precio:</span>
+                            <ProductPrice price={product.price} currency={product.priceCurrency as Currency | undefined} />
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Estado:</span>
+                            <p className="font-medium">{product.status}</p>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Categoría:</span>
-                        <p className="font-medium break-words">{product.category}</p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Precio:</span>
-                        <ProductPrice price={product.price} currency={product.priceCurrency} />
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Estado:</span>
-                        <p className="font-medium">{product.status}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-4 mt-6 pb-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page <= 1}
+                    onClick={() => handlePageChange(page - 1)}
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-1" />
+                    Anterior
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Página {page} de {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages}
+                    onClick={() => handlePageChange(page + 1)}
+                  >
+                    Siguiente
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
         </main>
       </div>
       <ProductWizardDialog
@@ -320,6 +395,11 @@ export default function ProductosPage() {
         product={selectedProduct}
         onSave={handleProductSaved}
       />
-    </div >
+      <ImportProductsDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        onImportComplete={handleProductSaved}
+      />
+    </div>
   )
 }

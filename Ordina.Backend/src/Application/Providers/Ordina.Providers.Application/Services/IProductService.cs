@@ -5,6 +5,10 @@ namespace Ordina.Providers.Application.Services;
 public interface IProductService
 {
     Task<IEnumerable<ProductResponseDto>> GetAllProductsAsync();
+    Task<PaginatedResultDto<ProductListItemDto>> GetPaginatedAsync(
+        int page, int pageSize, string? search = null,
+        string? categoryId = null, string? status = null);
+    Task<IEnumerable<ProductListItemDto>> SearchAsync(string search, int limit = 20);
     Task<IEnumerable<ProductResponseDto>> GetProductsByCategoryIdAsync(string categoryId);
     Task<IEnumerable<ProductResponseDto>> GetProductsByStatusAsync(string status);
     Task<ProductResponseDto?> GetProductByIdAsync(string id);

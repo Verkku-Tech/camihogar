@@ -1051,37 +1051,34 @@ const productFromBackendDto = (dto: ProductResponseDto): Product => ({
   attributes: dto.attributes,
 });
 
-export const getProducts = async (): Promise<Product[]> => {
+const PRODUCT_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
+let lastProductSyncTimestamp = 0;
+
+export const getProducts = async (forceSync = false): Promise<Product[]> => {
   try {
-    // Cargar siempre productos locales desde IndexedDB primero (offline-first)
     const localProductsDB = await db.getAll<ProductDB>("products");
     const localProducts = localProductsDB.map(productFromDB);
 
-    // Si hay conexión, intentar sincronizar con backend y hacer merge
-    if (isOnline()) {
+    const shouldSync = forceSync || (Date.now() - lastProductSyncTimestamp > PRODUCT_SYNC_INTERVAL_MS);
+
+    if (isOnline() && shouldSync) {
       try {
         const backendProducts = await apiClient.getProducts();
         const backendProductsMapped = backendProducts.map(
           productFromBackendDto
         );
 
-        // Hacer merge: combinar productos del backend con los locales
-        // Usar SKU como clave única para evitar duplicados (más confiable que ID)
-        // Los productos del backend tienen prioridad sobre los locales
         const productsMap = new Map<string, Product>();
 
-        // Primero agregar productos locales
         for (const product of localProducts) {
           if (product.sku) {
             productsMap.set(product.sku, product);
           }
         }
 
-        // Luego agregar/actualizar con productos del backend (estos tienen prioridad)
         for (const product of backendProductsMapped) {
           if (product.sku) {
             productsMap.set(product.sku, product);
-            // Guardar/actualizar en IndexedDB
             try {
               await db.update("products", productToDB(product));
             } catch {
@@ -1090,6 +1087,7 @@ export const getProducts = async (): Promise<Product[]> => {
           }
         }
 
+        lastProductSyncTimestamp = Date.now();
         const mergedProducts = Array.from(productsMap.values());
         console.log(
           `✅ Productos: ${localProducts.length} locales + ${backendProductsMapped.length} del backend = ${mergedProducts.length} totales`
@@ -1100,20 +1098,19 @@ export const getProducts = async (): Promise<Product[]> => {
           "⚠️ Error cargando productos del backend, usando solo IndexedDB:",
           error
         );
-        // Si falla el backend, retornar productos locales
         return localProducts;
       }
     }
 
-    // Si está offline, solo retornar productos locales
-    console.log(
-      `✅ Productos cargados desde IndexedDB: ${localProducts.length}`
-    );
     return localProducts;
   } catch (error) {
     console.error("Error loading products from IndexedDB:", error);
     return [];
   }
+};
+
+export const invalidateProductCache = () => {
+  lastProductSyncTimestamp = 0;
 };
 
 export const getProduct = async (id: number): Promise<Product | undefined> => {

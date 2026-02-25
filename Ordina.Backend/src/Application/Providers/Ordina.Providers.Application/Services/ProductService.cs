@@ -47,6 +47,44 @@ public class ProductService : IProductService
         }
     }
 
+    public async Task<PaginatedResultDto<ProductListItemDto>> GetPaginatedAsync(
+        int page, int pageSize, string? search = null,
+        string? categoryId = null, string? status = null)
+    {
+        try
+        {
+            var (items, totalCount) = await _productRepository.GetPaginatedAsync(
+                page, pageSize, search, categoryId, status);
+
+            return new PaginatedResultDto<ProductListItemDto>
+            {
+                Items = items.Select(MapToListItem).ToList(),
+                TotalCount = (int)totalCount,
+                Page = page,
+                PageSize = pageSize
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener productos paginados");
+            throw;
+        }
+    }
+
+    public async Task<IEnumerable<ProductListItemDto>> SearchAsync(string search, int limit = 20)
+    {
+        try
+        {
+            var products = await _productRepository.SearchAsync(search, limit);
+            return products.Select(MapToListItem);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al buscar productos con término '{Search}'", search);
+            throw;
+        }
+    }
+
     public async Task<IEnumerable<ProductResponseDto>> GetProductsByCategoryIdAsync(string categoryId)
     {
         try
@@ -467,6 +505,19 @@ public class ProductService : IProductService
         // Si ya es un tipo nativo, retornarlo tal cual
         return value;
     }
+
+    private static ProductListItemDto MapToListItem(Product product) => new()
+    {
+        Id = product.Id,
+        Name = product.Name,
+        CategoryId = product.CategoryId,
+        Category = product.Category,
+        Price = product.Price,
+        PriceCurrency = product.PriceCurrency,
+        Stock = product.Stock,
+        Status = product.Status,
+        SKU = product.SKU
+    };
 
     private async Task<ProductResponseDto> MapToDtoAsync(Product product)
     {

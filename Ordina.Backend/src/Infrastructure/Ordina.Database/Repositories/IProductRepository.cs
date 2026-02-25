@@ -14,5 +14,10 @@ public interface IProductRepository
     Task<bool> DeleteAsync(string id);
     Task<bool> ExistsAsync(string id);
     Task<bool> SkuExistsAsync(string sku);
+    Task<Product?> GetByNameAndCategoryIdAsync(string name, string categoryId);
+    Task<(IEnumerable<Product> Items, long TotalCount)> GetPaginatedAsync(
+        int page, int pageSize, string? search = null,
+        string? categoryId = null, string? status = null);
+    Task<IEnumerable<Product>> SearchAsync(string search, int limit = 20);
 }
 

@@ -1,17 +1,12 @@
 // API Client para comunicación con el backend
 // URLs base para cada microservicio (solo para servidor/SSR)
-const SECURITY_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_SECURITY_API_URL ?? "";
-const USERS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_USERS_API_URL ?? "";
+const SECURITY_API_URL_DIRECT = process.env.NEXT_PUBLIC_SECURITY_API_URL ?? "";
+const USERS_API_URL_DIRECT = process.env.NEXT_PUBLIC_USERS_API_URL ?? "";
 const PROVIDERS_API_URL_DIRECT =
   process.env.NEXT_PUBLIC_PROVIDERS_API_URL ?? "";
-const ORDERS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_ORDERS_API_URL ?? "";
-const STORES_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_STORES_API_URL ?? "";
-const PAYMENTS_API_URL_DIRECT =
-  process.env.NEXT_PUBLIC_PAYMENTS_API_URL ?? "";
+const ORDERS_API_URL_DIRECT = process.env.NEXT_PUBLIC_ORDERS_API_URL ?? "";
+const STORES_API_URL_DIRECT = process.env.NEXT_PUBLIC_STORES_API_URL ?? "";
+const PAYMENTS_API_URL_DIRECT = process.env.NEXT_PUBLIC_PAYMENTS_API_URL ?? "";
 
 export interface PagedResult<T> {
   items: T[];
@@ -76,7 +71,13 @@ interface CachedApiResponse {
 export class ApiClient {
   getBaseUrl(endpoint: string): string {
     // Determinar qué servicio usar según el endpoint
-    let service: "security" | "users" | "providers" | "orders" | "stores" | "payments" = "security";
+    let service:
+      | "security"
+      | "users"
+      | "providers"
+      | "orders"
+      | "stores"
+      | "payments" = "security";
 
     console.log(`[ApiClient] Resolving service for endpoint: "${endpoint}"`);
 
@@ -121,7 +122,9 @@ export class ApiClient {
       service = "payments";
     }
 
-    console.log(`[ApiClient] Resolved service "${service}" for endpoint "${endpoint}"`);
+    console.log(
+      `[ApiClient] Resolved service "${service}" for endpoint "${endpoint}"`,
+    );
 
     // Si estamos en el cliente (navegador) y la página está en HTTPS, usar proxy
     if (typeof window !== "undefined") {
@@ -231,7 +234,7 @@ export class ApiClient {
   private async queueRequest(
     endpoint: string,
     options: RequestInit,
-    baseUrl: string
+    baseUrl: string,
   ): Promise<void> {
     try {
       const { syncManager } = await import("./sync-manager");
@@ -240,7 +243,7 @@ export class ApiClient {
         url: `${baseUrl}${endpoint}`,
         method: options.method || "GET",
         headers: Object.fromEntries(
-          Object.entries(options.headers || {}).map(([k, v]) => [k, String(v)])
+          Object.entries(options.headers || {}).map(([k, v]) => [k, String(v)]),
         ),
         body: options.body || null,
         timestamp: Date.now(),
@@ -261,7 +264,8 @@ export class ApiClient {
       else if (endpoint.includes("/clients")) entity = "client";
       else if (endpoint.includes("/providers")) entity = "provider";
       else if (endpoint.includes("/providers")) entity = "provider";
-      else if (endpoint.includes("/stores") || endpoint.includes("/accounts")) entity = "store";
+      else if (endpoint.includes("/stores") || endpoint.includes("/accounts"))
+        entity = "store";
 
       // Determinar tipo de operación
       let type: "create" | "update" | "delete" = "create";
@@ -295,7 +299,7 @@ export class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit & { silent?: boolean } = {}
+    options: RequestInit & { silent?: boolean } = {},
   ): Promise<T> {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
@@ -346,7 +350,8 @@ export class ApiClient {
             .json()
             .catch(() => ({ message: "Usuario o contraseña incorrectos" }));
 
-          let errorMessage = errorData.message || "Usuario o contraseña incorrectos";
+          let errorMessage =
+            errorData.message || "Usuario o contraseña incorrectos";
           if (errorData.errors || errorData.title) {
             const errors: string[] = [];
             if (errorData.errors) {
@@ -387,7 +392,7 @@ export class ApiClient {
           });
         }
         throw new Error(
-          "Sesión expirada. Por favor, inicia sesión nuevamente."
+          "Sesión expirada. Por favor, inicia sesión nuevamente.",
         );
       }
 
@@ -472,7 +477,10 @@ export class ApiClient {
             // El body de un 201 Created debería contener el objeto creado
             return data;
           } catch (error) {
-            console.warn("⚠️ No se pudo parsear el body de la respuesta 201:", error);
+            console.warn(
+              "⚠️ No se pudo parsear el body de la respuesta 201:",
+              error,
+            );
             // Si no hay body, retornar objeto vacío
             return {} as T;
           }
@@ -531,7 +539,7 @@ export class ApiClient {
 
     // Verificar si el refresh token expiró
     const refreshExpiresAt = parseInt(
-      localStorage.getItem("refresh_token_expires_at") || "0"
+      localStorage.getItem("refresh_token_expires_at") || "0",
     );
     if (Date.now() > refreshExpiresAt) {
       return false;
@@ -554,11 +562,11 @@ export class ApiClient {
       localStorage.setItem("refresh_token", response.refreshToken);
       localStorage.setItem(
         "token_expires_at",
-        new Date(response.expiresAt).getTime().toString()
+        new Date(response.expiresAt).getTime().toString(),
       );
       localStorage.setItem(
         "refresh_token_expires_at",
-        new Date(response.refreshTokenExpiresAt).getTime().toString()
+        new Date(response.refreshTokenExpiresAt).getTime().toString(),
       );
 
       return true;
@@ -586,11 +594,16 @@ export class ApiClient {
   }
 
   async getUserByUsername(username: string, silent: boolean = false) {
-    return this.request<UserResponseDto>(`/api/users/username/${username}`, { silent });
+    return this.request<UserResponseDto>(`/api/users/username/${username}`, {
+      silent,
+    });
   }
 
   async getUserByEmail(email: string, silent: boolean = false) {
-    return this.request<UserResponseDto>(`/api/users/email/${encodeURIComponent(email)}`, { silent });
+    return this.request<UserResponseDto>(
+      `/api/users/email/${encodeURIComponent(email)}`,
+      { silent },
+    );
   }
 
   async checkUserExistsByEmail(email: string): Promise<boolean> {
@@ -600,7 +613,11 @@ export class ApiClient {
     } catch (error: any) {
       const errorMessage = error?.message || "";
       // Si es 404 o contiene "no encontrado", el usuario no existe
-      if (errorMessage.includes("404") || errorMessage.includes("no encontrado") || errorMessage.includes("NotFound")) {
+      if (
+        errorMessage.includes("404") ||
+        errorMessage.includes("no encontrado") ||
+        errorMessage.includes("NotFound")
+      ) {
         return false;
       }
       // Para otros errores, asumimos que no existe para no bloquear la creación
@@ -616,11 +633,18 @@ export class ApiClient {
     } catch (error: any) {
       const errorMessage = error?.message || "";
       // Si es 404 o contiene "no encontrado", el usuario no existe
-      if (errorMessage.includes("404") || errorMessage.includes("no encontrado") || errorMessage.includes("NotFound")) {
+      if (
+        errorMessage.includes("404") ||
+        errorMessage.includes("no encontrado") ||
+        errorMessage.includes("NotFound")
+      ) {
         return false;
       }
       // Para otros errores, asumimos que no existe para no bloquear la creación
-      console.warn("Error verificando username, asumiendo que no existe:", error);
+      console.warn(
+        "Error verificando username, asumiendo que no existe:",
+        error,
+      );
       return false;
     }
   }
@@ -689,7 +713,7 @@ export class ApiClient {
 
   async getCategoryByName(name: string) {
     return this.request<CategoryResponseDto>(
-      `/api/categories/name/${encodeURIComponent(name)}`
+      `/api/categories/name/${encodeURIComponent(name)}`,
     );
   }
 
@@ -718,25 +742,51 @@ export class ApiClient {
     return this.request<ProductResponseDto[]>("/api/products");
   }
 
+  async getProductsPaginated(params: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    categoryId?: string;
+    status?: string;
+  } = {}) {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", params.page.toString());
+    if (params.pageSize) query.set("pageSize", params.pageSize.toString());
+    if (params.search) query.set("search", params.search);
+    if (params.categoryId) query.set("categoryId", params.categoryId);
+    if (params.status) query.set("status", params.status);
+    const qs = query.toString();
+    return this.request<PaginatedResultDto<ProductListItemDto>>(
+      `/api/products/paginated${qs ? `?${qs}` : ""}`,
+    );
+  }
+
+  async searchProducts(q: string, limit = 20) {
+    const query = new URLSearchParams({ q, limit: limit.toString() });
+    return this.request<ProductListItemDto[]>(
+      `/api/products/search?${query.toString()}`,
+    );
+  }
+
   async getProductById(id: string) {
     return this.request<ProductResponseDto>(`/api/products/${id}`);
   }
 
   async getProductBySku(sku: string) {
     return this.request<ProductResponseDto>(
-      `/api/products/sku/${encodeURIComponent(sku)}`
+      `/api/products/sku/${encodeURIComponent(sku)}`,
     );
   }
 
   async getProductsByCategory(categoryId: string) {
     return this.request<ProductResponseDto[]>(
-      `/api/products/category/${categoryId}`
+      `/api/products/category/${categoryId}`,
     );
   }
 
   async getProductsByStatus(status: string) {
     return this.request<ProductResponseDto[]>(
-      `/api/products/status/${encodeURIComponent(status)}`
+      `/api/products/status/${encodeURIComponent(status)}`,
     );
   }
 
@@ -760,6 +810,38 @@ export class ApiClient {
     });
   }
 
+  async importProducts(
+    file: File,
+    currency: string,
+  ): Promise<ImportProductsResultDto> {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const baseUrl = this.getBaseUrl("/api/products/import");
+    const url = `${baseUrl}/api/products/import?currency=${encodeURIComponent(currency)}`;
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let message = `Error ${response.status}`;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.message) message = parsed.message;
+      } catch {
+        if (text) message = text;
+      }
+      throw new Error(message);
+    }
+
+    return response.json();
+  }
+
   // Providers endpoints
   async getProviders() {
     return this.request<ProviderResponseDto[]>("/api/Providers");
@@ -770,11 +852,15 @@ export class ApiClient {
   }
 
   async getProviderByRif(rif: string) {
-    return this.request<ProviderResponseDto>(`/api/Providers/rif/${encodeURIComponent(rif)}`);
+    return this.request<ProviderResponseDto>(
+      `/api/Providers/rif/${encodeURIComponent(rif)}`,
+    );
   }
 
   async getProviderByEmail(email: string) {
-    return this.request<ProviderResponseDto>(`/api/Providers/email/${encodeURIComponent(email)}`);
+    return this.request<ProviderResponseDto>(
+      `/api/Providers/email/${encodeURIComponent(email)}`,
+    );
   }
 
   async createProvider(provider: CreateProviderDto) {
@@ -797,14 +883,16 @@ export class ApiClient {
     });
   }
 
-
-
   async checkProviderExists(id: string): Promise<boolean> {
     return this.request<boolean>(`/api/Providers/${id}/exists`);
   }
 
   // Clients endpoints
-  async getClientsPaged(page: number = 1, pageSize: number = 10, search?: string) {
+  async getClientsPaged(
+    page: number = 1,
+    pageSize: number = 10,
+    search?: string,
+  ) {
     const params = new URLSearchParams();
     params.append("page", page.toString());
     params.append("pageSize", pageSize.toString());
@@ -812,13 +900,17 @@ export class ApiClient {
       params.append("search", search);
     }
 
-    const response = await this.request<PagedResult<ClientResponseDto>>(`/api/clients?${params.toString()}`);
+    const response = await this.request<PagedResult<ClientResponseDto>>(
+      `/api/clients?${params.toString()}`,
+    );
 
     // Side effect: Cachear clientes individuales para acceso offline
     if (response && response.items && response.items.length > 0) {
       try {
         const { put } = await import("./indexeddb");
-        await Promise.all(response.items.map(client => put("clients", client)));
+        await Promise.all(
+          response.items.map((client) => put("clients", client)),
+        );
       } catch (e) {
         console.warn("Error cacheando clientes:", e);
       }
@@ -832,7 +924,9 @@ export class ApiClient {
   }
 
   async getClientByRut(rut: string) {
-    return this.request<ClientResponseDto>(`/api/clients/rut/${encodeURIComponent(rut)}`);
+    return this.request<ClientResponseDto>(
+      `/api/clients/rut/${encodeURIComponent(rut)}`,
+    );
   }
 
   async createClient(client: CreateClientDto) {
@@ -856,7 +950,7 @@ export class ApiClient {
 
   async getLatestExchangeRate(toCurrency: string, fromCurrency: string = "Bs") {
     return this.request<any>(
-      `/api/ExchangeRates/active/${toCurrency}?fromCurrency=${fromCurrency}`
+      `/api/ExchangeRates/active/${toCurrency}?fromCurrency=${fromCurrency}`,
     );
   }
 
@@ -885,14 +979,20 @@ export class ApiClient {
    * @param pageSize Cantidad de elementos por página (default: 50, max: 100)
    * @param since Fecha ISO 8601 opcional para obtener solo pedidos modificados desde esa fecha
    */
-  async getOrdersPaged(page: number = 1, pageSize: number = 50, since?: string) {
+  async getOrdersPaged(
+    page: number = 1,
+    pageSize: number = 50,
+    since?: string,
+  ) {
     const params = new URLSearchParams();
     params.append("page", page.toString());
     params.append("pageSize", pageSize.toString());
     if (since) {
       params.append("since", since);
     }
-    return this.request<PagedOrdersResponseDto>(`/api/Orders?${params.toString()}`);
+    return this.request<PagedOrdersResponseDto>(
+      `/api/Orders?${params.toString()}`,
+    );
   }
 
   /**
@@ -900,7 +1000,9 @@ export class ApiClient {
    * Itera automáticamente por todas las páginas
    * @param since Fecha ISO 8601 para obtener solo pedidos modificados desde esa fecha
    */
-  async getOrdersSince(since: string): Promise<{ orders: OrderResponseDto[]; serverTimestamp: string }> {
+  async getOrdersSince(
+    since: string,
+  ): Promise<{ orders: OrderResponseDto[]; serverTimestamp: string }> {
     const allOrders: OrderResponseDto[] = [];
     let page = 1;
     let hasMore = true;
@@ -931,19 +1033,17 @@ export class ApiClient {
 
   async getOrderByOrderNumber(orderNumber: string) {
     return this.request<OrderResponseDto>(
-      `/api/Orders/number/${encodeURIComponent(orderNumber)}`
+      `/api/Orders/number/${encodeURIComponent(orderNumber)}`,
     );
   }
 
   async getOrdersByClient(clientId: string) {
-    return this.request<OrderResponseDto[]>(
-      `/api/Orders/client/${clientId}`
-    );
+    return this.request<OrderResponseDto[]>(`/api/Orders/client/${clientId}`);
   }
 
   async getOrdersByStatus(status: string) {
     return this.request<OrderResponseDto[]>(
-      `/api/Orders/status/${encodeURIComponent(status)}`
+      `/api/Orders/status/${encodeURIComponent(status)}`,
     );
   }
 
@@ -970,78 +1070,122 @@ export class ApiClient {
   // ===== PRODUCT COMMISSIONS (Comisiones por Categoría/Familia) =====
 
   async getProductCommissions(): Promise<ProductCommissionDto[]> {
-    return this.request<ProductCommissionDto[]>("/api/CommissionSettings/ProductCommissions");
+    return this.request<ProductCommissionDto[]>(
+      "/api/CommissionSettings/ProductCommissions",
+    );
   }
 
-  async getProductCommissionByCategory(categoryId: string): Promise<ProductCommissionDto> {
-    return this.request<ProductCommissionDto>(`/api/CommissionSettings/ProductCommissions/${categoryId}`);
+  async getProductCommissionByCategory(
+    categoryId: string,
+  ): Promise<ProductCommissionDto> {
+    return this.request<ProductCommissionDto>(
+      `/api/CommissionSettings/ProductCommissions/${categoryId}`,
+    );
   }
 
-  async upsertProductCommission(data: CreateProductCommissionDto): Promise<ProductCommissionDto> {
-    return this.request<ProductCommissionDto>("/api/CommissionSettings/ProductCommissions", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+  async upsertProductCommission(
+    data: CreateProductCommissionDto,
+  ): Promise<ProductCommissionDto> {
+    return this.request<ProductCommissionDto>(
+      "/api/CommissionSettings/ProductCommissions",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    );
   }
 
-  async batchUpsertProductCommissions(data: CreateProductCommissionDto[]): Promise<ProductCommissionDto[]> {
-    return this.request<ProductCommissionDto[]>("/api/CommissionSettings/ProductCommissions/Batch", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+  async batchUpsertProductCommissions(
+    data: CreateProductCommissionDto[],
+  ): Promise<ProductCommissionDto[]> {
+    return this.request<ProductCommissionDto[]>(
+      "/api/CommissionSettings/ProductCommissions/Batch",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    );
   }
 
   async deleteProductCommission(categoryId: string): Promise<void> {
-    return this.request<void>(`/api/CommissionSettings/ProductCommissions/${categoryId}`, {
-      method: "DELETE",
-    });
+    return this.request<void>(
+      `/api/CommissionSettings/ProductCommissions/${categoryId}`,
+      {
+        method: "DELETE",
+      },
+    );
   }
 
   // ===== SALE TYPE COMMISSION RULES (Reglas de distribución por tipo de venta) =====
 
   async getSaleTypeCommissionRules(): Promise<SaleTypeCommissionRuleDto[]> {
-    return this.request<SaleTypeCommissionRuleDto[]>("/api/CommissionSettings/SaleTypeRules");
+    return this.request<SaleTypeCommissionRuleDto[]>(
+      "/api/CommissionSettings/SaleTypeRules",
+    );
   }
 
-  async getSaleTypeCommissionRule(saleType: string): Promise<SaleTypeCommissionRuleDto> {
-    return this.request<SaleTypeCommissionRuleDto>(`/api/CommissionSettings/SaleTypeRules/${saleType}`);
+  async getSaleTypeCommissionRule(
+    saleType: string,
+  ): Promise<SaleTypeCommissionRuleDto> {
+    return this.request<SaleTypeCommissionRuleDto>(
+      `/api/CommissionSettings/SaleTypeRules/${saleType}`,
+    );
   }
 
-  async upsertSaleTypeCommissionRule(data: CreateSaleTypeCommissionRuleDto): Promise<SaleTypeCommissionRuleDto> {
-    return this.request<SaleTypeCommissionRuleDto>("/api/CommissionSettings/SaleTypeRules", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+  async upsertSaleTypeCommissionRule(
+    data: CreateSaleTypeCommissionRuleDto,
+  ): Promise<SaleTypeCommissionRuleDto> {
+    return this.request<SaleTypeCommissionRuleDto>(
+      "/api/CommissionSettings/SaleTypeRules",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    );
   }
 
-  async batchUpsertSaleTypeCommissionRules(data: CreateSaleTypeCommissionRuleDto[]): Promise<SaleTypeCommissionRuleDto[]> {
-    return this.request<SaleTypeCommissionRuleDto[]>("/api/CommissionSettings/SaleTypeRules/Batch", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+  async batchUpsertSaleTypeCommissionRules(
+    data: CreateSaleTypeCommissionRuleDto[],
+  ): Promise<SaleTypeCommissionRuleDto[]> {
+    return this.request<SaleTypeCommissionRuleDto[]>(
+      "/api/CommissionSettings/SaleTypeRules/Batch",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    );
   }
 
   async deleteSaleTypeCommissionRule(saleType: string): Promise<void> {
-    return this.request<void>(`/api/CommissionSettings/SaleTypeRules/${saleType}`, {
-      method: "DELETE",
-    });
+    return this.request<void>(
+      `/api/CommissionSettings/SaleTypeRules/${saleType}`,
+      {
+        method: "DELETE",
+      },
+    );
   }
 
   async seedDefaultSaleTypeRules(): Promise<SaleTypeCommissionRuleDto[]> {
-    return this.request<SaleTypeCommissionRuleDto[]>("/api/CommissionSettings/SaleTypeRules/SeedDefaults", {
-      method: "POST",
-    });
+    return this.request<SaleTypeCommissionRuleDto[]>(
+      "/api/CommissionSettings/SaleTypeRules/SeedDefaults",
+      {
+        method: "POST",
+      },
+    );
   }
 
   // ===== ACCOUNTS ENDPOINTS =====
 
-  async getAccounts(storeId?: string, isActive?: boolean): Promise<AccountResponseDto[]> {
+  async getAccounts(
+    storeId?: string,
+    isActive?: boolean,
+  ): Promise<AccountResponseDto[]> {
     const params = new URLSearchParams();
-    if (storeId) params.append('storeId', storeId);
-    if (isActive !== undefined) params.append('isActive', isActive.toString());
+    if (storeId) params.append("storeId", storeId);
+    if (isActive !== undefined) params.append("isActive", isActive.toString());
 
     const response = await this.request<AccountResponseDto[]>(
-      `/api/Accounts?${params.toString()}`
+      `/api/Accounts?${params.toString()}`,
     );
     return response;
   }
@@ -1051,22 +1195,25 @@ export class ApiClient {
   }
 
   async createAccount(account: CreateAccountDto): Promise<AccountResponseDto> {
-    return this.request<AccountResponseDto>('/api/Accounts', {
-      method: 'POST',
+    return this.request<AccountResponseDto>("/api/Accounts", {
+      method: "POST",
       body: JSON.stringify(account),
     });
   }
 
-  async updateAccount(id: string, account: UpdateAccountDto): Promise<AccountResponseDto> {
+  async updateAccount(
+    id: string,
+    account: UpdateAccountDto,
+  ): Promise<AccountResponseDto> {
     return this.request<AccountResponseDto>(`/api/Accounts/${id}`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(account),
     });
   }
 
   async deleteAccount(id: string): Promise<void> {
     return this.request<void>(`/api/Accounts/${id}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
@@ -1074,42 +1221,45 @@ export class ApiClient {
 
   async getStores(status?: string): Promise<StoreResponseDto[]> {
     const params = new URLSearchParams();
-    if (status) params.append('status', status);
+    if (status) params.append("status", status);
 
     const queryString = params.toString();
-    const endpoint = `/api/stores${queryString ? `?${queryString}` : ''}`;
+    const endpoint = `/api/stores${queryString ? `?${queryString}` : ""}`;
 
     return this.request<StoreResponseDto[]>(endpoint, {
-      method: 'GET',
+      method: "GET",
     });
   }
 
   async getStore(id: string): Promise<StoreResponseDto> {
     const endpoint = `/api/stores/${id}`;
     return this.request<StoreResponseDto>(endpoint, {
-      method: 'GET',
+      method: "GET",
     });
   }
 
   async getStoreByCode(code: string): Promise<StoreResponseDto> {
     const endpoint = `/api/stores/by-code/${code}`;
     return this.request<StoreResponseDto>(endpoint, {
-      method: 'GET',
+      method: "GET",
     });
   }
 
   async createStore(dto: CreateStoreDto): Promise<StoreResponseDto> {
-    const endpoint = '/api/stores';
+    const endpoint = "/api/stores";
     return this.request<StoreResponseDto>(endpoint, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(dto),
     });
   }
 
-  async updateStore(id: string, dto: UpdateStoreDto): Promise<StoreResponseDto> {
+  async updateStore(
+    id: string,
+    dto: UpdateStoreDto,
+  ): Promise<StoreResponseDto> {
     const endpoint = `/api/stores/${id}`;
     return this.request<StoreResponseDto>(endpoint, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(dto),
     });
   }
@@ -1117,7 +1267,7 @@ export class ApiClient {
   async deleteStore(id: string): Promise<void> {
     const endpoint = `/api/stores/${id}`;
     return this.request<void>(endpoint, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 }
@@ -1360,6 +1510,49 @@ export interface UpdateProductDto {
   status?: string;
   attributes?: { [key: string]: any };
   providerId?: string;
+}
+
+export interface PaginatedResultDto<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+export interface ProductListItemDto {
+  id: string;
+  name: string;
+  categoryId: string;
+  category: string;
+  price: number;
+  priceCurrency?: string;
+  stock: number;
+  status: string;
+  sku: string;
+}
+
+export interface ImportProductsResultDto {
+  totalSheets: number;
+  totalCategoriesCreated: number;
+  totalCategoriesUpdated: number;
+  totalValuesAdded: number;
+  totalProductsCreated: number;
+  totalProductsSkipped: number;
+  sheets: SheetImportResultDto[];
+}
+
+export interface SheetImportResultDto {
+  sheetName: string;
+  categoryId: string;
+  categoryCreated: boolean;
+  categoryUpdated: boolean;
+  valuesAdded: number;
+  productsCreated: number;
+  productsSkipped: number;
+  errors: string[];
 }
 
 // Provider Types

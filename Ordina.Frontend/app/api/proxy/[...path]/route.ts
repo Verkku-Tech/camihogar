@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 
 // URLs base de las APIs (sin NEXT_PUBLIC porque son del servidor)
 const API_BASE_URLS: Record<string, string | undefined> = {
-  security: process.env.NEXT_PUBLIC_SECURITY_API_URL,
+  security: process.env.NEXT_PUBLIC_SECURITY_API_URL ,
   users: process.env.NEXT_PUBLIC_USERS_API_URL,
-  providers: process.env.NEXT_PUBLIC_PROVIDERS_API_URL,
+  providers: process.env.NEXT_PUBLIC_PROVIDERS_API_URL ,
   orders: process.env.NEXT_PUBLIC_ORDERS_API_URL,
   payments: process.env.NEXT_PUBLIC_PAYMENTS_API_URL,
   stores: process.env.NEXT_PUBLIC_STORES_API_URL,
@@ -13,15 +13,18 @@ const API_BASE_URLS: Record<string, string | undefined> = {
 async function handleRequest(
   request: NextRequest,
   params: { path: string[] },
-  method: string
+  method: string,
 ) {
   const [service, ...rest] = params.path;
   const apiBaseUrl = API_BASE_URLS[service];
 
   if (!apiBaseUrl) {
     return NextResponse.json(
-      { error: 'Invalid service. Available services: security, users, providers, orders, stores' },
-      { status: 400 }
+      {
+        error:
+          "Invalid service. Available services: security, users, providers, orders, stores",
+      },
+      { status: 400 },
     );
   }
 
@@ -29,12 +32,12 @@ async function handleRequest(
   // rest puede ser: ['api', 'Orders'] o ['Orders'] dependiendo de cómo venga del api-client
   // Normalizar para que siempre tenga /api/ al inicio
   let path: string;
-  if (rest[0] === 'api') {
+  if (rest[0] === "api") {
     // Ya viene con /api/: ['api', 'Orders'] → /api/Orders
-    path = `/${rest.join('/')}`;
+    path = `/${rest.join("/")}`;
   } else {
     // No viene con /api/: ['Orders'] → /api/Orders
-    path = `/api/${rest.join('/')}`;
+    path = `/api/${rest.join("/")}`;
   }
 
   const searchParams = request.nextUrl.search;
@@ -42,18 +45,18 @@ async function handleRequest(
 
   // Preparar headers
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   };
 
   // Copiar Authorization header si existe
-  const authHeader = request.headers.get('Authorization');
+  const authHeader = request.headers.get("Authorization");
   if (authHeader) {
-    headers['Authorization'] = authHeader;
+    headers["Authorization"] = authHeader;
   }
 
   // Obtener body si existe (para POST, PUT, PATCH)
   let body: string | undefined;
-  if (method !== 'GET' && method !== 'DELETE') {
+  if (method !== "GET" && method !== "DELETE") {
     try {
       body = await request.text();
     } catch {
@@ -69,14 +72,15 @@ async function handleRequest(
     });
 
     // Detectar si es un archivo binario (Excel, PDF, imágenes, etc.)
-    const contentType = response.headers.get('Content-Type') || '';
-    const isBinary = contentType.includes('application/vnd.openxmlformats-officedocument') ||
-      contentType.includes('application/pdf') ||
-      contentType.includes('application/octet-stream') ||
-      contentType.includes('image/') ||
-      contentType.includes('application/excel') ||
-      contentType.includes('application/x-excel') ||
-      contentType.includes('application/x-msexcel');
+    const contentType = response.headers.get("Content-Type") || "";
+    const isBinary =
+      contentType.includes("application/vnd.openxmlformats-officedocument") ||
+      contentType.includes("application/pdf") ||
+      contentType.includes("application/octet-stream") ||
+      contentType.includes("image/") ||
+      contentType.includes("application/excel") ||
+      contentType.includes("application/x-excel") ||
+      contentType.includes("application/x-msexcel");
 
     if (isBinary) {
       // Para archivos binarios, devolver el blob directamente
@@ -84,12 +88,12 @@ async function handleRequest(
 
       // Copiar headers importantes de la respuesta
       const responseHeaders = new Headers();
-      responseHeaders.set('Content-Type', contentType);
+      responseHeaders.set("Content-Type", contentType);
 
       // Copiar content-disposition si existe (para el nombre del archivo)
-      const contentDisposition = response.headers.get('Content-Disposition');
+      const contentDisposition = response.headers.get("Content-Disposition");
       if (contentDisposition) {
-        responseHeaders.set('Content-Disposition', contentDisposition);
+        responseHeaders.set("Content-Disposition", contentDisposition);
       }
 
       return new NextResponse(blob, {
@@ -111,7 +115,7 @@ async function handleRequest(
     // Copiar headers importantes de la respuesta
     const responseHeaders = new Headers();
     if (contentType) {
-      responseHeaders.set('Content-Type', contentType);
+      responseHeaders.set("Content-Type", contentType);
     }
 
     return NextResponse.json(jsonData, {
@@ -119,49 +123,48 @@ async function handleRequest(
       headers: responseHeaders,
     });
   } catch (error) {
-    console.error('Proxy error:', error);
+    console.error("Proxy error:", error);
     return NextResponse.json(
       {
-        error: 'Proxy error',
-        message: error instanceof Error ? error.message : 'Unknown error'
+        error: "Proxy error",
+        message: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: { path: string[] } },
 ) {
-  return handleRequest(request, params, 'GET');
+  return handleRequest(request, params, "GET");
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: { path: string[] } },
 ) {
-  return handleRequest(request, params, 'POST');
+  return handleRequest(request, params, "POST");
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: { path: string[] } },
 ) {
-  return handleRequest(request, params, 'PUT');
+  return handleRequest(request, params, "PUT");
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: { path: string[] } },
 ) {
-  return handleRequest(request, params, 'DELETE');
+  return handleRequest(request, params, "DELETE");
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: { path: string[] } },
 ) {
-  return handleRequest(request, params, 'PATCH');
+  return handleRequest(request, params, "PATCH");
 }
-

@@ -1,11 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { useState, useEffect, useMemo, useRef } from "react"
-import { Package, Search, X } from "lucide-react"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { Package, Search, X, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
-import { getProducts, type Product } from "@/lib/storage"
+import { apiClient, type ProductListItemDto } from "@/lib/api-client"
+import { type Product } from "@/lib/storage"
 import { formatCurrency } from "@/lib/currency-utils"
 
 interface ProductSearchComboboxProps {
@@ -17,6 +18,19 @@ interface ProductSearchComboboxProps {
   excludedProductIds?: number[]
 }
 
+function listItemToProduct(item: ProductListItemDto): Product {
+  return {
+    id: parseInt(item.id) || 0,
+    name: item.name,
+    category: item.category,
+    price: item.price,
+    priceCurrency: item.priceCurrency as any,
+    stock: item.stock,
+    status: item.status,
+    sku: item.sku,
+  }
+}
+
 export function ProductSearchCombobox({
   value,
   onSelect,
@@ -26,32 +40,13 @@ export function ProductSearchCombobox({
   excludedProductIds = [],
 }: ProductSearchComboboxProps) {
   const [searchTerm, setSearchTerm] = useState("")
-  const [products, setProducts] = useState<Product[]>([])
+  const [results, setResults] = useState<ProductListItemDto[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Cargar productos al montar
-  useEffect(() => {
-    const loadProducts = async () => {
-      try {
-        setIsLoading(true)
-        const loadedProducts = await getProducts()
-        const activeProducts = loadedProducts.filter(
-          (p) => p.status === "Disponible" || p.status === "active"
-        )
-        setProducts(activeProducts)
-      } catch (error) {
-        console.error("Error loading products:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-    loadProducts()
-  }, [])
-
-  // Mostrar el producto seleccionado en el input
   useEffect(() => {
     if (value) {
       setSearchTerm(value.name)
@@ -61,53 +56,55 @@ export function ProductSearchCombobox({
     }
   }, [value])
 
-  // Filtrar productos excluidos
-  const availableProducts = useMemo(() => {
-    return products.filter((product) => {
-      return !excludedProductIds.includes(product.id)
-    })
-  }, [products, excludedProductIds])
-
-  // Filtrar por término de búsqueda
-  const filteredProducts = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return []
+  const doSearch = useCallback(async (term: string) => {
+    if (term.trim().length < 2) {
+      setResults([])
+      return
     }
-    
-    const search = searchTerm.toLowerCase().trim()
-    return availableProducts.filter((product) => {
-      return (
-        product.name.toLowerCase().includes(search) ||
-        product.sku.toLowerCase().includes(search) ||
-        product.category.toLowerCase().includes(search)
-      )
-    })
-  }, [availableProducts, searchTerm])
+    setIsLoading(true)
+    try {
+      const items = await apiClient.searchProducts(term, 20)
+      setResults(items)
+    } catch (error) {
+      console.error("Error searching products:", error)
+      setResults([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value
     setSearchTerm(newValue)
     setShowResults(true)
-    
-    // Si se limpia el input, limpiar la selección
+
     if (!newValue.trim()) {
       onSelect(null)
+      setResults([])
+      return
     }
+
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => doSearch(newValue), 300)
   }
 
-  const handleSelect = (product: Product) => {
-    onSelect(product)
+  const filteredResults = results.filter(
+    (item) => !excludedProductIds.includes(parseInt(item.id) || 0)
+  )
+
+  const handleSelect = (item: ProductListItemDto) => {
+    onSelect(listItemToProduct(item))
     setShowResults(false)
   }
 
   const handleClear = () => {
     setSearchTerm("")
     onSelect(null)
+    setResults([])
     setShowResults(false)
     inputRef.current?.focus()
   }
 
-  // Cerrar resultados al hacer click fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -117,15 +114,12 @@ export function ProductSearchCombobox({
 
     if (showResults) {
       document.addEventListener("mousedown", handleClickOutside)
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside)
-      }
+      return () => document.removeEventListener("mousedown", handleClickOutside)
     }
   }, [showResults])
 
   return (
     <div ref={containerRef} className={cn("relative w-full", className)}>
-      {/* Input de búsqueda */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
         <Input
@@ -135,7 +129,7 @@ export function ProductSearchCombobox({
           value={searchTerm}
           onChange={handleInputChange}
           onFocus={() => {
-            if (searchTerm.trim()) {
+            if (searchTerm.trim().length >= 2) {
               setShowResults(true)
             }
           }}
@@ -153,40 +147,40 @@ export function ProductSearchCombobox({
         )}
       </div>
 
-      {/* Lista de resultados */}
-      {showResults && searchTerm.trim() && (
+      {showResults && searchTerm.trim().length >= 2 && (
         <div className="absolute z-50 w-full mt-2 bg-popover border rounded-lg shadow-lg max-h-[400px] overflow-y-auto min-w-[450px]">
           {isLoading ? (
-            <div className="py-8 text-center text-base text-muted-foreground">
-              Cargando productos...
+            <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-base">Buscando...</span>
             </div>
-          ) : filteredProducts.length === 0 ? (
+          ) : filteredResults.length === 0 ? (
             <div className="py-8 text-center text-base text-muted-foreground">
               No se encontraron productos con ese criterio.
             </div>
           ) : (
             <div className="p-2">
-              {filteredProducts.map((product) => (
+              {filteredResults.map((item) => (
                 <div
-                  key={product.id}
-                  onClick={() => handleSelect(product)}
+                  key={item.id}
+                  onClick={() => handleSelect(item)}
                   className={cn(
                     "flex items-center justify-between gap-4 p-3 rounded-md cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors border-b border-border/50 last:border-b-0",
-                    value?.id === product.id && "bg-accent"
+                    value?.id === (parseInt(item.id) || 0) && "bg-accent"
                   )}
                 >
                   <div className="flex items-start gap-3 flex-1 min-w-0">
                     <Package className="h-6 w-6 shrink-0 text-muted-foreground mt-0.5" />
                     <div className="flex flex-col flex-1 min-w-0 gap-1">
-                      <span className="font-semibold text-base truncate">{product.name}</span>
+                      <span className="font-semibold text-base truncate">{item.name}</span>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>SKU: {product.sku}</span>
-                        <span>•</span>
-                        <span className="truncate">{product.category}</span>
-                        {product.stock !== undefined && (
+                        <span>SKU: {item.sku}</span>
+                        <span>&bull;</span>
+                        <span className="truncate">{item.category}</span>
+                        {item.stock !== undefined && (
                           <>
-                            <span>•</span>
-                            <span>Stock: {product.stock}</span>
+                            <span>&bull;</span>
+                            <span>Stock: {item.stock}</span>
                           </>
                         )}
                       </div>
@@ -194,7 +188,7 @@ export function ProductSearchCombobox({
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-base font-semibold">
-                      {formatCurrency(product.price, product.priceCurrency || "Bs")}
+                      {formatCurrency(item.price, (item.priceCurrency as any) || "Bs")}
                     </span>
                   </div>
                 </div>
