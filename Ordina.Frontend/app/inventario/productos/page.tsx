@@ -16,7 +16,7 @@ import { DeleteProductDialog } from "@/components/inventory/delete-product-dialo
 import { EditProductDialog } from "@/components/inventory/edit-product-dialog"
 import { ImportProductsDialog } from "@/components/inventory/import-products-dialog"
 import { PermissionGuard } from "@/components/auth/permission-guard"
-import { deleteProduct, getCategories, invalidateProductCache, type Product, type Category } from "@/lib/storage"
+import { getCategories, invalidateProductCache, type Product, type Category } from "@/lib/storage"
 import { apiClient, type ProductListItemDto, type PaginatedResultDto } from "@/lib/api-client"
 import { useCurrency } from "@/contexts/currency-context"
 import { Currency } from "@/lib/currency-utils"
@@ -41,6 +41,7 @@ export default function ProductosPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [selectedBackendId, setSelectedBackendId] = useState<string | null>(null)
 
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
@@ -105,40 +106,36 @@ export default function ProductosPage() {
     }
   }
 
+  const listItemToProduct = (product: ProductListItemDto): Product => ({
+    id: parseInt(product.id) || 0,
+    name: product.name,
+    category: product.category,
+    price: product.price,
+    priceCurrency: product.priceCurrency as Currency | undefined,
+    stock: product.stock,
+    status: product.status,
+    sku: product.sku,
+  })
+
   const handleDeleteProduct = (product: ProductListItemDto) => {
-    setSelectedProduct({
-      id: parseInt(product.id) || 0,
-      name: product.name,
-      category: product.category,
-      price: product.price,
-      priceCurrency: product.priceCurrency as Currency | undefined,
-      stock: product.stock,
-      status: product.status,
-      sku: product.sku,
-    })
+    setSelectedProduct(listItemToProduct(product))
+    setSelectedBackendId(product.id)
     setShowDeleteDialog(true)
   }
 
   const handleEditProduct = (product: ProductListItemDto) => {
-    setSelectedProduct({
-      id: parseInt(product.id) || 0,
-      name: product.name,
-      category: product.category,
-      price: product.price,
-      priceCurrency: product.priceCurrency as Currency | undefined,
-      stock: product.stock,
-      status: product.status,
-      sku: product.sku,
-    })
+    setSelectedProduct(listItemToProduct(product))
+    setSelectedBackendId(product.id)
     setShowEditDialog(true)
   }
 
   const confirmDelete = async () => {
-    if (selectedProduct) {
+    if (selectedBackendId) {
       try {
-        await deleteProduct(selectedProduct.id)
+        await apiClient.deleteProduct(selectedBackendId)
         invalidateProductCache()
         fetchProducts(page, searchTerm, selectedCategory, selectedStatus)
+        toast.success("Producto eliminado correctamente")
       } catch (error) {
         console.error("Error deleting product:", error)
         toast.error("Error al eliminar el producto")
@@ -146,6 +143,7 @@ export default function ProductosPage() {
     }
     setShowDeleteDialog(false)
     setSelectedProduct(null)
+    setSelectedBackendId(null)
   }
 
   const handleProductSaved = async () => {
