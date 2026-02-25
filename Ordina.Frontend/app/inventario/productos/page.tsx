@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit, Trash2, Package, Search, ArrowLeft, Filter } from "lucide-react"
+import { Plus, Edit, Trash2, Package, Search, ArrowLeft, Filter, FileSpreadsheet } from "lucide-react"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation"
 import { ProductWizardDialog } from "@/components/inventory/product-wizard-dialog"
 import { DeleteProductDialog } from "@/components/inventory/delete-product-dialog"
 import { EditProductDialog } from "@/components/inventory/edit-product-dialog"
+import { ImportProductsDialog } from "@/components/inventory/import-products-dialog"
 import { PermissionGuard } from "@/components/auth/permission-guard"
 import { getProducts, deleteProduct, getCategories, type Product } from "@/lib/storage"
 import { useCurrency } from "@/contexts/currency-context"
@@ -40,6 +41,7 @@ function ProductPrice({
 export default function ProductosPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showProductWizard, setShowProductWizard] = useState(false)
+  const [showImportDialog, setShowImportDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
@@ -175,10 +177,16 @@ export default function ProductosPage() {
               </div>
             </div>
             <PermissionGuard permission="products.create">
-              <Button onClick={handleNewProduct} className="w-full sm:w-auto">
-                <Plus className="w-4 h-4 mr-2" />
-                Nuevo Producto
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={handleNewProduct} className="w-full sm:w-auto">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Nuevo Producto
+                </Button>
+                <Button variant="outline" onClick={() => setShowImportDialog(true)} className="w-full sm:w-auto">
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Importar Excel
+                </Button>
+              </div>
             </PermissionGuard>
           </div>
 
@@ -319,6 +327,11 @@ export default function ProductosPage() {
         onOpenChange={setShowEditDialog}
         product={selectedProduct}
         onSave={handleProductSaved}
+      />
+      <ImportProductsDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        onImportComplete={handleProductSaved}
       />
     </div >
   )
