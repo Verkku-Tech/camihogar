@@ -220,6 +220,166 @@ public class ClientService : IClientService
         }
     }
 
+    public async Task<ImportClientsResultDto> ImportClientsFromCsvAsync(Stream fileStream)
+    {
+        var result = new ImportClientsResultDto();
+        int rowsProcessed = 0;
+        int errors = 0;
+        int rowIndex = 0;
+
+        using var reader = new StreamReader(fileStream, Encoding.UTF8);
+        
+        // Determinar índices de columnas de forma dinámica
+        var headerLine = await reader.ReadLineAsync();
+        if (string.IsNullOrWhiteSpace(headerLine))
+        {
+            result.Message = "El archivo CSV está vacío o no tiene encabezados.";
+            return result;
+        }
+
+        var headers = ParseCsvLine(headerLine);
+        
+        int idxNombre = FindColumnIndex(headers, "Nombre del tercero", "nombreRazonSocial");
+        int idxApodo = FindColumnIndex(headers, "Apodo");
+        int idxRutId = FindColumnIndex(headers, "RIF / C.I", "rutId", "rut");
+        int idxDireccion = FindColumnIndex(headers, "Dreccion de envio", "direccion");
+        int idxTelefono = FindColumnIndex(headers, "Teléfono", "telefono");
+        int idxTelefono2 = FindColumnIndex(headers, "Telefono 2", "telefono2");
+        int idxEmail = FindColumnIndex(headers, "Correo", "email");
+        int idxTipo = FindColumnIndex(headers, "Tipo de tercero", "tipoCliente");
+        int idxEstado = FindColumnIndex(headers, "Estado", "estado");
+
+        if (idxNombre == -1 || idxRutId == -1)
+        {
+            result.Message = "El CSV debe contener al menos las columnas 'Nombre del tercero' y 'RIF / C.I'.";
+            return result;
+        }
+
+        while (!reader.EndOfStream)
+        {
+            var line = await reader.ReadLineAsync();
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            rowIndex++;
+            try
+            {
+                var values = ParseCsvLine(line);
+                if (values.Count < 2) continue; // línea inválida muy corta
+
+                string rutIdRaw = GetValueOrEmpty(values, idxRutId);
+                string nombreRaw = GetValueOrEmpty(values, idxNombre);
+
+                if (string.IsNullOrWhiteSpace(rutIdRaw) || string.IsNullOrWhiteSpace(nombreRaw))
+                {
+                    errors++;
+                    continue; // Requeridos
+                }
+
+                string rutId = rutIdRaw.Trim();
+                
+                // Buscar si existe para no duplicar por número de ID
+                var existingClient = await _clientRepository.GetByRutIdAsync(rutId);
+                if (existingClient != null)
+                {
+                    // Saltar si ya existe (o podríamos actualizarlo)
+                    // TODO: implementar actualización si es necesario
+                    continue; 
+                }
+
+                string tipoRaw = GetValueOrEmpty(values, idxTipo).ToLowerInvariant();
+                string estadoRaw = GetValueOrEmpty(values, idxEstado).ToLowerInvariant();
+                
+                var client = new ClientEntity
+                {
+                    NombreRazonSocial = nombreRaw.Trim(),
+                    Apodo = GetValueOrEmpty(values, idxApodo).Trim(),
+                    RutId = rutId,
+                    Direccion = GetValueOrEmpty(values, idxDireccion).Trim(),
+                    Telefono = GetValueOrEmpty(values, idxTelefono).Trim(),
+                    Telefono2 = GetValueOrEmpty(values, idxTelefono2).Trim(),
+                    Email = GetValueOrEmpty(values, idxEmail).Trim(),
+                    TipoCliente = (tipoRaw.Contains("empresa")) ? "empresa" : "particular",
+                    Estado = (estadoRaw.Contains("inactiv")) ? "inactivo" : "activo",
+                    FechaCreacion = DateTime.UtcNow,
+                    TieneNotasDespacho = false
+                };
+
+                // Si la dirección viene vacía, le ponemos un valor por defecto requerido
+                if (string.IsNullOrWhiteSpace(client.Direccion)) 
+                    client.Direccion = "Sin dirección provista";
+
+                await _clientRepository.CreateAsync(client);
+                rowsProcessed++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error al procesar línea {RowIndex} del CSV", rowIndex);
+                errors++;
+            }
+        }
+
+        result.RowsProcessed = rowsProcessed;
+        result.Errors = errors;
+        result.Total = rowsProcessed + errors;
+        result.Message = $"Procesamiento de archivo finalizado. Se han guardado {rowsProcessed} clientes correctamente.";
+
+        return result;
+    }
+
+    private static int FindColumnIndex(List<string> headers, params string[] possibleNames)
+    {
+        for (int i = 0; i < headers.Count; i++)
+        {
+            var header = headers[i]?.Trim();
+            if (string.IsNullOrWhiteSpace(header)) continue;
+            
+            foreach (var possible in possibleNames)
+            {
+                if (header.Equals(possible, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+        }
+        return -1;
+    }
+
+    private static string GetValueOrEmpty(List<string> values, int index)
+    {
+        if (index < 0 || index >= values.Count) return string.Empty;
+        return values[index];
+    }
+
+    /// <summary>
+    /// Mini-parser de CSV que respeta comas dentro de comillas
+    /// </summary>
+    private static List<string> ParseCsvLine(string line)
+    {
+        var result = new List<string>();
+        var currentToken = new StringBuilder();
+        bool inQuotes = false;
+
+        for (int i = 0; i < line.Length; i++)
+        {
+            char ch = line[i];
+
+            if (ch == '"')
+            {
+                inQuotes = !inQuotes;
+            }
+            else if (ch == ',' && !inQuotes)
+            {
+                result.Add(currentToken.ToString());
+                currentToken.Clear();
+            }
+            else
+            {
+                currentToken.Append(ch);
+            }
+        }
+        
+        result.Add(currentToken.ToString()); // El último token
+        return result;
+    }
+
     #region Métodos de validación
 
     private static void ValidateTipoCliente(string tipoCliente)

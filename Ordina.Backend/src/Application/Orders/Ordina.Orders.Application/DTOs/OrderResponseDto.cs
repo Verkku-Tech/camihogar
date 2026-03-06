@@ -33,6 +33,7 @@ public class OrderResponseDto
     public string? SaleType { get; set; }
     public string? DeliveryType { get; set; }
     public string? DeliveryZone { get; set; }
+    public ExchangeRatesAtCreationDto? ExchangeRatesAtCreation { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

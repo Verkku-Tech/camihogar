@@ -31,7 +31,7 @@ namespace Ordina.Users.Application.DTOs
         [StringLength(20)]
         public string? Telefono2 { get; set; }
 
-        [EmailAddress]
+        [RegularExpression(@"^$|^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$", ErrorMessage = "El formato de correo no es válido.")]
         [StringLength(100)]
         public string? Email { get; set; }
 

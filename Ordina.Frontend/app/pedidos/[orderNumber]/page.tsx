@@ -104,6 +104,70 @@ const getOriginalPaymentAmount = (
   };
 };
 
+// Helper para derivar tasas de cambio a partir de los pagos de un pedido
+const deriveExchangeRatesFromPayments = (
+  order: Order
+): { USD?: ExchangeRate; EUR?: ExchangeRate } => {
+  const derived: { USD?: ExchangeRate; EUR?: ExchangeRate } = {};
+
+  const tryAddRateFromDetails = (
+    currency: "USD" | "EUR",
+    rate?: number,
+    date?: string
+  ) => {
+    if (!rate || rate <= 0 || derived[currency]) return;
+
+    const effectiveDate = date || order.createdAt;
+
+    derived[currency] = {
+      id: `payment-${currency.toLowerCase()}-${order.id}`,
+      fromCurrency: "Bs",
+      toCurrency: currency,
+      rate,
+      effectiveDate,
+      isActive: true,
+      createdAt: order.createdAt,
+      updatedAt: order.createdAt,
+    };
+  };
+
+  // Pago principal (paymentDetails)
+  if (order.paymentDetails?.cashCurrency && order.paymentDetails.exchangeRate) {
+    const currency = order.paymentDetails
+      .cashCurrency as "USD" | "EUR" | "Bs";
+    if (currency === "USD" || currency === "EUR") {
+      const date =
+        order.paymentDetails.pagomovilDate ||
+        order.paymentDetails.transferenciaDate ||
+        order.createdAt;
+      tryAddRateFromDetails(currency, order.paymentDetails.exchangeRate, date);
+    }
+  }
+
+  // Pagos parciales
+  if (order.partialPayments && order.partialPayments.length > 0) {
+    for (const p of order.partialPayments) {
+      if (
+        p.paymentDetails?.cashCurrency &&
+        p.paymentDetails.exchangeRate
+      ) {
+        const currency = p.paymentDetails
+          .cashCurrency as "USD" | "EUR" | "Bs";
+        if (currency === "USD" || currency === "EUR") {
+          const date =
+            p.paymentDetails.pagomovilDate ||
+            p.paymentDetails.transferenciaDate ||
+            p.date ||
+            order.createdAt;
+          tryAddRateFromDetails(currency, p.paymentDetails.exchangeRate, date);
+        }
+      }
+    }
+  }
+
+  return derived;
+};
+
 // Función helper para formatear moneda siempre en USD como principal, Bs como secundario
 const formatCurrencyWithUsdPrimary = (
   amountInBs: number,
@@ -473,72 +537,91 @@ export default function OrderDetailPage() {
         // Cargar tasas de cambio para el día del pedido
         // PRIORIDAD: Usar las tasas guardadas en el pedido si existen
         if (foundOrder.exchangeRatesAtCreation) {
-          // Convertir las tasas guardadas al formato ExchangeRate
+          // Convertir las tasas guardadas al formato ExchangeRate.
+          // Soportar tanto propiedades en MAYÚSCULAS (USD/EUR) como en minúsculas (usd/eur),
+          // ya que el backend puede serializar con camelCase.
+          const ex = foundOrder.exchangeRatesAtCreation as any;
+          const usdAtCreation = ex.USD || ex.usd;
+          const eurAtCreation = ex.EUR || ex.eur;
+
           const savedRates: { USD?: ExchangeRate; EUR?: ExchangeRate } = {};
 
-          if (foundOrder.exchangeRatesAtCreation.USD) {
+          if (usdAtCreation) {
             savedRates.USD = {
               id: `saved-usd-${foundOrder.id}`,
               fromCurrency: "Bs",
               toCurrency: "USD",
-              rate: foundOrder.exchangeRatesAtCreation.USD.rate,
-              effectiveDate:
-                foundOrder.exchangeRatesAtCreation.USD.effectiveDate,
+              rate: usdAtCreation.rate,
+              effectiveDate: usdAtCreation.effectiveDate,
               isActive: true,
               createdAt: foundOrder.createdAt,
               updatedAt: foundOrder.createdAt,
             };
           }
 
-          if (foundOrder.exchangeRatesAtCreation.EUR) {
+          if (eurAtCreation) {
             savedRates.EUR = {
               id: `saved-eur-${foundOrder.id}`,
               fromCurrency: "Bs",
               toCurrency: "EUR",
-              rate: foundOrder.exchangeRatesAtCreation.EUR.rate,
-              effectiveDate:
-                foundOrder.exchangeRatesAtCreation.EUR.effectiveDate,
+              rate: eurAtCreation.rate,
+              effectiveDate: eurAtCreation.effectiveDate,
               isActive: true,
               createdAt: foundOrder.createdAt,
               updatedAt: foundOrder.createdAt,
             };
           }
 
+          // Si no hay tasas guardadas para alguna moneda, intentar derivarlas desde los pagos
+          const paymentDerived = deriveExchangeRatesFromPayments(foundOrder);
+          if (!savedRates.USD && paymentDerived.USD) {
+            savedRates.USD = paymentDerived.USD;
+          }
+          if (!savedRates.EUR && paymentDerived.EUR) {
+            savedRates.EUR = paymentDerived.EUR;
+          }
+
           setLocalExchangeRates(savedRates);
         } else {
-          // Fallback: Buscar tasas del día del pedido si no están guardadas
-          const orderDateObj = new Date(foundOrder.createdAt);
-          orderDateObj.setHours(0, 0, 0, 0);
+          // Si no hay tasas guardadas en el pedido, intentar derivarlas desde los pagos
+          const paymentDerived = deriveExchangeRatesFromPayments(foundOrder);
+          if (paymentDerived.USD || paymentDerived.EUR) {
+            setLocalExchangeRates(paymentDerived);
+          } else {
+            // Fallback: Buscar tasas del día del pedido si no están guardadas ni se pueden derivar
+            const orderDateObj = new Date(foundOrder.createdAt);
+            orderDateObj.setHours(0, 0, 0, 0);
 
-          const allRates = await getAll<ExchangeRate>("exchange_rates");
-          const activeRates = allRates
-            .filter((r) => r.isActive)
-            .sort(
-              (a, b) =>
-                new Date(b.effectiveDate).getTime() -
-                new Date(a.effectiveDate).getTime()
+            const allRates = await getAll<ExchangeRate>("exchange_rates");
+            const activeRates = allRates
+              .filter((r) => r.isActive)
+              .sort(
+                (a, b) =>
+                  new Date(b.effectiveDate).getTime() -
+                  new Date(a.effectiveDate).getTime()
+              );
+
+            // Buscar la tasa más reciente hasta el día del pedido
+            const usdRate = activeRates.find(
+              (r) =>
+                r.toCurrency === "USD" &&
+                new Date(r.effectiveDate).getTime() <= orderDateObj.getTime()
+            );
+            const eurRate = activeRates.find(
+              (r) =>
+                r.toCurrency === "EUR" &&
+                new Date(r.effectiveDate).getTime() <= orderDateObj.getTime()
             );
 
-          // Buscar la tasa más reciente hasta el día del pedido
-          const usdRate = activeRates.find(
-            (r) =>
-              r.toCurrency === "USD" &&
-              new Date(r.effectiveDate).getTime() <= orderDateObj.getTime()
-          );
-          const eurRate = activeRates.find(
-            (r) =>
-              r.toCurrency === "EUR" &&
-              new Date(r.effectiveDate).getTime() <= orderDateObj.getTime()
-          );
+            // Si no hay tasa para el día del pedido, usar la más reciente disponible
+            const latestUsd = activeRates.find((r) => r.toCurrency === "USD");
+            const latestEur = activeRates.find((r) => r.toCurrency === "EUR");
 
-          // Si no hay tasa para el día del pedido, usar la más reciente disponible
-          const latestUsd = activeRates.find((r) => r.toCurrency === "USD");
-          const latestEur = activeRates.find((r) => r.toCurrency === "EUR");
-
-          setLocalExchangeRates({
-            USD: usdRate || latestUsd,
-            EUR: eurRate || latestEur,
-          });
+            setLocalExchangeRates({
+              USD: usdRate || latestUsd,
+              EUR: eurRate || latestEur,
+            });
+          }
         }
       } catch (error) {
         console.error("Error loading order:", error);

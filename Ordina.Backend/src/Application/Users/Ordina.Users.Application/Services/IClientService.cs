@@ -16,5 +16,6 @@ namespace Ordina.Users.Application.Services
         Task<ClientResponseDto> UpdateAsync(string id, UpdateClientDto updateClientDto);
         Task<bool> DeleteAsync(string id);
         Task<bool> ClientExistsAsync(string id);
+        Task<ImportClientsResultDto> ImportClientsFromCsvAsync(Stream fileStream);
     }
 }

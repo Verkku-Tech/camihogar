@@ -56,6 +56,13 @@ export interface UpdateClientDto {
   estado?: string;
   tieneNotasDespacho?: boolean;
 }
+export interface ImportClientsResultDto {
+  message: string;
+  rowsProcessed: number;
+  errors: number;
+  total: number;
+}
+
 export interface ApiError {
   message: string;
   status?: number;
@@ -885,6 +892,35 @@ export class ApiClient {
 
   async checkProviderExists(id: string): Promise<boolean> {
     return this.request<boolean>(`/api/Providers/${id}/exists`);
+  }
+
+  // Clientes
+  async importClients(file: File): Promise<ImportClientsResultDto> {
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const baseUrl = this.getBaseUrl("/api/clients/import");
+    const url = `${baseUrl}/api/clients/import`;
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let message = `Error ${response.status}`;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.message) message = parsed.message;
+      } catch {
+        if (text) message = text;
+      }
+      throw new Error(message);
+    }
+
+    return response.json();
   }
 
   // Clients endpoints
@@ -1723,6 +1759,10 @@ export interface OrderResponseDto {
   saleType?: string;
   deliveryType?: string;
   deliveryZone?: string;
+  exchangeRatesAtCreation?: {
+    USD?: { rate: number; effectiveDate: string };
+    EUR?: { rate: number; effectiveDate: string };
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -1793,6 +1833,10 @@ export interface CreateOrderDto {
   saleType?: string;
   deliveryType?: string;
   deliveryZone?: string;
+  exchangeRatesAtCreation?: {
+    USD?: { rate: number; effectiveDate: string };
+    EUR?: { rate: number; effectiveDate: string };
+  };
 }
 
 export interface UpdateOrderDto {
@@ -1841,6 +1885,10 @@ export interface UpdateOrderDto {
   saleType?: string;
   deliveryType?: string;
   deliveryZone?: string;
+  exchangeRatesAtCreation?: {
+    USD?: { rate: number; effectiveDate: string };
+    EUR?: { rate: number; effectiveDate: string };
+  };
 }
 
 // ===== ACCOUNTS DTOs =====

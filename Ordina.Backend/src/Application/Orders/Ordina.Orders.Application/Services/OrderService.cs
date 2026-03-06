@@ -186,6 +186,7 @@ public class OrderService : IOrderService
                 SaleType = createDto.SaleType,
                 DeliveryType = createDto.DeliveryType,
                 DeliveryZone = createDto.DeliveryZone,
+                ExchangeRatesAtCreation = createDto.ExchangeRatesAtCreation != null ? MapExchangeRatesFromDto(createDto.ExchangeRatesAtCreation) : null,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -274,6 +275,8 @@ public class OrderService : IOrderService
                 existingOrder.DeliveryType = updateDto.DeliveryType;
             if (!string.IsNullOrEmpty(updateDto.DeliveryZone))
                 existingOrder.DeliveryZone = updateDto.DeliveryZone;
+            if (updateDto.ExchangeRatesAtCreation != null)
+                existingOrder.ExchangeRatesAtCreation = MapExchangeRatesFromDto(updateDto.ExchangeRatesAtCreation);
 
             existingOrder.UpdatedAt = DateTime.UtcNow;
 
@@ -364,6 +367,7 @@ public class OrderService : IOrderService
             ProductMarkups = order.ProductMarkups,
             CreateSupplierOrder = order.CreateSupplierOrder,
             Observations = order.Observations,
+            ExchangeRatesAtCreation = order.ExchangeRatesAtCreation != null ? MapExchangeRatesToDto(order.ExchangeRatesAtCreation) : null,
             CreatedAt = order.CreatedAt,
             UpdatedAt = order.UpdatedAt
         };
@@ -570,6 +574,24 @@ public class OrderService : IOrderService
             Enabled = dto.Enabled,
             Cost = dto.Cost,
             Currency = dto.Currency
+        };
+    }
+
+    private ExchangeRatesAtCreationDto MapExchangeRatesToDto(ExchangeRatesAtCreation entity)
+    {
+        return new ExchangeRatesAtCreationDto
+        {
+            Usd = entity.Usd != null ? new ExchangeRateInfoDto { Rate = entity.Usd.Rate, EffectiveDate = entity.Usd.EffectiveDate } : null,
+            Eur = entity.Eur != null ? new ExchangeRateInfoDto { Rate = entity.Eur.Rate, EffectiveDate = entity.Eur.EffectiveDate } : null
+        };
+    }
+
+    private ExchangeRatesAtCreation MapExchangeRatesFromDto(ExchangeRatesAtCreationDto dto)
+    {
+        return new ExchangeRatesAtCreation
+        {
+            Usd = dto.Usd != null ? new ExchangeRateInfo { Rate = dto.Usd.Rate, EffectiveDate = dto.Usd.EffectiveDate } : null,
+            Eur = dto.Eur != null ? new ExchangeRateInfo { Rate = dto.Eur.Rate, EffectiveDate = dto.Eur.EffectiveDate } : null
         };
     }
 

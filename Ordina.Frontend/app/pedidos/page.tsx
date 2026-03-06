@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { NewOrderDialog } from "@/components/orders/new-order-dialog"
+import { EditOrderDialog } from "@/components/orders/edit-order-dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,8 +24,9 @@ import {
 import { Search, Plus, Eye, Edit, Trash2, X } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { getUnifiedOrders, deleteOrder, deleteBudget, type UnifiedOrder } from "@/lib/storage"
+import { deleteOrder, deleteBudget, getUnifiedOrders, type UnifiedOrder } from "@/lib/storage"
 import { useCurrency } from "@/contexts/currency-context"
+import { useAuth } from "@/contexts/auth-context"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { ORDER_STATUSES, PAYMENT_METHODS_FILTER } from "@/components/orders/constants"
@@ -59,6 +61,7 @@ const getStatusColor = (status: string) => {
 
 export default function PedidosPage() {
   const { formatWithPreference, preferredCurrency } = useCurrency()
+  const { user, hasPermission } = useAuth()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [filters, setFilters] = useState({
@@ -68,6 +71,9 @@ export default function PedidosPage() {
     client: "all",
   })
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
+  const [isEditOrderOpen, setIsEditOrderOpen] = useState(false)
+  const [orderToEdit, setOrderToEdit] = useState<UnifiedOrder | null>(null)
+  const [editMode, setEditMode] = useState<"full" | "payments">("full")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [orderToDelete, setOrderToDelete] = useState<UnifiedOrder | null>(null)
@@ -123,7 +129,7 @@ export default function PedidosPage() {
   // Obtener valores únicos para los filtros
   const uniqueVendors = Array.from(new Set(orders.map((o) => o.vendorName))).sort()
   const uniqueClients = Array.from(new Set(orders.map((o) => o.clientName))).sort()
-  
+
   // Usar lista fija de estados y métodos de pago
   const uniqueStatuses = ORDER_STATUSES.map(s => s.value)
   const uniquePaymentMethods = [...PAYMENT_METHODS_FILTER]
@@ -190,13 +196,29 @@ export default function PedidosPage() {
     }
   }
 
+  const canEditAllOrders = hasPermission("orders.update")
+  const canEditOrderPaymentsOnly = hasPermission("orders.payments.manage")
+
   const handleEdit = (order: UnifiedOrder) => {
-    // TODO: Implementar edición del pedido
-    console.log("Editar pedido:", order)
-    toast.info(`Editar ${order.type === "order" ? "pedido" : "presupuesto"} ${order.orderNumber}`, {
-      description: "Esta funcionalidad será implementada próximamente.",
+    if (canEditAllOrders) {
+      setOrderToEdit(order)
+      setEditMode("full")
+      setIsEditOrderOpen(true)
+      return
+    }
+    if (canEditOrderPaymentsOnly && order.type === "order") {
+      setOrderToEdit(order)
+      setEditMode("payments")
+      setIsEditOrderOpen(true)
+      return
+    }
+    toast.error("Acceso denegado", {
+      description: "No tienes permisos para editar este pedido o presupuesto.",
     })
   }
+
+  const canEditOrder = (order: UnifiedOrder) =>
+    canEditAllOrders || (canEditOrderPaymentsOnly && order.type === "order")
 
   const handleDeleteClick = (order: UnifiedOrder) => {
     setOrderToDelete(order)
@@ -380,14 +402,16 @@ export default function PedidosPage() {
                                 >
                                   <Eye className="w-4 h-4" />
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleEdit(order)}
-                                  title="Editar pedido"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                </Button>
+                                {canEditOrder(order) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEdit(order)}
+                                    title={canEditAllOrders ? "Editar pedido" : "Editar pagos"}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                )}
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -404,7 +428,7 @@ export default function PedidosPage() {
                       </TableBody>
                     </Table>
                   )}
-                  
+
                   {/* Paginación */}
                   {!isLoading && filteredOrders.length > 0 && (
                     <TablePagination
@@ -425,8 +449,8 @@ export default function PedidosPage() {
         </div>
       </div>
 
-      <NewOrderDialog 
-        open={isNewOrderOpen} 
+      <NewOrderDialog
+        open={isNewOrderOpen}
         onOpenChange={(open) => {
           setIsNewOrderOpen(open)
           if (!open) {
@@ -434,6 +458,20 @@ export default function PedidosPage() {
             handleOrderCreated()
           }
         }}
+      />
+
+      <EditOrderDialog
+        open={isEditOrderOpen}
+        onOpenChange={(open) => {
+          setIsEditOrderOpen(open)
+          if (!open) {
+            setOrderToEdit(null)
+            setEditMode("full")
+            handleOrderCreated()
+          }
+        }}
+        order={orderToEdit as any}
+        mode={editMode}
       />
 
       {/* Dialog de confirmación de eliminación */}
@@ -457,7 +495,7 @@ export default function PedidosPage() {
             <AlertDialogCancel onClick={() => setOrderToDelete(null)}>
               Cancelar
             </AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleDelete}
               className="bg-red-600 hover:bg-red-700"
             >

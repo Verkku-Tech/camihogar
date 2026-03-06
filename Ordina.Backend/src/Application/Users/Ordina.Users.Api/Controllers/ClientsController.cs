@@ -154,6 +154,40 @@ namespace Ordina.Users.Api.Controllers
         }
 
         /// <summary>
+        /// Importa clientes masivamente desde un archivo CSV.
+        /// </summary>
+        /// <param name="file">El archivo CSV a importar.</param>
+        [HttpPost("import")]
+        [ProducesResponseType(typeof(ImportClientsResultDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<ImportClientsResultDto>> ImportClients(IFormFile file)
+        {
+            try
+            {
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(new { message = "Se requiere un archivo CSV válido." });
+                }
+
+                if (!file.FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+                {
+                    return BadRequest(new { message = "El archivo debe tener extensión .csv." });
+                }
+
+                using var stream = file.OpenReadStream();
+                var result = await _clientService.ImportClientsFromCsvAsync(stream);
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al importar clientes desde CSV.");
+                return StatusCode(500, new { message = "Error interno del servidor al procesar el archivo CSV." });
+            }
+        }
+
+        /// <summary>
         /// Actualiza un cliente existente.
         /// </summary>
         /// <param name="id">ID del cliente a actualizar.</param>
