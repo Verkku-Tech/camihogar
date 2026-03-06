@@ -93,6 +93,8 @@ public static class Permissions
         public const string Delete = "orders.delete";
         public const string Export = "orders.export";
         public const string ViewStatistics = "orders.statistics.view";
+        /// <summary>Gestionar solo pagos de pedidos existentes (vendedores de tienda).</summary>
+        public const string ManagePayments = "orders.payments.manage";
     }
 
     public static class Dispatch // Facturación / Notas de Despacho

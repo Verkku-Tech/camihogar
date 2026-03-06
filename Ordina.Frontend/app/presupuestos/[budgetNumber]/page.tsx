@@ -262,29 +262,34 @@ export default function BudgetDetailPage() {
           // Cargar tasas de cambio para el día del presupuesto
           // PRIORIDAD: Usar las tasas guardadas en el presupuesto si existen
           if (loadedBudget.exchangeRatesAtCreation) {
-            // Convertir las tasas guardadas al formato ExchangeRate
+            // Convertir las tasas guardadas al formato ExchangeRate.
+            // Soportar propiedades tanto en MAYÚSCULAS (USD/EUR) como en minúsculas (usd/eur).
+            const ex = loadedBudget.exchangeRatesAtCreation as any
+            const usdAtCreation = ex.USD || ex.usd
+            const eurAtCreation = ex.EUR || ex.eur
+
             const savedRates: { USD?: ExchangeRate; EUR?: ExchangeRate } = {}
 
-            if (loadedBudget.exchangeRatesAtCreation.USD) {
+            if (usdAtCreation) {
               savedRates.USD = {
                 id: `saved-usd-${loadedBudget.id}`,
                 fromCurrency: "Bs",
                 toCurrency: "USD",
-                rate: loadedBudget.exchangeRatesAtCreation.USD.rate,
-                effectiveDate: loadedBudget.exchangeRatesAtCreation.USD.effectiveDate,
+                rate: usdAtCreation.rate,
+                effectiveDate: usdAtCreation.effectiveDate,
                 isActive: true,
                 createdAt: loadedBudget.createdAt,
                 updatedAt: loadedBudget.createdAt,
               }
             }
 
-            if (loadedBudget.exchangeRatesAtCreation.EUR) {
+            if (eurAtCreation) {
               savedRates.EUR = {
                 id: `saved-eur-${loadedBudget.id}`,
                 fromCurrency: "Bs",
                 toCurrency: "EUR",
-                rate: loadedBudget.exchangeRatesAtCreation.EUR.rate,
-                effectiveDate: loadedBudget.exchangeRatesAtCreation.EUR.effectiveDate,
+                rate: eurAtCreation.rate,
+                effectiveDate: eurAtCreation.effectiveDate,
                 isActive: true,
                 createdAt: loadedBudget.createdAt,
                 updatedAt: loadedBudget.createdAt,

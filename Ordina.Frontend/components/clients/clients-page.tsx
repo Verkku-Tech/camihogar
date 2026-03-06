@@ -20,9 +20,11 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Search, Edit, Power, PowerOff, Filter, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
+import { Plus, Search, Edit, Power, PowerOff, Filter, ChevronLeft, ChevronRight, RefreshCw, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { apiClient, type ClientResponseDto, type CreateClientDto } from "@/lib/api-client"
+import { useAuth } from "@/contexts/auth-context"
+import { ImportClientsDialog } from "@/components/clients/import-clients-dialog"
 
 const tipoClienteOptions = [
   { value: "particular", label: "Particular" },
@@ -43,8 +45,12 @@ export function ClientsPage() {
   const [filterEstado, setFilterEstado] = useState<string>("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [selectedClient, setSelectedClient] = useState<ClientResponseDto | null>(null)
   const [deactivateClient, setDeactivateClient] = useState<ClientResponseDto | null>(null)
+  const { user } = useAuth()
+
+  const canImport = user?.role === "Super Administrator" || user?.role === "Administrator"
 
   const [formData, setFormData] = useState<CreateClientDto>({
     nombreRazonSocial: "",
@@ -218,124 +224,137 @@ export function ClientsPage() {
           <p className="text-muted-foreground">Gestiona los clientes de tu empresa (Total: {totalCount})</p>
         </div>
 
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-indigo-600 hover:bg-indigo-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Agregar Cliente
+        <div className="flex flex-col sm:flex-row gap-2">
+          {canImport && (
+            <Button
+              variant="outline"
+              className="bg-white hover:bg-gray-50 text-gray-700 border-gray-300"
+              onClick={() => setIsImportDialogOpen(true)}
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Importar CSV
             </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Crear Nuevo Cliente</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="nombreRazonSocial">Nombre o Razón Social *</Label>
-                <Input
-                  id="nombreRazonSocial"
-                  value={formData.nombreRazonSocial}
-                  onChange={(e) => setFormData({ ...formData, nombreRazonSocial: e.target.value })}
-                  placeholder="Nombre completo o razón social de la empresa"
-                />
-              </div>
+          )}
 
-              <div className="space-y-2">
-                <Label htmlFor="apodo">Apodo (Código RRSS)</Label>
-                <Input
-                  id="apodo"
-                  value={formData.apodo || ""}
-                  onChange={(e) => setFormData({ ...formData, apodo: e.target.value })}
-                  placeholder="Código identificador para herramientas de RRSS (opcional)"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="rutId">RUT o Número de Identificación *</Label>
-                <Input
-                  id="rutId"
-                  value={formData.rutId}
-                  onChange={(e) => setFormData({ ...formData, rutId: e.target.value })}
-                  placeholder="V-12345678 / J-12345678-9"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="direccion">Dirección</Label>
-                <Textarea
-                  id="direccion"
-                  value={formData.direccion}
-                  onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
-                  placeholder="Dirección completa"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-indigo-600 hover:bg-indigo-700">
+                <Plus className="w-4 h-4 mr-2" />
+                Agregar Cliente
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Crear Nuevo Cliente</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="telefono">Teléfono de Contacto</Label>
+                  <Label htmlFor="nombreRazonSocial">Nombre o Razón Social *</Label>
                   <Input
-                    id="telefono"
-                    value={formData.telefono}
-                    onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                    placeholder="+58 412 555-0123"
+                    id="nombreRazonSocial"
+                    value={formData.nombreRazonSocial}
+                    onChange={(e) => setFormData({ ...formData, nombreRazonSocial: e.target.value })}
+                    placeholder="Nombre completo o razón social de la empresa"
                   />
                 </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="telefono2">Teléfono de Contacto 2 (opcional)</Label>
+                  <Label htmlFor="apodo">Apodo (Código RRSS)</Label>
                   <Input
-                    id="telefono2"
-                    value={formData.telefono2 || ""}
-                    onChange={(e) => setFormData({ ...formData, telefono2: e.target.value })}
-                    placeholder="+58 424 555-0123"
+                    id="apodo"
+                    value={formData.apodo || ""}
+                    onChange={(e) => setFormData({ ...formData, apodo: e.target.value })}
+                    placeholder="Código identificador para herramientas de RRSS (opcional)"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="rutId">RUT o Número de Identificación *</Label>
+                  <Input
+                    id="rutId"
+                    value={formData.rutId}
+                    onChange={(e) => setFormData({ ...formData, rutId: e.target.value })}
+                    placeholder="V-12345678 / J-12345678-9"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="direccion">Dirección</Label>
+                  <Textarea
+                    id="direccion"
+                    value={formData.direccion}
+                    onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
+                    placeholder="Dirección completa"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="telefono">Teléfono de Contacto</Label>
+                    <Input
+                      id="telefono"
+                      value={formData.telefono}
+                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                      placeholder="+58 412 555-0123"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="telefono2">Teléfono de Contacto 2 (opcional)</Label>
+                    <Input
+                      id="telefono2"
+                      value={formData.telefono2 || ""}
+                      onChange={(e) => setFormData({ ...formData, telefono2: e.target.value })}
+                      placeholder="+58 424 555-0123"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email">Correo Electrónico (opcional)</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email || ""}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="cliente@email.com"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="tipoCliente">Tipo de Cliente *</Label>
+                  <Select
+                    value={formData.tipoCliente}
+                    onValueChange={(value) => setFormData({ ...formData, tipoCliente: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tipoClienteOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email">Correo Electrónico (opcional)</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email || ""}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="cliente@email.com"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="tipoCliente">Tipo de Cliente *</Label>
-                <Select
-                  value={formData.tipoCliente}
-                  onValueChange={(value) => setFormData({ ...formData, tipoCliente: value })}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleCreateClient}
+                  disabled={!formData.nombreRazonSocial || !formData.rutId}
+                  className="bg-indigo-600 hover:bg-indigo-700"
                 >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tipoClienteOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  Crear Cliente
+                </Button>
               </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleCreateClient}
-                disabled={!formData.nombreRazonSocial || !formData.rutId}
-                className="bg-indigo-600 hover:bg-indigo-700"
-              >
-                Crear Cliente
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Filters and Search */}
@@ -652,6 +671,17 @@ export function ClientsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Import Clients Dialog */}
+      <ImportClientsDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+        onImportComplete={() => {
+          setIsImportDialogOpen(false)
+          setPage(1)
+          loadClients()
+        }}
+      />
     </div>
   )
 }
