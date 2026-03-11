@@ -2,7 +2,7 @@ name: Deploy Camihogar PRD
 
 on:
   push:
-    branches: ["main"]
+    branches: ["staging"]
 
 concurrency:
   group: camihogar-rpi
@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: [self-hosted, Linux, ARM64]
+    runs-on: [self-hosted, Linux, X64, qa]
     steps:
       - uses: actions/checkout@v4
 
