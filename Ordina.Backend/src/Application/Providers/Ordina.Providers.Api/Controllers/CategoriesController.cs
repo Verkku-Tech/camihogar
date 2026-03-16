@@ -232,6 +232,33 @@ public class CategoriesController : ControllerBase
     }
 
     /// <summary>
+    /// Elimina múltiples categorías. Las categorías con productos asociados no se eliminarán.
+    /// </summary>
+    /// <param name="request">Lista de IDs de categorías a eliminar</param>
+    /// <returns>Resultado con cantidad eliminada, fallidas y errores</returns>
+    [HttpPost("bulk-delete")]
+    [ProducesResponseType(typeof(BulkDeleteResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<BulkDeleteResultDto>> BulkDeleteCategories([FromBody] BulkDeleteRequestDto request)
+    {
+        try
+        {
+            if (request?.Ids == null || request.Ids.Count == 0)
+            {
+                return BadRequest(new { message = "Debe proporcionar al menos un ID de categoría" });
+            }
+
+            var result = await _categoryService.BulkDeleteCategoriesAsync(request.Ids);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al eliminar categorías en masa");
+            return StatusCode(500, new { message = "Error interno del servidor al eliminar categorías" });
+        }
+    }
+
+    /// <summary>
     /// Verifica si una categoría existe
     /// </summary>
     /// <param name="id">ID de la categoría</param>

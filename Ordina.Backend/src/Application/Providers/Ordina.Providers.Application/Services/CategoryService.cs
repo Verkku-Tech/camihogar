@@ -220,6 +220,44 @@ public class CategoryService : ICategoryService
         }
     }
 
+    public async Task<BulkDeleteResultDto> BulkDeleteCategoriesAsync(IEnumerable<string> ids)
+    {
+        var idList = ids.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
+        var result = new BulkDeleteResultDto();
+
+        if (idList.Count == 0)
+            return result;
+
+        var validIds = new List<string>();
+        foreach (var id in idList)
+        {
+            var category = await _categoryRepository.GetByIdAsync(id);
+            if (category == null)
+            {
+                result.Failed++;
+                result.Errors.Add($"Categoría con ID {id} no encontrada");
+                continue;
+            }
+
+            var products = await _productRepository.GetByCategoryIdAsync(id);
+            if (products.Any())
+            {
+                result.Failed++;
+                result.Errors.Add($"'{category.Name}' tiene {products.Count()} producto(s) asociado(s)");
+                continue;
+            }
+
+            validIds.Add(id);
+        }
+
+        if (validIds.Count > 0)
+        {
+            result.Deleted = (int)await _categoryRepository.DeleteManyAsync(validIds);
+        }
+
+        return result;
+    }
+
     public async Task<bool> CategoryExistsAsync(string id)
     {
         try

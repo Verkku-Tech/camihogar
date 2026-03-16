@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ordina.Users.Application.DTOs;
 using Ordina.Users.Application.Services;
@@ -150,6 +150,31 @@ namespace Ordina.Users.Api.Controllers
             {
                 _logger.LogError(ex, "Error al crear cliente");
                 return StatusCode(500, new { message = "Error interno del servidor al crear el cliente" });
+            }
+        }
+
+        /// <summary>
+        /// Exporta el formato CSV para importación de clientes.
+        /// Si includeData=true, incluye los clientes existentes.
+        /// Si includeData=false, genera una plantilla vacía con solo los headers.
+        /// </summary>
+        /// <param name="includeData">Incluir datos actuales de clientes.</param>
+        [HttpGet("export")]
+        [Produces("text/csv")]
+        [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> ExportClients([FromQuery] bool includeData = false)
+        {
+            try
+            {
+                var bytes = await _clientService.ExportClientsToCsvAsync(includeData);
+                var fileName = includeData ? "Clientes_Camihogar.csv" : "Formato_Importacion_Clientes.csv";
+                return File(bytes, "text/csv", fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al exportar clientes");
+                return StatusCode(500, new { message = "Error interno del servidor al exportar clientes" });
             }
         }
 
