@@ -133,13 +133,11 @@ export class ApiClient {
       `[ApiClient] Resolved service "${service}" for endpoint "${endpoint}"`,
     );
 
-    // Si estamos en el cliente (navegador) y la página está en HTTPS, usar proxy
+    // Si estamos en el cliente (navegador), siempre usar proxy
+    // El proxy del servidor tiene acceso a las variables de entorno reales
+    // y evita exponer las URLs internas de los microservicios al navegador
     if (typeof window !== "undefined") {
-      const isHttps = window.location.protocol === "https:";
-      if (isHttps) {
-        // Usar proxy para evitar contenido mixto
-        return `/api/proxy/${service}`;
-      }
+      return `/api/proxy/${service}`;
     }
 
     // En servidor (SSR) o si estamos en HTTP, usar URLs directas
