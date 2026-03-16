@@ -12,11 +12,11 @@ public static class UserSeeder
     {
         var collection = context.Users;
         
-        // Verificar si ya hay datos
-        var existingCount = await collection.CountDocumentsAsync(_ => true);
-        if (existingCount > 0)
+        // Verificar si ya existe el administrador para evitar duplicados
+        var adminExists = await collection.Find(u => u.Username == "admin").AnyAsync();
+        if (adminExists)
         {
-            return; // Ya hay datos, no hacer seed
+            return; // Ya existe el administrador o hay datos
         }
 
         // Hashear la contraseña "password123" con SHA256
@@ -37,7 +37,14 @@ public static class UserSeeder
             }
         };
 
-        await collection.InsertManyAsync(users);
+        try
+        {
+            await collection.InsertManyAsync(users);
+        }
+        catch (MongoBulkWriteException ex) when (ex.WriteErrors.Any(e => e.Code == 11000))
+        {
+            // Ignorar error de clave duplicada: otro nodo/instancia ya lo insertó en paralelo
+        }
     }
 
     /// <summary>

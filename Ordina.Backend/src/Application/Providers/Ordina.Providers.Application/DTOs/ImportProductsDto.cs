@@ -7,6 +7,7 @@ public class ImportProductsResultDto
     public int TotalCategoriesUpdated { get; set; }
     public int TotalValuesAdded { get; set; }
     public int TotalProductsCreated { get; set; }
+    public int TotalProductsUpdated { get; set; }
     public int TotalProductsSkipped { get; set; }
     public List<SheetImportResultDto> Sheets { get; set; } = new();
 }
@@ -19,6 +20,7 @@ public class SheetImportResultDto
     public bool CategoryUpdated { get; set; }
     public int ValuesAdded { get; set; }
     public int ProductsCreated { get; set; }
+    public int ProductsUpdated { get; set; }
     public int ProductsSkipped { get; set; }
     public List<string> Errors { get; set; } = new();
 }

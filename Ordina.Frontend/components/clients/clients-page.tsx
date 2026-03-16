@@ -20,11 +20,12 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Search, Edit, Power, PowerOff, Filter, ChevronLeft, ChevronRight, RefreshCw, Upload } from "lucide-react"
+import { Plus, Search, Edit, Power, PowerOff, Filter, ChevronLeft, ChevronRight, RefreshCw, Upload, Download } from "lucide-react"
 import { toast } from "sonner"
 import { apiClient, type ClientResponseDto, type CreateClientDto } from "@/lib/api-client"
 import { useAuth } from "@/contexts/auth-context"
 import { ImportClientsDialog } from "@/components/clients/import-clients-dialog"
+import { DownloadClientFormatDialog } from "@/components/clients/download-format-dialog"
 
 const tipoClienteOptions = [
   { value: "particular", label: "Particular" },
@@ -46,6 +47,7 @@ export function ClientsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [showDownloadDialog, setShowDownloadDialog] = useState(false)
   const [selectedClient, setSelectedClient] = useState<ClientResponseDto | null>(null)
   const [deactivateClient, setDeactivateClient] = useState<ClientResponseDto | null>(null)
   const { user } = useAuth()
@@ -226,14 +228,24 @@ export function ClientsPage() {
 
         <div className="flex flex-col sm:flex-row gap-2">
           {canImport && (
-            <Button
-              variant="outline"
-              className="bg-white hover:bg-gray-50 text-gray-700 border-gray-300"
-              onClick={() => setIsImportDialogOpen(true)}
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Importar CSV
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                className="bg-white hover:bg-gray-50 text-gray-700 border-gray-300"
+                onClick={() => setShowDownloadDialog(true)}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Descargar Formato
+              </Button>
+              <Button
+                variant="outline"
+                className="bg-white hover:bg-gray-50 text-gray-700 border-gray-300"
+                onClick={() => setIsImportDialogOpen(true)}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Importar CSV
+              </Button>
+            </>
           )}
 
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -671,6 +683,12 @@ export function ClientsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Download Format Dialog */}
+      <DownloadClientFormatDialog
+        open={showDownloadDialog}
+        onOpenChange={setShowDownloadDialog}
+      />
 
       {/* Import Clients Dialog */}
       <ImportClientsDialog

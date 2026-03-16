@@ -1,9 +1,10 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Ordina.Database.Repositories;
 using Ordina.Users.Application.DTOs;
 using Ordina.Users.Application.Services;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -324,6 +325,49 @@ public class ClientService : IClientService
         result.Message = $"Procesamiento de archivo finalizado. Se han guardado {rowsProcessed} clientes correctamente.";
 
         return result;
+    }
+
+    public async Task<byte[]> ExportClientsToCsvAsync(bool includeData)
+    {
+        var headers = "Nombre del tercero,Apodo,RIF / C.I,Dreccion de envio,Teléfono,Telefono 2,Correo,Tipo de tercero,Estado";
+        var encoding = new UTF8Encoding(true); // UTF-8 with BOM for Excel
+
+        using var ms = new MemoryStream();
+        using var writer = new StreamWriter(ms, encoding);
+
+        await writer.WriteLineAsync(headers);
+
+        if (includeData)
+        {
+            var clients = await _clientRepository.GetAllAsync();
+            foreach (var client in clients)
+            {
+                var line = string.Join(",",
+                    EscapeCsv(client.NombreRazonSocial),
+                    EscapeCsv(client.Apodo ?? ""),
+                    EscapeCsv(client.RutId),
+                    EscapeCsv(client.Direccion ?? ""),
+                    EscapeCsv(client.Telefono ?? ""),
+                    EscapeCsv(client.Telefono2 ?? ""),
+                    EscapeCsv(client.Email ?? ""),
+                    EscapeCsv(client.TipoCliente ?? ""),
+                    EscapeCsv(client.Estado ?? ""));
+                await writer.WriteLineAsync(line);
+            }
+        }
+
+        await writer.FlushAsync();
+        return ms.ToArray();
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\r') || value.Contains('\n'))
+        {
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        }
+        return value;
     }
 
     private static int FindColumnIndex(List<string> headers, params string[] possibleNames)

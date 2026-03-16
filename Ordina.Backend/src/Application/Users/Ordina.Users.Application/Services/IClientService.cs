@@ -1,6 +1,7 @@
-﻿using Ordina.Users.Application.DTOs;
+using Ordina.Users.Application.DTOs;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -17,5 +18,6 @@ namespace Ordina.Users.Application.Services
         Task<bool> DeleteAsync(string id);
         Task<bool> ClientExistsAsync(string id);
         Task<ImportClientsResultDto> ImportClientsFromCsvAsync(Stream fileStream);
+        Task<byte[]> ExportClientsToCsvAsync(bool includeData);
     }
 }

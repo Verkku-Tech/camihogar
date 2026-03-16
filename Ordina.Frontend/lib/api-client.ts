@@ -742,6 +742,13 @@ export class ApiClient {
     });
   }
 
+  async deleteCategoriesBulk(ids: string[]): Promise<BulkDeleteResultDto> {
+    return this.request<BulkDeleteResultDto>("/api/categories/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    });
+  }
+
   // Products endpoints
   async getProducts() {
     return this.request<ProductResponseDto[]>("/api/products");
@@ -815,6 +822,13 @@ export class ApiClient {
     });
   }
 
+  async deleteProductsBulk(ids: string[]): Promise<BulkDeleteResultDto> {
+    return this.request<BulkDeleteResultDto>("/api/products/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    });
+  }
+
   async importProducts(
     file: File,
     currency: string,
@@ -845,6 +859,53 @@ export class ApiClient {
     }
 
     return response.json();
+  }
+
+  async exportProducts(
+    includeData: boolean,
+    currency: string,
+  ): Promise<void> {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const baseUrl = this.getBaseUrl("/api/products/export");
+    const url = `${baseUrl}/api/products/export?includeData=${includeData}&currency=${encodeURIComponent(currency)}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let message = `Error ${response.status}`;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.message) message = parsed.message;
+      } catch {
+        if (text) message = text;
+      }
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+    const contentDisposition = response.headers.get("Content-Disposition");
+    let fileName = includeData
+      ? "Productos_Camihogar.xlsx"
+      : "Formato_Importacion_Productos.xlsx";
+
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="?([^"]+)"?/);
+      if (match?.[1]) fileName = match[1];
+    }
+
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
   }
 
   // Providers endpoints
@@ -893,6 +954,50 @@ export class ApiClient {
   }
 
   // Clientes
+  async exportClients(includeData: boolean): Promise<void> {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const baseUrl = this.getBaseUrl("/api/clients/export");
+    const url = `${baseUrl}/api/clients/export?includeData=${includeData}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let message = `Error ${response.status}`;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.message) message = parsed.message;
+      } catch {
+        if (text) message = text;
+      }
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+    const contentDisposition = response.headers.get("Content-Disposition");
+    let fileName = includeData
+      ? "Clientes_Camihogar.csv"
+      : "Formato_Importacion_Clientes.csv";
+
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="?([^"]+)"?/);
+      if (match?.[1]) fileName = match[1];
+    }
+
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  }
+
   async importClients(file: File): Promise<ImportClientsResultDto> {
     const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     const baseUrl = this.getBaseUrl("/api/clients/import");
@@ -1568,12 +1673,19 @@ export interface ProductListItemDto {
   sku: string;
 }
 
+export interface BulkDeleteResultDto {
+  deleted: number;
+  failed: number;
+  errors: string[];
+}
+
 export interface ImportProductsResultDto {
   totalSheets: number;
   totalCategoriesCreated: number;
   totalCategoriesUpdated: number;
   totalValuesAdded: number;
   totalProductsCreated: number;
+  totalProductsUpdated: number;
   totalProductsSkipped: number;
   sheets: SheetImportResultDto[];
 }
@@ -1585,6 +1697,7 @@ export interface SheetImportResultDto {
   categoryUpdated: boolean;
   valuesAdded: number;
   productsCreated: number;
+  productsUpdated: number;
   productsSkipped: number;
   errors: string[];
 }
