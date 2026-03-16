@@ -16,6 +16,7 @@ public interface IProductService
     Task<ProductResponseDto> CreateProductAsync(CreateProductDto createDto);
     Task<ProductResponseDto> UpdateProductAsync(string id, UpdateProductDto updateDto);
     Task<bool> DeleteProductAsync(string id);
+    Task<BulkDeleteResultDto> BulkDeleteProductsAsync(IEnumerable<string> ids);
     Task<bool> ProductExistsAsync(string id);
     Task<bool> SkuExistsAsync(string sku);
 }

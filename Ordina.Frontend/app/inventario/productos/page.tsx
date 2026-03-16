@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Edit, Trash2, Package, Search, ArrowLeft, Filter, FileSpreadsheet, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Plus, Edit, Trash2, Package, Search, ArrowLeft, Filter, FileSpreadsheet, ChevronLeft, ChevronRight, Loader2, Download } from "lucide-react"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -15,6 +16,8 @@ import { ProductWizardDialog } from "@/components/inventory/product-wizard-dialo
 import { DeleteProductDialog } from "@/components/inventory/delete-product-dialog"
 import { EditProductDialog } from "@/components/inventory/edit-product-dialog"
 import { ImportProductsDialog } from "@/components/inventory/import-products-dialog"
+import { DownloadFormatDialog } from "@/components/inventory/download-format-dialog"
+import { BulkDeleteDialog } from "@/components/inventory/bulk-delete-dialog"
 import { PermissionGuard } from "@/components/auth/permission-guard"
 import { getCategories, invalidateProductCache, type Product, type Category } from "@/lib/storage"
 import { apiClient, type ProductListItemDto, type PaginatedResultDto } from "@/lib/api-client"
@@ -38,6 +41,7 @@ export default function ProductosPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showProductWizard, setShowProductWizard] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
+  const [showDownloadDialog, setShowDownloadDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
@@ -53,6 +57,9 @@ export default function ProductosPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const router = useRouter()
@@ -86,6 +93,7 @@ export default function ProductosPage() {
 
   // Fetch con debounce para busqueda
   useEffect(() => {
+    setSelectedIds(new Set())
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       fetchProducts(1, searchTerm, selectedCategory, selectedStatus)
@@ -94,7 +102,53 @@ export default function ProductosPage() {
   }, [searchTerm, selectedCategory, selectedStatus, fetchProducts])
 
   const handlePageChange = (newPage: number) => {
+    setSelectedIds(new Set())
     fetchProducts(newPage, searchTerm, selectedCategory, selectedStatus)
+  }
+
+  const toggleSelection = (productId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(productId)) next.delete(productId)
+      else next.add(productId)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === products.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(products.map((p) => p.id)))
+    }
+  }
+
+  const handleBulkDeleteConfirm = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+
+    setIsBulkDeleting(true)
+    try {
+      const result = await apiClient.deleteProductsBulk(ids)
+      invalidateProductCache()
+      fetchProducts(page, searchTerm, selectedCategory, selectedStatus)
+      setSelectedIds(new Set())
+      setIsBulkDeleteDialogOpen(false)
+
+      if (result.failed > 0) {
+        toast.warning(
+          `Eliminados ${result.deleted} producto(s). ${result.failed} no se pudieron eliminar.`,
+          { description: result.errors.slice(0, 2).join("; ") }
+        )
+      } else {
+        toast.success(`Eliminados ${result.deleted} producto(s) correctamente`)
+      }
+    } catch (error) {
+      console.error("Error bulk deleting products:", error)
+      toast.error("Error al eliminar los productos")
+    } finally {
+      setIsBulkDeleting(false)
+    }
   }
 
   const getStatusColor = (status: string) => {
@@ -176,10 +230,10 @@ export default function ProductosPage() {
   return (
     <div className="flex h-screen bg-background">
       <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-start flex flex-col overflow-hidden">
         <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-          <div className="max-w-6xl mx-auto w-full">
+        <div className="w-full">
             <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
               <span className="text-green-600 font-medium">Home</span>
               <span>/</span>
@@ -188,18 +242,18 @@ export default function ProductosPage() {
               <span>Productos</span>
             </nav>
             <div className="flex flex-col gap-4 mb-6">
-              <div className="flex items-center gap-4">
+              <div className="flex items-start gap-4">
                 <Button variant="ghost" onClick={() => router.back()} className="w-full sm:w-auto shrink-0">
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Volver
                 </Button>
-                <div className="flex-1 min-w-0 text-left">
-                  <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Productos</h1>
-                  <p className="text-muted-foreground">
-                    Gestiona tu inventario de productos
-                    {totalCount > 0 && <span className="ml-1">({totalCount})</span>}
-                  </p>
-                </div>
+                <div>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Productos</h1>
+                    <p className="text-muted-foreground">
+                      Gestiona tu inventario de productos
+                      {totalCount > 0 && <span className="ml-1">({totalCount})</span>}
+                    </p>
+                  </div>
               </div>
               <PermissionGuard permission="products.create">
                 <div className="flex flex-wrap gap-2 justify-start">
@@ -210,6 +264,10 @@ export default function ProductosPage() {
                 <Button variant="outline" onClick={() => setShowImportDialog(true)} className="w-full sm:w-auto">
                   <FileSpreadsheet className="w-4 h-4 mr-2" />
                   Importar Excel
+                </Button>
+                <Button variant="outline" onClick={() => setShowDownloadDialog(true)} className="w-full sm:w-auto">
+                  <Download className="w-4 h-4 mr-2" />
+                  Descargar Formato
                 </Button>
                 </div>
               </PermissionGuard>
@@ -232,7 +290,7 @@ export default function ProductosPage() {
                 <Filter className="w-4 h-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Filtros:</span>
               </div>
-
+             
               <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                 <SelectTrigger className="w-full sm:w-48">
                   <SelectValue placeholder="Todas las categorías" />
@@ -275,7 +333,49 @@ export default function ProductosPage() {
                 </Button>
               )}
             </div>
+            <div className="flex-1 min-w-0 text-left flex items-center gap-3">
+                  {products.length > 0 && (
+                    <PermissionGuard permission="products.delete">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="select-all-products"
+                          checked={selectedIds.size === products.length && products.length > 0}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                        <label htmlFor="select-all-products" className="text-sm text-muted-foreground cursor-pointer">
+                          Seleccionar página a Eliminar
+                        </label>
+                      </div>
+                    </PermissionGuard>
+                  )}
+                  
+                </div>
           </div>
+
+          {selectedIds.size > 0 && (
+            <PermissionGuard permission="products.delete">
+              <div className="flex items-center gap-3 p-3 mb-6 rounded-lg bg-muted/50 border">
+                <span className="text-sm font-medium">
+                  {selectedIds.size} producto(s) seleccionado(s)
+                </span>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setIsBulkDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Eliminar seleccionados
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  Cancelar selección
+                </Button>
+              </div>
+            </PermissionGuard>
+          )}
 
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
@@ -303,6 +403,12 @@ export default function ProductosPage() {
                       <CardHeader className="pb-3">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="flex items-center space-x-3">
+                            <PermissionGuard permission="products.delete">
+                              <Checkbox
+                                checked={selectedIds.has(product.id)}
+                                onCheckedChange={() => toggleSelection(product.id)}
+                              />
+                            </PermissionGuard>
                             <Package className="w-5 h-5 text-primary" />
                             <div>
                               <CardTitle className="text-lg">{product.name}</CardTitle>
@@ -397,6 +503,18 @@ export default function ProductosPage() {
         open={showImportDialog}
         onOpenChange={setShowImportDialog}
         onImportComplete={handleProductSaved}
+      />
+      <DownloadFormatDialog
+        open={showDownloadDialog}
+        onOpenChange={setShowDownloadDialog}
+      />
+      <BulkDeleteDialog
+        open={isBulkDeleteDialogOpen}
+        onOpenChange={setIsBulkDeleteDialogOpen}
+        count={selectedIds.size}
+        entityLabel="productos"
+        onConfirm={handleBulkDeleteConfirm}
+        isDeleting={isBulkDeleting}
       />
     </div>
   )

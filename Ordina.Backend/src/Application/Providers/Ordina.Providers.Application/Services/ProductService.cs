@@ -398,6 +398,25 @@ public class ProductService : IProductService
         }
     }
 
+    public async Task<BulkDeleteResultDto> BulkDeleteProductsAsync(IEnumerable<string> ids)
+    {
+        var idList = ids.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
+        var result = new BulkDeleteResultDto();
+
+        if (idList.Count == 0)
+            return result;
+
+        result.Deleted = (int)await _productRepository.DeleteManyAsync(idList);
+        result.Failed = idList.Count - result.Deleted;
+
+        if (result.Failed > 0)
+        {
+            result.Errors.Add($"{result.Failed} producto(s) no pudieron ser eliminados");
+        }
+
+        return result;
+    }
+
     public async Task<bool> ProductExistsAsync(string id)
     {
         try
