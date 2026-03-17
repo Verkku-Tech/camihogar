@@ -14,7 +14,6 @@ const options1 = {
     onDropRejected: () => {},
 };
 
-// @ts-expect-error - if it errors, we want to see it, but here we want to see if it fails tsc
 const { getRootProps: getRootProps1 } = useDropzone(options1);
 
 // Attempt 2: with undefined
