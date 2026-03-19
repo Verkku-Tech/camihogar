@@ -344,6 +344,33 @@ public class ProductsController : ControllerBase
     }
 
     /// <summary>
+    /// Elimina múltiples productos.
+    /// </summary>
+    /// <param name="request">Lista de IDs de productos a eliminar</param>
+    /// <returns>Resultado con cantidad eliminada, fallidos y errores</returns>
+    [HttpPost("bulk-delete")]
+    [ProducesResponseType(typeof(BulkDeleteResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<BulkDeleteResultDto>> BulkDeleteProducts([FromBody] BulkDeleteRequestDto request)
+    {
+        try
+        {
+            if (request?.Ids == null || request.Ids.Count == 0)
+            {
+                return BadRequest(new { message = "Debe proporcionar al menos un ID de producto" });
+            }
+
+            var result = await _productService.BulkDeleteProductsAsync(request.Ids);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al eliminar productos en masa");
+            return StatusCode(500, new { message = "Error interno del servidor al eliminar productos" });
+        }
+    }
+
+    /// <summary>
     /// Verifica si un producto existe
     /// </summary>
     /// <param name="id">ID del producto</param>

@@ -22,10 +22,12 @@ public class ImportController : ControllerBase
     }
 
     /// <summary>
-    /// Importa categorías, atributos y productos desde un archivo Excel (.xlsx).
-    /// Cada pestaña = una categoría.  El encabezado se auto-detecta.
-    /// Col B = Productos | Col C = Atributo | Col D = Valor | Col E = Ajuste de precio.
-    /// Productos se crean con precio 0; el precio lo definen los atributos.
+    /// Importa categorías, atributos, valores y productos desde un archivo Excel (.xlsx).
+    /// El archivo debe contener 3 hojas:
+    ///   - ESQUEMA_CATEGORIAS: define categorías con sus atributos, tipos de dato y dependencias.
+    ///   - VALORES_Y_PRECIOS: define las opciones de cada atributo con su alteración de precio.
+    ///   - PRODUCTOS_FINALES: define los productos finales con sus valores fijos preseleccionados.
+    /// Las categorías se crean en orden de dependencia (ej: Copete Solo antes de Cama).
     /// </summary>
     [HttpPost("import")]
     [RequestSizeLimit(10 * 1024 * 1024)]
@@ -67,6 +69,36 @@ public class ImportController : ControllerBase
         {
             _logger.LogError(ex, "Error procesando archivo de importación '{FileName}'", file.FileName);
             return StatusCode(500, new { message = $"Error al procesar el archivo: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// Exporta el formato Excel para importación de productos.
+    /// Si includeData=true, incluye las categorías, valores y productos existentes.
+    /// Si includeData=false (default), genera una plantilla vacía con solo los headers.
+    /// </summary>
+    [HttpGet("export")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> ExportProducts(
+        [FromQuery] bool includeData = false,
+        [FromQuery] string currency = "USD")
+    {
+        try
+        {
+            var bytes = await _importService.ExportProductsToExcelAsync(includeData, currency);
+            var fileName = includeData
+                ? $"Productos_Camihogar_{DateTime.UtcNow:yyyyMMdd}.xlsx"
+                : "Formato_Importacion_Productos.xlsx";
+
+            return File(bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exportando productos");
+            return StatusCode(500, new { message = $"Error al exportar: {ex.Message}" });
         }
     }
 }

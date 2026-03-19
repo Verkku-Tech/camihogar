@@ -10,5 +10,6 @@ public interface ICategoryService
     Task<CategoryResponseDto> CreateCategoryAsync(CreateCategoryDto createDto);
     Task<CategoryResponseDto> UpdateCategoryAsync(string id, UpdateCategoryDto updateDto);
     Task<bool> DeleteCategoryAsync(string id);
+    Task<BulkDeleteResultDto> BulkDeleteCategoriesAsync(IEnumerable<string> ids);
     Task<bool> CategoryExistsAsync(string id);
 }

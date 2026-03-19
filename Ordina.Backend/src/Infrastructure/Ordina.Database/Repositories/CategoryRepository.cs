@@ -47,6 +47,17 @@ public class CategoryRepository : ICategoryRepository
         return result.DeletedCount > 0;
     }
 
+    public async Task<long> DeleteManyAsync(IEnumerable<string> ids)
+    {
+        var idList = ids.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
+        if (idList.Count == 0)
+            return 0;
+
+        var filter = Builders<Category>.Filter.In(c => c.Id, idList);
+        var result = await _collection.DeleteManyAsync(filter);
+        return result.DeletedCount;
+    }
+
     public async Task<bool> ExistsAsync(string id)
     {
         var count = await _collection.CountDocumentsAsync(c => c.Id == id);

@@ -12,6 +12,7 @@ public interface IProductRepository
     Task<Product> CreateAsync(Product product);
     Task<Product> UpdateAsync(Product product);
     Task<bool> DeleteAsync(string id);
+    Task<long> DeleteManyAsync(IEnumerable<string> ids);
     Task<bool> ExistsAsync(string id);
     Task<bool> SkuExistsAsync(string sku);
     Task<Product?> GetByNameAndCategoryIdAsync(string name, string categoryId);
@@ -19,5 +20,6 @@ public interface IProductRepository
         int page, int pageSize, string? search = null,
         string? categoryId = null, string? status = null);
     Task<IEnumerable<Product>> SearchAsync(string search, int limit = 20);
+    Task<long> CountByCategoryIdAsync(string categoryId);
 }
 
