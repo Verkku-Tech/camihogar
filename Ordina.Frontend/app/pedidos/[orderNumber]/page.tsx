@@ -1332,7 +1332,7 @@ export default function OrderDetailPage() {
                               {/* Estado de ubicación */}
                               <div className="mb-3 pb-3 border-b">
                                 {(() => {
-                                  let badgeText = "Sin definir";
+                                  let badgeText = "Disponibilidad Inmediata";
                                   let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "secondary";
                                   let badgeClassName = "text-sm";
 
