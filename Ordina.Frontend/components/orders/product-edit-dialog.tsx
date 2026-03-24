@@ -37,6 +37,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Package, Settings, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ImageUploader } from "./ImageUploader";
+import { SearchableAttributeSelect } from "./searchable-attribute-select";
 
 interface ProductEditDialogProps {
   open: boolean;
@@ -373,26 +374,22 @@ function ProductAttributesEditor({
 
         return (
           <div className="flex items-center gap-2">
-            <Select
-              value={attrValue || "vacio"}
-              onValueChange={(val) => handleAttributeChange(attrKey, val === "vacio" ? undefined : val)}
-            >
-              <SelectTrigger className="flex-1">
-                <SelectValue placeholder={`Seleccione ${attribute.title?.toLowerCase() || "opción"}`} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="vacio">Seleccione una opción</SelectItem>
-                {attribute.values
-                  ?.slice() // Crear copia para no mutar el array original
+            <SearchableAttributeSelect
+              className="flex-1"
+              value={attrValue || undefined}
+              onValueChange={(val) => handleAttributeChange(attrKey, val)}
+              placeholder={`Seleccione ${attribute.title?.toLowerCase() || "opción"}`}
+              searchPlaceholder={`Buscar ${attribute.title?.toLowerCase() || "opción"}...`}
+              emptyText="No se encontraron opciones."
+              options={
+                attribute.values
+                  ?.slice()
                   .sort((a: string | AttributeValue, b: string | AttributeValue) => {
-                    // Obtener el label de cada opción
                     const labelA = typeof a === "string" ? a : a.label || a.id || "";
                     const labelB = typeof b === "string" ? b : b.label || b.id || "";
-                    // Ordenar alfabéticamente (case-insensitive)
                     return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
                   })
                   .filter((option: string | AttributeValue) => {
-                    // Filtrar opciones con valores vacíos
                     if (typeof option === "string") {
                       return option && option.trim() !== "";
                     }
@@ -400,7 +397,6 @@ function ProductAttributesEditor({
                     return optionValue && optionValue.trim() !== "";
                   })
                   .map((option: string | AttributeValue) => {
-                    // IMPORTANTE: Guardar label directamente en lugar de ID
                     let optionValue: string;
                     let optionLabel: string;
                     
@@ -416,22 +412,13 @@ function ProductAttributesEditor({
                         : "Sin nombre";
                     }
                     
-                    // Asegurar que nunca sea cadena vacía
-                    if (!optionValue || optionValue.trim() === "") {
-                      optionValue = "unknown";
-                    }
-                    if (!optionLabel || optionLabel.trim() === "") {
-                      optionLabel = "Sin nombre";
-                    }
+                    if (!optionValue || optionValue.trim() === "") optionValue = "unknown";
+                    if (!optionLabel || optionLabel.trim() === "") optionLabel = "Sin nombre";
                     
-                    return (
-                      <SelectItem key={optionValue} value={optionValue}>
-                        {optionLabel}
-                      </SelectItem>
-                    );
-                  })}
-              </SelectContent>
-            </Select>
+                    return { value: optionValue, label: optionLabel };
+                  }) || []
+              }
+            />
             {selectedAdjustment !== 0 && (
               <span
                 className={`text-sm font-medium whitespace-nowrap ${
@@ -941,7 +928,7 @@ export function ProductEditDialog({
       for (const attribute of currentCategory.attributes || []) {
         if (attribute.valueType === "Product" && attribute.values && attribute.values.length > 0) {
           const productEntries: Array<{ productId: number; product: Product; attributes: Record<string, any> }> = [];
-          const attrId = attribute.id?.toString() || attribute.title;
+          const attrId = attribute.title || attribute.id?.toString();
           
           // Verificar si ya está cargado para este atributo
           const existing = productAttributes[attrId];
@@ -992,7 +979,7 @@ export function ProductEditDialog({
       
       for (const attribute of currentCategory.attributes || []) {
         if (attribute.valueType === "Product") {
-          const attrId = attribute.id?.toString() || attribute.title;
+          const attrId = attribute.title || attribute.id?.toString();
           const existing = updated[attrId];
           
           if (existing && Array.isArray(existing) && existing.length > 0) {
@@ -1597,7 +1584,7 @@ export function ProductEditDialog({
     });
 
     // Asegurar que stock tenga un valor por defecto si no está presente
-    // Preservar locationStatus del producto original o establecer por defecto "SIN DEFINIR"
+    // Preservar locationStatus del producto original o establecer por defecto "DISPONIBILIDAD INMEDIATA"
     const updatedProduct: OrderProduct = {
       ...product,
       quantity,
@@ -1605,7 +1592,7 @@ export function ProductEditDialog({
       attributes: finalAttributes,
       stock: product.stock ?? 0, // Usar 0 como valor por defecto si stock no existe
       observations: observations.trim() || undefined,
-      locationStatus: product.locationStatus ?? "SIN DEFINIR", // Preservar locationStatus o establecer por defecto
+      locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA", // Preservar locationStatus o establecer por defecto
       images: productImages.length > 0 ? productImages : undefined, // Agregar imágenes si hay alguna
     };
     onProductUpdate(updatedProduct);
@@ -1792,39 +1779,31 @@ export function ProductEditDialog({
                     
                     {attr.valueType === "Select" ? (
                       <div className="flex items-center gap-2">
-                        <Select
+                        <SearchableAttributeSelect
+                          className="flex-1"
                           value={
-                            attrValue !== undefined && !Array.isArray(attrValue) ? attrValue.toString() : "vacio"
+                            attrValue !== undefined && !Array.isArray(attrValue) ? attrValue.toString() : undefined
                           }
                           onValueChange={(value) =>
-                            handleAttributeChange(attrKey, value === "vacio" ? undefined : value)
+                            handleAttributeChange(attrKey, value)
                           }
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue
-                              placeholder={`Seleccionar ${
-                                attr.title ? attr.title.toLowerCase() : "atributo"
-                              }`}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="vacio">Seleccione una opción</SelectItem>
-                            {attr.values
+                          placeholder={`Seleccionar ${
+                            attr.title ? attr.title.toLowerCase() : "atributo"
+                          }`}
+                          searchPlaceholder={`Buscar ${attr.title ? attr.title.toLowerCase() : "opción"}...`}
+                          emptyText="No se encontraron opciones."
+                          options={
+                            attr.values
                               ?.filter((value: string | AttributeValue) => {
                                 const optionValue = getValueString(value);
                                 return optionValue && optionValue.trim() !== "" && optionValue !== "unknown";
                               })
-                              .map((value: string | AttributeValue) => {
-                                const optionValue = getValueString(value);
-                                const optionLabel = getValueLabel(value);
-                                return (
-                                  <SelectItem key={optionValue} value={optionValue}>
-                                    {optionLabel}
-                                  </SelectItem>
-                                );
-                              })}
-                          </SelectContent>
-                        </Select>
+                              .map((value: string | AttributeValue) => ({
+                                value: getValueString(value),
+                                label: getValueLabel(value),
+                              })) || []
+                          }
+                        />
                         {selectedAdjustment !== 0 && (
                           <span
                             className={`text-sm font-medium whitespace-nowrap ${

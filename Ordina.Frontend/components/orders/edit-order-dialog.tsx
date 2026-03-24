@@ -57,6 +57,7 @@ export const PURCHASE_TYPES = [
   { value: "entrega", label: "Entrega" },
   { value: "retiro_almacen", label: "Retiro x Almacén" },
   { value: "retiro_tienda", label: "Retiro x Tienda" },
+  { value: "sistema_apartado", label: "SA (Sistema de Apartado)" },
 ] as const;
 
 export const DELIVERY_TYPES = [
@@ -111,7 +112,7 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
     orderForm.setSelectedProducts((products) =>
       products.map((p) =>
         p.id === updatedProduct.id
-          ? { ...updatedProduct, locationStatus: updatedProduct.locationStatus ?? "SIN DEFINIR" }
+          ? { ...updatedProduct, locationStatus: updatedProduct.locationStatus ?? "DISPONIBILIDAD INMEDIATA" }
           : p
       )
     );
@@ -428,7 +429,7 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
         products: orderForm.selectedProducts.map((product) => ({
           ...product,
           discount: product.discount && product.discount > 0 ? product.discount : undefined,
-          locationStatus: product.locationStatus ?? "SIN DEFINIR",
+          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
         subtotal: orderForm.subtotal,
         productDiscountTotal:
@@ -499,7 +500,7 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
         products: orderForm.selectedProducts.map((product) => ({
           ...product,
           discount: product.discount && product.discount > 0 ? product.discount : undefined,
-          locationStatus: product.locationStatus ?? "SIN DEFINIR",
+          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
         subtotalBeforeDiscounts: orderForm.productSubtotal,
         productDiscountTotal:
