@@ -125,8 +125,8 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
                     <div className="w-full sm:w-48">
                       <Label>Estado de Ubicación</Label>
                       <Select
-                        value={product.locationStatus ?? "SIN DEFINIR"}
-                        onValueChange={(value: "SIN DEFINIR" | "EN TIENDA" | "FABRICACION") => {
+                        value={product.locationStatus ?? "DISPONIBILIDAD INMEDIATA"}
+                        onValueChange={(value: "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION") => {
                           orderForm.setSelectedProducts((products) =>
                             products.map((p) =>
                               p.id === product.id
@@ -140,9 +140,16 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
                           <SelectValue placeholder="Seleccionar estado" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="SIN DEFINIR">SIN DEFINIR</SelectItem>
-                          <SelectItem value="EN TIENDA">EN TIENDA</SelectItem>
-                          <SelectItem value="FABRICACION">FABRICACION</SelectItem>
+                          <SelectItem value="DISPONIBILIDAD INMEDIATA">Disponibilidad Inmediata</SelectItem>
+                          <SelectItem value="EN TIENDA">En Tienda</SelectItem>
+                          <SelectItem value="FABRICACION">Fabricación</SelectItem>
+                          {/* Solo mostrar estatus avanzados si el producto YA los tiene, para no romper el Select al editar un pedido viejo */}
+                          {product.locationStatus === "EN DESPACHO" && (
+                            <SelectItem value="EN DESPACHO">En Despacho / En Ruta</SelectItem>
+                          )}
+                          {product.locationStatus === "DESPACHADO" && (
+                            <SelectItem value="DESPACHADO">Despachado / Entregado</SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>

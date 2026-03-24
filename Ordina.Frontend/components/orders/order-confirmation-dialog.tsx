@@ -1027,12 +1027,12 @@ export function OrderConfirmationDialog({
                       {/* Estado de ubicación */}
                       <div className="mb-3 pb-3 border-b">
                         {(() => {
-                          let badgeText = "Sin Definir";
-                          let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "outline";
-                          let badgeClassName = "text-sm text-muted-foreground";
+                          let badgeText = "Disponibilidad Inmediata";
+                          let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "secondary";
+                          let badgeClassName = "text-sm";
 
-                          if (product.locationStatus === "SIN DEFINIR" || !product.locationStatus) {
-                            // Mantener valores por defecto (Sin Definir)
+                          if (product.locationStatus === "DISPONIBILIDAD INMEDIATA" || !product.locationStatus) {
+                            // Mantener valores por defecto
                           } else if (product.locationStatus === "EN TIENDA") {
                             badgeText = "En Tienda";
                             badgeVariant = "default";

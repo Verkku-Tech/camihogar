@@ -1503,7 +1503,7 @@ export interface OrderProduct {
   refabricatedAt?: string; // Fecha de última refabricación (ISO string)
   refabricationHistory?: RefabricationRecord[]; // Historial de refabricaciones
   // Estado de ubicación del producto
-  locationStatus?: "SIN DEFINIR" | "EN TIENDA" | "FABRICACION" | "DESPACHADO"; // Estado de ubicación
+  locationStatus?: "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | "EN DESPACHO" | "DESPACHADO"; // Estado de ubicación
 }
 
 export interface PartialPayment {
@@ -1528,6 +1528,7 @@ export interface PartialPayment {
     cashCurrency?: "Bs" | "USD" | "EUR"; // Moneda del pago en efectivo
     cashReceived?: number; // Monto recibido del cliente
     exchangeRate?: number; // Tasa de cambio usada al momento del pago
+    useCustomRate?: boolean; // Indica si se usó una tasa personalizada/manual
     // Para Pago Móvil y Transferencia
     originalAmount?: number; // Monto original en la moneda del pago
     originalCurrency?: "Bs" | "USD" | "EUR"; // Moneda original del pago
@@ -1584,6 +1585,7 @@ export interface Order {
     cashCurrency?: "Bs" | "USD" | "EUR"; // Moneda del pago en efectivo
     cashReceived?: number; // Monto recibido del cliente
     exchangeRate?: number; // Tasa de cambio usada al momento del pago
+    useCustomRate?: boolean; // Indica si se usó una tasa personalizada/manual
     // Para Pago Móvil y Transferencia
     originalAmount?: number; // Monto original en la moneda del pago
     originalCurrency?: "Bs" | "USD" | "EUR"; // Moneda original del pago
@@ -1762,8 +1764,9 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       // Normalizar valores antiguos a nuevos
       if (p.locationStatus === "en_tienda") return "EN TIENDA" as const
       if (p.locationStatus === "mandar_a_fabricar") return "FABRICACION" as const
-      if (!p.locationStatus || p.locationStatus === "") return "SIN DEFINIR" as const
-      return (p.locationStatus as "SIN DEFINIR" | "EN TIENDA" | "FABRICACION" | undefined) ?? "SIN DEFINIR"
+      if (p.locationStatus === "SIN DEFINIR") return "DISPONIBILIDAD INMEDIATA" as const
+      if (!p.locationStatus || p.locationStatus === "") return "DISPONIBILIDAD INMEDIATA" as const
+      return (p.locationStatus as "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | undefined) ?? "DISPONIBILIDAD INMEDIATA"
     })(),
   })),
   subtotal: dto.subtotal,

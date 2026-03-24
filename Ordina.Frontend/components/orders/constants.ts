@@ -44,6 +44,7 @@ export const PURCHASE_TYPES = [
   { value: "entrega", label: "Entrega" },
   { value: "retiro_almacen", label: "Retiro x Almacén" },
   { value: "retiro_tienda", label: "Retiro x Tienda" },
+  { value: "sistema_apartado", label: "SA (Sistema de Apartado)" },
 ] as const;
 
 // Constantes para Tipo de Entrega

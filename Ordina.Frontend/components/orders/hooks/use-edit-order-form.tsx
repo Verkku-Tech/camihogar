@@ -749,7 +749,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         products.map((product) => ({
           ...product,
           discount: product.discount ?? 0,
-          locationStatus: product.locationStatus ?? "SIN DEFINIR",
+          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         }))
       );
       const newTypes: Record<string, "monto" | "porcentaje"> = {};

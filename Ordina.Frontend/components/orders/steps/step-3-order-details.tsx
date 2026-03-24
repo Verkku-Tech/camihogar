@@ -1597,121 +1597,239 @@ export function Step3OrderDetails({
                                 </div>
                               </div>
                             )}
-                            <div className="space-y-2">
-                              <Label
-                                htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-amount-${payment.id}`}
-                                className="text-xs"
-                              >
-                                Monto {digitalPaymentMethods.includes(payment.method) ? "($)" : ""} *
-                              </Label>
-                              <Input
-                                id={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-amount-${payment.id}`}
-                                type="number"
-                                step="0.01"
-                                value={(() => {
-                                  if (payment.amount === 0) return "";
-                                  // Si hay monto original guardado, usarlo
-                                  if (payment.paymentDetails?.originalAmount !== undefined) {
-                                    return payment.paymentDetails.originalAmount;
-                                  }
-                                  // Fallback: calcular desde payment.amount
-                                  // Determinar la moneda según el tipo de método
-                                  let paymentCurrency: Currency;
-                                  if (digitalPaymentMethods.includes(payment.method)) {
-                                    paymentCurrency = "USD";
-                                  } else if (bsOnlyPaymentMethods.includes(payment.method)) {
-                                    paymentCurrency = "Bs";
-                                  } else {
-                                    paymentCurrency = payment.currency || orderForm.getDefaultCurrencyFromSelection();
-                                  }
+<div className="space-y-3 col-span-full">
+                              {(() => {
+                                let paymentCurrency: Currency;
+                                if (digitalPaymentMethods.includes(payment.method)) {
+                                  paymentCurrency = "USD";
+                                } else if (bsOnlyPaymentMethods.includes(payment.method)) {
+                                  paymentCurrency = "Bs";
+                                } else {
+                                  paymentCurrency =
+                                    payment.currency ||
+                                    orderForm.getDefaultCurrencyFromSelection();
+                                }
 
-                                  if (paymentCurrency === "Bs") {
-                                    return payment.amount;
-                                  }
-                                  const rate =
-                                    paymentCurrency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    return payment.amount / rate;
-                                  }
-                                  return payment.amount;
-                                })()}
-                                onChange={(e) => {
-                                  const inputValue =
-                                    Number.parseFloat(e.target.value) ||
-                                    0;
-                                  // Para métodos digitales, SIEMPRE usar USD
-                                  // Para métodos de solo Bs, SIEMPRE usar Bs
-                                  let paymentCurrency: Currency;
-                                  if (digitalPaymentMethods.includes(payment.method)) {
-                                    paymentCurrency = "USD";
-                                  } else if (bsOnlyPaymentMethods.includes(payment.method)) {
-                                    paymentCurrency = "Bs";
-                                  } else {
-                                    paymentCurrency = payment.currency || orderForm.getDefaultCurrencyFromSelection();
-                                  }
+                                return (
+                                  <>
+                                    {paymentCurrency !== "Bs" && (
+                                      <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-md border">
+                                        <Checkbox
+                                          id={`custom-rate-${payment.id}`}
+                                          checked={!!payment.paymentDetails?.useCustomRate}
+                                          onCheckedChange={(checked) => {
+                                            updatePaymentDetails?.(
+                                              payment.id,
+                                              "useCustomRate",
+                                              checked
+                                            );
+                                            // Al desactivar, recalculamos basado en la tasa oficial
+                                            if (!checked) {
+                                              const rate =
+                                                paymentCurrency === "USD"
+                                                  ? orderForm.exchangeRates.USD?.rate
+                                                  : orderForm.exchangeRates.EUR?.rate;
+                                              const origAmt =
+                                                payment.paymentDetails?.originalAmount || 0;
+                                              if (rate && rate > 0) {
+                                                updatePaymentDetails?.(
+                                                  payment.id,
+                                                  "exchangeRate",
+                                                  rate
+                                                );
+                                                updatePayment?.(
+                                                  payment.id,
+                                                  "amount",
+                                                  origAmt * rate
+                                                );
+                                              }
+                                            }
+                                          }}
+                                        />
+                                        <Label
+                                          htmlFor={`custom-rate-${payment.id}`}
+                                          className="text-xs font-medium cursor-pointer"
+                                        >
+                                          Tasa manual (Ingresar equivalente exacto en Bs)
+                                        </Label>
+                                      </div>
+                                    )}
 
-                                  // SIEMPRE guardar el monto original en la moneda del pago
-                                  updatePaymentDetails?.(
-                                    payment.id,
-                                    "originalAmount",
-                                    inputValue
-                                  );
-                                  updatePaymentDetails?.(
-                                    payment.id,
-                                    "originalCurrency",
-                                    paymentCurrency
-                                  );
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                      {/* Monto en Divisa */}
+                                      <div className="space-y-2">
+                                        <Label
+                                          htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, "-")}-amount-${payment.id}`}
+                                          className="text-xs"
+                                        >
+                                          Monto {digitalPaymentMethods.includes(payment.method) ? "($)" : ""} *
+                                        </Label>
+                                        <Input
+                                          id={`${payment.method.toLowerCase().replace(/\s+/g, "-")}-amount-${payment.id}`}
+                                          type="number"
+                                          step="0.01"
+                                          value={(() => {
+                                            if (payment.amount === 0) return "";
+                                            if (
+                                              payment.paymentDetails?.originalAmount !==
+                                              undefined
+                                            ) {
+                                              return payment.paymentDetails.originalAmount;
+                                            }
+                                            if (paymentCurrency === "Bs") {
+                                              return payment.amount;
+                                            }
+                                            const rate =
+                                              paymentCurrency === "USD"
+                                                ? orderForm.exchangeRates.USD?.rate
+                                                : orderForm.exchangeRates.EUR?.rate;
+                                            if (rate && rate > 0) {
+                                              return payment.amount / rate;
+                                            }
+                                            return payment.amount;
+                                          })()}
+                                          onChange={(e) => {
+                                            const inputValue =
+                                              Number.parseFloat(e.target.value) || 0;
 
-                                  // Asegurar que payment.currency refleje la moneda correcta
-                                  updatePayment?.(
-                                    payment.id,
-                                    "currency",
-                                    paymentCurrency
-                                  );
+                                            updatePaymentDetails?.(
+                                              payment.id,
+                                              "originalAmount",
+                                              inputValue
+                                            );
+                                            updatePaymentDetails?.(
+                                              payment.id,
+                                              "originalCurrency",
+                                              paymentCurrency
+                                            );
+                                            updatePayment?.(
+                                              payment.id,
+                                              "currency",
+                                              paymentCurrency
+                                            );
 
-                                  // Convertir a Bs según la moneda
-                                  let valueInBs = inputValue;
-                                  if (paymentCurrency !== "Bs") {
-                                    const rate =
-                                      paymentCurrency === "USD"
-                                        ? orderForm.exchangeRates.USD?.rate
-                                        : orderForm.exchangeRates.EUR?.rate;
-                                    if (rate && rate > 0) {
-                                      valueInBs = inputValue * rate;
-                                      updatePaymentDetails?.(
-                                        payment.id,
-                                        "exchangeRate",
-                                        rate
-                                      );
-                                    } else {
-                                      // Si no hay tasa, guardar el valor como está y marcar que necesita conversión
-                                      console.warn(`⚠️ No hay tasa de cambio para ${paymentCurrency}, guardando valor sin convertir`);
-                                      updatePaymentDetails?.(
-                                        payment.id,
-                                        "exchangeRate",
-                                        undefined
-                                      );
-                                    }
-                                  } else {
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "exchangeRate",
-                                      undefined
-                                    );
-                                  }
-                                  updatePayment?.(
-                                    payment.id,
-                                    "amount",
-                                    valueInBs
-                                  );
-                                }}
-                                placeholder="0.00"
-                              />
+                                            // Si tiene tasa custom, calculamos la tasa implícita (si ya hay Bs asignado)
+                                            // En realidad, si es custom mode, solo actualizamos el originalAmount. 
+                                            // El usuario actualizará los Bs en el otro input.
+                                            // Pero si está escribiendo dólares, por conveniencia le sugerimos los bs
+                                            // usando la tasa oficial actual si los bs estaban en 0.
+                                            if (payment.paymentDetails?.useCustomRate) {
+                                              if (payment.amount === 0) {
+                                                const rate =
+                                                  paymentCurrency === "USD"
+                                                    ? orderForm.exchangeRates.USD?.rate
+                                                    : orderForm.exchangeRates.EUR?.rate;
+                                                if (rate && rate > 0) {
+                                                  updatePayment?.(
+                                                    payment.id,
+                                                    "amount",
+                                                    inputValue * rate
+                                                  );
+                                                  updatePaymentDetails?.(
+                                                    payment.id,
+                                                    "exchangeRate",
+                                                    rate
+                                                  );
+                                                }
+                                              } else {
+                                                // Ya hay un monto en Bs establecido. Recalculamos la tasa custom implícita
+                                                if (inputValue > 0) {
+                                                  updatePaymentDetails?.(
+                                                    payment.id,
+                                                    "exchangeRate",
+                                                    Number((payment.amount / inputValue).toFixed(4))
+                                                  );
+                                                }
+                                              }
+                                              return;
+                                            }
+
+                                            // Comportamiento normal (sin custom rate)
+                                            let valueInBs = inputValue;
+                                            if (paymentCurrency !== "Bs") {
+                                              const rate =
+                                                paymentCurrency === "USD"
+                                                  ? orderForm.exchangeRates.USD?.rate
+                                                  : orderForm.exchangeRates.EUR?.rate;
+                                              if (rate && rate > 0) {
+                                                valueInBs = inputValue * rate;
+                                                updatePaymentDetails?.(
+                                                  payment.id,
+                                                  "exchangeRate",
+                                                  rate
+                                                );
+                                              } else {
+                                                updatePaymentDetails?.(
+                                                  payment.id,
+                                                  "exchangeRate",
+                                                  undefined
+                                                );
+                                              }
+                                            } else {
+                                              updatePaymentDetails?.(
+                                                payment.id,
+                                                "exchangeRate",
+                                                undefined
+                                              );
+                                            }
+                                            updatePayment?.(
+                                              payment.id,
+                                              "amount",
+                                              valueInBs
+                                            );
+                                          }}
+                                          placeholder="0.00"
+                                        />
+                                      </div>
+
+                                      {/* Monto en Bolívares Equivalente */}
+                                      {payment.paymentDetails?.useCustomRate &&
+                                        paymentCurrency !== "Bs" && (
+                                          <div className="space-y-2">
+                                            <Label
+                                              htmlFor={`custom-bs-amount-${payment.id}`}
+                                              className="text-xs"
+                                            >
+                                              Equivalente en Bs *
+                                            </Label>
+                                            <Input
+                                              id={`custom-bs-amount-${payment.id}`}
+                                              type="number"
+                                              step="0.01"
+                                              value={
+                                                payment.amount === 0 ? "" : payment.amount
+                                              }
+                                              onChange={(e) => {
+                                                const bsValue =
+                                                  Number.parseFloat(e.target.value) || 0;
+                                                updatePayment?.(
+                                                  payment.id,
+                                                  "amount",
+                                                  bsValue
+                                                );
+
+                                                // Recalcular la tasa implícita
+                                                const origAmt =
+                                                  payment.paymentDetails?.originalAmount;
+                                                if (origAmt && origAmt > 0) {
+                                                  updatePaymentDetails?.(
+                                                    payment.id,
+                                                    "exchangeRate",
+                                                    Number((bsValue / origAmt).toFixed(4))
+                                                  );
+                                                }
+                                              }}
+                                              placeholder="0.00"
+                                            />
+                                          </div>
+                                        )}
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                             {/* Campo de cuenta para métodos bancarios y digitales */}
-                            {["Banesco Panamá", "Mercantil Panamá", "Facebank", "Binance", "Paypal", "Zelle"].includes(payment.method) && (
+                            {["Banesco Panamá", "Mercantil Panamá", "Binance", "Paypal", "Zelle"].includes(payment.method) && (
                               <div className="space-y-2">
                                 <Label
                                   htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-account-${payment.id}`}
@@ -1922,15 +2040,44 @@ export function Step3OrderDetails({
                                   received
                                 );
 
+                                // Si tiene tasa manual, calculamos la implícita
+                                if (payment.paymentDetails?.useCustomRate) {
+                                  if (payment.amount > 0 && received > 0) {
+                                    updatePaymentDetails?.(
+                                      payment.id,
+                                      "exchangeRate",
+                                      Number((payment.amount / received).toFixed(4))
+                                    );
+                                  } else {
+                                    // Si no hay amount, usamos la oficial por defecto temporalmente
+                                    const currency = payment.paymentDetails?.cashCurrency || "Bs";
+                                    const rate =
+                                      currency !== "Bs"
+                                        ? orderForm.exchangeRates[currency]?.rate || 1
+                                        : 1;
+                                    updatePayment?.(
+                                      payment.id,
+                                      "amount",
+                                      currency === "Bs" ? received : received * rate
+                                    );
+                                    if (currency !== "Bs") {
+                                      updatePaymentDetails?.(
+                                        payment.id,
+                                        "exchangeRate",
+                                        rate
+                                      );
+                                    }
+                                  }
+                                  return;
+                                }
+
                                 // Calcular y actualizar el amount en Bs automáticamente
                                 const currency =
                                   payment.paymentDetails
                                     ?.cashCurrency || "Bs";
                                 const rate =
                                   currency !== "Bs"
-                                    ? payment.paymentDetails
-                                      ?.exchangeRate ||
-                                    orderForm.exchangeRates[currency]?.rate ||
+                                    ? orderForm.exchangeRates[currency]?.rate ||
                                     1
                                     : 1;
 
@@ -1946,22 +2093,85 @@ export function Step3OrderDetails({
                                   amountInBs
                                 );
 
-                                // Guardar/actualizar la tasa si no está guardada
-                                if (
-                                  currency !== "Bs" &&
-                                  !payment.paymentDetails
-                                    ?.exchangeRate
-                                ) {
+                                // Guardar/actualizar la tasa
+                                if (currency !== "Bs") {
                                   updatePaymentDetails?.(
                                     payment.id,
                                     "exchangeRate",
-                                    orderForm.exchangeRates[currency]?.rate || 1
+                                    rate
                                   );
                                 }
                               }}
                               placeholder="0.00"
                             />
                           </div>
+
+                          {/* Equivalente en Bs Manual para Efectivo */}
+                          {payment.paymentDetails?.useCustomRate &&
+                            payment.paymentDetails.cashCurrency !== "Bs" && (
+                              <div className="space-y-2">
+                                <Label
+                                  htmlFor={`cash-custom-bs-${payment.id}`}
+                                  className="text-xs"
+                                >
+                                  Equivalente en Bs *
+                                </Label>
+                                <Input
+                                  id={`cash-custom-bs-${payment.id}`}
+                                  type="number"
+                                  step="0.01"
+                                  value={payment.amount === 0 ? "" : payment.amount}
+                                  onChange={(e) => {
+                                    const bsValue = Number.parseFloat(e.target.value) || 0;
+                                    updatePayment?.(payment.id, "amount", bsValue);
+
+                                    // Recalcular la tasa implícita
+                                    const received = payment.paymentDetails?.cashReceived;
+                                    if (received && received > 0) {
+                                      updatePaymentDetails?.(
+                                        payment.id,
+                                        "exchangeRate",
+                                        Number((bsValue / received).toFixed(4))
+                                      );
+                                    }
+                                  }}
+                                  placeholder="0.00"
+                                />
+                              </div>
+                            )}
+
+                          {/* Tasa Manual Switch */}
+                          {payment.paymentDetails?.cashCurrency && payment.paymentDetails.cashCurrency !== "Bs" && (
+                            <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-md border col-span-full">
+                              <Checkbox
+                                id={`cash-custom-rate-${payment.id}`}
+                                checked={!!payment.paymentDetails?.useCustomRate}
+                                onCheckedChange={(checked) => {
+                                  updatePaymentDetails?.(
+                                    payment.id,
+                                    "useCustomRate",
+                                    checked
+                                  );
+                                  if (!checked) {
+                                    const currency = payment.paymentDetails?.cashCurrency || "Bs";
+                                    const rate =
+                                      currency !== "Bs"
+                                        ? orderForm.exchangeRates[currency]?.rate || 1
+                                        : 1;
+                                    const received = payment.paymentDetails?.cashReceived || 0;
+                                    updatePaymentDetails?.(payment.id, "exchangeRate", rate);
+                                    updatePayment?.(payment.id, "amount", currency === "Bs" ? received : received * rate);
+                                  }
+                                }}
+                              />
+                              <Label
+                                htmlFor={`cash-custom-rate-${payment.id}`}
+                                className="text-xs font-medium cursor-pointer"
+                              >
+                                Tasa manual (Ingresar equivalente exacto en Bs)
+                              </Label>
+                            </div>
+                          )}
                         </div>
 
                         {payment.paymentDetails?.cashReceived &&

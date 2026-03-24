@@ -666,7 +666,7 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
         products.map((product) => ({
           ...product,
           discount: product.discount ?? 0,
-          locationStatus: product.locationStatus ?? "SIN DEFINIR",
+          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         }))
       );
       const newTypes: Record<string, "monto" | "porcentaje"> = {};
