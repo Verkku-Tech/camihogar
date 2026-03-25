@@ -1,6 +1,8 @@
 import * as db from "./indexeddb";
 import type { Currency } from "./currency-utils";
 import { apiClient } from "./api-client";
+import { generateUUID } from "./utils";
+
 import type {
   CategoryResponseDto,
   CreateCategoryDto,
@@ -4245,7 +4247,7 @@ export const addCommission = async (commission: Omit<Commission, "id" | "created
   try {
     const newCommission: Commission = {
       ...commission,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

@@ -596,6 +596,57 @@ function ProductAttributesEditor({
           </div>
         );
 
+      case "Product":
+        return (
+          <div className="flex items-center gap-2">
+            <SearchableAttributeSelect
+              className="flex-1"
+              value={attrValue || undefined}
+              onValueChange={(val) => handleAttributeChange(attrKey, val)}
+              placeholder={`Seleccione ${attribute.title?.toLowerCase() || "producto"}`}
+              searchPlaceholder={`Buscar ${attribute.title?.toLowerCase() || "producto"}...`}
+              emptyText="No se encontraron opciones."
+              options={
+                attribute.values
+                  ?.slice()
+                  .sort((a: string | AttributeValue, b: string | AttributeValue) => {
+                    const labelA = typeof a === "string" ? a : a.label || a.id || "";
+                    const labelB = typeof b === "string" ? b : b.label || b.id || "";
+                    return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
+                  })
+                  .filter((option: string | AttributeValue) => {
+                    if (typeof option === "string") {
+                      return option && option.trim() !== "";
+                    }
+                    const optionValue = option.label || option.id;
+                    return optionValue && optionValue.trim() !== "";
+                  })
+                  .map((option: string | AttributeValue) => {
+                    let optionValue: string;
+                    let optionLabel: string;
+                    
+                    if (typeof option === "string") {
+                      optionValue = option.trim() !== "" ? option : "unknown";
+                      optionLabel = option.trim() !== "" ? option : "Sin nombre";
+                    } else {
+                      optionValue = (option.label || option.id || "unknown").trim() !== "" 
+                        ? (option.label || option.id || "unknown")
+                        : "unknown";
+                      optionLabel = (option.label || option.id || "Sin nombre").trim() !== ""
+                        ? (option.label || option.id || "Sin nombre")
+                        : "Sin nombre";
+                    }
+                    
+                    if (!optionValue || optionValue.trim() === "") optionValue = "unknown";
+                    if (!optionLabel || optionLabel.trim() === "") optionLabel = "Sin nombre";
+                    
+                    return { value: optionValue, label: optionLabel };
+                  }) || []
+              }
+            />
+          </div>
+        );
+
       default:
         return null;
     }
