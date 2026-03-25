@@ -1,5 +1,6 @@
 import { Currency } from "./currency-utils";
 import { add, get, getAll, update } from "./indexeddb";
+import { generateUUID } from "./utils";
 
 export interface CurrencyPreference {
   id: string;
@@ -31,7 +32,7 @@ export const setCurrencyPreference = async (currency: Currency): Promise<void> =
     const existing = settings.find((s) => s.key === PREFERENCE_KEY);
 
     const preference: CurrencyPreference = {
-      id: existing?.id || crypto.randomUUID(),
+      id: existing?.id || generateUUID(),
       key: PREFERENCE_KEY,
       value: currency,
       updatedAt: new Date().toISOString(),

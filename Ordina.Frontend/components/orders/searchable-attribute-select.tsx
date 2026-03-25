@@ -49,7 +49,7 @@ export function SearchableAttributeSelect({
   const selectedOption = options.find((opt) => opt.value === value);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={true}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
