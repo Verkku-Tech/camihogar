@@ -10,6 +10,7 @@ import {
   getProducts,
   getAccounts,
   calculateProductUnitPriceWithAttributes,
+  resolveProductFromAttributeValue,
   type OrderProduct,
   type PartialPayment,
   type Vendor,
@@ -495,14 +496,14 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
             const attrId = attribute.id?.toString() || attribute.title;
 
             for (const value of attribute.values) {
-              const attrValue =
-                typeof value === "string"
-                  ? { id: "", label: value, productId: undefined }
-                  : (value as AttributeValue);
-
-              if (attrValue.productId) {
-                const foundProduct = productsMap.get(attrValue.productId);
-                if (foundProduct) {
+              if (typeof value === "string") continue;
+              const attrValue = value as AttributeValue;
+              const foundProduct = resolveProductFromAttributeValue(
+                attrValue,
+                productsMap,
+                allProducts
+              );
+              if (foundProduct) {
                   const productPrice = foundProduct.price;
                   const productCurrency = foundProduct.priceCurrency || "Bs";
 
@@ -546,7 +547,6 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
                       productAttributesTotal += productAttributeAdjustments;
                     }
                   }
-                }
               }
             }
           }

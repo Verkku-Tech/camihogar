@@ -36,7 +36,10 @@ export interface AttributeValue {
   isDefault?: boolean;
   priceAdjustment?: number; // positive for increase, negative for decrease
   priceAdjustmentCurrency?: Currency; // Moneda del ajuste de precio
-  productId?: number; // ID del producto cuando valueType es "Product"
+  /** ID numérico del frontend (hash de ObjectId); puede quedar desfasado si solo existía productId corrupto en API */
+  productId?: number;
+  /** ObjectId del producto en el backend; fuente de verdad para atributos tipo Product */
+  productBackendId?: string;
 }
 
 export interface Category {
@@ -62,6 +65,7 @@ export interface Category {
 
 export interface Product {
   id: number;
+  backendId?: string;
   name: string;
   category: string;
   price: number;
@@ -135,6 +139,73 @@ const backendIdToNumber = (backendId: string): number => {
   return hashValue > 1000000 ? hashValue : hashValue + 1000000;
 };
 
+function attributeValueProductIdForBackend(val: AttributeValue): string | undefined {
+  const b = val.productBackendId?.trim();
+  if (b) return b;
+  if (val.productId != null) return String(val.productId);
+  return undefined;
+}
+
+function mapAttributeValueFromBackendDto(val: {
+  id: string;
+  label: string;
+  isDefault?: boolean;
+  priceAdjustment?: number;
+  priceAdjustmentCurrency?: string;
+  productId?: string | null;
+}): AttributeValue {
+  const rawStr =
+    val.productId != null && String(val.productId).trim() !== ""
+      ? String(val.productId).trim()
+      : "";
+  const isMongo24 = /^[a-f0-9]{24}$/i.test(rawStr);
+  return {
+    id: val.id,
+    label: val.label,
+    isDefault: val.isDefault,
+    priceAdjustment: val.priceAdjustment,
+    priceAdjustmentCurrency: val.priceAdjustmentCurrency as Currency | undefined,
+    productBackendId: rawStr || undefined,
+    productId: rawStr
+      ? isMongo24
+        ? backendIdToNumber(rawStr)
+        : /^\d+$/.test(rawStr)
+          ? Number.parseInt(rawStr, 10)
+          : undefined
+      : undefined,
+  };
+}
+
+/** Resuelve el producto de catálogo vinculado a un valor de atributo tipo Product. */
+export function resolveProductFromAttributeValue(
+  val: AttributeValue,
+  productsMap: Map<number, Product>,
+  allProducts: Product[]
+): Product | undefined {
+  const rawBackend = val.productBackendId?.trim();
+  if (rawBackend) {
+    if (/^[a-f0-9]{24}$/i.test(rawBackend)) {
+      const numeric = backendIdToNumber(rawBackend);
+      const byNum = productsMap.get(numeric);
+      if (byNum) return byNum;
+    }
+    const byBackend = allProducts.find((p) => p.backendId === rawBackend);
+    if (byBackend) return byBackend;
+  }
+  if (val.productId != null) {
+    const byId = productsMap.get(val.productId);
+    if (byId) return byId;
+  }
+  const label = val.label?.trim().toLowerCase();
+  if (label) {
+    const matches = allProducts.filter(
+      (p) => p.name.trim().toLowerCase() === label
+    );
+    if (matches.length === 1) return matches[0];
+  }
+  return undefined;
+}
+
 // Helper functions para mapear entre frontend y backend
 const categoryToBackendDto = (
   category: Omit<Category, "id">
@@ -157,7 +228,9 @@ const categoryToBackendDto = (
               isDefault: val.isDefault,
               priceAdjustment: val.priceAdjustment,
               priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-              productId: val.productId?.toString(),
+              ...(attributeValueProductIdForBackend(val)
+                ? { productId: attributeValueProductIdForBackend(val)! }
+                : {}),
             }
         )
         : [],
@@ -218,16 +291,7 @@ const categoryFromBackendDto = (dto: CategoryResponseDto): Category => ({
     minValue: attr.minValue,
     maxValue: attr.maxValue,
     required: attr.required !== undefined ? attr.required : true, // Por defecto true si no existe
-    values: attr.values.map((val) => ({
-      id: val.id,
-      label: val.label,
-      isDefault: val.isDefault,
-      priceAdjustment: val.priceAdjustment,
-      priceAdjustmentCurrency: val.priceAdjustmentCurrency as
-        | Currency
-        | undefined,
-      productId: val.productId ? backendIdToNumber(val.productId) : undefined,
-    })),
+    values: attr.values.map((val) => mapAttributeValueFromBackendDto(val)),
   })),
 });
 
@@ -699,7 +763,11 @@ export const updateCategory = async (
                           priceAdjustment: val.priceAdjustment,
                           priceAdjustmentCurrency:
                             val.priceAdjustmentCurrency,
-                          productId: val.productId?.toString(),
+                          ...(attributeValueProductIdForBackend(val)
+                            ? {
+                                productId: attributeValueProductIdForBackend(val)!,
+                              }
+                            : {}),
                         }
                     )
                     : [],
@@ -793,7 +861,11 @@ export const updateCategory = async (
                               priceAdjustment: val.priceAdjustment,
                               priceAdjustmentCurrency:
                                 val.priceAdjustmentCurrency,
-                              productId: val.productId?.toString(),
+                              ...(attributeValueProductIdForBackend(val)
+                                ? {
+                                    productId: attributeValueProductIdForBackend(val)!,
+                                  }
+                                : {}),
                             }
                         )
                         : [],
@@ -867,7 +939,11 @@ export const updateCategory = async (
                       isDefault: val.isDefault,
                       priceAdjustment: val.priceAdjustment,
                       priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-                      productId: val.productId?.toString(),
+                      ...(attributeValueProductIdForBackend(val)
+                        ? {
+                            productId: attributeValueProductIdForBackend(val)!,
+                          }
+                        : {}),
                     }
                 )
                 : [],
@@ -983,6 +1059,7 @@ export const deleteCategory = async (id: number): Promise<void> => {
 // Helper para convertir Product con id number a formato IndexedDB (id string)
 interface ProductDB {
   id: string;
+  backendId?: string;
   name: string;
   category: string;
   price: number;
@@ -1001,6 +1078,7 @@ const productToDB = (product: Product): ProductDB => ({
 const productFromDB = (productDB: ProductDB): Product => ({
   ...productDB,
   id: Number.parseInt(productDB.id),
+  backendId: productDB.backendId,
 });
 
 // Helper functions para mapear productos entre frontend y backend
@@ -1043,6 +1121,7 @@ const productToBackendDto = async (
 
 const productFromBackendDto = (dto: ProductResponseDto): Product => ({
   id: backendIdToNumber(dto.id),
+  backendId: dto.id,
   name: dto.name,
   category: dto.category || "", // El backend devuelve el nombre de la categoría en 'category'
   price: dto.price,
@@ -1072,20 +1151,21 @@ export const getProducts = async (forceSync = false): Promise<Product[]> => {
 
         const productsMap = new Map<string, Product>();
 
+        const mergeKey = (p: Product): string =>
+          p.sku && String(p.sku).trim() !== ""
+            ? String(p.sku).trim()
+            : `__id_${p.id}`;
+
         for (const product of localProducts) {
-          if (product.sku) {
-            productsMap.set(product.sku, product);
-          }
+          productsMap.set(mergeKey(product), product);
         }
 
         for (const product of backendProductsMapped) {
-          if (product.sku) {
-            productsMap.set(product.sku, product);
-            try {
-              await db.update("products", productToDB(product));
-            } catch {
-              await db.add("products", productToDB(product));
-            }
+          productsMap.set(mergeKey(product), product);
+          try {
+            await db.update("products", productToDB(product));
+          } catch {
+            await db.add("products", productToDB(product));
           }
         }
 

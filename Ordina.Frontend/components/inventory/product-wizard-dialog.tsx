@@ -32,6 +32,7 @@ import {
   getCategories,
   addProduct,
   getProducts,
+  resolveProductFromAttributeValue,
   type Category,
   type AttributeValue,
   type Product,
@@ -525,20 +526,19 @@ export function ProductWizardDialog({
 
           // Procesar cada valor del atributo
           for (const value of attribute.values) {
-            const attrValue =
-              typeof value === "string"
-                ? { id: "", label: value, productId: undefined }
-                : (value as AttributeValue);
-
-            if (attrValue.productId) {
-              const foundProduct = productsMap.get(attrValue.productId);
-              if (foundProduct) {
-                productEntries.push({
-                  productId: foundProduct.id,
-                  product: foundProduct,
-                  attributes: foundProduct.attributes || {},
-                });
-              }
+            if (typeof value === "string") continue;
+            const attrValue = value as AttributeValue;
+            const foundProduct = resolveProductFromAttributeValue(
+              attrValue,
+              productsMap,
+              allProducts
+            );
+            if (foundProduct) {
+              productEntries.push({
+                productId: foundProduct.id,
+                product: foundProduct,
+                attributes: foundProduct.attributes || {},
+              });
             }
           }
 
