@@ -20,7 +20,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { getCategories, updateProduct, getProducts, type Category, type AttributeValue, type Product } from "@/lib/storage";
+import {
+  getCategories,
+  updateProduct,
+  getProducts,
+  resolveProductFromAttributeValue,
+  type Category,
+  type AttributeValue,
+  type Product,
+} from "@/lib/storage";
 import { Card, CardContent } from "@/components/ui/card";
 import { Package, Settings } from "lucide-react";
 import { formatCurrency } from "@/lib/currency-utils";
@@ -401,9 +409,9 @@ export function EditProductDialog({
     }
   }, [product, open, categories]);
 
-  const selectedCategory = categories.find(
-    (cat) => cat.name === formData.category
-  );
+  const selectedCategory = useMemo(() => {
+    return categories.find((cat) => cat.name === formData.category);
+  }, [categories, formData.category]);
 
   // Cargar todos los productos una sola vez cuando se abre el diálogo
   useEffect(() => {
@@ -427,6 +435,7 @@ export function EditProductDialog({
     if (!open) {
       setProductsLoaded(false);
       setAllProducts([]);
+      setProductAttributes({});
     }
   }, [open]);
 
@@ -457,20 +466,19 @@ export function EditProductDialog({
           
           // Procesar cada valor del atributo
           for (const value of attribute.values) {
-            const attrValue = typeof value === "string" 
-              ? { id: "", label: value, productId: undefined }
-              : value as AttributeValue;
-            
-            if (attrValue.productId) {
-              const foundProduct = productsMap.get(attrValue.productId);
-              if (foundProduct) {
-                // Inicializar con los atributos originales del producto
-                productEntries.push({
-                  productId: foundProduct.id,
-                  product: foundProduct,
-                  attributes: foundProduct.attributes || {},
-                });
-              }
+            if (typeof value === "string") continue;
+            const attrValue = value as AttributeValue;
+            const foundProduct = resolveProductFromAttributeValue(
+              attrValue,
+              productsMap,
+              allProducts
+            );
+            if (foundProduct) {
+              productEntries.push({
+                productId: foundProduct.id,
+                product: foundProduct,
+                attributes: foundProduct.attributes || {},
+              });
             }
           }
           
