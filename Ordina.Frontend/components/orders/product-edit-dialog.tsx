@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   getCategories,
   getProducts,
+  resolveProductFromAttributeValue,
   type AttributeValue,
   type OrderProduct,
   type Product,
@@ -37,8 +38,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Package, Settings, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ImageUploader } from "./ImageUploader";
-import { SearchableAttributeSelect } from "./searchable-attribute-select";
-
 interface ProductEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -372,53 +371,79 @@ function ProductAttributesEditor({
         });
         const selectedAdjustment = selectedValue ? getPriceAdjustment(selectedValue) : 0;
 
+        const selectOptions =
+          attribute.values
+            ?.slice()
+            .sort((a: string | AttributeValue, b: string | AttributeValue) => {
+              const labelA = typeof a === "string" ? a : a.label || a.id || "";
+              const labelB = typeof b === "string" ? b : b.label || b.id || "";
+              return labelA.localeCompare(labelB, undefined, { sensitivity: "base" });
+            })
+            .filter((option: string | AttributeValue) => {
+              if (typeof option === "string") {
+                return option && option.trim() !== "";
+              }
+              const optionValue = option.label || option.id;
+              return optionValue && optionValue.trim() !== "";
+            })
+            .map((option: string | AttributeValue) => {
+              let optionValue: string;
+              let optionLabel: string;
+
+              if (typeof option === "string") {
+                optionValue = option.trim() !== "" ? option : "unknown";
+                optionLabel = option.trim() !== "" ? option : "Sin nombre";
+              } else {
+                optionValue =
+                  (option.label || option.id || "unknown").trim() !== ""
+                    ? option.label || option.id || "unknown"
+                    : "unknown";
+                optionLabel =
+                  (option.label || option.id || "Sin nombre").trim() !== ""
+                    ? option.label || option.id || "Sin nombre"
+                    : "Sin nombre";
+              }
+
+              if (!optionValue || optionValue.trim() === "") optionValue = "unknown";
+              if (!optionLabel || optionLabel.trim() === "") optionLabel = "Sin nombre";
+
+              return { value: optionValue, label: optionLabel };
+            }) || [];
+
         return (
           <div className="flex items-center gap-2">
-            <SearchableAttributeSelect
-              className="flex-1"
-              value={attrValue || undefined}
-              onValueChange={(val) => handleAttributeChange(attrKey, val)}
-              placeholder={`Seleccione ${attribute.title?.toLowerCase() || "opción"}`}
-              searchPlaceholder={`Buscar ${attribute.title?.toLowerCase() || "opción"}...`}
-              emptyText="No se encontraron opciones."
-              options={
-                attribute.values
-                  ?.slice()
-                  .sort((a: string | AttributeValue, b: string | AttributeValue) => {
-                    const labelA = typeof a === "string" ? a : a.label || a.id || "";
-                    const labelB = typeof b === "string" ? b : b.label || b.id || "";
-                    return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
-                  })
-                  .filter((option: string | AttributeValue) => {
-                    if (typeof option === "string") {
-                      return option && option.trim() !== "";
-                    }
-                    const optionValue = option.label || option.id;
-                    return optionValue && optionValue.trim() !== "";
-                  })
-                  .map((option: string | AttributeValue) => {
-                    let optionValue: string;
-                    let optionLabel: string;
-                    
-                    if (typeof option === "string") {
-                      optionValue = option.trim() !== "" ? option : "unknown";
-                      optionLabel = option.trim() !== "" ? option : "Sin nombre";
-                    } else {
-                      optionValue = (option.label || option.id || "unknown").trim() !== "" 
-                        ? (option.label || option.id || "unknown")
-                        : "unknown";
-                      optionLabel = (option.label || option.id || "Sin nombre").trim() !== ""
-                        ? (option.label || option.id || "Sin nombre")
-                        : "Sin nombre";
-                    }
-                    
-                    if (!optionValue || optionValue.trim() === "") optionValue = "unknown";
-                    if (!optionLabel || optionLabel.trim() === "") optionLabel = "Sin nombre";
-                    
-                    return { value: optionValue, label: optionLabel };
-                  }) || []
+            <Select
+              value={
+                attrValue !== undefined && attrValue !== "" && attrValue !== null
+                  ? String(attrValue)
+                  : "vacio"
               }
-            />
+              onValueChange={(val) =>
+                handleAttributeChange(attrKey, val === "vacio" ? undefined : val)
+              }
+            >
+              <SelectTrigger className="flex-1">
+                <SelectValue
+                  placeholder={`Seleccione ${attribute.title?.toLowerCase() || "opción"}`}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="vacio">
+                  Seleccione una opción
+                </SelectItem>
+                {selectOptions.length > 0 ? (
+                  selectOptions.map((opt: { value: string; label: string }) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="no-values" disabled>
+                    No hay opciones
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
             {selectedAdjustment !== 0 && (
               <span
                 className={`text-sm font-medium whitespace-nowrap ${
@@ -596,56 +621,81 @@ function ProductAttributesEditor({
           </div>
         );
 
-      case "Product":
+      case "Product": {
+        const productSelectOptions =
+          attribute.values
+            ?.slice()
+            .sort((a: string | AttributeValue, b: string | AttributeValue) => {
+              const labelA = typeof a === "string" ? a : a.label || a.id || "";
+              const labelB = typeof b === "string" ? b : b.label || b.id || "";
+              return labelA.localeCompare(labelB, undefined, { sensitivity: "base" });
+            })
+            .filter((option: string | AttributeValue) => {
+              if (typeof option === "string") {
+                return option && option.trim() !== "";
+              }
+              const optionValue = option.label || option.id;
+              return optionValue && optionValue.trim() !== "";
+            })
+            .map((option: string | AttributeValue) => {
+              let optionValue: string;
+              let optionLabel: string;
+
+              if (typeof option === "string") {
+                optionValue = option.trim() !== "" ? option : "unknown";
+                optionLabel = option.trim() !== "" ? option : "Sin nombre";
+              } else {
+                optionValue =
+                  (option.label || option.id || "unknown").trim() !== ""
+                    ? option.label || option.id || "unknown"
+                    : "unknown";
+                optionLabel =
+                  (option.label || option.id || "Sin nombre").trim() !== ""
+                    ? option.label || option.id || "Sin nombre"
+                    : "Sin nombre";
+              }
+
+              if (!optionValue || optionValue.trim() === "") optionValue = "unknown";
+              if (!optionLabel || optionLabel.trim() === "") optionLabel = "Sin nombre";
+
+              return { value: optionValue, label: optionLabel };
+            }) || [];
+
         return (
           <div className="flex items-center gap-2">
-            <SearchableAttributeSelect
-              className="flex-1"
-              value={attrValue || undefined}
-              onValueChange={(val) => handleAttributeChange(attrKey, val)}
-              placeholder={`Seleccione ${attribute.title?.toLowerCase() || "producto"}`}
-              searchPlaceholder={`Buscar ${attribute.title?.toLowerCase() || "producto"}...`}
-              emptyText="No se encontraron opciones."
-              options={
-                attribute.values
-                  ?.slice()
-                  .sort((a: string | AttributeValue, b: string | AttributeValue) => {
-                    const labelA = typeof a === "string" ? a : a.label || a.id || "";
-                    const labelB = typeof b === "string" ? b : b.label || b.id || "";
-                    return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' });
-                  })
-                  .filter((option: string | AttributeValue) => {
-                    if (typeof option === "string") {
-                      return option && option.trim() !== "";
-                    }
-                    const optionValue = option.label || option.id;
-                    return optionValue && optionValue.trim() !== "";
-                  })
-                  .map((option: string | AttributeValue) => {
-                    let optionValue: string;
-                    let optionLabel: string;
-                    
-                    if (typeof option === "string") {
-                      optionValue = option.trim() !== "" ? option : "unknown";
-                      optionLabel = option.trim() !== "" ? option : "Sin nombre";
-                    } else {
-                      optionValue = (option.label || option.id || "unknown").trim() !== "" 
-                        ? (option.label || option.id || "unknown")
-                        : "unknown";
-                      optionLabel = (option.label || option.id || "Sin nombre").trim() !== ""
-                        ? (option.label || option.id || "Sin nombre")
-                        : "Sin nombre";
-                    }
-                    
-                    if (!optionValue || optionValue.trim() === "") optionValue = "unknown";
-                    if (!optionLabel || optionLabel.trim() === "") optionLabel = "Sin nombre";
-                    
-                    return { value: optionValue, label: optionLabel };
-                  }) || []
+            <Select
+              value={
+                attrValue !== undefined && attrValue !== "" && attrValue !== null
+                  ? String(attrValue)
+                  : "vacio"
               }
-            />
+              onValueChange={(val) =>
+                handleAttributeChange(attrKey, val === "vacio" ? undefined : val)
+              }
+            >
+              <SelectTrigger className="flex-1">
+                <SelectValue
+                  placeholder={`Seleccione ${attribute.title?.toLowerCase() || "producto"}`}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="vacio">Seleccione una opción</SelectItem>
+                {productSelectOptions.length > 0 ? (
+                  productSelectOptions.map((opt: { value: string; label: string }) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="no-values" disabled>
+                    No hay opciones
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
           </div>
         );
+      }
 
       default:
         return null;
@@ -905,10 +955,11 @@ export function ProductEditDialog({
     setAttributes(normalizedAttributes);
   }, [product, categories]);
 
-  // Calcular currentCategory de forma segura (después de todos los hooks, antes del return condicional)
-  const currentCategory = product ? categories.find(
-    (cat) => cat.name === product.category
-  ) : null;
+  // Memoizar para que el efecto que resuelve productos-atributo se dispare cuando categorías lleguen del API
+  const currentCategory = useMemo(() => {
+    if (!product) return null;
+    return categories.find((cat) => cat.name === product.category) || null;
+  }, [product, categories]);
 
   // Cargar todos los productos una sola vez cuando se abre el diálogo
   useEffect(() => {
@@ -932,6 +983,7 @@ export function ProductEditDialog({
     if (!open) {
       setProductsLoaded(false);
       setAllProducts([]);
+      setProductAttributes({});
       setOriginalProduct(null);
       // Resetear valores calculados
       setCalculatedBasePriceInBs(0);
@@ -990,20 +1042,19 @@ export function ProductEditDialog({
           
           // Procesar cada valor del atributo
           for (const value of attribute.values) {
-            const attrValue = typeof value === "string" 
-              ? { id: "", label: value, productId: undefined }
-              : value as AttributeValue;
-            
-            if (attrValue.productId) {
-              const foundProduct = productsMap.get(attrValue.productId);
-              if (foundProduct) {
-                // Inicializar con los atributos originales del producto
-                productEntries.push({
-                  productId: foundProduct.id,
-                  product: foundProduct,
-                  attributes: foundProduct.attributes || {},
-                });
-              }
+            if (typeof value === "string") continue;
+            const attrValue = value as AttributeValue;
+            const foundProduct = resolveProductFromAttributeValue(
+              attrValue,
+              productsMap,
+              allProducts
+            );
+            if (foundProduct) {
+              productEntries.push({
+                productId: foundProduct.id,
+                product: foundProduct,
+                attributes: foundProduct.attributes || {},
+              });
             }
           }
           
@@ -1830,31 +1881,69 @@ export function ProductEditDialog({
                     
                     {attr.valueType === "Select" ? (
                       <div className="flex items-center gap-2">
-                        <SearchableAttributeSelect
-                          className="flex-1"
+                        <Select
                           value={
-                            attrValue !== undefined && !Array.isArray(attrValue) ? attrValue.toString() : undefined
+                            attrValue !== undefined &&
+                            !Array.isArray(attrValue) &&
+                            attrValue !== "" &&
+                            attrValue !== null &&
+                            attrValue !== "vacio"
+                              ? attrValue.toString()
+                              : "vacio"
                           }
                           onValueChange={(value) =>
-                            handleAttributeChange(attrKey, value)
+                            handleAttributeChange(
+                              attrKey,
+                              value === "vacio" ? undefined : value
+                            )
                           }
-                          placeholder={`Seleccionar ${
-                            attr.title ? attr.title.toLowerCase() : "atributo"
-                          }`}
-                          searchPlaceholder={`Buscar ${attr.title ? attr.title.toLowerCase() : "opción"}...`}
-                          emptyText="No se encontraron opciones."
-                          options={
-                            attr.values
-                              ?.filter((value: string | AttributeValue) => {
-                                const optionValue = getValueString(value);
-                                return optionValue && optionValue.trim() !== "" && optionValue !== "unknown";
-                              })
-                              .map((value: string | AttributeValue) => ({
-                                value: getValueString(value),
-                                label: getValueLabel(value),
-                              })) || []
-                          }
-                        />
+                        >
+                          <SelectTrigger className="flex-1">
+                            <SelectValue
+                              placeholder={`Seleccionar ${
+                                attr.title ? attr.title.toLowerCase() : "atributo"
+                              }`}
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="vacio">
+                              Seleccione una opción
+                            </SelectItem>
+                            {(() => {
+                              const opts =
+                                attr.values
+                                  ?.filter((value: string | AttributeValue) => {
+                                    const optionValue = getValueString(value);
+                                    return (
+                                      optionValue &&
+                                      optionValue.trim() !== "" &&
+                                      optionValue !== "unknown"
+                                    );
+                                  })
+                                  .map((value: string | AttributeValue) => ({
+                                    value: getValueString(value),
+                                    label: getValueLabel(value),
+                                  })) || [];
+                              if (opts.length === 0) {
+                                return (
+                                  <SelectItem value="no-values" disabled>
+                                    No hay valores disponibles
+                                  </SelectItem>
+                                );
+                              }
+                              return opts.map(
+                                (opt: { value: string; label: string }, idx: number) => (
+                                  <SelectItem
+                                    key={`${opt.value}-${idx}`}
+                                    value={opt.value}
+                                  >
+                                    {opt.label}
+                                  </SelectItem>
+                                )
+                              );
+                            })()}
+                          </SelectContent>
+                        </Select>
                         {selectedAdjustment !== 0 && (
                           <span
                             className={`text-sm font-medium whitespace-nowrap ${

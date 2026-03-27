@@ -23,6 +23,8 @@ interface AttributeValue {
   priceAdjustment?: number
   priceAdjustmentCurrency?: Currency
   productId?: number
+  /** ObjectId del producto en el backend (preferido para atributos tipo Product) */
+  productBackendId?: string
 }
 
 interface Attribute {
@@ -55,6 +57,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
     priceAdjustment: "",
     priceAdjustmentCurrency: preferredCurrency as Currency,
     productId: undefined as number | undefined,
+    productBackendId: undefined as string | undefined,
     selectedProduct: null as Product | null,
   })
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -109,6 +112,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
       priceAdjustment: "",
       priceAdjustmentCurrency: preferredCurrency,
       productId: undefined,
+      productBackendId: undefined,
       selectedProduct: null,
     })
   }, [attribute, preferredCurrency])
@@ -120,6 +124,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
         ...newValue,
         label: product.name,
         productId: product.id,
+        productBackendId: product.backendId,
         priceAdjustment: product.price.toString(),
         priceAdjustmentCurrency: product.priceCurrency || "Bs",
         selectedProduct: product,
@@ -129,6 +134,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
         ...newValue,
         label: "",
         productId: undefined,
+        productBackendId: undefined,
         priceAdjustment: "",
         priceAdjustmentCurrency: preferredCurrency,
         selectedProduct: null,
@@ -143,8 +149,16 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
     }
 
     // Validar que no se duplique el producto si el tipo es "Product"
-    if (attribute.valueType === "Product" && newValue.productId) {
-      const productExists = values.some((v) => v.productId === newValue.productId)
+    if (
+      attribute.valueType === "Product" &&
+      (newValue.productBackendId || newValue.productId != null)
+    ) {
+      const productExists = values.some(
+        (v) =>
+          (newValue.productBackendId &&
+            v.productBackendId === newValue.productBackendId) ||
+          (newValue.productId != null && v.productId === newValue.productId)
+      )
       if (productExists) {
         toast.error("Este producto ya ha sido agregado")
         return
@@ -165,6 +179,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
       priceAdjustment: newValue.priceAdjustment === "" ? 0 : parseFloat(newValue.priceAdjustment),
       priceAdjustmentCurrency: newValue.priceAdjustmentCurrency || "Bs",
       productId: newValue.productId,
+      productBackendId: newValue.productBackendId,
     }
 
     setValues([...values, value])
@@ -174,6 +189,7 @@ export function AttributeValuesDialog({ open, onOpenChange, attribute, onSave }:
       priceAdjustment: "",
       priceAdjustmentCurrency: preferredCurrency,
       productId: undefined,
+      productBackendId: undefined,
       selectedProduct: null,
     })
   }
