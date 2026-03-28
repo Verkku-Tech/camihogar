@@ -1,5 +1,6 @@
 import * as db from "./indexeddb";
 import type { Currency } from "./currency-utils";
+import { normalizeExchangeRatesAtCreation } from "./currency-utils";
 import { apiClient } from "./api-client";
 import { generateUUID } from "./utils";
 
@@ -8,6 +9,7 @@ import type {
   CreateCategoryDto,
   UpdateCategoryDto,
   ProductResponseDto,
+  ProductListItemDto,
   CreateProductDto,
   UpdateProductDto,
   UserResponseDto,
@@ -114,7 +116,7 @@ const categoryFromDB = (categoryDB: CategoryDB): Category => ({
 
 // Helper para convertir string ID del backend a number ID del frontend
 // Usa un hash simple para generar un ID numérico consistente
-const backendIdToNumber = (backendId: string): number => {
+export const backendIdToNumber = (backendId: string): number => {
   // Si el string ID puede parsearse como número COMPLETO (sin caracteres adicionales), usarlo directamente
   const parsed = Number.parseInt(backendId);
   // Verificar que el parseo fue exacto (sin caracteres sobrantes)
@@ -1132,6 +1134,19 @@ const productFromBackendDto = (dto: ProductResponseDto): Product => ({
   attributes: dto.attributes,
 });
 
+/** Misma regla que productFromBackendDto: nunca parseInt(ObjectId). */
+export const productListItemDtoToProduct = (dto: ProductListItemDto): Product => ({
+  id: backendIdToNumber(dto.id),
+  backendId: dto.id,
+  name: dto.name,
+  category: dto.category,
+  price: dto.price,
+  priceCurrency: dto.priceCurrency as Currency | undefined,
+  stock: dto.stock,
+  status: dto.status,
+  sku: dto.sku || "",
+});
+
 const PRODUCT_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
 let lastProductSyncTimestamp = 0;
 
@@ -1204,6 +1219,42 @@ export const getProduct = async (id: number): Promise<Product | undefined> => {
     return undefined;
   }
 };
+
+export const getProductByBackendId = async (
+  backendId: string
+): Promise<Product | undefined> => {
+  const trimmed = backendId?.trim();
+  if (!trimmed) return undefined;
+  try {
+    const productsDB = await db.getAll<ProductDB>("products");
+    const byField = productsDB.find((p) => p.backendId === trimmed);
+    if (byField) return productFromDB(byField);
+    return await getProduct(backendIdToNumber(trimmed));
+  } catch (error) {
+    console.error("Error loading product by backendId from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+/** orderProduct.id suele ser ObjectId string; evitar Number.parseInt sobre hex. */
+export function resolveCatalogProductFromOrderProductId(
+  orderProductId: string,
+  allProducts: Product[]
+): Product | undefined {
+  const trimmed = orderProductId?.trim() ?? "";
+  if (!trimmed) return undefined;
+  if (/^[a-f0-9]{24}$/i.test(trimmed)) {
+    const byBackend = allProducts.find((p) => p.backendId === trimmed);
+    if (byBackend) return byBackend;
+    const numId = backendIdToNumber(trimmed);
+    return allProducts.find((p) => p.id === numId);
+  }
+  if (/^\d+$/.test(trimmed)) {
+    const n = Number.parseInt(trimmed, 10);
+    return allProducts.find((p) => p.id === n);
+  }
+  return undefined;
+}
 
 export const getProductsByCategory = async (
   category: string
@@ -1310,7 +1361,10 @@ export const updateProduct = async (
   id: number,
   updates: Partial<Product>
 ): Promise<Product> => {
-  const existingProduct = await getProduct(id);
+  let existingProduct = await getProduct(id);
+  if (!existingProduct && updates.backendId) {
+    existingProduct = await getProductByBackendId(updates.backendId);
+  }
   if (!existingProduct) {
     throw new Error(`Product with id ${id} not found`);
   }
@@ -1456,7 +1510,7 @@ export const updateProduct = async (
         await syncManager.addToQueue({
           type: "update",
           entity: "product",
-          entityId: id.toString(),
+          entityId: existingProduct.id.toString(),
           data: updateDto,
         });
         console.log("✅ Producto encolado para sincronización");
@@ -1959,6 +2013,13 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   saleType: dto.saleType as Order["saleType"],
   deliveryType: dto.deliveryType as Order["deliveryType"],
   deliveryZone: dto.deliveryZone as Order["deliveryZone"],
+  deliveryServices: dto.deliveryServices,
+  exchangeRatesAtCreation: normalizeExchangeRatesAtCreation(
+    dto.exchangeRatesAtCreation
+  ),
+  baseCurrency: dto.baseCurrency,
+  dispatchDate: dto.dispatchDate,
+  completedAt: dto.completedAt,
 });
 
 export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">): CreateOrderDto => ({
@@ -2112,9 +2173,23 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
  * 3. Si nunca se ha sincronizado o han pasado >24h, hace sync completa
  * 4. En otros casos, hace sync incremental (solo pedidos modificados)
  * 
- * @param forceFullSync Forzar sincronización completa (útil para refresh manual)
+ * @param optionsOrForceFull `true` = sync completa (compat); o `{ forceFullSync?, refreshFromBackend? }`. Con `refreshFromBackend: true` e internet se ignora el throttle de 30s.
  */
-export const getOrders = async (forceFullSync: boolean = false): Promise<Order[]> => {
+export type GetOrdersOptions = {
+  forceFullSync?: boolean;
+  refreshFromBackend?: boolean;
+};
+
+export const getOrders = async (
+  optionsOrForceFull?: boolean | GetOrdersOptions
+): Promise<Order[]> => {
+  const opts: GetOrdersOptions =
+    typeof optionsOrForceFull === "boolean"
+      ? { forceFullSync: optionsOrForceFull }
+      : optionsOrForceFull ?? {};
+  const forceFullSync = opts.forceFullSync ?? false;
+  const refreshFromBackend = opts.refreshFromBackend ?? false;
+
   try {
     // 1. Cargar siempre órdenes locales desde IndexedDB primero (offline-first)
     const localOrders = await db.getAll<Order>("orders");
@@ -2127,7 +2202,7 @@ export const getOrders = async (forceFullSync: boolean = false): Promise<Order[]
 
     // 3. Verificar si debemos sincronizar (evitar sincronizaciones muy frecuentes)
     const needsSync = await shouldSync("orders");
-    if (!needsSync && !forceFullSync) {
+    if (!needsSync && !forceFullSync && !refreshFromBackend) {
       console.log(`⏳ Sync de órdenes omitida (muy reciente). Usando ${localOrders.length} locales.`);
       return localOrders;
     }
@@ -2218,6 +2293,36 @@ export const getOrders = async (forceFullSync: boolean = false): Promise<Order[]
   } catch (error) {
     console.error("Error loading orders from IndexedDB:", error);
     return [];
+  }
+};
+
+/**
+ * Con conexión: GET al backend por número, persiste en IndexedDB y devuelve el pedido (fuente de verdad).
+ * Sin conexión o si falla el API: último dato local por orderNumber.
+ */
+export const getOrderByOrderNumberPreferBackend = async (
+  orderNumber: string
+): Promise<Order | undefined> => {
+  const localFallback = async (): Promise<Order | undefined> => {
+    const orders = await db.getAll<Order>("orders");
+    return orders.find((o) => o.orderNumber === orderNumber);
+  };
+
+  if (!isOnline()) {
+    return localFallback();
+  }
+
+  try {
+    const dto = await apiClient.getOrderByOrderNumber(orderNumber);
+    const order = orderFromBackendDto(dto);
+    await db.put("orders", order);
+    return order;
+  } catch (error) {
+    console.warn(
+      `⚠️ No se pudo obtener el pedido ${orderNumber} desde el backend, usando IndexedDB:`,
+      error
+    );
+    return localFallback();
   }
 };
 
@@ -3919,7 +4024,9 @@ export const calculateProductTotalWithAttributes = (
   quantity: number,
   productAttributes: Record<string, string | number | string[]> | undefined,
   category: Category | undefined,
-  exchangeRates?: { USD?: any; EUR?: any }
+  exchangeRates?: { USD?: any; EUR?: any },
+  allProducts: Product[] = [],
+  categories: Category[] = []
 ): number => {
   if (!productAttributes || !category || !category.attributes) {
     return basePrice * quantity;
@@ -3938,11 +4045,6 @@ export const calculateProductTotalWithAttributes = (
       return;
     }
 
-    // Omitir atributos de tipo "Product" - estos se calculan por separado con el precio completo
-    if (categoryAttribute.valueType === "Product") {
-      return;
-    }
-
     // Función helper para convertir ajuste a Bs
     const convertAdjustment = (
       adjustment: number,
@@ -3957,6 +4059,42 @@ export const calculateProductTotalWithAttributes = (
       }
       return adjustment; // Si no hay tasa, usar valor original
     };
+
+    // Manejar atributos de tipo "Product"
+    if (categoryAttribute.valueType === "Product") {
+      const processProductPrice = (productId: any) => {
+        const productIdNum = typeof productId === "number" ? productId : parseInt(productId);
+        
+        // Intentar buscar el producto real para sumar su precio base y sus propios atributos
+        const foundProduct = allProducts.find(p => p.id === productIdNum || p.backendId === productId.toString());
+        if (foundProduct) {
+          // Convertir precio del producto a Bs
+          let pPrice = foundProduct.price;
+          if (foundProduct.priceCurrency && foundProduct.priceCurrency !== "Bs" && exchangeRates) {
+            if (foundProduct.priceCurrency === "USD" && exchangeRates.USD?.rate) pPrice *= exchangeRates.USD.rate;
+            else if (foundProduct.priceCurrency === "EUR" && exchangeRates.EUR?.rate) pPrice *= exchangeRates.EUR.rate;
+          }
+          totalAdjustment += pPrice;
+
+          // Sumar ajustes de los atributos del sub-producto si están presentes en productAttributes
+          const subAttrKey = `${attrKey}_${foundProduct.id}`;
+          const subAttrs = (productAttributes as any)[subAttrKey];
+          if (subAttrs) {
+            const subCategory = categories.find(c => c.name === foundProduct.category);
+            if (subCategory) {
+              totalAdjustment += calculateProductUnitPriceWithAttributes(0, subAttrs, subCategory, exchangeRates, allProducts, categories);
+            }
+          }
+        }
+      };
+
+      if (Array.isArray(selectedValue)) {
+        selectedValue.forEach(processProductPrice);
+      } else if (selectedValue) {
+        processProductPrice(selectedValue);
+      }
+      return;
+    }
 
     // Manejar arrays para selección múltiple
     if (Array.isArray(selectedValue)) {
@@ -4017,7 +4155,9 @@ export const calculateProductUnitPriceWithAttributes = (
   basePrice: number,
   productAttributes: Record<string, string | number | string[]> | undefined,
   category: Category | undefined,
-  exchangeRates?: { USD?: any; EUR?: any }
+  exchangeRates?: { USD?: any; EUR?: any },
+  allProducts: Product[] = [],
+  categories: Category[] = []
 ): number => {
   if (!productAttributes || !category || !category.attributes) {
     return basePrice;
@@ -4046,8 +4186,39 @@ export const calculateProductUnitPriceWithAttributes = (
       return;
     }
 
-    // Omitir atributos de tipo "Product" - estos se calculan por separado con el precio completo
+    // Manejar atributos de tipo "Product"
     if (categoryAttribute.valueType === "Product") {
+      const processProductPrice = (productId: any) => {
+        const productIdNum = typeof productId === "number" ? productId : parseInt(productId);
+        
+        // Intentar buscar el producto real para sumar su precio base y sus propios atributos
+        const foundProduct = allProducts.find(p => p.id === productIdNum || p.backendId === productId.toString());
+        if (foundProduct) {
+          // Convertir precio del producto a Bs
+          let pPrice = foundProduct.price;
+          if (foundProduct.priceCurrency && foundProduct.priceCurrency !== "Bs" && exchangeRates) {
+            if (foundProduct.priceCurrency === "USD" && exchangeRates.USD?.rate) pPrice *= exchangeRates.USD.rate;
+            else if (foundProduct.priceCurrency === "EUR" && exchangeRates.EUR?.rate) pPrice *= exchangeRates.EUR.rate;
+          }
+          totalAdjustment += pPrice;
+
+          // Sumar ajustes de los atributos del sub-producto si están presentes en productAttributes
+          const subAttrKey = `${attrKey}_${foundProduct.id}`;
+          const subAttrs = (productAttributes as any)[subAttrKey];
+          if (subAttrs) {
+            const subCategory = categories.find(c => c.name === foundProduct.category);
+            if (subCategory) {
+              totalAdjustment += calculateProductUnitPriceWithAttributes(0, subAttrs, subCategory, exchangeRates, allProducts, categories);
+            }
+          }
+        }
+      };
+
+      if (Array.isArray(selectedValue)) {
+        selectedValue.forEach(processProductPrice);
+      } else if (selectedValue) {
+        processProductPrice(selectedValue);
+      }
       return;
     }
 

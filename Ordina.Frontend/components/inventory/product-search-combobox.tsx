@@ -6,7 +6,7 @@ import { Package, Search, X, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { apiClient, type ProductListItemDto } from "@/lib/api-client"
-import { type Product } from "@/lib/storage"
+import { productListItemDtoToProduct, type Product } from "@/lib/storage"
 import { formatCurrency } from "@/lib/currency-utils"
 
 interface ProductSearchComboboxProps {
@@ -16,19 +16,6 @@ interface ProductSearchComboboxProps {
   disabled?: boolean
   className?: string
   excludedProductIds?: number[]
-}
-
-function listItemToProduct(item: ProductListItemDto): Product {
-  return {
-    id: parseInt(item.id) || 0,
-    name: item.name,
-    category: item.category,
-    price: item.price,
-    priceCurrency: item.priceCurrency as any,
-    stock: item.stock,
-    status: item.status,
-    sku: item.sku,
-  }
 }
 
 export function ProductSearchCombobox({
@@ -89,11 +76,11 @@ export function ProductSearchCombobox({
   }
 
   const filteredResults = results.filter(
-    (item) => !excludedProductIds.includes(parseInt(item.id) || 0)
+    (item) => !excludedProductIds.includes(productListItemDtoToProduct(item).id)
   )
 
   const handleSelect = (item: ProductListItemDto) => {
-    onSelect(listItemToProduct(item))
+    onSelect(productListItemDtoToProduct(item))
     setShowResults(false)
   }
 
@@ -166,7 +153,7 @@ export function ProductSearchCombobox({
                   onClick={() => handleSelect(item)}
                   className={cn(
                     "flex items-center justify-between gap-4 p-3 rounded-md cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors border-b border-border/50 last:border-b-0",
-                    value?.id === (parseInt(item.id) || 0) && "bg-accent"
+                    value?.id === productListItemDtoToProduct(item).id && "bg-accent"
                   )}
                 >
                   <div className="flex items-start gap-3 flex-1 min-w-0">
