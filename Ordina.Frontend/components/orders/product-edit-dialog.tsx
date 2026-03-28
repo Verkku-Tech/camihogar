@@ -23,6 +23,7 @@ import {
   getCategories,
   getProducts,
   resolveProductFromAttributeValue,
+  resolveCatalogProductFromOrderProductId,
   type AttributeValue,
   type OrderProduct,
   type Product,
@@ -72,7 +73,9 @@ const getValueLabel = (value: string | AttributeValue): string => {
 const calculateDetailedAttributeAdjustments = (
   productAttributes: Record<string, any>,
   category: Category | undefined,
-  exchangeRates?: { USD?: any; EUR?: any }
+  exchangeRates?: { USD?: any; EUR?: any },
+  allProducts: Product[] = [],
+  categories: Category[] = []
 ): Array<{ 
   attributeName: string; 
   selectedValueLabel: string;
@@ -114,7 +117,60 @@ const calculateDetailedAttributeAdjustments = (
       (attr) => attr.id?.toString() === attrKey || attr.title === attrKey
     );
 
-    if (!categoryAttribute || !categoryAttribute.values || categoryAttribute.valueType === "Product") {
+    if (!categoryAttribute || !categoryAttribute.values) {
+      return;
+    }
+
+    if (categoryAttribute.valueType === "Product") {
+      const processProductPrice = (productId: any) => {
+        const productIdNum = typeof productId === "number" ? productId : parseInt(productId);
+        const foundProduct = allProducts.find(p => p.id === productIdNum || p.backendId === productId.toString());
+        
+        if (foundProduct) {
+          // Convertir precio del producto a Bs
+          let pPrice = foundProduct.price;
+          let pOriginalCurrency = foundProduct.priceCurrency || "Bs";
+          
+          let pPriceInBs = pPrice;
+          if (pOriginalCurrency !== "Bs" && exchangeRates) {
+            if (pOriginalCurrency === "USD" && exchangeRates.USD?.rate) pPriceInBs = pPrice * exchangeRates.USD.rate;
+            else if (pOriginalCurrency === "EUR" && exchangeRates.EUR?.rate) pPriceInBs = pPrice * exchangeRates.EUR.rate;
+          }
+
+          adjustments.push({
+            attributeName: categoryAttribute.title || attrKey,
+            selectedValueLabel: foundProduct.name,
+            adjustment: pPriceInBs,
+            adjustmentInOriginalCurrency: pPrice,
+            originalCurrency: pOriginalCurrency,
+          });
+
+          // También añadir ajustes de los atributos del sub-producto
+          const subAttrKey = `${attrKey}_${foundProduct.id}`;
+          const subAttrs = productAttributes[subAttrKey];
+          if (subAttrs) {
+            const subCategory = categories.find(c => c.name === foundProduct.category);
+            if (subCategory) {
+              const subAdjustments = calculateDetailedAttributeAdjustments(subAttrs, subCategory, exchangeRates, allProducts, categories);
+              subAdjustments.forEach(subAdj => {
+                adjustments.push({
+                  attributeName: `${categoryAttribute.title || attrKey} - ${subAdj.attributeName}`,
+                  selectedValueLabel: subAdj.selectedValueLabel,
+                  adjustment: subAdj.adjustment,
+                  adjustmentInOriginalCurrency: subAdj.adjustmentInOriginalCurrency,
+                  originalCurrency: subAdj.originalCurrency,
+                });
+              });
+            }
+          }
+        }
+      };
+
+      if (Array.isArray(selectedValue)) {
+        selectedValue.forEach(processProductPrice);
+      } else if (selectedValue) {
+        processProductPrice(selectedValue);
+      }
       return;
     }
 
@@ -1008,9 +1064,11 @@ export function ProductEditDialog({
         return;
       }
       
-      const productId = parseInt(product.id);
-      const original = allProducts.find((p) => p.id === productId);
-      setOriginalProduct(original || null);
+      const original = resolveCatalogProductFromOrderProductId(
+        product.id,
+        allProducts
+      );
+      setOriginalProduct(original ?? null);
     };
     
     loadOriginalProduct();
@@ -1243,7 +1301,9 @@ export function ProductEditDialog({
       const attributeAdjustments = calculateDetailedAttributeAdjustments(
         attributes,
         currentCategory,
-        exchangeRates
+        exchangeRates,
+        allProducts,
+        categories
       );
 
       // Formatear ajustes de atributos normales
@@ -1261,7 +1321,9 @@ export function ProductEditDialog({
         basePriceInBs,
         attributes,
         currentCategory,
-        exchangeRates
+        exchangeRates,
+        allProducts,
+        categories
       );
 
       // Calcular ajustes detallados de productos-atributos
@@ -1332,13 +1394,8 @@ export function ProductEditDialog({
               );
             }
 
-            // SIEMPRE sumar el precio base del producto
-            productAttributesTotal += productPriceInBs;
-            
-            // Además, sumar los ajustes de los atributos del producto
-            productAttrAdjusts.forEach(adj => {
-              productAttributesTotal += adj.adjustment;
-            });
+            // Los ajustes ya están incluidos en calculateProductUnitPriceWithAttributes si se le pasan los params
+            // Pero seguimos calculando aquí para el desglose visual (detailedProductAttributeAdjustments)
 
             // Formatear precio del producto
             const formattedProductPrice = await formatWithPreference(productPrice, productCurrency);
@@ -1357,7 +1414,7 @@ export function ProductEditDialog({
       }
       setDetailedProductAttributeAdjustments(productAttrAdjustments);
 
-      const unitPrice = basePriceWithAdjustments + productAttributesTotal;
+      const unitPrice = basePriceWithAdjustments;
       const total = unitPrice * quantity;
       const adjustment = basePriceWithAdjustments - basePriceInBs;
 
@@ -1589,7 +1646,9 @@ export function ProductEditDialog({
       basePriceInBs,
       attributes,
       currentCategory,
-      exchangeRates
+      exchangeRates,
+      allProducts,
+      categories
     );
 
     // Sumar precios de productos cuando son atributos (convertidos a Bs)
@@ -1614,30 +1673,14 @@ export function ProductEditDialog({
               }
             }
             
-            // SIEMPRE sumar el precio base del producto
-            productAttributesTotal += productPriceInBs;
-            
-            // Además, sumar los ajustes de los atributos editados del producto-atributo
-            const productCategory = categories.find(cat => cat.name === productEntry.product.category);
-            if (productCategory && productEntry.attributes) {
-              // Calcular los ajustes de precio de los atributos editados
-              const productAttributeAdjustments = calculateProductUnitPriceWithAttributes(
-                0, // Precio base 0 porque ya sumamos el precio del producto arriba
-                productEntry.attributes,
-                productCategory,
-                exchangeRates
-              );
-              
-              // Sumar los ajustes de atributos
-              productAttributesTotal += productAttributeAdjustments;
-            }
+            // Los ajustes ya se incluyen en el calculateProductUnitPriceWithAttributes de arriba
           }
         }
       }
     }
 
     // Calcular el total: (precio base + ajustes + precios de productos-atributos) * cantidad
-    const unitPrice = basePriceWithAdjustments + productAttributesTotal;
+    const unitPrice = basePriceWithAdjustments;
     const total = unitPrice * quantity;
 
     // IMPORTANTE: Normalizar atributos para usar títulos como claves en lugar de IDs

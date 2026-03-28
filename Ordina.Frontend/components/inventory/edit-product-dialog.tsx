@@ -570,6 +570,7 @@ export function EditProductDialog({
         status: formData.status,
         sku: formData.sku,
         attributes: formData.attributes,
+        ...(product.backendId ? { backendId: product.backendId } : {}),
       });
 
       // Llamar callback para refrescar la lista

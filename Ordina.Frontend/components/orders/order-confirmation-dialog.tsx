@@ -45,7 +45,11 @@ import {
   convertFromBs,
 } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
-import { getCategories, getProducts } from "@/lib/storage";
+import {
+  getCategories,
+  getProducts,
+  resolveCatalogProductFromOrderProductId,
+} from "@/lib/storage";
 
 // Función helper para obtener el monto original del pago en su moneda
 const getOriginalPaymentAmount = (
@@ -462,13 +466,9 @@ export function OrderConfirmationDialog({
         );
         if (!category) continue;
 
-        // Obtener producto original
-        const orderProductIdNum =
-          typeof product.id === "string"
-          ? Number.parseInt(product.id) 
-          : product.id;
-        const originalProduct = allProducts.find(
-          (p) => p.id === orderProductIdNum
+        const originalProduct = resolveCatalogProductFromOrderProductId(
+          product.id,
+          allProducts
         );
         
         // Calcular precio base en Bs
