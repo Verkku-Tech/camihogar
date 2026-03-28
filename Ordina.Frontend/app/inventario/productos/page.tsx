@@ -19,7 +19,7 @@ import { ImportProductsDialog } from "@/components/inventory/import-products-dia
 import { DownloadFormatDialog } from "@/components/inventory/download-format-dialog"
 import { BulkDeleteDialog } from "@/components/inventory/bulk-delete-dialog"
 import { PermissionGuard } from "@/components/auth/permission-guard"
-import { getCategories, invalidateProductCache, type Product, type Category } from "@/lib/storage"
+import { getCategories, invalidateProductCache, productListItemDtoToProduct, type Product, type Category } from "@/lib/storage"
 import { apiClient, type ProductListItemDto, type PaginatedResultDto } from "@/lib/api-client"
 import { useCurrency } from "@/contexts/currency-context"
 import { Currency } from "@/lib/currency-utils"
@@ -160,25 +160,14 @@ export default function ProductosPage() {
     }
   }
 
-  const listItemToProduct = (product: ProductListItemDto): Product => ({
-    id: parseInt(product.id) || 0,
-    name: product.name,
-    category: product.category,
-    price: product.price,
-    priceCurrency: product.priceCurrency as Currency | undefined,
-    stock: product.stock,
-    status: product.status,
-    sku: product.sku,
-  })
-
   const handleDeleteProduct = (product: ProductListItemDto) => {
-    setSelectedProduct(listItemToProduct(product))
+    setSelectedProduct(productListItemDtoToProduct(product))
     setSelectedBackendId(product.id)
     setShowDeleteDialog(true)
   }
 
   const handleEditProduct = (product: ProductListItemDto) => {
-    setSelectedProduct(listItemToProduct(product))
+    setSelectedProduct(productListItemDtoToProduct(product))
     setSelectedBackendId(product.id)
     setShowEditDialog(true)
   }
