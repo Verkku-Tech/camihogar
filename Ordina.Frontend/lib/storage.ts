@@ -1,11 +1,15 @@
 import * as db from "./indexeddb";
 import type { Currency } from "./currency-utils";
+import { normalizeExchangeRatesAtCreation } from "./currency-utils";
 import { apiClient } from "./api-client";
+import { generateUUID } from "./utils";
+
 import type {
   CategoryResponseDto,
   CreateCategoryDto,
   UpdateCategoryDto,
   ProductResponseDto,
+  ProductListItemDto,
   CreateProductDto,
   UpdateProductDto,
   UserResponseDto,
@@ -34,7 +38,10 @@ export interface AttributeValue {
   isDefault?: boolean;
   priceAdjustment?: number; // positive for increase, negative for decrease
   priceAdjustmentCurrency?: Currency; // Moneda del ajuste de precio
-  productId?: number; // ID del producto cuando valueType es "Product"
+  /** ID numérico del frontend (hash de ObjectId); puede quedar desfasado si solo existía productId corrupto en API */
+  productId?: number;
+  /** ObjectId del producto en el backend; fuente de verdad para atributos tipo Product */
+  productBackendId?: string;
 }
 
 export interface Category {
@@ -60,6 +67,7 @@ export interface Category {
 
 export interface Product {
   id: number;
+  backendId?: string;
   name: string;
   category: string;
   price: number;
@@ -108,7 +116,7 @@ const categoryFromDB = (categoryDB: CategoryDB): Category => ({
 
 // Helper para convertir string ID del backend a number ID del frontend
 // Usa un hash simple para generar un ID numérico consistente
-const backendIdToNumber = (backendId: string): number => {
+export const backendIdToNumber = (backendId: string): number => {
   // Si el string ID puede parsearse como número COMPLETO (sin caracteres adicionales), usarlo directamente
   const parsed = Number.parseInt(backendId);
   // Verificar que el parseo fue exacto (sin caracteres sobrantes)
@@ -133,6 +141,73 @@ const backendIdToNumber = (backendId: string): number => {
   return hashValue > 1000000 ? hashValue : hashValue + 1000000;
 };
 
+function attributeValueProductIdForBackend(val: AttributeValue): string | undefined {
+  const b = val.productBackendId?.trim();
+  if (b) return b;
+  if (val.productId != null) return String(val.productId);
+  return undefined;
+}
+
+function mapAttributeValueFromBackendDto(val: {
+  id: string;
+  label: string;
+  isDefault?: boolean;
+  priceAdjustment?: number;
+  priceAdjustmentCurrency?: string;
+  productId?: string | null;
+}): AttributeValue {
+  const rawStr =
+    val.productId != null && String(val.productId).trim() !== ""
+      ? String(val.productId).trim()
+      : "";
+  const isMongo24 = /^[a-f0-9]{24}$/i.test(rawStr);
+  return {
+    id: val.id,
+    label: val.label,
+    isDefault: val.isDefault,
+    priceAdjustment: val.priceAdjustment,
+    priceAdjustmentCurrency: val.priceAdjustmentCurrency as Currency | undefined,
+    productBackendId: rawStr || undefined,
+    productId: rawStr
+      ? isMongo24
+        ? backendIdToNumber(rawStr)
+        : /^\d+$/.test(rawStr)
+          ? Number.parseInt(rawStr, 10)
+          : undefined
+      : undefined,
+  };
+}
+
+/** Resuelve el producto de catálogo vinculado a un valor de atributo tipo Product. */
+export function resolveProductFromAttributeValue(
+  val: AttributeValue,
+  productsMap: Map<number, Product>,
+  allProducts: Product[]
+): Product | undefined {
+  const rawBackend = val.productBackendId?.trim();
+  if (rawBackend) {
+    if (/^[a-f0-9]{24}$/i.test(rawBackend)) {
+      const numeric = backendIdToNumber(rawBackend);
+      const byNum = productsMap.get(numeric);
+      if (byNum) return byNum;
+    }
+    const byBackend = allProducts.find((p) => p.backendId === rawBackend);
+    if (byBackend) return byBackend;
+  }
+  if (val.productId != null) {
+    const byId = productsMap.get(val.productId);
+    if (byId) return byId;
+  }
+  const label = val.label?.trim().toLowerCase();
+  if (label) {
+    const matches = allProducts.filter(
+      (p) => p.name.trim().toLowerCase() === label
+    );
+    if (matches.length === 1) return matches[0];
+  }
+  return undefined;
+}
+
 // Helper functions para mapear entre frontend y backend
 const categoryToBackendDto = (
   category: Omit<Category, "id">
@@ -155,7 +230,9 @@ const categoryToBackendDto = (
               isDefault: val.isDefault,
               priceAdjustment: val.priceAdjustment,
               priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-              productId: val.productId?.toString(),
+              ...(attributeValueProductIdForBackend(val)
+                ? { productId: attributeValueProductIdForBackend(val)! }
+                : {}),
             }
         )
         : [],
@@ -216,16 +293,7 @@ const categoryFromBackendDto = (dto: CategoryResponseDto): Category => ({
     minValue: attr.minValue,
     maxValue: attr.maxValue,
     required: attr.required !== undefined ? attr.required : true, // Por defecto true si no existe
-    values: attr.values.map((val) => ({
-      id: val.id,
-      label: val.label,
-      isDefault: val.isDefault,
-      priceAdjustment: val.priceAdjustment,
-      priceAdjustmentCurrency: val.priceAdjustmentCurrency as
-        | Currency
-        | undefined,
-      productId: val.productId ? backendIdToNumber(val.productId) : undefined,
-    })),
+    values: attr.values.map((val) => mapAttributeValueFromBackendDto(val)),
   })),
 });
 
@@ -697,7 +765,11 @@ export const updateCategory = async (
                           priceAdjustment: val.priceAdjustment,
                           priceAdjustmentCurrency:
                             val.priceAdjustmentCurrency,
-                          productId: val.productId?.toString(),
+                          ...(attributeValueProductIdForBackend(val)
+                            ? {
+                                productId: attributeValueProductIdForBackend(val)!,
+                              }
+                            : {}),
                         }
                     )
                     : [],
@@ -791,7 +863,11 @@ export const updateCategory = async (
                               priceAdjustment: val.priceAdjustment,
                               priceAdjustmentCurrency:
                                 val.priceAdjustmentCurrency,
-                              productId: val.productId?.toString(),
+                              ...(attributeValueProductIdForBackend(val)
+                                ? {
+                                    productId: attributeValueProductIdForBackend(val)!,
+                                  }
+                                : {}),
                             }
                         )
                         : [],
@@ -865,7 +941,11 @@ export const updateCategory = async (
                       isDefault: val.isDefault,
                       priceAdjustment: val.priceAdjustment,
                       priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-                      productId: val.productId?.toString(),
+                      ...(attributeValueProductIdForBackend(val)
+                        ? {
+                            productId: attributeValueProductIdForBackend(val)!,
+                          }
+                        : {}),
                     }
                 )
                 : [],
@@ -981,6 +1061,7 @@ export const deleteCategory = async (id: number): Promise<void> => {
 // Helper para convertir Product con id number a formato IndexedDB (id string)
 interface ProductDB {
   id: string;
+  backendId?: string;
   name: string;
   category: string;
   price: number;
@@ -999,6 +1080,7 @@ const productToDB = (product: Product): ProductDB => ({
 const productFromDB = (productDB: ProductDB): Product => ({
   ...productDB,
   id: Number.parseInt(productDB.id),
+  backendId: productDB.backendId,
 });
 
 // Helper functions para mapear productos entre frontend y backend
@@ -1041,6 +1123,7 @@ const productToBackendDto = async (
 
 const productFromBackendDto = (dto: ProductResponseDto): Product => ({
   id: backendIdToNumber(dto.id),
+  backendId: dto.id,
   name: dto.name,
   category: dto.category || "", // El backend devuelve el nombre de la categoría en 'category'
   price: dto.price,
@@ -1049,6 +1132,19 @@ const productFromBackendDto = (dto: ProductResponseDto): Product => ({
   status: dto.status,
   sku: dto.sku || "", // El DTO tiene 'sku' en minúsculas
   attributes: dto.attributes,
+});
+
+/** Misma regla que productFromBackendDto: nunca parseInt(ObjectId). */
+export const productListItemDtoToProduct = (dto: ProductListItemDto): Product => ({
+  id: backendIdToNumber(dto.id),
+  backendId: dto.id,
+  name: dto.name,
+  category: dto.category,
+  price: dto.price,
+  priceCurrency: dto.priceCurrency as Currency | undefined,
+  stock: dto.stock,
+  status: dto.status,
+  sku: dto.sku || "",
 });
 
 const PRODUCT_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
@@ -1070,20 +1166,21 @@ export const getProducts = async (forceSync = false): Promise<Product[]> => {
 
         const productsMap = new Map<string, Product>();
 
+        const mergeKey = (p: Product): string =>
+          p.sku && String(p.sku).trim() !== ""
+            ? String(p.sku).trim()
+            : `__id_${p.id}`;
+
         for (const product of localProducts) {
-          if (product.sku) {
-            productsMap.set(product.sku, product);
-          }
+          productsMap.set(mergeKey(product), product);
         }
 
         for (const product of backendProductsMapped) {
-          if (product.sku) {
-            productsMap.set(product.sku, product);
-            try {
-              await db.update("products", productToDB(product));
-            } catch {
-              await db.add("products", productToDB(product));
-            }
+          productsMap.set(mergeKey(product), product);
+          try {
+            await db.update("products", productToDB(product));
+          } catch {
+            await db.add("products", productToDB(product));
           }
         }
 
@@ -1122,6 +1219,42 @@ export const getProduct = async (id: number): Promise<Product | undefined> => {
     return undefined;
   }
 };
+
+export const getProductByBackendId = async (
+  backendId: string
+): Promise<Product | undefined> => {
+  const trimmed = backendId?.trim();
+  if (!trimmed) return undefined;
+  try {
+    const productsDB = await db.getAll<ProductDB>("products");
+    const byField = productsDB.find((p) => p.backendId === trimmed);
+    if (byField) return productFromDB(byField);
+    return await getProduct(backendIdToNumber(trimmed));
+  } catch (error) {
+    console.error("Error loading product by backendId from IndexedDB:", error);
+    return undefined;
+  }
+};
+
+/** orderProduct.id suele ser ObjectId string; evitar Number.parseInt sobre hex. */
+export function resolveCatalogProductFromOrderProductId(
+  orderProductId: string,
+  allProducts: Product[]
+): Product | undefined {
+  const trimmed = orderProductId?.trim() ?? "";
+  if (!trimmed) return undefined;
+  if (/^[a-f0-9]{24}$/i.test(trimmed)) {
+    const byBackend = allProducts.find((p) => p.backendId === trimmed);
+    if (byBackend) return byBackend;
+    const numId = backendIdToNumber(trimmed);
+    return allProducts.find((p) => p.id === numId);
+  }
+  if (/^\d+$/.test(trimmed)) {
+    const n = Number.parseInt(trimmed, 10);
+    return allProducts.find((p) => p.id === n);
+  }
+  return undefined;
+}
 
 export const getProductsByCategory = async (
   category: string
@@ -1228,7 +1361,10 @@ export const updateProduct = async (
   id: number,
   updates: Partial<Product>
 ): Promise<Product> => {
-  const existingProduct = await getProduct(id);
+  let existingProduct = await getProduct(id);
+  if (!existingProduct && updates.backendId) {
+    existingProduct = await getProductByBackendId(updates.backendId);
+  }
   if (!existingProduct) {
     throw new Error(`Product with id ${id} not found`);
   }
@@ -1374,7 +1510,7 @@ export const updateProduct = async (
         await syncManager.addToQueue({
           type: "update",
           entity: "product",
-          entityId: id.toString(),
+          entityId: existingProduct.id.toString(),
           data: updateDto,
         });
         console.log("✅ Producto encolado para sincronización");
@@ -1503,7 +1639,7 @@ export interface OrderProduct {
   refabricatedAt?: string; // Fecha de última refabricación (ISO string)
   refabricationHistory?: RefabricationRecord[]; // Historial de refabricaciones
   // Estado de ubicación del producto
-  locationStatus?: "SIN DEFINIR" | "EN TIENDA" | "FABRICACION" | "DESPACHADO"; // Estado de ubicación
+  locationStatus?: "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | "EN DESPACHO" | "DESPACHADO"; // Estado de ubicación
 }
 
 export interface PartialPayment {
@@ -1528,6 +1664,7 @@ export interface PartialPayment {
     cashCurrency?: "Bs" | "USD" | "EUR"; // Moneda del pago en efectivo
     cashReceived?: number; // Monto recibido del cliente
     exchangeRate?: number; // Tasa de cambio usada al momento del pago
+    useCustomRate?: boolean; // Indica si se usó una tasa personalizada/manual
     // Para Pago Móvil y Transferencia
     originalAmount?: number; // Monto original en la moneda del pago
     originalCurrency?: "Bs" | "USD" | "EUR"; // Moneda original del pago
@@ -1584,6 +1721,7 @@ export interface Order {
     cashCurrency?: "Bs" | "USD" | "EUR"; // Moneda del pago en efectivo
     cashReceived?: number; // Monto recibido del cliente
     exchangeRate?: number; // Tasa de cambio usada al momento del pago
+    useCustomRate?: boolean; // Indica si se usó una tasa personalizada/manual
     // Para Pago Móvil y Transferencia
     originalAmount?: number; // Monto original en la moneda del pago
     originalCurrency?: "Bs" | "USD" | "EUR"; // Moneda original del pago
@@ -1762,8 +1900,9 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       // Normalizar valores antiguos a nuevos
       if (p.locationStatus === "en_tienda") return "EN TIENDA" as const
       if (p.locationStatus === "mandar_a_fabricar") return "FABRICACION" as const
-      if (!p.locationStatus || p.locationStatus === "") return "SIN DEFINIR" as const
-      return (p.locationStatus as "SIN DEFINIR" | "EN TIENDA" | "FABRICACION" | undefined) ?? "SIN DEFINIR"
+      if (p.locationStatus === "SIN DEFINIR") return "DISPONIBILIDAD INMEDIATA" as const
+      if (!p.locationStatus || p.locationStatus === "") return "DISPONIBILIDAD INMEDIATA" as const
+      return (p.locationStatus as "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | undefined) ?? "DISPONIBILIDAD INMEDIATA"
     })(),
   })),
   subtotal: dto.subtotal,
@@ -1874,6 +2013,13 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   saleType: dto.saleType as Order["saleType"],
   deliveryType: dto.deliveryType as Order["deliveryType"],
   deliveryZone: dto.deliveryZone as Order["deliveryZone"],
+  deliveryServices: dto.deliveryServices,
+  exchangeRatesAtCreation: normalizeExchangeRatesAtCreation(
+    dto.exchangeRatesAtCreation
+  ),
+  baseCurrency: dto.baseCurrency,
+  dispatchDate: dto.dispatchDate,
+  completedAt: dto.completedAt,
 });
 
 export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">): CreateOrderDto => ({
@@ -2027,9 +2173,23 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
  * 3. Si nunca se ha sincronizado o han pasado >24h, hace sync completa
  * 4. En otros casos, hace sync incremental (solo pedidos modificados)
  * 
- * @param forceFullSync Forzar sincronización completa (útil para refresh manual)
+ * @param optionsOrForceFull `true` = sync completa (compat); o `{ forceFullSync?, refreshFromBackend? }`. Con `refreshFromBackend: true` e internet se ignora el throttle de 30s.
  */
-export const getOrders = async (forceFullSync: boolean = false): Promise<Order[]> => {
+export type GetOrdersOptions = {
+  forceFullSync?: boolean;
+  refreshFromBackend?: boolean;
+};
+
+export const getOrders = async (
+  optionsOrForceFull?: boolean | GetOrdersOptions
+): Promise<Order[]> => {
+  const opts: GetOrdersOptions =
+    typeof optionsOrForceFull === "boolean"
+      ? { forceFullSync: optionsOrForceFull }
+      : optionsOrForceFull ?? {};
+  const forceFullSync = opts.forceFullSync ?? false;
+  const refreshFromBackend = opts.refreshFromBackend ?? false;
+
   try {
     // 1. Cargar siempre órdenes locales desde IndexedDB primero (offline-first)
     const localOrders = await db.getAll<Order>("orders");
@@ -2042,7 +2202,7 @@ export const getOrders = async (forceFullSync: boolean = false): Promise<Order[]
 
     // 3. Verificar si debemos sincronizar (evitar sincronizaciones muy frecuentes)
     const needsSync = await shouldSync("orders");
-    if (!needsSync && !forceFullSync) {
+    if (!needsSync && !forceFullSync && !refreshFromBackend) {
       console.log(`⏳ Sync de órdenes omitida (muy reciente). Usando ${localOrders.length} locales.`);
       return localOrders;
     }
@@ -2133,6 +2293,36 @@ export const getOrders = async (forceFullSync: boolean = false): Promise<Order[]
   } catch (error) {
     console.error("Error loading orders from IndexedDB:", error);
     return [];
+  }
+};
+
+/**
+ * Con conexión: GET al backend por número, persiste en IndexedDB y devuelve el pedido (fuente de verdad).
+ * Sin conexión o si falla el API: último dato local por orderNumber.
+ */
+export const getOrderByOrderNumberPreferBackend = async (
+  orderNumber: string
+): Promise<Order | undefined> => {
+  const localFallback = async (): Promise<Order | undefined> => {
+    const orders = await db.getAll<Order>("orders");
+    return orders.find((o) => o.orderNumber === orderNumber);
+  };
+
+  if (!isOnline()) {
+    return localFallback();
+  }
+
+  try {
+    const dto = await apiClient.getOrderByOrderNumber(orderNumber);
+    const order = orderFromBackendDto(dto);
+    await db.put("orders", order);
+    return order;
+  } catch (error) {
+    console.warn(
+      `⚠️ No se pudo obtener el pedido ${orderNumber} desde el backend, usando IndexedDB:`,
+      error
+    );
+    return localFallback();
   }
 };
 
@@ -2653,6 +2843,7 @@ export interface UnifiedOrder {
   saleType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado";
   deliveryType?: "entrega_programada" | "delivery_express" | "retiro_tienda" | "retiro_almacen";
   deliveryZone?: "caracas" | "g_g" | "san_antonio_los_teques" | "caucagua_higuerote" | "la_guaira" | "charallave_cua" | "interior_pais";
+  deliveryServices?: Order["deliveryServices"];
   dispatchDate?: string; // Fecha de despacho
   completedAt?: string; // Fecha de completado
   partialPayments?: PartialPayment[]; // Para mostrar saldo pendiente / debe en USD en listados
@@ -2697,6 +2888,7 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       saleType: order.saleType,
       deliveryType: order.deliveryType,
       deliveryZone: order.deliveryZone,
+      deliveryServices: order.deliveryServices,
       dispatchDate: order.dispatchDate,
       completedAt: order.completedAt,
       partialPayments: order.partialPayments,
@@ -3834,7 +4026,9 @@ export const calculateProductTotalWithAttributes = (
   quantity: number,
   productAttributes: Record<string, string | number | string[]> | undefined,
   category: Category | undefined,
-  exchangeRates?: { USD?: any; EUR?: any }
+  exchangeRates?: { USD?: any; EUR?: any },
+  allProducts: Product[] = [],
+  categories: Category[] = []
 ): number => {
   if (!productAttributes || !category || !category.attributes) {
     return basePrice * quantity;
@@ -3853,11 +4047,6 @@ export const calculateProductTotalWithAttributes = (
       return;
     }
 
-    // Omitir atributos de tipo "Product" - estos se calculan por separado con el precio completo
-    if (categoryAttribute.valueType === "Product") {
-      return;
-    }
-
     // Función helper para convertir ajuste a Bs
     const convertAdjustment = (
       adjustment: number,
@@ -3872,6 +4061,42 @@ export const calculateProductTotalWithAttributes = (
       }
       return adjustment; // Si no hay tasa, usar valor original
     };
+
+    // Manejar atributos de tipo "Product"
+    if (categoryAttribute.valueType === "Product") {
+      const processProductPrice = (productId: any) => {
+        const productIdNum = typeof productId === "number" ? productId : parseInt(productId);
+        
+        // Intentar buscar el producto real para sumar su precio base y sus propios atributos
+        const foundProduct = allProducts.find(p => p.id === productIdNum || p.backendId === productId.toString());
+        if (foundProduct) {
+          // Convertir precio del producto a Bs
+          let pPrice = foundProduct.price;
+          if (foundProduct.priceCurrency && foundProduct.priceCurrency !== "Bs" && exchangeRates) {
+            if (foundProduct.priceCurrency === "USD" && exchangeRates.USD?.rate) pPrice *= exchangeRates.USD.rate;
+            else if (foundProduct.priceCurrency === "EUR" && exchangeRates.EUR?.rate) pPrice *= exchangeRates.EUR.rate;
+          }
+          totalAdjustment += pPrice;
+
+          // Sumar ajustes de los atributos del sub-producto si están presentes en productAttributes
+          const subAttrKey = `${attrKey}_${foundProduct.id}`;
+          const subAttrs = (productAttributes as any)[subAttrKey];
+          if (subAttrs) {
+            const subCategory = categories.find(c => c.name === foundProduct.category);
+            if (subCategory) {
+              totalAdjustment += calculateProductUnitPriceWithAttributes(0, subAttrs, subCategory, exchangeRates, allProducts, categories);
+            }
+          }
+        }
+      };
+
+      if (Array.isArray(selectedValue)) {
+        selectedValue.forEach(processProductPrice);
+      } else if (selectedValue) {
+        processProductPrice(selectedValue);
+      }
+      return;
+    }
 
     // Manejar arrays para selección múltiple
     if (Array.isArray(selectedValue)) {
@@ -3932,7 +4157,9 @@ export const calculateProductUnitPriceWithAttributes = (
   basePrice: number,
   productAttributes: Record<string, string | number | string[]> | undefined,
   category: Category | undefined,
-  exchangeRates?: { USD?: any; EUR?: any }
+  exchangeRates?: { USD?: any; EUR?: any },
+  allProducts: Product[] = [],
+  categories: Category[] = []
 ): number => {
   if (!productAttributes || !category || !category.attributes) {
     return basePrice;
@@ -3961,8 +4188,39 @@ export const calculateProductUnitPriceWithAttributes = (
       return;
     }
 
-    // Omitir atributos de tipo "Product" - estos se calculan por separado con el precio completo
+    // Manejar atributos de tipo "Product"
     if (categoryAttribute.valueType === "Product") {
+      const processProductPrice = (productId: any) => {
+        const productIdNum = typeof productId === "number" ? productId : parseInt(productId);
+        
+        // Intentar buscar el producto real para sumar su precio base y sus propios atributos
+        const foundProduct = allProducts.find(p => p.id === productIdNum || p.backendId === productId.toString());
+        if (foundProduct) {
+          // Convertir precio del producto a Bs
+          let pPrice = foundProduct.price;
+          if (foundProduct.priceCurrency && foundProduct.priceCurrency !== "Bs" && exchangeRates) {
+            if (foundProduct.priceCurrency === "USD" && exchangeRates.USD?.rate) pPrice *= exchangeRates.USD.rate;
+            else if (foundProduct.priceCurrency === "EUR" && exchangeRates.EUR?.rate) pPrice *= exchangeRates.EUR.rate;
+          }
+          totalAdjustment += pPrice;
+
+          // Sumar ajustes de los atributos del sub-producto si están presentes en productAttributes
+          const subAttrKey = `${attrKey}_${foundProduct.id}`;
+          const subAttrs = (productAttributes as any)[subAttrKey];
+          if (subAttrs) {
+            const subCategory = categories.find(c => c.name === foundProduct.category);
+            if (subCategory) {
+              totalAdjustment += calculateProductUnitPriceWithAttributes(0, subAttrs, subCategory, exchangeRates, allProducts, categories);
+            }
+          }
+        }
+      };
+
+      if (Array.isArray(selectedValue)) {
+        selectedValue.forEach(processProductPrice);
+      } else if (selectedValue) {
+        processProductPrice(selectedValue);
+      }
       return;
     }
 
@@ -4242,7 +4500,7 @@ export const addCommission = async (commission: Omit<Commission, "id" | "created
   try {
     const newCommission: Commission = {
       ...commission,
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

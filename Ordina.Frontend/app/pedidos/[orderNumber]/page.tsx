@@ -20,13 +20,14 @@ import {
   AlertCircle,
 } from "lucide-react";
 import {
-  getOrders,
+  getOrderByOrderNumberPreferBackend,
   getClient,
   type Order,
   type PartialPayment,
   type Client,
   getCategories,
   getProducts,
+  resolveCatalogProductFromOrderProductId,
   type Product,
   type Category,
   type OrderProduct,
@@ -515,8 +516,8 @@ export default function OrderDetailPage() {
         setCategories(loadedCategories);
         setAllProducts(loadedProducts);
 
-        const orders = await getOrders();
-        const foundOrder = orders.find((o) => o.orderNumber === orderNumber);
+        const foundOrder =
+          await getOrderByOrderNumberPreferBackend(orderNumber);
 
         if (!foundOrder) {
           // Redirigir si no se encuentra
@@ -896,14 +897,9 @@ export default function OrderDetailPage() {
         );
         if (!category) continue;
 
-        // Obtener producto original para precio base
-        // Convertir orderProduct.id (string) a número para la comparación
-        const orderProductIdNum =
-          typeof orderProduct.id === "string"
-            ? Number.parseInt(orderProduct.id)
-            : orderProduct.id;
-        const originalProduct = allProducts.find(
-          (p) => p.id === orderProductIdNum
+        const originalProduct = resolveCatalogProductFromOrderProductId(
+          orderProduct.id,
+          allProducts
         );
 
         // Calcular precio base en Bs (usar precio original del producto, no el convertido)
@@ -1332,7 +1328,7 @@ export default function OrderDetailPage() {
                               {/* Estado de ubicación */}
                               <div className="mb-3 pb-3 border-b">
                                 {(() => {
-                                  let badgeText = "Sin definir";
+                                  let badgeText = "Disponibilidad Inmediata";
                                   let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "secondary";
                                   let badgeClassName = "text-sm";
 

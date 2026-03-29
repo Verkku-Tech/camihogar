@@ -1873,9 +1873,15 @@ export interface OrderResponseDto {
   deliveryType?: string;
   deliveryZone?: string;
   exchangeRatesAtCreation?: {
-    USD?: { rate: number; effectiveDate: string };
-    EUR?: { rate: number; effectiveDate: string };
+    USD?: { rate: number; effectiveDate: string } | null;
+    EUR?: { rate: number; effectiveDate: string } | null;
+    /** Algunos backends serializan en camelCase/minúsculas */
+    usd?: { rate: number; effectiveDate: string } | null;
+    eur?: { rate: number; effectiveDate: string } | null;
   };
+  baseCurrency?: "Bs" | "USD" | "EUR";
+  dispatchDate?: string;
+  completedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -1947,8 +1953,10 @@ export interface CreateOrderDto {
   deliveryType?: string;
   deliveryZone?: string;
   exchangeRatesAtCreation?: {
-    USD?: { rate: number; effectiveDate: string };
-    EUR?: { rate: number; effectiveDate: string };
+    USD?: { rate: number; effectiveDate: string } | null;
+    EUR?: { rate: number; effectiveDate: string } | null;
+    usd?: { rate: number; effectiveDate: string } | null;
+    eur?: { rate: number; effectiveDate: string } | null;
   };
 }
 
@@ -1999,8 +2007,10 @@ export interface UpdateOrderDto {
   deliveryType?: string;
   deliveryZone?: string;
   exchangeRatesAtCreation?: {
-    USD?: { rate: number; effectiveDate: string };
-    EUR?: { rate: number; effectiveDate: string };
+    USD?: { rate: number; effectiveDate: string } | null;
+    EUR?: { rate: number; effectiveDate: string } | null;
+    usd?: { rate: number; effectiveDate: string } | null;
+    eur?: { rate: number; effectiveDate: string } | null;
   };
 }
 

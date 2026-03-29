@@ -14,6 +14,53 @@ export interface ExchangeRate {
   updatedAt: string;
 }
 
+/** Tasas al crear pedido/presupuesto (forma estable en la app) */
+export type ExchangeRatesAtCreationNormalized = {
+  USD?: { rate: number; effectiveDate: string };
+  EUR?: { rate: number; effectiveDate: string };
+};
+
+/** Payload API/backend puede usar USD/EUR o usd/eur */
+export type ExchangeRatesAtCreationRaw =
+  | {
+      USD?: { rate: number; effectiveDate: string } | null;
+      EUR?: { rate: number; effectiveDate: string } | null;
+      usd?: { rate: number; effectiveDate: string } | null;
+      eur?: { rate: number; effectiveDate: string } | null;
+    }
+  | null
+  | undefined;
+
+/**
+ * Unifica claves usd/eur y USD/EUR a la forma { USD, EUR } usada en el frontend.
+ */
+export function normalizeExchangeRatesAtCreation(
+  raw: ExchangeRatesAtCreationRaw
+): ExchangeRatesAtCreationNormalized | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, { rate?: number; effectiveDate?: string } | null | undefined>;
+  const usd = r.USD ?? r.usd;
+  const eur = r.EUR ?? r.eur;
+  const out: ExchangeRatesAtCreationNormalized = {};
+  if (
+    usd &&
+    typeof usd.rate === "number" &&
+    usd.rate > 0 &&
+    typeof usd.effectiveDate === "string"
+  ) {
+    out.USD = { rate: usd.rate, effectiveDate: usd.effectiveDate };
+  }
+  if (
+    eur &&
+    typeof eur.rate === "number" &&
+    eur.rate > 0 &&
+    typeof eur.effectiveDate === "string"
+  ) {
+    out.EUR = { rate: eur.rate, effectiveDate: eur.effectiveDate };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 // Obtener la tasa de cambio más reciente para una moneda
 export const getLatestExchangeRate = async (
   toCurrency: "USD" | "EUR"
@@ -193,15 +240,18 @@ export const convertAttributeAdjustmentToBs = async (
  */
 export const formatCurrencyWithUsdPrimaryFromOrder = async (
   amountInBs: number,
-  orderOrBudget?: { exchangeRatesAtCreation?: { USD?: { rate: number; effectiveDate: string } } },
+  orderOrBudget?: {
+    exchangeRatesAtCreation?: ExchangeRatesAtCreationNormalized | ExchangeRatesAtCreationRaw;
+  },
   fallbackRates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
 ): Promise<string> => {
   let usdRate: number | null = null;
 
-  // PRIORIDAD 1: Usar la tasa del pedido/presupuesto (más confiable)
-  if (orderOrBudget?.exchangeRatesAtCreation?.USD?.rate &&
-    orderOrBudget.exchangeRatesAtCreation.USD.rate > 0) {
-    usdRate = orderOrBudget.exchangeRatesAtCreation.USD.rate;
+  const fromOrder = normalizeExchangeRatesAtCreation(
+    orderOrBudget?.exchangeRatesAtCreation as ExchangeRatesAtCreationRaw
+  );
+  if (fromOrder?.USD?.rate && fromOrder.USD.rate > 0) {
+    usdRate = fromOrder.USD.rate;
   }
 
   // PRIORIDAD 2: Usar tasas activas actuales si no hay tasa del pedido

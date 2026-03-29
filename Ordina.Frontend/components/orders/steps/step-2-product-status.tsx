@@ -29,11 +29,57 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
   // includeNameForNumeric: si es true, para atributos numéricos incluye el nombre del atributo
   const getAttributeValueLabel = (
     selectedValue: any,
-    categoryAttribute: { valueType?: string; values?: (string | AttributeValue)[]; title?: string } | undefined,
+    categoryAttribute: { id?: any; valueType?: string; values?: (string | AttributeValue)[]; title?: string } | undefined,
+    allAttributes: Record<string, any> = {},
+    allProducts: any[] = [],
+    categories: any[] = [],
     includeNameForNumeric: boolean = true
   ): string => {
     if (!categoryAttribute) {
-      return String(selectedValue);
+      return "";
+    }
+
+    // Si es un atributo de tipo Producto
+    if (categoryAttribute.valueType === "Product") {
+      const processProduct = (productId: any) => {
+        const productIdNum = typeof productId === "number" ? productId : parseInt(productId);
+        const foundProduct = allProducts.find(p => p.id === productIdNum || p.backendId === productId.toString());
+        
+        if (!foundProduct) return String(productId);
+        
+        let label = foundProduct.name;
+        
+        // Buscar si hay atributos hijos para este producto: "NombreAtributo_IDProducto"
+        const subAttrKey = `${categoryAttribute.title || categoryAttribute.id}_${foundProduct.id}`;
+        const subAttrs = allAttributes[subAttrKey];
+        
+        if (subAttrs && typeof subAttrs === "object" && !Array.isArray(subAttrs)) {
+          const subCategory = categories.find(c => c.name === foundProduct.category);
+          if (subCategory && subCategory.attributes) {
+            const subLabels = Object.entries(subAttrs).map(([subKey, subVal]) => {
+              const subAttrDef = subCategory.attributes.find((a: any) => a.id?.toString() === subKey || a.title === subKey);
+              if (subAttrDef) {
+                // Llamada recursiva para obtener el label del sub-atributo
+                return getAttributeValueLabel(subVal, subAttrDef, {}, allProducts, categories, true);
+              }
+              return "";
+            }).filter(l => l !== "");
+            
+            if (subLabels.length > 0) {
+              label += ` (${subLabels.join(", ")})`;
+            }
+          }
+        }
+        
+        return label;
+      };
+
+      if (Array.isArray(selectedValue)) {
+        return selectedValue.map(processProduct).join(", ");
+      } else if (selectedValue) {
+        return processProduct(selectedValue);
+      }
+      return "";
     }
 
     // Si es un atributo numérico, mostrar nombre + valor (ej: "Patas 3")
@@ -125,8 +171,8 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
                     <div className="w-full sm:w-48">
                       <Label>Estado de Ubicación</Label>
                       <Select
-                        value={product.locationStatus ?? "SIN DEFINIR"}
-                        onValueChange={(value: "SIN DEFINIR" | "EN TIENDA" | "FABRICACION") => {
+                        value={product.locationStatus ?? "DISPONIBILIDAD INMEDIATA"}
+                        onValueChange={(value: "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION") => {
                           orderForm.setSelectedProducts((products) =>
                             products.map((p) =>
                               p.id === product.id
@@ -140,9 +186,16 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
                           <SelectValue placeholder="Seleccionar estado" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="SIN DEFINIR">SIN DEFINIR</SelectItem>
-                          <SelectItem value="EN TIENDA">EN TIENDA</SelectItem>
-                          <SelectItem value="FABRICACION">FABRICACION</SelectItem>
+                          <SelectItem value="DISPONIBILIDAD INMEDIATA">Disponibilidad Inmediata</SelectItem>
+                          <SelectItem value="EN TIENDA">En Tienda</SelectItem>
+                          <SelectItem value="FABRICACION">Fabricación</SelectItem>
+                          {/* Solo mostrar estatus avanzados si el producto YA los tiene, para no romper el Select al editar un pedido viejo */}
+                          {product.locationStatus === "EN DESPACHO" && (
+                            <SelectItem value="EN DESPACHO">En Despacho / En Ruta</SelectItem>
+                          )}
+                          {product.locationStatus === "DESPACHADO" && (
+                            <SelectItem value="DESPACHADO">Despachado / Entregado</SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
@@ -153,16 +206,26 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
                     <div className="space-y-2 pt-4 border-t">
                       <p className="text-sm font-medium">Atributos</p>
                       <div className="text-sm">
-                        {Object.entries(product.attributes)
-                          .map(([key, value]) => {
-                            const categoryAttribute = category?.attributes?.find(
-                              (attr) => attr.id?.toString() === key || attr.title === key
-                            );
-                            const valueLabel = getAttributeValueLabel(value, categoryAttribute);
-                            return valueLabel || "-";
-                          })
-                          .filter((label) => label !== "-")
-                          .join(" + ")}
+                         {Object.entries(product.attributes)
+                           .map(([key, value]) => {
+                             // Omitir claves que son sub-atributos (contienen _) ya que se procesan recursivamente
+                             if (key.includes("_")) return "-";
+
+                             const categoryAttribute = category?.attributes?.find(
+                               (attr) => attr.id?.toString() === key || attr.title === key
+                             );
+                             
+                             const valueLabel = getAttributeValueLabel(
+                               value, 
+                               categoryAttribute, 
+                               product.attributes, 
+                               orderForm.allProducts,
+                               orderForm.categories
+                             );
+                             return valueLabel || "-";
+                           })
+                           .filter((label) => label !== "-")
+                           .join(" + ")}
                       </div>
                     </div>
                   )}

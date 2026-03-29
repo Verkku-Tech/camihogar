@@ -10,6 +10,7 @@ import {
   getProducts,
   getAccounts,
   calculateProductUnitPriceWithAttributes,
+  resolveProductFromAttributeValue,
   type OrderProduct,
   type PartialPayment,
   type Vendor,
@@ -471,89 +472,15 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
         return product.total + markup;
       }
 
-      // Calcular el precio base con ajustes normales
-      const basePriceWithAdjustments = calculateProductUnitPriceWithAttributes(
+      // Calcular el precio base con todos los ajustes (incluyendo productos-atributos y sus sub-atributos)
+      const unitPrice = calculateProductUnitPriceWithAttributes(
         product.price,
         product.attributes,
         category,
-        exchangeRates
+        exchangeRates,
+        allProducts,
+        categories
       );
-
-      // Sumar precios de productos cuando son atributos
-      let productAttributesTotal = 0;
-
-      if (allProducts.length > 0) {
-        const productsMap = new Map<number, Product>();
-        allProducts.forEach((p) => productsMap.set(p.id, p));
-
-        for (const attribute of category.attributes || []) {
-          if (
-            attribute.valueType === "Product" &&
-            attribute.values &&
-            attribute.values.length > 0
-          ) {
-            const attrId = attribute.id?.toString() || attribute.title;
-
-            for (const value of attribute.values) {
-              const attrValue =
-                typeof value === "string"
-                  ? { id: "", label: value, productId: undefined }
-                  : (value as AttributeValue);
-
-              if (attrValue.productId) {
-                const foundProduct = productsMap.get(attrValue.productId);
-                if (foundProduct) {
-                  const productPrice = foundProduct.price;
-                  const productCurrency = foundProduct.priceCurrency || "Bs";
-
-                  let productPriceInBs = productPrice;
-                  if (productCurrency !== "Bs") {
-                    if (productCurrency === "USD" && exchangeRates?.USD?.rate) {
-                      productPriceInBs = productPrice * exchangeRates.USD.rate;
-                    } else if (
-                      productCurrency === "EUR" &&
-                      exchangeRates?.EUR?.rate
-                    ) {
-                      productPriceInBs = productPrice * exchangeRates.EUR.rate;
-                    }
-                  }
-
-                  productAttributesTotal += productPriceInBs;
-
-                  const productAttributeKey = `${attrId}_${foundProduct.id}`;
-                  const editedAttributes = product.attributes?.[productAttributeKey];
-
-                  if (
-                    editedAttributes &&
-                    typeof editedAttributes === "object" &&
-                    !Array.isArray(editedAttributes)
-                  ) {
-                    const productCategory = categories.find(
-                      (cat) => cat.name === foundProduct.category
-                    );
-
-                    if (productCategory) {
-                      const productAttributeAdjustments =
-                        calculateProductUnitPriceWithAttributes(
-                          0,
-                          editedAttributes as Record<
-                            string,
-                            string | number | string[]
-                          >,
-                          productCategory,
-                          exchangeRates
-                        );
-                      productAttributesTotal += productAttributeAdjustments;
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-
-      const unitPrice = basePriceWithAdjustments + productAttributesTotal;
       const total = unitPrice * product.quantity;
 
       return total + markup;
@@ -666,7 +593,7 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
         products.map((product) => ({
           ...product,
           discount: product.discount ?? 0,
-          locationStatus: product.locationStatus ?? "SIN DEFINIR",
+          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         }))
       );
       const newTypes: Record<string, "monto" | "porcentaje"> = {};

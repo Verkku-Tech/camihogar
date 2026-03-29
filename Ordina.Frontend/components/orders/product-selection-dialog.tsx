@@ -30,6 +30,8 @@ export function ProductSelectionDialog({
 }: ProductSelectionDialogProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
+  const [currentPage, setCurrentPage] = useState(1)
+  const ITEMS_PER_PAGE = 10
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -108,6 +110,16 @@ export function ProductSelectionDialog({
       return salesB - salesA
     })
 
+  // Resetear página al filtrar
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, selectedCategory])
+
+  const totalPages = Math.ceil(filteredAndSortedProducts.length / ITEMS_PER_PAGE)
+  const paginatedProducts = filteredAndSortedProducts.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  )
   const handleQuantityChange = (productId: string, quantity: number) => {
     setQuantities((prev) => ({
       ...prev,
@@ -160,7 +172,7 @@ export function ProductSelectionDialog({
       stock: 0, // Los productos se crean bajo demanda, no hay stock
       attributes: mergedAttributes,
       discount: 0, // Inicializar sin descuento
-      locationStatus: "SIN DEFINIR", // Establecer por defecto "SIN DEFINIR"
+      locationStatus: "DISPONIBILIDAD INMEDIATA", // Establecer por defecto "DISPONIBILIDAD INMEDIATA"
     }
     
     setProductToEdit(newProduct)
@@ -252,7 +264,7 @@ export function ProductSelectionDialog({
 
           {/* Vista de tarjetas para móvil */}
           <div className="space-y-3 sm:hidden">
-            {filteredAndSortedProducts.map((product) => {
+            {paginatedProducts.map((product) => {
               const productId = product.id.toString()
               const quantity = quantities[productId] || 1
               const isSelected = isProductSelected(productId)
@@ -337,7 +349,7 @@ export function ProductSelectionDialog({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredAndSortedProducts.map((product) => {
+                {paginatedProducts.map((product) => {
                   const productId = product.id.toString()
                   const isSelected = isProductSelected(productId)
                   const selectedQty = getSelectedQuantity(productId)
@@ -392,6 +404,32 @@ export function ProductSelectionDialog({
           {filteredAndSortedProducts.length === 0 && (
             <div className="text-center py-8 text-sm sm:text-base text-muted-foreground">
               {products.length === 0 ? "No hay productos en inventario" : "No se encontraron productos"}
+            </div>
+          )}
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between py-2 border-t mt-4 pt-4">
+              <span className="text-sm text-muted-foreground">
+                Página {currentPage} de {totalPages}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Siguiente
+                </Button>
+              </div>
             </div>
           )}
 
