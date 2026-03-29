@@ -4280,6 +4280,12 @@ const userFromBackendDto = (dto: UserResponseDto): User => ({
   role: dto.role as User["role"],
   status: dto.status as "active" | "inactive",
   createdAt: dto.createdAt || new Date().toISOString(),
+  exclusiveCommission: dto.exclusiveCommission,
+  baseSalary:
+    dto.baseSalary !== undefined && dto.baseSalary !== null
+      ? Number(dto.baseSalary)
+      : undefined,
+  baseSalaryCurrency: dto.baseSalaryCurrency,
 });
 
 export const getUsers = async (): Promise<User[]> => {
@@ -4708,10 +4714,143 @@ export const seedDefaultSaleTypeRules = async (): Promise<SaleTypeCommissionRule
 };
 
 // ===== COMMISSION CALCULATION FUNCTIONS =====
+// Alineado con ReportService.CalculateProductCommission (backend) + fallback legacy (IndexedDB commissions).
+
+export type CommissionCalculationContext = {
+  productCommissions: ProductCommission[];
+  saleTypeRules: SaleTypeCommissionRule[];
+  users: User[];
+  legacyCommissions: Commission[];
+};
+
+const determineSaleTypeForCommission = (order: Order): string => {
+  if (order.saleType) return order.saleType;
+  if (order.deliveryType) return order.deliveryType;
+  return "entrega";
+};
+
+const findCategoryCommissionRate = (
+  product: OrderProduct,
+  productCommissions: ProductCommission[]
+): number => {
+  const cat = product.category?.trim() ?? "";
+  if (!cat) return 0;
+  const found = productCommissions.find(
+    (c) =>
+      (c.categoryName &&
+        c.categoryName.toLowerCase() === cat.toLowerCase()) ||
+      c.categoryId === cat
+  );
+  return found?.commissionValue ?? 0;
+};
+
+const legacyCommissionForSeller = (
+  sellerId: string,
+  product: OrderProduct,
+  legacyCommissions: Commission[],
+  users: User[]
+): number => {
+  const user = users.find((u) => u.id === sellerId);
+  if (!user) return 0;
+  const commission =
+    legacyCommissions.find(
+      (c) => c.commissionType === "user" && c.userId === sellerId
+    ) ||
+    legacyCommissions.find(
+      (c) => c.commissionType === "role" && c.role === user.role
+    );
+  if (!commission) return 0;
+  const productTotal = product.total;
+  if (commission.commissionKind === "percentage") {
+    return productTotal * (commission.value / 100);
+  }
+  return commission.value;
+};
+
+export type ProductCommissionSplit = {
+  vendorCommission: number;
+  referrerCommission: number;
+  /** True cuando hay reparto vendedor/referido en el reporte (dos filas con comisiones compartidas). */
+  isShared: boolean;
+};
+
+export const computeProductCommissionSplit = (
+  order: Order,
+  product: OrderProduct,
+  ctx: CommissionCalculationContext
+): ProductCommissionSplit => {
+  const mainVendor = ctx.users.find((u) => u.id === order.vendorId);
+  const isExclusiveVendor = mainVendor?.exclusiveCommission === true;
+  const referrerId = order.referrerId?.trim();
+  const hasReferrer = !!referrerId;
+  const isSharedSale = hasReferrer && !isExclusiveVendor;
+
+  const baseRate = findCategoryCommissionRate(product, ctx.productCommissions);
+  const productTotal = product.total;
+
+  if (baseRate <= 0) {
+    const vendorFull = legacyCommissionForSeller(
+      order.vendorId,
+      product,
+      ctx.legacyCommissions,
+      ctx.users
+    );
+    if (!hasReferrer) {
+      return {
+        vendorCommission: vendorFull,
+        referrerCommission: 0,
+        isShared: false,
+      };
+    }
+    if (isExclusiveVendor) {
+      return {
+        vendorCommission: vendorFull,
+        referrerCommission: 0,
+        isShared: false,
+      };
+    }
+    const referrerFull = legacyCommissionForSeller(
+      referrerId!,
+      product,
+      ctx.legacyCommissions,
+      ctx.users
+    );
+    return {
+      vendorCommission: vendorFull / 2,
+      referrerCommission: referrerFull / 2,
+      isShared: true,
+    };
+  }
+
+  if (isSharedSale) {
+    const saleType = determineSaleTypeForCommission(order);
+    const rule = ctx.saleTypeRules.find(
+      (r) => r.saleType.toLowerCase() === saleType.toLowerCase()
+    );
+    if (rule) {
+      return {
+        vendorCommission: productTotal * (rule.vendorRate / 100),
+        referrerCommission: productTotal * (rule.referrerRate / 100),
+        isShared: true,
+      };
+    }
+    const half = (productTotal * (baseRate / 100)) / 2;
+    return {
+      vendorCommission: half,
+      referrerCommission: half,
+      isShared: true,
+    };
+  }
+
+  return {
+    vendorCommission: productTotal * (baseRate / 100),
+    referrerCommission: 0,
+    isShared: false,
+  };
+};
 
 /**
- * Calcula la comisión de un producto para un vendedor específico
- * Basado en las comisiones configuradas en IndexedDB
+ * Monto de comisión para un vendedor/referido concreto (paridad con el reparto del pedido).
  */
 export const calculateProductCommission = async (
   product: OrderProduct,
@@ -4719,38 +4858,26 @@ export const calculateProductCommission = async (
   sellerId: string | null
 ): Promise<number> => {
   if (!sellerId) return 0;
-
   try {
-    // Obtener comisiones y usuarios desde IndexedDB
-    const [commissions, users] = await Promise.all([
-      getCommissions(),
-      getUsers(),
-    ]);
-
-    // Obtener usuario para determinar su rol
-    const user = users.find((u) => u.id === sellerId);
-    if (!user) return 0;
-
-    // Buscar comisión por usuario primero, luego por rol
-    const commission =
-      commissions.find(
-        (c) => c.commissionType === "user" && c.userId === sellerId
-      ) ||
-      commissions.find(
-        (c) => c.commissionType === "role" && c.role === user.role
-      );
-
-    if (!commission) return 0;
-
-    // Calcular monto base (precio del producto después de descuentos)
-    const productTotal = product.total;
-
-    if (commission.commissionKind === "percentage") {
-      return productTotal * (commission.value / 100);
-    } else {
-      // Comisión neta (fija por artículo)
-      return commission.value;
+    const [productCommissions, saleTypeRules, users, legacyCommissions] =
+      await Promise.all([
+        getProductCommissions(),
+        getSaleTypeCommissionRules(),
+        getUsers(),
+        getCommissions(),
+      ]);
+    const ctx: CommissionCalculationContext = {
+      productCommissions,
+      saleTypeRules,
+      users,
+      legacyCommissions,
+    };
+    const split = computeProductCommissionSplit(order, product, ctx);
+    if (sellerId === order.vendorId) return split.vendorCommission;
+    if (order.referrerId && sellerId === order.referrerId) {
+      return split.referrerCommission;
     }
+    return 0;
   } catch (error) {
     console.error("Error calculating product commission:", error);
     return 0;
@@ -4782,41 +4909,40 @@ export const calculateOrderCommissions = async (
     isShared: boolean;
   }> = [];
 
-  const isSharedSale = !!order.referrerId;
-
   try {
-    // Procesar cada producto del pedido
+    const [productCommissions, saleTypeRules, users, legacyCommissions] =
+      await Promise.all([
+        getProductCommissions(),
+        getSaleTypeCommissionRules(),
+        getUsers(),
+        getCommissions(),
+      ]);
+    const ctx: CommissionCalculationContext = {
+      productCommissions,
+      saleTypeRules,
+      users,
+      legacyCommissions,
+    };
+
     for (const product of order.products) {
-      // Comisión del vendedor principal
-      const vendorCommission = await calculateProductCommission(
-        product,
-        order,
-        order.vendorId
-      );
+      const split = computeProductCommissionSplit(order, product, ctx);
 
       results.push({
         sellerId: order.vendorId,
         sellerName: order.vendorName,
         productId: product.id,
         productName: product.name,
-        commission: isSharedSale ? vendorCommission / 2 : vendorCommission,
-        isShared: isSharedSale,
+        commission: split.vendorCommission,
+        isShared: split.isShared,
       });
 
-      // Si es venta compartida, agregar comisión del referrer
-      if (isSharedSale && order.referrerId) {
-        const referrerCommission = await calculateProductCommission(
-          product,
-          order,
-          order.referrerId
-        );
-
+      if (split.isShared && order.referrerId) {
         results.push({
           sellerId: order.referrerId,
           sellerName: order.referrerName || "",
           productId: product.id,
           productName: product.name,
-          commission: referrerCommission / 2,
+          commission: split.referrerCommission,
           isShared: true,
         });
       }
