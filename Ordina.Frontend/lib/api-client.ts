@@ -1475,6 +1475,9 @@ export interface UserResponseDto {
   status: string;
   createdAt?: string;
   permissions?: string[];
+  exclusiveCommission?: boolean;
+  baseSalary?: number;
+  baseSalaryCurrency?: string;
 }
 
 export interface CreateUserDto {
