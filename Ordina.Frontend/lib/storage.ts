@@ -2843,6 +2843,7 @@ export interface UnifiedOrder {
   saleType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado";
   deliveryType?: "entrega_programada" | "delivery_express" | "retiro_tienda" | "retiro_almacen";
   deliveryZone?: "caracas" | "g_g" | "san_antonio_los_teques" | "caucagua_higuerote" | "la_guaira" | "charallave_cua" | "interior_pais";
+  deliveryServices?: Order["deliveryServices"];
   dispatchDate?: string; // Fecha de despacho
   completedAt?: string; // Fecha de completado
   partialPayments?: PartialPayment[]; // Para mostrar saldo pendiente / debe en USD en listados
@@ -2887,6 +2888,7 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       saleType: order.saleType,
       deliveryType: order.deliveryType,
       deliveryZone: order.deliveryZone,
+      deliveryServices: order.deliveryServices,
       dispatchDate: order.dispatchDate,
       completedAt: order.completedAt,
       partialPayments: order.partialPayments,
