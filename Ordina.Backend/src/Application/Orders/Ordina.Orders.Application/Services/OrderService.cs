@@ -367,6 +367,9 @@ public class OrderService : IOrderService
             ProductMarkups = order.ProductMarkups,
             CreateSupplierOrder = order.CreateSupplierOrder,
             Observations = order.Observations,
+            SaleType = order.SaleType,
+            DeliveryType = order.DeliveryType,
+            DeliveryZone = order.DeliveryZone,
             ExchangeRatesAtCreation = order.ExchangeRatesAtCreation != null ? MapExchangeRatesToDto(order.ExchangeRatesAtCreation) : null,
             CreatedAt = order.CreatedAt,
             UpdatedAt = order.UpdatedAt
