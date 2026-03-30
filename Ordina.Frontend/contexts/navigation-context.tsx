@@ -132,6 +132,14 @@ const defaultNavigationItems: NavigationItem[] = [
     active: true,
     description: "Gestión de comisiones por rol o por usuario",
   },
+  {
+    id: "sistema",
+    name: "Sistema",
+    href: "/configuracion/sistema",
+    category: "configuration",
+    active: true,
+    description: "Mantenimiento de cache local (solo Super Administrador)",
+  },
 ]
 
 export function NavigationProvider({ children }: { children: ReactNode }) {

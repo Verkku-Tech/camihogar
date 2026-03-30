@@ -22,6 +22,7 @@ import {
   CreditCard,
   Percent,
   Shield,
+  Database,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -60,6 +61,7 @@ const configurationSubmenu = [
   { id: "tasas", name: "Tasas de Cambio", href: "/configuracion/tasas", icon: DollarSign },
   { id: "comisiones", name: "Comisiones", href: "/configuracion/comisiones", icon: Percent, permission: "settings.company.manage" },
   { id: "roles", name: "Roles y Permisos", href: "/configuracion/roles", icon: Shield, permission: "roles.read" },
+  { id: "sistema", name: "Sistema", href: "/configuracion/sistema", icon: Database, superAdminOnly: true },
 ]
 
 const permissionMap: Record<string, string | string[]> = {
@@ -121,10 +123,12 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
   // But wait, I only updated configurationSubmenu in the chunk above. I need to update checkPermission to handle the item object or pass permission.
 
   const visibleConfigurationSubmenu = configurationSubmenu.filter((item) => {
-    // @ts-ignore
-    const perm = item.permission;
-    return isNavigationItemActive(item.id) && checkPermission(item.id, perm);
-  });
+    if ("superAdminOnly" in item && item.superAdminOnly && user?.role !== "Super Administrator") {
+      return false
+    }
+    const perm = "permission" in item ? (item as { permission?: string }).permission : undefined
+    return isNavigationItemActive(item.id) && checkPermission(item.id, perm)
+  })
 
   return (
     <>
