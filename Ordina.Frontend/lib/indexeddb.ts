@@ -315,3 +315,16 @@ export const count = async (storeName: string): Promise<number> => {
     request.onerror = () => reject(request.error);
   });
 };
+
+/** Elimina todos los registros de un object store (tabla). */
+export const clearStore = async (storeName: string): Promise<void> => {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], "readwrite");
+    const objectStore = transaction.objectStore(storeName);
+    const request = objectStore.clear();
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
