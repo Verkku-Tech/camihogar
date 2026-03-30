@@ -19,7 +19,7 @@ import { ImportProductsDialog } from "@/components/inventory/import-products-dia
 import { DownloadFormatDialog } from "@/components/inventory/download-format-dialog"
 import { BulkDeleteDialog } from "@/components/inventory/bulk-delete-dialog"
 import { PermissionGuard } from "@/components/auth/permission-guard"
-import { getCategories, invalidateProductCache, productListItemDtoToProduct, type Product, type Category } from "@/lib/storage"
+import { getCategories, productListItemDtoToProduct, type Product, type Category } from "@/lib/storage"
 import { apiClient, type ProductListItemDto, type PaginatedResultDto } from "@/lib/api-client"
 import { useCurrency } from "@/contexts/currency-context"
 import { Currency } from "@/lib/currency-utils"
@@ -130,7 +130,6 @@ export default function ProductosPage() {
     setIsBulkDeleting(true)
     try {
       const result = await apiClient.deleteProductsBulk(ids)
-      invalidateProductCache()
       fetchProducts(page, searchTerm, selectedCategory, selectedStatus)
       setSelectedIds(new Set())
       setIsBulkDeleteDialogOpen(false)
@@ -176,7 +175,6 @@ export default function ProductosPage() {
     if (selectedBackendId) {
       try {
         await apiClient.deleteProduct(selectedBackendId)
-        invalidateProductCache()
         fetchProducts(page, searchTerm, selectedCategory, selectedStatus)
         toast.success("Producto eliminado correctamente")
       } catch (error) {
@@ -190,7 +188,6 @@ export default function ProductosPage() {
   }
 
   const handleProductSaved = async () => {
-    invalidateProductCache()
     fetchProducts(page, searchTerm, selectedCategory, selectedStatus)
     setShowProductWizard(false)
     setShowEditDialog(false)

@@ -4,6 +4,7 @@ import type React from "react"
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { apiClient, type UserDto } from "@/lib/api-client"
+import { bootSync } from "@/lib/storage"
 
 interface User {
   id: string
@@ -192,6 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           try {
             const userDto = JSON.parse(userData) as UserDto
             setUser(mapUserDtoToUser(userDto))
+            void bootSync().catch((e) => console.warn("Boot sync failed:", e))
           } catch (error) {
             console.error("Error parsing user data:", error)
             localStorage.removeItem("user_data")
@@ -229,6 +231,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setUser(mapUserDtoToUser(response.user))
+      void bootSync().catch((e) => console.warn("Boot sync failed:", e))
       router.push("/")
     } catch (error: any) {
       throw error

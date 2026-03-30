@@ -303,192 +303,115 @@ const isOnline = (): boolean => {
   return navigator.onLine;
 };
 
-// ===== SYNC TIMESTAMP MANAGEMENT =====
-// Gestión de timestamps de sincronización para sincronización incremental
-
-interface SyncMetadata {
-  id: string;
-  key: string;
-  lastSyncTimestamp: string | null;
-  lastSyncDate: string;
-}
+/** Stores cleared on boot sync and emergency reset (preserves sync_queue + app_settings). */
+export const INDEXEDDB_DATA_STORES = [
+  "categories",
+  "products",
+  "orders",
+  "clients",
+  "providers",
+  "stores",
+  "accounts",
+  "users",
+  "vendors",
+  "budgets",
+  "commissions",
+  "api_cache",
+  "exchange_rates",
+] as const;
 
 /**
- * Obtiene el timestamp de última sincronización para una entidad
- * @param entity Nombre de la entidad (ej: "orders", "products")
- * @returns Timestamp ISO 8601 o null si nunca se ha sincronizado
+ * Limpia todas las tablas de datos en IndexedDB (no sync_queue ni app_settings).
+ * Usado por bootSync y por la pantalla de emergencia en configuración.
  */
-const getLastSyncTimestamp = async (entity: string): Promise<string | null> => {
-  try {
-    const metadata = await db.get<SyncMetadata>("app_settings", `sync_${entity}`);
-    return metadata?.lastSyncTimestamp || null;
-  } catch (error) {
-    console.warn(`⚠️ Error obteniendo timestamp de sync para ${entity}:`, error);
-    return null;
+export const clearAllIndexedDBDataStores = async (): Promise<void> => {
+  for (const name of INDEXEDDB_DATA_STORES) {
+    try {
+      await db.clearStore(name);
+    } catch (e) {
+      console.warn(`clearStore ${name}:`, e);
+    }
   }
 };
 
+/** Conteos por tabla (incluye sync_queue y app_settings para diagnóstico). */
+export const getIndexedDBStoreStats = async (): Promise<
+  { name: string; count: number }[]
+> => {
+  const stats: { name: string; count: number }[] = [];
+  for (const name of INDEXEDDB_DATA_STORES) {
+    try {
+      stats.push({ name, count: await db.count(name) });
+    } catch {
+      stats.push({ name, count: -1 });
+    }
+  }
+  for (const name of ["sync_queue", "app_settings"] as const) {
+    try {
+      stats.push({ name, count: await db.count(name) });
+    } catch {
+      stats.push({ name, count: -1 });
+    }
+  }
+  return stats;
+};
+
 /**
- * Guarda el timestamp de última sincronización para una entidad
- * @param entity Nombre de la entidad (ej: "orders", "products")
- * @param timestamp Timestamp ISO 8601 del servidor
+ * Al iniciar con conexión: sincroniza la cola offline y vacía el cache local
+ * para que las lecturas posteriores usen el servidor como fuente de verdad.
  */
-const setLastSyncTimestamp = async (entity: string, timestamp: string): Promise<void> => {
+export const bootSync = async (): Promise<void> => {
+  if (typeof window === "undefined") return;
+  if (!isOnline()) {
+    console.log("bootSync: sin conexión, se omite limpieza de IndexedDB");
+    return;
+  }
   try {
-    const metadata: SyncMetadata = {
-      id: `sync_${entity}`,
-      key: `sync_${entity}`,
-      lastSyncTimestamp: timestamp,
-      lastSyncDate: new Date().toISOString(),
-    };
-    await db.put("app_settings", metadata);
-    console.log(`✅ Timestamp de sync guardado para ${entity}: ${timestamp}`);
-  } catch (error) {
-    console.warn(`⚠️ Error guardando timestamp de sync para ${entity}:`, error);
+    await syncManager.syncPendingOperations();
+  } catch (e) {
+    console.warn("bootSync: error en cola de sincronización", e);
+  }
+  try {
+    await clearAllIndexedDBDataStores();
+    console.log("bootSync: IndexedDB (datos) limpiado");
+  } catch (e) {
+    console.warn("bootSync: error al limpiar IndexedDB", e);
   }
 };
 
-/**
- * Verifica si se debe realizar una sincronización completa o incremental
- * @param entity Nombre de la entidad
- * @param forceFullSync Forzar sincronización completa
- * @returns true si se debe hacer sync completa, false si incremental
- */
-const shouldDoFullSync = async (entity: string, forceFullSync: boolean = false): Promise<boolean> => {
-  if (forceFullSync) return true;
-
-  const lastSync = await getLastSyncTimestamp(entity);
-  if (!lastSync) return true; // Nunca se ha sincronizado
-
-  // También hacer sync completa si han pasado más de 24 horas
-  const lastSyncDate = new Date(lastSync);
-  const hoursSinceLastSync = (Date.now() - lastSyncDate.getTime()) / (1000 * 60 * 60);
-
-  return hoursSinceLastSync > 24;
-};
-
-/**
- * Tiempo mínimo entre sincronizaciones (en milisegundos)
- * Para evitar sincronizaciones excesivas
- */
-const MIN_SYNC_INTERVAL_MS = 30 * 1000; // 30 segundos
-
-/**
- * Verifica si se debe sincronizar basado en el intervalo mínimo
- * @param entity Nombre de la entidad
- * @returns true si se debe sincronizar
- */
-const shouldSync = async (entity: string): Promise<boolean> => {
+const repopulateCategoriesCache = async (categories: Category[]): Promise<void> => {
   try {
-    const metadata = await db.get<SyncMetadata>("app_settings", `sync_${entity}`);
-    if (!metadata?.lastSyncDate) return true;
-
-    const timeSinceLastSync = Date.now() - new Date(metadata.lastSyncDate).getTime();
-    return timeSinceLastSync >= MIN_SYNC_INTERVAL_MS;
-  } catch {
-    return true;
+    await db.clearStore("categories");
+    for (const c of categories) {
+      await db.put("categories", categoryToDB(c, c.backendId));
+    }
+  } catch (e) {
+    console.warn("Error actualizando cache de categorías:", e);
   }
 };
 
 export const getCategories = async (): Promise<Category[]> => {
   try {
-    // Cargar siempre categorías locales desde IndexedDB primero (offline-first)
-    const localCategoriesDB = await db.getAll<CategoryDB>("categories");
-    const localCategories = localCategoriesDB.map(categoryFromDB);
-
-    // Si hay conexión, intentar sincronizar con backend y hacer merge
     if (isOnline()) {
       try {
         const backendCategories = await apiClient.getCategories();
-        const backendCategoriesMapped = backendCategories.map(
-          categoryFromBackendDto
-        );
-
-        // Hacer merge: usar nombre como clave única (similar a SKU en productos y orderNumber en órdenes)
-        // El nombre es único según el índice en IndexedDB
-        const categoriesMap = new Map<string, Category>();
-
-        // Primero agregar categorías locales
-        for (const category of localCategories) {
-          categoriesMap.set(category.name, category);
-        }
-
-        // Luego agregar/actualizar con categorías del backend (estas tienen prioridad)
-        const idSet = new Set<number>(); // Para detectar IDs duplicados
-
-        for (let i = 0; i < backendCategories.length; i++) {
-          const backendCategory = backendCategories[i];
-          const mappedCategory = backendCategoriesMapped[i];
-
-          // Verificar si el ID ya existe
-          if (idSet.has(mappedCategory.id)) {
-            console.warn(
-              `⚠️ ID duplicado detectado: ${mappedCategory.id} para categoría "${mappedCategory.name}". ` +
-              `Backend ID: ${backendCategory.id}. Generando nuevo ID...`
-            );
-            // Generar un nuevo ID único sumando un offset basado en el índice
-            mappedCategory.id = mappedCategory.id + (i * 1000000);
-            // Asegurar que el nuevo ID no colisione
-            while (idSet.has(mappedCategory.id)) {
-              mappedCategory.id += 1;
-            }
-          }
-
-          idSet.add(mappedCategory.id);
-
-          // Verificar si ya existe una categoría con el mismo nombre
-          const existing = categoriesMap.get(mappedCategory.name);
-          if (existing && existing.id !== mappedCategory.id) {
-            console.warn(
-              `⚠️ Advertencia: Categoría "${mappedCategory.name}" existe con ID diferente. ` +
-              `Local: ${existing.id}, Backend: ${mappedCategory.id}. Usando versión del backend.`
-            );
-          }
-
-          // Las categorías del backend tienen prioridad
-          categoriesMap.set(mappedCategory.name, mappedCategory);
-
-          // Guardar/actualizar en IndexedDB usando put (hace update si existe, add si no)
-          try {
-            await db.put("categories", categoryToDB(mappedCategory, mappedCategory.backendId));
-            console.log(`✅ Categoría sincronizada: ${mappedCategory.name} (ID: ${mappedCategory.id}, Backend ID: ${backendCategory.id})`);
-          } catch (error) {
-            console.error(`❌ Error guardando categoría ${mappedCategory.name}:`, error);
-            // Continuar con las demás categorías aunque una falle
-          }
-        }
-
-        const mergedCategories = Array.from(categoriesMap.values());
-        console.log(
-          `✅ Categorías: ${localCategories.length} locales + ${backendCategories.length} del backend = ${mergedCategories.length} totales`
-        );
-
-        // Log de debugging para verificar que todas se cargaron
-        if (mergedCategories.length !== Math.max(localCategories.length, backendCategories.length)) {
-          console.warn(
-            `⚠️ Posible pérdida de categorías: esperadas ${Math.max(localCategories.length, backendCategories.length)}, ` +
-            `obtenidas ${mergedCategories.length}`
-          );
-        }
-
-        return mergedCategories;
+        const list = backendCategories.map(categoryFromBackendDto);
+        void repopulateCategoriesCache(list);
+        return list;
       } catch (error) {
         console.warn(
-          "⚠️ Error cargando categorías del backend, usando solo IndexedDB:",
+          "⚠️ Error cargando categorías del backend, usando IndexedDB:",
           error
         );
-        // Si falla el backend, retornar categorías locales
-        return localCategories;
+        const localCategoriesDB = await db.getAll<CategoryDB>("categories");
+        return localCategoriesDB.map(categoryFromDB);
       }
     }
 
-    // Si está offline, solo retornar categorías locales
-    console.log(
-      `✅ Categorías cargadas desde IndexedDB: ${localCategories.length}`
-    );
-    return localCategories;
+    const localCategoriesDB = await db.getAll<CategoryDB>("categories");
+    return localCategoriesDB.map(categoryFromDB);
   } catch (error) {
-    console.error("Error loading categories from IndexedDB:", error);
+    console.error("Error loading categories:", error);
     return [];
   }
 };
@@ -497,10 +420,19 @@ export const getCategory = async (
   id: number
 ): Promise<Category | undefined> => {
   try {
+    if (isOnline()) {
+      try {
+        const list = await getCategories();
+        const found = list.find((c) => c.id === id);
+        if (found) return found;
+      } catch (error) {
+        console.warn("getCategory: error desde API, usando IndexedDB", error);
+      }
+    }
     const categoryDB = await db.get<CategoryDB>("categories", id.toString());
     return categoryDB ? categoryFromDB(categoryDB) : undefined;
   } catch (error) {
-    console.error("Error loading category from IndexedDB:", error);
+    console.error("Error loading category:", error);
     return undefined;
   }
 };
@@ -583,10 +515,8 @@ export const addCategory = async (
       const backendCategory = await apiClient.createCategory(createDto);
       newCategory = categoryFromBackendDto(backendCategory);
 
-      // Guardar también en IndexedDB (preservando backendId si existe)
-      await db.add("categories", categoryToDB(newCategory, newCategory.backendId));
       console.log(
-        "✅ Categoría guardada en backend y IndexedDB:",
+        "✅ Categoría guardada en backend:",
         newCategory.name
       );
       syncedToBackend = true;
@@ -598,9 +528,7 @@ export const addCategory = async (
           const existingCategory = await apiClient.getCategoryByName(category.name);
           if (existingCategory) {
             newCategory = categoryFromBackendDto(existingCategory);
-            // Merge con los datos nuevos del usuario
             newCategory = { ...newCategory, ...category };
-            await db.update("categories", categoryToDB(newCategory, newCategory.backendId));
             syncedToBackend = true;
             return newCategory;
           }
@@ -801,10 +729,8 @@ export const updateCategory = async (
         );
         const syncedCategory = categoryFromBackendDto(backendCategory);
 
-        // Actualizar también en IndexedDB con los datos del backend
-        await db.update("categories", categoryToDB(syncedCategory, syncedCategory.backendId));
         console.log(
-          "✅ Categoría actualizada en backend y IndexedDB:",
+          "✅ Categoría actualizada en backend:",
           syncedCategory.name
         );
         return syncedCategory;
@@ -895,7 +821,6 @@ export const updateCategory = async (
               retryUpdateDto
             );
             const syncedCategory = categoryFromBackendDto(backendCategoryUpdated);
-            await db.update("categories", categoryToDB(syncedCategory, syncedCategory.backendId));
             return syncedCategory;
           }
         } catch (retryError) {
@@ -1147,75 +1072,64 @@ export const productListItemDtoToProduct = (dto: ProductListItemDto): Product =>
   sku: dto.sku || "",
 });
 
-const PRODUCT_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
-let lastProductSyncTimestamp = 0;
-
-export const getProducts = async (forceSync = false): Promise<Product[]> => {
+const repopulateProductsCache = async (products: Product[]): Promise<void> => {
   try {
-    const localProductsDB = await db.getAll<ProductDB>("products");
-    const localProducts = localProductsDB.map(productFromDB);
+    await db.clearStore("products");
+    for (const p of products) {
+      await db.put("products", productToDB(p));
+    }
+  } catch (e) {
+    console.warn("Error actualizando cache de productos:", e);
+  }
+};
 
-    const shouldSync = forceSync || (Date.now() - lastProductSyncTimestamp > PRODUCT_SYNC_INTERVAL_MS);
-
-    if (isOnline() && shouldSync) {
+export const getProducts = async (_forceSync = false): Promise<Product[]> => {
+  try {
+    if (isOnline()) {
       try {
         const backendProducts = await apiClient.getProducts();
-        const backendProductsMapped = backendProducts.map(
-          productFromBackendDto
-        );
-
-        const productsMap = new Map<string, Product>();
-
-        const mergeKey = (p: Product): string =>
-          p.sku && String(p.sku).trim() !== ""
-            ? String(p.sku).trim()
-            : `__id_${p.id}`;
-
-        for (const product of localProducts) {
-          productsMap.set(mergeKey(product), product);
-        }
-
-        for (const product of backendProductsMapped) {
-          productsMap.set(mergeKey(product), product);
-          try {
-            await db.update("products", productToDB(product));
-          } catch {
-            await db.add("products", productToDB(product));
-          }
-        }
-
-        lastProductSyncTimestamp = Date.now();
-        const mergedProducts = Array.from(productsMap.values());
-        console.log(
-          `✅ Productos: ${localProducts.length} locales + ${backendProductsMapped.length} del backend = ${mergedProducts.length} totales`
-        );
-        return mergedProducts;
+        const list = backendProducts.map(productFromBackendDto);
+        void repopulateProductsCache(list);
+        return list;
       } catch (error) {
         console.warn(
-          "⚠️ Error cargando productos del backend, usando solo IndexedDB:",
+          "⚠️ Error cargando productos del backend, usando IndexedDB:",
           error
         );
-        return localProducts;
+        const localProductsDB = await db.getAll<ProductDB>("products");
+        return localProductsDB.map(productFromDB);
       }
     }
 
-    return localProducts;
+    const localProductsDB = await db.getAll<ProductDB>("products");
+    return localProductsDB.map(productFromDB);
   } catch (error) {
-    console.error("Error loading products from IndexedDB:", error);
+    console.error("Error loading products:", error);
     return [];
   }
 };
 
-export const invalidateProductCache = () => {
-  lastProductSyncTimestamp = 0;
-};
-
 export const getProduct = async (id: number): Promise<Product | undefined> => {
   try {
+    if (isOnline()) {
+      try {
+        const local = await db.get<ProductDB>("products", id.toString());
+        if (local?.backendId) {
+          const dto = await apiClient.getProductById(local.backendId);
+          const p = productFromBackendDto(dto);
+          await db.put("products", productToDB(p));
+          return p;
+        }
+        const all = await getProducts();
+        return all.find((x) => x.id === id);
+      } catch (error) {
+        console.warn("getProduct: error desde API, usando IndexedDB", error);
+      }
+    }
     const productDB = await db.get<ProductDB>("products", id.toString());
     return productDB ? productFromDB(productDB) : undefined;
   } catch (error) {
-    console.error("Error loading product from IndexedDB:", error);
+    console.error("Error loading product:", error);
     return undefined;
   }
 };
@@ -1226,12 +1140,22 @@ export const getProductByBackendId = async (
   const trimmed = backendId?.trim();
   if (!trimmed) return undefined;
   try {
+    if (isOnline()) {
+      try {
+        const dto = await apiClient.getProductById(trimmed);
+        const p = productFromBackendDto(dto);
+        await db.put("products", productToDB(p));
+        return p;
+      } catch (error) {
+        console.warn("getProductByBackendId: API falló, usando IndexedDB", error);
+      }
+    }
     const productsDB = await db.getAll<ProductDB>("products");
     const byField = productsDB.find((p) => p.backendId === trimmed);
     if (byField) return productFromDB(byField);
     return await getProduct(backendIdToNumber(trimmed));
   } catch (error) {
-    console.error("Error loading product by backendId from IndexedDB:", error);
+    console.error("Error loading product by backendId:", error);
     return undefined;
   }
 };
@@ -1260,14 +1184,10 @@ export const getProductsByCategory = async (
   category: string
 ): Promise<Product[]> => {
   try {
-    const productsDB = await db.getByIndex<ProductDB>(
-      "products",
-      "category",
-      category
-    );
-    return productsDB.map(productFromDB);
+    const all = await getProducts();
+    return all.filter((p) => p.category === category);
   } catch (error) {
-    console.error("Error loading products by category from IndexedDB:", error);
+    console.error("Error loading products by category:", error);
     return [];
   }
 };
@@ -1276,14 +1196,10 @@ export const getProductsByStatus = async (
   status: string
 ): Promise<Product[]> => {
   try {
-    const productsDB = await db.getByIndex<ProductDB>(
-      "products",
-      "status",
-      status
-    );
-    return productsDB.map(productFromDB);
+    const all = await getProducts();
+    return all.filter((p) => p.status === status);
   } catch (error) {
-    console.error("Error loading products by status from IndexedDB:", error);
+    console.error("Error loading products by status:", error);
     return [];
   }
 };
@@ -1301,10 +1217,8 @@ export const addProduct = async (
       const backendProduct = await apiClient.createProduct(createDto);
       newProduct = productFromBackendDto(backendProduct);
 
-      // Guardar también en IndexedDB
-      await db.add("products", productToDB(newProduct));
       console.log(
-        "✅ Producto guardado en backend y IndexedDB:",
+        "✅ Producto guardado en backend:",
         newProduct.name
       );
       syncedToBackend = true;
@@ -1466,10 +1380,8 @@ export const updateProduct = async (
         );
         const syncedProduct = productFromBackendDto(backendProduct);
 
-        // Actualizar también en IndexedDB con los datos del backend
-        await db.update("products", productToDB(syncedProduct));
         console.log(
-          "✅ Producto actualizado en backend y IndexedDB:",
+          "✅ Producto actualizado en backend:",
           syncedProduct.name
         );
         return syncedProduct;
@@ -2165,15 +2077,7 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
 });
 
 /**
- * Obtiene todos los pedidos con sincronización incremental optimizada
- * 
- * Estrategia de sincronización:
- * 1. Siempre retorna primero los datos de IndexedDB (offline-first)
- * 2. Si hay conexión y ha pasado el intervalo mínimo, sincroniza con el backend
- * 3. Si nunca se ha sincronizado o han pasado >24h, hace sync completa
- * 4. En otros casos, hace sync incremental (solo pedidos modificados)
- * 
- * @param optionsOrForceFull `true` = sync completa (compat); o `{ forceFullSync?, refreshFromBackend? }`. Con `refreshFromBackend: true` e internet se ignora el throttle de 30s.
+ * Opciones de compatibilidad (server-first ignora throttles; refresh fuerza fetch desde API).
  */
 export type GetOrdersOptions = {
   forceFullSync?: boolean;
@@ -2183,115 +2087,52 @@ export type GetOrdersOptions = {
 export const getOrders = async (
   optionsOrForceFull?: boolean | GetOrdersOptions
 ): Promise<Order[]> => {
-  const opts: GetOrdersOptions =
-    typeof optionsOrForceFull === "boolean"
-      ? { forceFullSync: optionsOrForceFull }
-      : optionsOrForceFull ?? {};
-  const forceFullSync = opts.forceFullSync ?? false;
-  const refreshFromBackend = opts.refreshFromBackend ?? false;
-
   try {
-    // 1. Cargar siempre órdenes locales desde IndexedDB primero (offline-first)
     const localOrders = await db.getAll<Order>("orders");
 
-    // 2. Si está offline, retornar solo órdenes locales inmediatamente
     if (!isOnline()) {
-      console.log(`✅ Órdenes cargadas desde IndexedDB (offline): ${localOrders.length}`);
+      console.log(`Órdenes desde IndexedDB (offline): ${localOrders.length}`);
       return localOrders;
     }
-
-    // 3. Verificar si debemos sincronizar (evitar sincronizaciones muy frecuentes)
-    const needsSync = await shouldSync("orders");
-    if (!needsSync && !forceFullSync && !refreshFromBackend) {
-      console.log(`⏳ Sync de órdenes omitida (muy reciente). Usando ${localOrders.length} locales.`);
-      return localOrders;
-    }
-
-    // 4. Determinar tipo de sincronización
-    const doFullSync = await shouldDoFullSync("orders", forceFullSync);
-    const lastSyncTimestamp = doFullSync ? null : await getLastSyncTimestamp("orders");
 
     try {
-      let backendOrdersMapped: Order[];
-      let newServerTimestamp: string;
+      const allOrders: Order[] = [];
+      let page = 1;
+      let hasMore = true;
 
-      if (doFullSync) {
-        // Sincronización completa: traer todos los pedidos paginados
-        console.log("🔄 Iniciando sincronización COMPLETA de órdenes...");
-        const allOrders: Order[] = [];
-        let page = 1;
-        let hasMore = true;
-
-        while (hasMore) {
-          const response = await apiClient.getOrdersPaged(page, 50);
-          const mappedOrders = response.orders.map(orderFromBackendDto);
-          allOrders.push(...mappedOrders);
-          newServerTimestamp = response.serverTimestamp;
-          hasMore = response.hasNextPage;
-          page++;
-
-          // Log de progreso
-          console.log(`📥 Página ${page - 1}: ${mappedOrders.length} pedidos (total: ${allOrders.length}/${response.totalCount})`);
-        }
-
-        backendOrdersMapped = allOrders;
-      } else {
-        // Sincronización incremental: solo pedidos modificados desde lastSyncTimestamp
-        console.log(`🔄 Sincronización INCREMENTAL de órdenes (desde ${lastSyncTimestamp})...`);
-        const { orders, serverTimestamp } = await apiClient.getOrdersSince(lastSyncTimestamp!);
-        backendOrdersMapped = orders.map(orderFromBackendDto);
-        newServerTimestamp = serverTimestamp;
-        console.log(`📥 ${backendOrdersMapped.length} pedidos actualizados desde última sync`);
-      }
-
-      // 5. Hacer merge usando orderNumber como clave única
-      const ordersMap = new Map<string, Order>();
-
-      // Primero agregar órdenes locales
-      for (const order of localOrders) {
-        ordersMap.set(order.orderNumber, order);
-      }
-
-      // Actualizar con órdenes del backend en paralelo
-      if (backendOrdersMapped.length > 0) {
-        // Primero actualizar el mapa
-        for (const order of backendOrdersMapped) {
-          ordersMap.set(order.orderNumber, order);
-        }
-
-        // Luego guardar en IndexedDB en paralelo
-        await Promise.all(
-          backendOrdersMapped.map(async (order) => {
-            try {
-              await db.put("orders", order);
-            } catch (error) {
-              console.warn(`⚠️ Error guardando orden ${order.orderNumber} en IndexedDB:`, error);
-            }
-          })
+      while (hasMore) {
+        const response = await apiClient.getOrdersPaged(page, 50);
+        const mappedOrders = response.orders.map(orderFromBackendDto);
+        allOrders.push(...mappedOrders);
+        hasMore = response.hasNextPage;
+        page++;
+        console.log(
+          `Pedidos página ${page - 1}: ${mappedOrders.length} (acumulado: ${allOrders.length}/${response.totalCount})`
         );
       }
 
-      // 6. Guardar el nuevo timestamp de sincronización
-      if (newServerTimestamp!) {
-        await setLastSyncTimestamp("orders", newServerTimestamp);
+      const backendNumbers = new Set(allOrders.map((o) => o.orderNumber));
+      const localOnly = localOrders.filter((o) => !backendNumbers.has(o.orderNumber));
+
+      for (const order of allOrders) {
+        try {
+          await db.put("orders", order);
+        } catch (err) {
+          console.warn(`Error guardando orden ${order.orderNumber} en IndexedDB:`, err);
+        }
       }
 
-      const mergedOrders = Array.from(ordersMap.values());
+      const merged = [...allOrders, ...localOnly];
       console.log(
-        `✅ Órdenes sincronizadas: ${localOrders.length} locales + ${backendOrdersMapped.length} del backend = ${mergedOrders.length} totales`
+        `Órdenes: ${allOrders.length} del servidor + ${localOnly.length} solo locales = ${merged.length}`
       );
-      return mergedOrders;
-
+      return merged;
     } catch (error) {
-      console.warn(
-        "⚠️ Error sincronizando órdenes con backend, usando solo IndexedDB:",
-        error
-      );
-      // Si falla el backend, retornar órdenes locales
+      console.warn("Error obteniendo órdenes del servidor, usando IndexedDB:", error);
       return localOrders;
     }
   } catch (error) {
-    console.error("Error loading orders from IndexedDB:", error);
+    console.error("Error loading orders:", error);
     return [];
   }
 };
@@ -2328,27 +2169,39 @@ export const getOrderByOrderNumberPreferBackend = async (
 
 export const getOrder = async (id: string): Promise<Order | undefined> => {
   try {
+    if (isOnline()) {
+      try {
+        const dto = await apiClient.getOrderById(id);
+        const order = orderFromBackendDto(dto);
+        await db.put("orders", order);
+        return order;
+      } catch (error) {
+        console.warn("getOrder: API falló, usando IndexedDB", error);
+      }
+    }
     return await db.get<Order>("orders", id);
   } catch (error) {
-    console.error("Error loading order from IndexedDB:", error);
+    console.error("Error loading order:", error);
     return undefined;
   }
 };
 
 export const getOrdersByClient = async (clientId: string): Promise<Order[]> => {
   try {
-    return await db.getByIndex<Order>("orders", "clientId", clientId);
+    const all = await getOrders();
+    return all.filter((o) => o.clientId === clientId);
   } catch (error) {
-    console.error("Error loading orders by client from IndexedDB:", error);
+    console.error("Error loading orders by client:", error);
     return [];
   }
 };
 
 export const getOrdersByStatus = async (status: string): Promise<Order[]> => {
   try {
-    return await db.getByIndex<Order>("orders", "status", status);
+    const all = await getOrders();
+    return all.filter((o) => o.status === status);
   } catch (error) {
-    console.error("Error loading orders by status from IndexedDB:", error);
+    console.error("Error loading orders by status:", error);
     return [];
   }
 };
@@ -2366,9 +2219,7 @@ export const addOrder = async (
       const backendOrder = await apiClient.createOrder(createDto);
       newOrder = orderFromBackendDto(backendOrder);
 
-      // Guardar también en IndexedDB
-      await db.add("orders", newOrder);
-      console.log("✅ Pedido guardado en backend y IndexedDB:", newOrder.orderNumber);
+      console.log("✅ Pedido guardado en backend:", newOrder.orderNumber);
       syncedToBackend = true;
       return newOrder;
     } catch (error) {
@@ -2382,8 +2233,7 @@ export const addOrder = async (
 
   // Guardar en IndexedDB (offline o falló el backend)
   try {
-    // Obtener el número de pedidos para generar el siguiente número
-    const orders = await getOrders();
+    const orders = await db.getAll<Order>("orders");
     const orderNumber = `ORD-${String(orders.length + 1).padStart(3, "0")}`;
 
     newOrder = {
@@ -2592,9 +2442,7 @@ export const updateOrder = async (
           const backendOrder = await apiClient.updateOrder(backendOrderId, updateDto);
           const syncedOrder = orderFromBackendDto(backendOrder);
 
-          // Actualizar también en IndexedDB con los datos del backend
-          await db.update("orders", syncedOrder);
-          console.log("✅ Pedido actualizado en backend y IndexedDB:", syncedOrder.orderNumber);
+          console.log("✅ Pedido actualizado en backend:", syncedOrder.orderNumber);
           return syncedOrder;
         } else {
           // El pedido no existe en el backend, actualizar localmente y encolar para sincronización
@@ -3379,34 +3227,52 @@ export const clientFromBackendDto = (dto: ClientResponseDto): Client => ({
 
 // ===== CLIENTS STORAGE (IndexedDB) =====
 
+const repopulateClientsCache = async (clients: Client[]): Promise<void> => {
+  try {
+    await db.clearStore("clients");
+    for (const c of clients) {
+      await db.put("clients", c);
+    }
+  } catch (e) {
+    console.warn("Error actualizando cache de clientes:", e);
+  }
+};
+
 export const getClients = async (): Promise<Client[]> => {
   try {
-    const localClients = await db.getAll<Client>("clients");
-
-    // Si no hay clientes locales y estamos online, intentar obtener del backend
-    if (localClients.length === 0 && isOnline()) {
+    if (isOnline()) {
       try {
-        console.log("Empty local clients, fetching from backend...");
-        // Obtener una página grande para llenar el cache inicial
         const result = await apiClient.getClientsPaged(1, 1000);
-        return (result.items || []).map(clientFromBackendDto);
+        const list = (result.items || []).map(clientFromBackendDto);
+        void repopulateClientsCache(list);
+        return list;
       } catch (error) {
-        console.warn("Error fetching clients from backend on empty cache fallback:", error);
+        console.warn("Error obteniendo clientes del backend, usando IndexedDB:", error);
+        return await db.getAll<Client>("clients");
       }
     }
-
-    return localClients;
+    return await db.getAll<Client>("clients");
   } catch (error) {
-    console.error("Error loading clients from IndexedDB:", error);
+    console.error("Error loading clients:", error);
     return [];
   }
 };
 
 export const getClient = async (id: string): Promise<Client | undefined> => {
   try {
+    if (isOnline()) {
+      try {
+        const dto = await apiClient.getClientById(id);
+        const c = clientFromBackendDto(dto);
+        await db.put("clients", c);
+        return c;
+      } catch (error) {
+        console.warn("getClient: API falló, usando IndexedDB", error);
+      }
+    }
     return await db.get<Client>("clients", id);
   } catch (error) {
-    console.error("Error loading client from IndexedDB:", error);
+    console.error("Error loading client:", error);
     return undefined;
   }
 };
@@ -3527,29 +3393,33 @@ export const providerToUpdateDto = (updates: Partial<Provider>): UpdateProviderD
   return dto;
 };
 
+const repopulateProvidersCache = async (providers: Provider[]): Promise<void> => {
+  try {
+    await db.clearStore("providers");
+    for (const p of providers) {
+      await db.put("providers", p);
+    }
+  } catch (e) {
+    console.warn("Error actualizando cache de proveedores:", e);
+  }
+};
+
 export const getProviders = async (): Promise<Provider[]> => {
   try {
-    const localProviders = await db.getAll<Provider>("providers");
-
-    // Si no hay proveedores locales y estamos online, intentar obtener del backend
-    if (localProviders.length === 0 && isOnline()) {
+    if (isOnline()) {
       try {
-        console.log("Empty local providers, fetching from backend...");
         const providersDto = await apiClient.getProviders();
-        const providers = providersDto.map(providerFromBackendDto);
-
-        // Guardar en IndexedDB para futuras consultas
-        await Promise.all(providers.map(p => db.put("providers", p)));
-
-        return providers;
+        const list = providersDto.map(providerFromBackendDto);
+        void repopulateProvidersCache(list);
+        return list;
       } catch (error) {
-        console.warn("Error fetching providers from backend on empty cache fallback:", error);
+        console.warn("Error obteniendo proveedores del backend, usando IndexedDB:", error);
+        return await db.getAll<Provider>("providers");
       }
     }
-
-    return localProviders;
+    return await db.getAll<Provider>("providers");
   } catch (error) {
-    console.error("Error loading providers from IndexedDB:", error);
+    console.error("Error loading providers:", error);
     return [];
   }
 };
@@ -3558,9 +3428,19 @@ export const getProvider = async (
   id: string
 ): Promise<Provider | undefined> => {
   try {
+    if (isOnline()) {
+      try {
+        const dto = await apiClient.getProviderById(id);
+        const p = providerFromBackendDto(dto);
+        await db.put("providers", p);
+        return p;
+      } catch (error) {
+        console.warn("getProvider: API falló, usando IndexedDB", error);
+      }
+    }
     return await db.get<Provider>("providers", id);
   } catch (error) {
-    console.error("Error loading provider from IndexedDB:", error);
+    console.error("Error loading provider:", error);
     return undefined;
   }
 };
@@ -3649,9 +3529,19 @@ export const syncProvidersFromBackend = async (): Promise<Provider[]> => {
 
 export const getStore = async (id: string): Promise<Store | undefined> => {
   try {
+    if (isOnline()) {
+      try {
+        const dto = await apiClient.getStore(id);
+        const s = storeFromBackendDto(dto);
+        await db.put("stores", s);
+        return s;
+      } catch (error) {
+        console.warn("getStore: API falló, usando IndexedDB", error);
+      }
+    }
     return await db.get<Store>("stores", id);
   } catch (error) {
-    console.error("Error loading store from IndexedDB:", error);
+    console.error("Error loading store:", error);
     return undefined;
   }
 };
@@ -3683,70 +3573,52 @@ const accountFromBackendDto = (dto: AccountResponseDto): Account => ({
   updatedAt: dto.updatedAt,
 });
 
+const repopulateAccountsCache = async (accounts: Account[]): Promise<void> => {
+  try {
+    await db.clearStore("accounts");
+    for (const a of accounts) {
+      await db.put("accounts", a);
+    }
+  } catch (e) {
+    console.warn("Error actualizando cache de cuentas:", e);
+  }
+};
+
 export const getAccounts = async (): Promise<Account[]> => {
   try {
-    // Cargar siempre cuentas locales desde IndexedDB primero (offline-first)
-    const localAccounts = await db.getAll<Account>("accounts");
-
-    // Si hay conexión, intentar sincronizar con backend y hacer merge
     if (isOnline()) {
       try {
         const backendAccounts = await apiClient.getAccounts();
-        const backendAccountsMapped = backendAccounts.map(accountFromBackendDto);
-
-        // Hacer merge: usar ID como clave única
-        const accountsMap = new Map<string, Account>();
-
-        // Primero agregar cuentas locales
-        for (const account of localAccounts) {
-          accountsMap.set(account.id, account);
-        }
-
-        // Luego agregar/actualizar con cuentas del backend (estas tienen prioridad)
-        for (const account of backendAccountsMapped) {
-          accountsMap.set(account.id, account);
-
-          // Guardar/actualizar en IndexedDB
-          try {
-            await db.put("accounts", account);
-            console.log(`✅ Cuenta sincronizada: ${account.label} (ID: ${account.id})`);
-          } catch (error) {
-            console.error(`❌ Error guardando cuenta ${account.label}:`, error);
-          }
-        }
-
-        const mergedAccounts = Array.from(accountsMap.values());
-        console.log(
-          `✅ Cuentas: ${localAccounts.length} locales + ${backendAccounts.length} del backend = ${mergedAccounts.length} totales`
-        );
-
-        return mergedAccounts;
+        const list = backendAccounts.map(accountFromBackendDto);
+        void repopulateAccountsCache(list);
+        return list;
       } catch (error) {
-        console.warn(
-          "⚠️ Error cargando cuentas del backend, usando solo IndexedDB:",
-          error
-        );
-        // Si falla el backend, retornar cuentas locales
-        return localAccounts;
+        console.warn("Error cargando cuentas del backend, usando IndexedDB:", error);
+        return await db.getAll<Account>("accounts");
       }
     }
-
-    // Si está offline, solo retornar cuentas locales
-    console.log(
-      `✅ Cuentas cargadas desde IndexedDB: ${localAccounts.length}`
-    );
-    return localAccounts;
+    return await db.getAll<Account>("accounts");
   } catch (error) {
-    console.error("Error loading accounts from IndexedDB:", error);
+    console.error("Error loading accounts:", error);
     return [];
   }
 };
 
 export const getAccount = async (id: string): Promise<Account | undefined> => {
   try {
+    if (isOnline()) {
+      try {
+        const dto = await apiClient.getAccountById(id);
+        const a = accountFromBackendDto(dto);
+        await db.put("accounts", a);
+        return a;
+      } catch (error) {
+        console.warn("getAccount: API falló, usando IndexedDB", error);
+      }
+    }
     return await db.get<Account>("accounts", id);
   } catch (error) {
-    console.error("Error loading account from IndexedDB:", error);
+    console.error("Error loading account:", error);
     return undefined;
   }
 };
@@ -3770,8 +3642,7 @@ export const addAccount = async (
         // Usar la cuenta del backend
         const newAccount: Account = accountFromBackendDto(backendAccount);
 
-        await db.add("accounts", newAccount);
-        console.log("✅ Cuenta guardada en IndexedDB y backend:", newAccount.label);
+        console.log("✅ Cuenta creada en backend:", newAccount.label);
         return newAccount;
       } catch (error) {
         console.warn("⚠️ Error creando cuenta en backend, guardando solo localmente:", error);
@@ -3825,8 +3696,7 @@ export const updateAccount = async (
         const backendAccount = await apiClient.updateAccount(id, updateDto);
         const updatedAccount = accountFromBackendDto(backendAccount);
 
-        await db.update("accounts", updatedAccount);
-        console.log("✅ Cuenta actualizada en IndexedDB y backend:", updatedAccount.label);
+        console.log("✅ Cuenta actualizada en backend:", updatedAccount.label);
         return updatedAccount;
       } catch (error) {
         console.warn("⚠️ Error actualizando cuenta en backend, actualizando solo localmente:", error);
@@ -3893,21 +3763,34 @@ export const storeFromBackendDto = (dto: StoreResponseDto): Store => ({
   updatedAt: dto.updatedAt,
 });
 
-// Función de sincronización mejorada para Stores
+const repopulateStoresCache = async (stores: Store[]): Promise<void> => {
+  try {
+    await db.clearStore("stores");
+    for (const s of stores) {
+      await db.put("stores", s);
+    }
+  } catch (e) {
+    console.warn("Error actualizando cache de tiendas:", e);
+  }
+};
+
 export const getStores = async (): Promise<Store[]> => {
   try {
-    // Intentar obtener del backend primero
-    const backendStores = await apiClient.getStores();
-    const backendStoresConverted = backendStores.map(storeFromBackendDto);
-
-    // Guardar en IndexedDB
-    await Promise.all(backendStoresConverted.map(store => db.put("stores", store)));
-
-    return backendStoresConverted;
+    if (!isOnline()) {
+      return await db.getAll<Store>("stores");
+    }
+    try {
+      const backendStores = await apiClient.getStores();
+      const list = backendStores.map(storeFromBackendDto);
+      void repopulateStoresCache(list);
+      return list;
+    } catch (error) {
+      console.warn("Error al obtener tiendas del backend, usando IndexedDB:", error);
+      return await db.getAll<Store>("stores");
+    }
   } catch (error) {
-    console.warn("Error al obtener tiendas del backend, usando IndexedDB:", error);
-    // Fallback a IndexedDB
-    return await db.getAll<Store>("stores");
+    console.error("Error loading stores:", error);
+    return [];
   }
 };
 
@@ -3920,9 +3803,7 @@ export const addStore = async (
     const createdStoreDto = await apiClient.createStore(backendDto);
     const createdStore = storeFromBackendDto(createdStoreDto);
 
-    // Guardar en IndexedDB
-    await db.add("stores", createdStore);
-    console.log("✅ Tienda creada en backend y guardada en IndexedDB:", createdStore.name);
+    console.log("✅ Tienda creada en backend:", createdStore.name);
     return createdStore;
   } catch (error) {
     console.error("Error creando tienda en backend, guardando solo en IndexedDB:", error);
@@ -3959,9 +3840,7 @@ export const updateStore = async (
     const updatedStoreDto = await apiClient.updateStore(id, backendDto);
     const updatedStore = storeFromBackendDto(updatedStoreDto);
 
-    // Actualizar en IndexedDB
-    await db.put("stores", updatedStore);
-    console.log("✅ Tienda actualizada en backend y IndexedDB:", updatedStore.name);
+    console.log("✅ Tienda actualizada en backend:", updatedStore.name);
     return updatedStore;
   } catch (error) {
     console.error("Error actualizando tienda en backend, actualizando solo en IndexedDB:", error);
@@ -4288,69 +4167,52 @@ const userFromBackendDto = (dto: UserResponseDto): User => ({
   baseSalaryCurrency: dto.baseSalaryCurrency,
 });
 
+const repopulateUsersCache = async (users: User[]): Promise<void> => {
+  try {
+    await db.clearStore("users");
+    for (const u of users) {
+      await db.put("users", u);
+    }
+  } catch (e) {
+    console.warn("Error actualizando cache de usuarios:", e);
+  }
+};
+
 export const getUsers = async (): Promise<User[]> => {
   try {
-    // Cargar siempre usuarios locales desde IndexedDB primero (offline-first)
-    const localUsers = await db.getAll<User>("users");
-
-    // Si hay conexión, intentar sincronizar con backend y hacer merge
     if (isOnline()) {
       try {
         const backendUsers = await apiClient.getUsers();
-        const backendUsersMapped = backendUsers.map(userFromBackendDto);
-
-        // Hacer merge: combinar usuarios del backend con los locales
-        // Crear un Map usando el ID como clave para evitar duplicados
-        // Los usuarios del backend tienen prioridad sobre los locales
-        const usersMap = new Map<string, User>();
-
-        // Primero agregar usuarios locales
-        for (const user of localUsers) {
-          usersMap.set(user.id, user);
-        }
-
-        // Luego agregar/actualizar con usuarios del backend (estos tienen prioridad)
-        for (const user of backendUsersMapped) {
-          usersMap.set(user.id, user);
-          // Guardar/actualizar en IndexedDB
-          try {
-            await db.update("users", user);
-          } catch {
-            await db.add("users", user);
-          }
-        }
-
-        const mergedUsers = Array.from(usersMap.values());
-        console.log(
-          `✅ Usuarios: ${localUsers.length} locales + ${backendUsersMapped.length} del backend = ${mergedUsers.length} totales`
-        );
-        return mergedUsers;
+        const list = backendUsers.map(userFromBackendDto);
+        void repopulateUsersCache(list);
+        return list;
       } catch (error) {
-        console.warn(
-          "⚠️ Error cargando usuarios del backend, usando solo IndexedDB:",
-          error
-        );
-        // Si falla el backend, retornar usuarios locales
-        return localUsers;
+        console.warn("Error cargando usuarios del backend, usando IndexedDB:", error);
+        return await db.getAll<User>("users");
       }
     }
-
-    // Si está offline, solo retornar usuarios locales
-    console.log(
-      `✅ Usuarios cargados desde IndexedDB: ${localUsers.length}`
-    );
-    return localUsers;
+    return await db.getAll<User>("users");
   } catch (error) {
-    console.error("Error loading users from IndexedDB:", error);
+    console.error("Error loading users:", error);
     return [];
   }
 };
 
 export const getUser = async (id: string): Promise<User | undefined> => {
   try {
+    if (isOnline()) {
+      try {
+        const dto = await apiClient.getUserById(id);
+        const u = userFromBackendDto(dto);
+        await db.put("users", u);
+        return u;
+      } catch (error) {
+        console.warn("getUser: API falló, usando IndexedDB", error);
+      }
+    }
     return await db.get<User>("users", id);
   } catch (error) {
-    console.error("Error loading user from IndexedDB:", error);
+    console.error("Error loading user:", error);
     return undefined;
   }
 };
