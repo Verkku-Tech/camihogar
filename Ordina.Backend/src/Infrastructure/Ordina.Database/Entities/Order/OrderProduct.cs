@@ -74,6 +74,9 @@ public class OrderProduct
     [BsonElement("locationStatus")]
     public string? LocationStatus { get; set; } // "EN TIENDA" | "FABRICACION" | null/empty
 
+    [BsonElement("logisticStatus")]
+    public string LogisticStatus { get; set; } = "Generado"; // "Generado", "Fabricándose", "En Almacén", "En Ruta", "Completado"
+
     // Campos de sobreprecio
     [BsonElement("surchargeEnabled")]
     public bool? SurchargeEnabled { get; set; } // Indica si tiene sobreprecio

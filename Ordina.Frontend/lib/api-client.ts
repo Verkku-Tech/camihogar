@@ -1208,6 +1208,12 @@ export class ApiClient {
     });
   }
 
+  async validateOrderItem(orderId: string, itemId: string) {
+    return this.request<OrderResponseDto>(`/api/Orders/${orderId}/items/${itemId}/validate`, {
+      method: "PATCH",
+    });
+  }
+
   // ===== PRODUCT COMMISSIONS (Comisiones por Categoría/Familia) =====
 
   async getProductCommissions(): Promise<ProductCommissionDto[]> {
@@ -1768,11 +1774,12 @@ export interface OrderProductDto {
   manufacturingStartedAt?: string;
   manufacturingCompletedAt?: string;
   manufacturingNotes?: string;
+  locationStatus?: string;
+  logisticStatus?: string;
   // Campos de refabricación
   refabricationReason?: string; // Razón de la última refabricación
   refabricatedAt?: string; // Fecha de última refabricación (ISO string)
   refabricationHistory?: RefabricationRecordDto[]; // Historial de refabricaciones
-  locationStatus?: string;
   // Campos de sobreprecio
   surchargeEnabled?: boolean;
   surchargeAmount?: number;

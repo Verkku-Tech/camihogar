@@ -435,6 +435,13 @@ public class ImportService : IImportService
             }
         }
 
+        // Configurar selección múltiple predeterminada si no tiene límite
+        if (valueType == "Multiple select" && attr.MaxSelections == null)
+        {
+            attr.MaxSelections = 2;
+            changed = true;
+        }
+
         // Agregar valores de VALORES_Y_PRECIOS
         var valuesForAttribute = allValuesForCategory
             .Where(v => string.Equals(v.Attribute, schema.Attribute, StringComparison.OrdinalIgnoreCase))

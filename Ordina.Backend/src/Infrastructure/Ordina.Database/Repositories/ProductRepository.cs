@@ -96,11 +96,7 @@ public class ProductRepository : IProductRepository
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var regex = new BsonRegularExpression(search, "i");
-            filter &= Builders<Product>.Filter.Or(
-                Builders<Product>.Filter.Regex(p => p.Name, regex),
-                Builders<Product>.Filter.Regex(p => p.SKU, regex),
-                Builders<Product>.Filter.Regex(p => p.Category, regex));
+            filter &= BuildSearchFilter(search);
         }
 
         if (!string.IsNullOrWhiteSpace(categoryId))
@@ -124,11 +120,7 @@ public class ProductRepository : IProductRepository
 
     public async Task<IEnumerable<Product>> SearchAsync(string search, int limit = 20)
     {
-        var regex = new BsonRegularExpression(search, "i");
-        var filter = Builders<Product>.Filter.Or(
-            Builders<Product>.Filter.Regex(p => p.Name, regex),
-            Builders<Product>.Filter.Regex(p => p.SKU, regex),
-            Builders<Product>.Filter.Regex(p => p.Category, regex));
+        var filter = BuildSearchFilter(search);
 
         return await _collection
             .Find(filter)
@@ -139,6 +131,28 @@ public class ProductRepository : IProductRepository
     public async Task<long> CountByCategoryIdAsync(string categoryId)
     {
         return await _collection.CountDocumentsAsync(p => p.CategoryId == categoryId);
+    }
+
+    private FilterDefinition<Product> BuildSearchFilter(string? search)
+    {
+        var filter = Builders<Product>.Filter.Empty;
+        if (string.IsNullOrWhiteSpace(search)) return filter;
+
+        var terms = search.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var andFilters = new List<FilterDefinition<Product>>();
+
+        foreach (var term in terms)
+        {
+            var escapedTerm = System.Text.RegularExpressions.Regex.Escape(term);
+            var regex = new BsonRegularExpression(escapedTerm, "i");
+            var termOrFilter = Builders<Product>.Filter.Or(
+                Builders<Product>.Filter.Regex(p => p.Name, regex),
+                Builders<Product>.Filter.Regex(p => p.SKU, regex),
+                Builders<Product>.Filter.Regex(p => p.Category, regex));
+            andFilters.Add(termOrFilter);
+        }
+
+        return Builders<Product>.Filter.And(andFilters);
     }
 }
 

@@ -18,6 +18,7 @@ import {
   MapPin,
   Calendar,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import {
   getOrderByOrderNumberPreferBackend,
@@ -42,6 +43,7 @@ import {
 import { useCurrency } from "@/contexts/currency-context";
 import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
+import { apiClient } from "@/lib/api-client";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
@@ -478,6 +480,27 @@ export default function OrderDetailPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [client, setClient] = useState<Client | null>(null);
+  const [validatingProductId, setValidatingProductId] = useState<string | null>(null);
+
+  const handleValidateProduct = async (productId: string) => {
+    if (!order) return;
+    try {
+      setValidatingProductId(productId);
+      const updatedOrderData = await apiClient.validateOrderItem(order.id, productId);
+      
+      // Actualizamos el pedido para ver reflejado el cambio
+      const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
+      if (foundOrder) {
+        setOrder(foundOrder);
+      }
+      toast.success("Producto validado correctamente y movido a Fabricándose");
+    } catch (error) {
+      console.error("Error validando producto:", error);
+      toast.error("Error al tratar de validar el producto");
+    } finally {
+      setValidatingProductId(null);
+    }
+  };
   const [productBreakdowns, setProductBreakdowns] = useState<
     Record<
       string,
@@ -1325,55 +1348,81 @@ export default function OrderDetailPage() {
                         <HoverCard key={idx} openDelay={200} closeDelay={100}>
                           <HoverCardTrigger asChild>
                             <div className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-                              {/* Estado de ubicación */}
-                              <div className="mb-3 pb-3 border-b">
-                                {(() => {
-                                  let badgeText = "Disponibilidad Inmediata";
-                                  let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "secondary";
-                                  let badgeClassName = "text-sm";
+                              {/* Estado de ubicación y logística */}
+                              <div className="mb-3 pb-3 border-b flex flex-col gap-3">
+                                <div className="flex justify-between items-center">
+                                  {/* Badge de Ubicación/Fabricación Original */}
+                                  {(() => {
+                                    let badgeText = "Disponibilidad Inmediata";
+                                    let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "secondary";
+                                    let badgeClassName = "text-sm";
 
-                                  // Normalizar locationStatus para comparación (trim y manejar ambos formatos)
-                                  const locationStatus = product.locationStatus?.trim();
-                                  
-                                  // Debug temporal: descomentar para ver qué valor está llegando
-                                  // if (product.name) console.log(`Product: ${product.name}, locationStatus: "${locationStatus}", raw: "${product.locationStatus}"`);
-                                  
-                                  // Verificar si es "EN TIENDA" (ambos formatos)
-                                  if (locationStatus === "en_tienda" || locationStatus === "EN TIENDA") {
-                                    badgeText = "En Tienda";
-                                    badgeVariant = "default";
-                                  } 
-                                  // Verificar si es "FABRICACION"
-                                  // También verificar variaciones con espacios o mayúsculas/minúsculas
-                                  else if (
-                                    locationStatus === "FABRICACION" ||
-                                    locationStatus?.toUpperCase() === "FABRICACION" ||
-                                    (locationStatus && locationStatus.toLowerCase().includes("fabric"))
-                                  ) {
-                                    if (product.manufacturingStatus === "almacen_no_fabricado" || (product.manufacturingStatus as string) === "fabricado") {
-                                      badgeText = "En almacén";
+                                    // Normalizar locationStatus para comparación (trim y manejar ambos formatos)
+                                    const locationStatus = product.locationStatus?.trim();
+                                    
+                                    // Verificar si es "EN TIENDA" (ambos formatos)
+                                    if (locationStatus === "en_tienda" || locationStatus === "EN TIENDA") {
+                                      badgeText = "En Tienda";
                                       badgeVariant = "default";
-                                      badgeClassName = "text-sm bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300";
-                                    } else if (product.manufacturingStatus === "fabricando") {
-                                      badgeText = "En Fabricación";
-                                      badgeVariant = "secondary";
-                                      badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
-                                    } else {
-                                      badgeText = "Mandar a Fabricar";
-                                      badgeVariant = "outline";
-                                      badgeClassName = "text-sm text-foreground border-0";
+                                    } 
+                                    // Verificar si es "FABRICACION"
+                                    // También verificar variaciones con espacios o mayúsculas/minúsculas
+                                    else if (
+                                      locationStatus === "FABRICACION" ||
+                                      locationStatus?.toUpperCase() === "FABRICACION" ||
+                                      (locationStatus && locationStatus.toLowerCase().includes("fabric"))
+                                    ) {
+                                      if (product.manufacturingStatus === "almacen_no_fabricado" || (product.manufacturingStatus as string) === "fabricado") {
+                                        badgeText = "En almacén";
+                                        badgeVariant = "default";
+                                        badgeClassName = "text-sm bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300";
+                                      } else if (product.manufacturingStatus === "fabricando") {
+                                        badgeText = "En Fabricación";
+                                        badgeVariant = "secondary";
+                                        badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+                                      } else {
+                                        badgeText = "Mandar a Fabricar";
+                                        badgeVariant = "outline";
+                                        badgeClassName = "text-sm text-foreground border-0";
+                                      }
                                     }
-                                  }
 
-                                  return (
-                                    <Badge 
-                                      variant={badgeVariant}
-                                      className={badgeClassName}
+                                    return (
+                                      <Badge 
+                                        variant={badgeVariant}
+                                        className={badgeClassName}
+                                        title="Estado de Producción/Ubicación"
+                                      >
+                                        {badgeText}
+                                      </Badge>
+                                    );
+                                  })()}
+
+                                  {/* Progress / Logistic Status */}
+                                  <Badge 
+                                    variant={product.logisticStatus === "Completado" ? "default" : "secondary"}
+                                    title="Estado Logístico"
+                                  >
+                                    {product.logisticStatus || "Generado"}
+                                  </Badge>
+                                </div>
+                                
+                                {(!product.logisticStatus || product.logisticStatus === "Generado") && (
+                                  <div className="flex justify-end">
+                                    <Button 
+                                      size="sm" 
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleValidateProduct(product.id);
+                                      }}
+                                      disabled={validatingProductId === product.id}
                                     >
-                                      {badgeText}
-                                    </Badge>
-                                  );
-                                })()}
+                                      {validatingProductId === product.id && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                      Validar Producto
+                                    </Button>
+                                  </div>
+                                )}
                               </div>
                               
                               <div className="flex justify-between items-start mb-2">
