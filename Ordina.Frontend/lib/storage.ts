@@ -2363,6 +2363,7 @@ export const updateOrder = async (
               manufacturingCompletedAt: p.manufacturingCompletedAt,
               manufacturingNotes: p.manufacturingNotes,
               locationStatus: p.locationStatus,
+              logisticStatus: p.logisticStatus,
             })) : undefined,
             subtotal: updatedOrder.subtotal !== existingOrder.subtotal ? updatedOrder.subtotal : undefined,
             taxAmount: updatedOrder.taxAmount !== existingOrder.taxAmount ? updatedOrder.taxAmount : undefined,
@@ -2507,6 +2508,7 @@ export const updateOrder = async (
             manufacturingCompletedAt: p.manufacturingCompletedAt,
             manufacturingNotes: p.manufacturingNotes,
             locationStatus: p.locationStatus,
+            logisticStatus: p.logisticStatus,
           })),
           partialPayments: updatedOrder.partialPayments?.map((p) => ({
             id: p.id,
