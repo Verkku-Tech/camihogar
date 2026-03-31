@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { getActiveExchangeRates, formatCurrency, convertProductPriceToBs, type Currency } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Package, Settings, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ImageUploader } from "./ImageUploader";
@@ -896,6 +897,9 @@ export function ProductEditDialog({
     {}
   );
   const [observations, setObservations] = useState("");
+  const [surchargeEnabled, setSurchargeEnabled] = useState(false);
+  const [surchargeAmount, setSurchargeAmount] = useState<number>(0);
+  const [surchargeReason, setSurchargeReason] = useState("");
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [exchangeRates, setExchangeRates] = useState<{ USD?: any; EUR?: any }>({});
@@ -969,6 +973,9 @@ export function ProductEditDialog({
       setQuantity(product.quantity);
       setObservations(product.observations || "");
       setProductImages(product.images || []);
+      setSurchargeEnabled(product.surchargeEnabled || false);
+      setSurchargeAmount(product.surchargeAmount || 0);
+      setSurchargeReason(product.surchargeReason || "");
     }
   }, [product]);
 
@@ -1053,6 +1060,9 @@ export function ProductEditDialog({
       setDetailedAttributeAdjustments([]);
       setDetailedProductAttributeAdjustments([]);
       setFormattedAttributeAdjustments({});
+      setSurchargeEnabled(false);
+      setSurchargeAmount(0);
+      setSurchargeReason("");
     }
   }, [open]);
 
@@ -1414,8 +1424,15 @@ export function ProductEditDialog({
       }
       setDetailedProductAttributeAdjustments(productAttrAdjustments);
 
+      // Calcular sobreprecio en Bs (viene en USD)
+      let surchargeInBs = 0;
+      if (surchargeEnabled && surchargeAmount > 0) {
+        const usdRate = exchangeRates?.USD?.rate;
+        surchargeInBs = usdRate && usdRate > 0 ? surchargeAmount * usdRate : surchargeAmount;
+      }
+
       const unitPrice = basePriceWithAdjustments;
-      const total = unitPrice * quantity;
+      const total = (unitPrice * quantity) + surchargeInBs;
       const adjustment = basePriceWithAdjustments - basePriceInBs;
 
       // Guardar los valores calculados para usar en el render
@@ -1448,7 +1465,7 @@ export function ProductEditDialog({
     if (product && currentCategory && allProducts.length > 0) {
       updateFormattedTotals();
     }
-  }, [product, quantity, attributes, currentCategory, productAttributes, exchangeRates, preferredCurrency, formatWithPreference, originalProduct, allProducts, categories]);
+  }, [product, quantity, attributes, currentCategory, productAttributes, exchangeRates, preferredCurrency, formatWithPreference, originalProduct, allProducts, categories, surchargeEnabled, surchargeAmount]);
 
   // Obtener la categoría del producto seleccionado para editar sus atributos
   const productCategoryForEdit = selectedProductForEdit
@@ -1625,6 +1642,18 @@ export function ProductEditDialog({
       }
     }
     
+    // Validar sobreprecio: si está activado, monto y razón son obligatorios
+    if (surchargeEnabled) {
+      if (!surchargeAmount || surchargeAmount <= 0) {
+        toast.error("Debe ingresar el monto del sobreprecio");
+        return;
+      }
+      if (!surchargeReason.trim()) {
+        toast.error("Debe ingresar la razón del sobreprecio");
+        return;
+      }
+    }
+
     // Usar el precio original del producto si está disponible, sino usar el precio convertido
     let basePriceInBs = product.price;
     if (originalProduct) {
@@ -1679,9 +1708,16 @@ export function ProductEditDialog({
       }
     }
 
-    // Calcular el total: (precio base + ajustes + precios de productos-atributos) * cantidad
+    // Calcular sobreprecio en Bs (viene en USD)
+    let surchargeInBs = 0;
+    if (surchargeEnabled && surchargeAmount > 0) {
+      const usdRate = exchangeRates?.USD?.rate;
+      surchargeInBs = usdRate && usdRate > 0 ? surchargeAmount * usdRate : surchargeAmount;
+    }
+
+    // Calcular el total: (precio base + ajustes + precios de productos-atributos) * cantidad + sobreprecio
     const unitPrice = basePriceWithAdjustments;
-    const total = unitPrice * quantity;
+    const total = (unitPrice * quantity) + surchargeInBs;
 
     // IMPORTANTE: Normalizar atributos para usar títulos como claves en lugar de IDs
     const finalAttributes: Record<string, any> = {};
@@ -1739,6 +1775,9 @@ export function ProductEditDialog({
       observations: observations.trim() || undefined,
       locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA", // Preservar locationStatus o establecer por defecto
       images: productImages.length > 0 ? productImages : undefined, // Agregar imágenes si hay alguna
+      surchargeEnabled: surchargeEnabled || undefined,
+      surchargeAmount: surchargeEnabled && surchargeAmount > 0 ? surchargeAmount : undefined,
+      surchargeReason: surchargeEnabled && surchargeReason.trim() ? surchargeReason.trim() : undefined,
     };
     onProductUpdate(updatedProduct);
   };
@@ -2225,6 +2264,63 @@ export function ProductEditDialog({
             </div>
           )}
 
+          {/* Sobre Precio */}
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="surchargeEnabled"
+                checked={surchargeEnabled}
+                onCheckedChange={(checked) => {
+                  setSurchargeEnabled(checked as boolean);
+                  if (!checked) {
+                    setSurchargeAmount(0);
+                    setSurchargeReason("");
+                  }
+                }}
+              />
+              <Label htmlFor="surchargeEnabled" className="text-sm font-medium cursor-pointer">
+                Sobre precio
+              </Label>
+            </div>
+            {surchargeEnabled && (
+              <div className="space-y-2 pl-6 border-l-2 border-orange-500/30">
+                <div className="space-y-1">
+                  <Label htmlFor="surchargeAmount" className="text-xs text-muted-foreground">
+                    Monto del sobreprecio (USD) <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="surchargeAmount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={surchargeAmount === 0 ? "" : surchargeAmount}
+                    onChange={(e) => setSurchargeAmount(Number.parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="surchargeReason" className="text-xs text-muted-foreground">
+                    Razón del sobreprecio <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="surchargeReason"
+                    type="text"
+                    value={surchargeReason}
+                    onChange={(e) => setSurchargeReason(e.target.value)}
+                    placeholder="Ej: Material especial, diseño personalizado..."
+                    className="text-sm"
+                  />
+                </div>
+                {surchargeAmount > 0 && (
+                  <p className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+                    +{formatCurrency(surchargeAmount, "USD")} se sumará al total del producto
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Observaciones del Producto */}
           <div className="space-y-2">
             <Label htmlFor="productObservations" className="text-sm">Observaciones</Label>
@@ -2266,7 +2362,13 @@ export function ProductEditDialog({
               const productAttributesTotal = calculatedProductAttributesTotal || 0;
               const unitPrice = calculatedUnitPrice || product.price;
               const adjustment = calculatedAdjustment || 0;
-              const total = unitPrice * quantity;
+              // Calcular sobreprecio en Bs
+              let surchargeInBs = 0;
+              if (surchargeEnabled && surchargeAmount > 0) {
+                const usdRate = exchangeRates?.USD?.rate;
+                surchargeInBs = usdRate && usdRate > 0 ? surchargeAmount * usdRate : surchargeAmount;
+              }
+              const total = (unitPrice * quantity) + surchargeInBs;
 
               return (
                 <>
@@ -2361,6 +2463,12 @@ export function ProductEditDialog({
                       <div className="flex justify-between text-xs pt-1">
                         <span>Cantidad:</span>
                         <span>{quantity} × {unitPriceFormatted || formatCurrency(unitPrice, "Bs")}</span>
+                      </div>
+                    )}
+                    {surchargeEnabled && surchargeAmount > 0 && (
+                      <div className="flex justify-between text-xs pt-1 text-orange-600 dark:text-orange-400 font-medium">
+                        <span>Sobre precio ({surchargeReason || "Sin razón"}):</span>
+                        <span>+{formatCurrency(surchargeAmount, "USD")}</span>
                       </div>
                     )}
                   </div>

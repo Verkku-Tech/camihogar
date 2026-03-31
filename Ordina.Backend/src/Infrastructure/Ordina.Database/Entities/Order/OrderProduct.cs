@@ -74,6 +74,17 @@ public class OrderProduct
     [BsonElement("locationStatus")]
     public string? LocationStatus { get; set; } // "EN TIENDA" | "FABRICACION" | null/empty
 
+    // Campos de sobreprecio
+    [BsonElement("surchargeEnabled")]
+    public bool? SurchargeEnabled { get; set; } // Indica si tiene sobreprecio
+
+    [BsonElement("surchargeAmount")]
+    [BsonRepresentation(BsonType.Decimal128)]
+    public decimal? SurchargeAmount { get; set; } // Monto del sobreprecio (en USD)
+
+    [BsonElement("surchargeReason")]
+    public string? SurchargeReason { get; set; } // Razón del sobreprecio
+
     [BsonElement("images")]
     public List<ProductImage>? Images { get; set; } // Imágenes del producto
 }

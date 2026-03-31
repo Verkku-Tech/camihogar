@@ -22,6 +22,10 @@ public class OrderProductDto
     public DateTime? ManufacturingCompletedAt { get; set; }
     public string? ManufacturingNotes { get; set; }
     public string? LocationStatus { get; set; }
+    // Campos de sobreprecio
+    public bool? SurchargeEnabled { get; set; }
+    public decimal? SurchargeAmount { get; set; }
+    public string? SurchargeReason { get; set; }
     public List<ProductImageDto>? Images { get; set; } // Imágenes del producto
 }
 

@@ -1773,6 +1773,10 @@ export interface OrderProductDto {
   refabricatedAt?: string; // Fecha de última refabricación (ISO string)
   refabricationHistory?: RefabricationRecordDto[]; // Historial de refabricaciones
   locationStatus?: string;
+  // Campos de sobreprecio
+  surchargeEnabled?: boolean;
+  surchargeAmount?: number;
+  surchargeReason?: string;
 }
 
 export interface PaymentDetailsDto {
