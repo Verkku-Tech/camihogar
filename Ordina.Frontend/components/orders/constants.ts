@@ -1,11 +1,19 @@
 // Estados de pedidos para filtros
 export const ORDER_STATUSES = [
   { value: "Presupuesto", label: "Presupuesto" },
-  { value: "Por Fabricar", label: "Por Fabricar" },
-  { value: "En Fabricación", label: "En Fabricación" },
-  { value: "Almacén", label: "Almacén" },
-  { value: "Despacho", label: "Despacho" },
-  { value: "Entregado", label: "Entregado" },
+  { value: "Generado", label: "Generado" },
+  { value: "Validado", label: "Validado" },
+  { value: "Fabricándose", label: "Fabricándose" },
+  { value: "En Almacén", label: "En Almacén" },
+  { value: "En Ruta", label: "En Ruta" },
+  { value: "Completado", label: "Completado" },
+  { value: "Cancelado", label: "Cancelado" },
+  // Mantener los antiguos para compatibilidad con pedidos viejos
+  { value: "Por Fabricar", label: "Por Fabricar (Antiguo)" },
+  { value: "En Fabricación", label: "En Fabricación (Antiguo)" },
+  { value: "Almacén", label: "Almacén (Antiguo)" },
+  { value: "Despacho", label: "Despacho (Antiguo)" },
+  { value: "Entregado", label: "Entregado (Antiguo)" },
   { value: "Declinado", label: "Declinado" },
 ] as const;
 

@@ -412,9 +412,9 @@ export default function DespachosPage() {
 
       const updatedProducts = orderToActOn.products.map(p => {
         if (actingIds.has(p.id)) {
-          if (actionType === "to_dispatch") return { ...p, locationStatus: "EN DESPACHO" as const }
-          if (actionType === "to_delivered") return { ...p, locationStatus: "DESPACHADO" as const }
-          if (actionType === "to_store") return { ...p, locationStatus: "EN TIENDA" as const }
+          if (actionType === "to_dispatch") return { ...p, locationStatus: "EN DESPACHO" as const, logisticStatus: "En Ruta" }
+          if (actionType === "to_delivered") return { ...p, locationStatus: "DESPACHADO" as const, logisticStatus: "Completado" }
+          if (actionType === "to_store") return { ...p, locationStatus: "EN TIENDA" as const, logisticStatus: "En Almacén" }
         }
         return p
       })
@@ -488,9 +488,9 @@ export default function DespachosPage() {
 
         const updatedProducts = order.products.map(p => {
           if (pIds.includes(p.id)) {
-            if (actionType === "to_dispatch") return { ...p, locationStatus: "EN DESPACHO" as const }
-            if (actionType === "to_delivered") return { ...p, locationStatus: "DESPACHADO" as const }
-            if (actionType === "to_store") return { ...p, locationStatus: "EN TIENDA" as const }
+            if (actionType === "to_dispatch") return { ...p, locationStatus: "EN DESPACHO" as const, logisticStatus: "En Ruta" }
+            if (actionType === "to_delivered") return { ...p, locationStatus: "DESPACHADO" as const, logisticStatus: "Completado" }
+            if (actionType === "to_store") return { ...p, locationStatus: "EN TIENDA" as const, logisticStatus: "En Almacén" }
           }
           return p
         })

@@ -362,6 +362,7 @@ export default function FabricacionPage() {
         manufacturingProviderName: providerName,
         manufacturingStartedAt: new Date().toISOString(),
         manufacturingNotes: notes,
+        logisticStatus: "Fabricándose", // Sincronizar estado logístico
         // Limpiar fecha de completado ya que vuelve a fabricación
         manufacturingCompletedAt: undefined,
       }
@@ -425,6 +426,7 @@ export default function FabricacionPage() {
       const updatedProduct = {
         ...order.products[productIndex],
         manufacturingStatus: "almacen_no_fabricado" as const,
+        logisticStatus: "En Almacén", // Sincronizar estado logístico
         manufacturingCompletedAt: new Date().toISOString(),
       }
 
@@ -617,6 +619,7 @@ export default function FabricacionPage() {
           manufacturingProviderName: providerName,
           manufacturingStartedAt: new Date().toISOString(),
           manufacturingNotes: notes,
+          logisticStatus: "Fabricándose", // Sincronizar estado logístico
         }
 
         const updatedProducts = [...order.products]
@@ -673,6 +676,7 @@ export default function FabricacionPage() {
         const updatedProduct = {
           ...order.products[productIndex],
           manufacturingStatus: "almacen_no_fabricado" as const,
+          logisticStatus: "En Almacén", // Sincronizar estado logístico
           manufacturingCompletedAt: new Date().toISOString(),
         }
 
@@ -801,6 +805,7 @@ export default function FabricacionPage() {
           manufacturingProviderName: providerName,
           manufacturingStartedAt: new Date().toISOString(),
           manufacturingNotes: notes,
+          logisticStatus: "Fabricándose", // Sincronizar estado logístico
           manufacturingCompletedAt: undefined,
           refabricationReason: refabricationReason,
           refabricatedAt: new Date().toISOString(),
