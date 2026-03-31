@@ -1211,6 +1211,19 @@ export function OrderConfirmationDialog({
                           </p>
                         </div>
                       )}
+
+                      {/* Sobreprecio del producto */}
+                      {product.surchargeEnabled && product.surchargeAmount && product.surchargeAmount > 0 && (
+                        <div className="mt-3 p-3 bg-orange-50 dark:bg-orange-950 rounded border border-orange-200 dark:border-orange-800">
+                          <p className="text-xs font-semibold text-orange-800 dark:text-orange-200 mb-1">
+                            Sobre precio:
+                          </p>
+                          <p className="text-sm text-orange-700 dark:text-orange-300 font-medium">
+                            +{formatCurrency(product.surchargeAmount, "USD")}
+                            {product.surchargeReason && ` \u2014 ${product.surchargeReason}`}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
