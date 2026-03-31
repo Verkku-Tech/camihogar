@@ -1673,7 +1673,7 @@ export interface Order {
       currency: "Bs" | "USD" | "EUR";
     };
   };
-  status: "Presupuesto" | "Generado" | "Generada" | "Fabricación" | "Por despachar" | "Completada" | "Cancelado";
+  status: "Presupuesto" | "Generado" | "Validado" | "Fabricándose" | "En Almacén" | "En Ruta" | "Completado" | "Cancelado" | "Generada" | "Fabricación" | "Por despachar" | "Completada";
   createdAt: string;
   updatedAt: string;
   productMarkups?: Record<string, number>;

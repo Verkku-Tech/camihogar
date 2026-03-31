@@ -313,7 +313,7 @@ public class OrderService : IOrderService
                 throw new KeyNotFoundException($"Producto con ID {itemId} no encontrado en el pedido");
             }
 
-            product.LogisticStatus = "Fabricándose";
+            product.LogisticStatus = "Validado";
 
             existingOrder.UpdatedAt = DateTime.UtcNow;
 
@@ -420,6 +420,7 @@ public class OrderService : IOrderService
             return;
 
         bool hasGenerado = false;
+        bool hasValidado = false;
         bool hasFabricandose = false;
         bool hasEnAlmacen = false;
         bool hasEnRuta = false;
@@ -433,6 +434,8 @@ public class OrderService : IOrderService
 
             if (status == "Generado" || status == "Pendiente")
                 hasGenerado = true;
+            else if (status == "Validado")
+                hasValidado = true;
             else if (status == "Fabricándose")
                 hasFabricandose = true;
             else if (status == "En Almacén")
@@ -445,6 +448,8 @@ public class OrderService : IOrderService
             order.Status = "Completado";
         else if (hasGenerado)
             order.Status = "Generado";
+        else if (hasValidado)
+            order.Status = "Validado";
         else if (hasFabricandose)
             order.Status = "Fabricándose";
         else if (hasEnAlmacen)
