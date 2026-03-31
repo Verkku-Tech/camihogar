@@ -22,6 +22,7 @@ public class OrderProductDto
     public DateTime? ManufacturingCompletedAt { get; set; }
     public string? ManufacturingNotes { get; set; }
     public string? LocationStatus { get; set; }
+    public string LogisticStatus { get; set; } = "Generado";
     // Campos de sobreprecio
     public bool? SurchargeEnabled { get; set; }
     public decimal? SurchargeAmount { get; set; }
