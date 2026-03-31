@@ -1552,6 +1552,10 @@ export interface OrderProduct {
   refabricationHistory?: RefabricationRecord[]; // Historial de refabricaciones
   // Estado de ubicación del producto
   locationStatus?: "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | "EN DESPACHO" | "DESPACHADO"; // Estado de ubicación
+  // Campos de sobreprecio
+  surchargeEnabled?: boolean; // Checkbox "Sobre precio" activo
+  surchargeAmount?: number; // Monto del sobreprecio (en USD)
+  surchargeReason?: string; // Razón del sobreprecio
 }
 
 export interface PartialPayment {
@@ -1816,6 +1820,9 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       if (!p.locationStatus || p.locationStatus === "") return "DISPONIBILIDAD INMEDIATA" as const
       return (p.locationStatus as "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | undefined) ?? "DISPONIBILIDAD INMEDIATA"
     })(),
+    surchargeEnabled: p.surchargeEnabled,
+    surchargeAmount: p.surchargeAmount,
+    surchargeReason: p.surchargeReason,
   })),
   subtotal: dto.subtotal,
   taxAmount: dto.taxAmount,
@@ -1968,6 +1975,9 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
     manufacturingCompletedAt: p.manufacturingCompletedAt,
     manufacturingNotes: p.manufacturingNotes,
     locationStatus: p.locationStatus,
+    surchargeEnabled: p.surchargeEnabled,
+    surchargeAmount: p.surchargeAmount,
+    surchargeReason: p.surchargeReason,
   })),
   subtotal: order.subtotal,
   taxAmount: order.taxAmount,

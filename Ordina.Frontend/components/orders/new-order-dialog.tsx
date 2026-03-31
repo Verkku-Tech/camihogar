@@ -355,6 +355,80 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
+      // Validar que cada pago tenga los campos requeridos completos
+      if (orderForm.paymentCondition !== "pago_a_entrega") {
+        for (let i = 0; i < orderForm.payments.length; i++) {
+          const payment = orderForm.payments[i];
+          const paymentLabel = `Pago ${i + 1}`;
+
+          if (!payment.method) {
+            toast.error(`${paymentLabel}: Debe seleccionar un método de pago`);
+            return;
+          }
+          if (!payment.amount || payment.amount <= 0) {
+            toast.error(`${paymentLabel}: Debe ingresar un monto mayor a 0`);
+            return;
+          }
+          if (!payment.date) {
+            toast.error(`${paymentLabel}: Debe seleccionar una fecha de pago`);
+            return;
+          }
+
+          // Validaciones específicas por método de pago
+          if (payment.method === "Pago Móvil") {
+            if (!payment.paymentDetails?.pagomovilReference) {
+              toast.error(`${paymentLabel} (Pago Móvil): Debe ingresar el número de referencia`);
+              return;
+            }
+            if (!payment.paymentDetails?.accountId) {
+              toast.error(`${paymentLabel} (Pago Móvil): Debe seleccionar el banco receptor`);
+              return;
+            }
+          } else if (payment.method === "Transferencia") {
+            if (!payment.paymentDetails?.transferenciaReference) {
+              toast.error(`${paymentLabel} (Transferencia): Debe ingresar el número de referencia`);
+              return;
+            }
+            if (!payment.paymentDetails?.accountId) {
+              toast.error(`${paymentLabel} (Transferencia): Debe seleccionar el banco receptor`);
+              return;
+            }
+          } else if (payment.method === "Tarjeta de débito") {
+            if (!payment.paymentDetails?.bank) {
+              toast.error(`${paymentLabel} (Tarjeta de débito): Debe seleccionar el banco`);
+              return;
+            }
+            if (!payment.paymentDetails?.cardReference) {
+              toast.error(`${paymentLabel} (Tarjeta de débito): Debe ingresar el número de referencia`);
+              return;
+            }
+          } else if (payment.method === "Tarjeta de Crédito") {
+            if (!payment.paymentDetails?.bank) {
+              toast.error(`${paymentLabel} (Tarjeta de Crédito): Debe seleccionar el banco`);
+              return;
+            }
+            if (!payment.paymentDetails?.cardReference) {
+              toast.error(`${paymentLabel} (Tarjeta de Crédito): Debe ingresar el número de referencia`);
+              return;
+            }
+          } else if (payment.method === "Zelle") {
+            if (!payment.paymentDetails?.accountId) {
+              toast.error(`${paymentLabel} (Zelle): Debe seleccionar la cuenta receptora`);
+              return;
+            }
+            if (!payment.paymentDetails?.envia) {
+              toast.error(`${paymentLabel} (Zelle): Debe ingresar quién envía`);
+              return;
+            }
+          } else if (["AirTM", "Binance", "Paypal", "Facebank", "Banesco Panamá", "Mercantil Panamá"].includes(payment.method)) {
+            if (!payment.paymentDetails?.accountId) {
+              toast.error(`${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`);
+              return;
+            }
+          }
+        }
+      }
+
       if (!orderForm.saleType) {
         toast.error("Por favor selecciona el tipo de venta");
         return;

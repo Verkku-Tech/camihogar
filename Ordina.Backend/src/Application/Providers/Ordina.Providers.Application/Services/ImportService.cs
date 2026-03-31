@@ -380,8 +380,9 @@ public class ImportService : IImportService
     private static string MapValueType(string tipoDato) => tipoDato.ToLowerInvariant() switch
     {
         "seleccion" => "Select",
-        "seleccion_multiple" => "MultipleSelect",
+        "seleccion_multiple" => "Multiple select",
         "producto" => "Product",
+        "numerico" => "Number",
         _ => "Select"
     };
 

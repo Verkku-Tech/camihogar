@@ -552,7 +552,13 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       const category = categories.find((cat) => cat.name === product.category);
 
       if (!category) {
-        return product.total + markup;
+        // Incluir sobreprecio (viene en USD, convertir a Bs)
+        let surchargeInBs = 0;
+        if (product.surchargeEnabled && product.surchargeAmount) {
+          const usdRate = exchangeRates.USD?.rate;
+          surchargeInBs = usdRate && usdRate > 0 ? product.surchargeAmount * usdRate : product.surchargeAmount;
+        }
+        return product.total + markup + surchargeInBs;
       }
 
       // Calcular el precio base con todos los ajustes (incluyendo productos-atributos y sus sub-atributos)
@@ -566,7 +572,14 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       );
       const total = unitPrice * product.quantity;
 
-      return total + markup;
+      // Incluir sobreprecio (viene en USD, convertir a Bs)
+      let surchargeInBs = 0;
+      if (product.surchargeEnabled && product.surchargeAmount) {
+        const usdRate = exchangeRates.USD?.rate;
+        surchargeInBs = usdRate && usdRate > 0 ? product.surchargeAmount * usdRate : product.surchargeAmount;
+      }
+
+      return total + markup + surchargeInBs;
     },
     [
       productMarkups,
