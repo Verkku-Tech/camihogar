@@ -93,9 +93,12 @@ export function ProductSelectionDialog({
   const filteredAndSortedProducts = products
     .filter((product) => {
       // Filtro por búsqueda
-      const matchesSearch =
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.category.toLowerCase().includes(searchTerm.toLowerCase())
+      const searchTerms = searchTerm.toLowerCase().trim().split(/\s+/).filter(Boolean)
+      const matchesSearch = searchTerms.length === 0 || searchTerms.every(term => 
+        product.name.toLowerCase().includes(term) ||
+        product.category.toLowerCase().includes(term) ||
+        (product.sku && product.sku.toLowerCase().includes(term))
+      )
       
       // Filtro por categoría
       const matchesCategory =
