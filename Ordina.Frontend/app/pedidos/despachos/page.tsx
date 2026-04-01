@@ -564,7 +564,7 @@ export default function DespachosPage() {
 
               {/* TABS DE SECCIÓN */}
               <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as TabType)} className="w-full">
-                <TabsList className="grid w-full grid-cols-3 max-w-xl mx-auto mb-6">
+                <TabsList className="flex h-auto w-full justify-start overflow-x-auto sm:overflow-visible sm:grid sm:grid-cols-3 max-w-xl mx-auto mb-6">
                   <TabsTrigger value="por_despachar" className="text-sm font-medium">Por Despachar</TabsTrigger>
                   <TabsTrigger value="en_despacho" className="text-sm font-medium">En Despacho (En Ruta)</TabsTrigger>
                   <TabsTrigger value="despachados" className="text-sm font-medium">Despachados (Entregados)</TabsTrigger>

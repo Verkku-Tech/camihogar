@@ -696,7 +696,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           )}
 
           {/* Footer con botones de navegación */}
-          <div className="flex justify-between items-center gap-2 pt-4 border-t">
+          <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t">
             <Button
               variant="outline"
               onClick={orderForm.handleBack}
@@ -707,7 +707,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               Anterior
             </Button>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-3">
               {orderForm.currentStep === 1 && (
                 <Button
                   onClick={handleCreateBudget}
