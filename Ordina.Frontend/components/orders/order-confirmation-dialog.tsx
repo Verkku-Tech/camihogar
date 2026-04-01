@@ -1023,7 +1023,7 @@ export function OrderConfirmationDialog({
                 {orderData.products.map((product, idx) => {
                   const breakdown = productBreakdowns[product.id];
                   return (
-                    <div key={idx} className="border rounded-lg p-4">
+                    <div key={idx} className={`border rounded-lg p-4 ${idx % 2 === 0 ? 'bg-background' : 'dark:bg-muted/30 bg-muted/30'}`}>
                       {/* Estado de ubicación */}
                       <div className="mb-3 pb-3 border-b">
                         {(() => {
