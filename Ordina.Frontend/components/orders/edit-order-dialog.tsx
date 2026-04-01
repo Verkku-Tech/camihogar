@@ -745,7 +745,7 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
 
           {/* Footer: solo para modo completo; en modo solo pagos el submit está en Step3 */}
           {!isPaymentsOnly && (
-            <div className="flex justify-between items-center gap-2 pt-4 border-t">
+            <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t">
               <Button
                 variant="outline"
                 onClick={orderForm.handleBack}
@@ -756,7 +756,7 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
                 Anterior
               </Button>
 
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-3">
                 {orderForm.currentStep === 1 && (
                   <Button
                     onClick={handleCreateBudget}
