@@ -420,7 +420,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               toast.error(`${paymentLabel} (Zelle): Debe ingresar quién envía`);
               return;
             }
-          } else if (["AirTM", "Binance", "Paypal", "Facebank", "Banesco Panamá", "Mercantil Panamá"].includes(payment.method)) {
+          } else if (["AirTM", "Binance", "Paypal", "Banesco Panamá", "Mercantil Panamá"].includes(payment.method)) {
             if (!payment.paymentDetails?.accountId) {
               toast.error(`${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`);
               return;

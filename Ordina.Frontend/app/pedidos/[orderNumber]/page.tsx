@@ -491,25 +491,38 @@ export default function OrderDetailPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [client, setClient] = useState<Client | null>(null);
-  const [validatingProductId, setValidatingProductId] = useState<string | null>(null);
+  const [validatingOrder, setValidatingOrder] = useState<boolean>(false);
 
-  const handleValidateProduct = async (productId: string) => {
-    if (!order) return;
+  const handleValidateOrder = async () => {
+    if (!order || !order.products) return;
+    
+    // Obtener productos que no están validados
+    const productsToValidate = order.products.filter(
+      p => !p.logisticStatus || p.logisticStatus === "Generado"
+    );
+    
+    if (productsToValidate.length === 0) {
+      toast.info("Todos los productos ya están validados.");
+      return;
+    }
+
     try {
-      setValidatingProductId(productId);
-      const updatedOrderData = await apiClient.validateOrderItem(order.id, productId);
+      setValidatingOrder(true);
+      for (const p of productsToValidate) {
+        await apiClient.validateOrderItem(order.id, p.id);
+      }
 
-      // Actualizamos el pedido para ver reflejado el cambio
+      // Actualizamos el pedido para ver reflejado el cambio global
       const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
       if (foundOrder) {
         setOrder(foundOrder);
       }
-      toast.success("Producto validado correctamente");
+      toast.success("Pedido validado exitosamente");
     } catch (error) {
-      console.error("Error validando producto:", error);
-      toast.error("Error al tratar de validar el producto");
+      console.error("Error validando pedido:", error);
+      toast.error("Error al tratar de validar el pedido");
     } finally {
-      setValidatingProductId(null);
+      setValidatingOrder(false);
     }
   };
   const [productBreakdowns, setProductBreakdowns] = useState<
@@ -1222,9 +1235,21 @@ export default function OrderDetailPage() {
                     </HoverCardContent>
                   </HoverCard>
                 </div>
-                <Badge className={getStatusColor(order.status)}>
-                  {order.status}
-                </Badge>
+                <div className="flex items-center gap-3">
+                  {order.products.some(p => !p.logisticStatus || p.logisticStatus === "Generado") && (
+                    <Button
+                      onClick={handleValidateOrder}
+                      disabled={validatingOrder}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      {validatingOrder && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      Validar Pedido
+                    </Button>
+                  )}
+                  <Badge className={getStatusColor(order.status)}>
+                    {order.status}
+                  </Badge>
+                </div>
               </div>
 
               {/* Información General */}
@@ -1358,7 +1383,7 @@ export default function OrderDetailPage() {
                       return (
                         <HoverCard key={idx} openDelay={200} closeDelay={100}>
                           <HoverCardTrigger asChild>
-                            <div className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                            <div className={`border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors ${idx % 2 === 0 ? 'bg-background' : 'dark:bg-muted/30 bg-muted/30'}`}>
                               {/* Estado de ubicación y logística */}
                               <div className="mb-3 pb-3 border-b flex flex-col gap-3">
                                 <div className="flex justify-between items-center">
@@ -1418,22 +1443,6 @@ export default function OrderDetailPage() {
                                   </Badge>
                                 </div>
 
-                                {(!product.logisticStatus || product.logisticStatus === "Generado") && (
-                                  <div className="flex justify-end">
-                                    <Button
-                                      size="sm"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleValidateProduct(product.id);
-                                      }}
-                                      disabled={validatingProductId === product.id}
-                                    >
-                                      {validatingProductId === product.id && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                                      Validar Producto
-                                    </Button>
-                                  </div>
-                                )}
                               </div>
 
                               <div className="flex justify-between items-start mb-2">
