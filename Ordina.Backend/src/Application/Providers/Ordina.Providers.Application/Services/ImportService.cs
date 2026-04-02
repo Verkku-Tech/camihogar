@@ -380,8 +380,9 @@ public class ImportService : IImportService
     private static string MapValueType(string tipoDato) => tipoDato.ToLowerInvariant() switch
     {
         "seleccion" => "Select",
-        "seleccion_multiple" => "MultipleSelect",
+        "seleccion_multiple" => "Multiple select",
         "producto" => "Product",
+        "numerico" => "Number",
         _ => "Select"
     };
 
@@ -432,6 +433,13 @@ public class ImportService : IImportService
                 attr.Required = isRequired;
                 changed = true;
             }
+        }
+
+        // Configurar selección múltiple predeterminada si no tiene límite
+        if (valueType == "Multiple select" && attr.MaxSelections == null)
+        {
+            attr.MaxSelections = 2;
+            changed = true;
         }
 
         // Agregar valores de VALORES_Y_PRECIOS

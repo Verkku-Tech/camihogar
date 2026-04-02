@@ -35,18 +35,24 @@ const getStatusColor = (status: string) => {
   switch (status) {
     case "Presupuesto":
       return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300"
+    case "Validado":
+      return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300"
     case "Por Fabricar":
       return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
     case "En Fabricación":
     case "Fabricación":
+    case "Fabricándose":
       return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300"
     case "Almacén":
+    case "En Almacén":
       return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
     case "Despacho":
     case "Por despachar":
+    case "En Ruta":
       return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
     case "Entregado":
     case "Completada":
+    case "Completado":
       return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
     case "Declinado":
     case "Cancelado":

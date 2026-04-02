@@ -182,7 +182,8 @@ export function Step3OrderDetails({
                                 if (cost === 0) return "";
                                 if (currency === "Bs") return cost;
                                 const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
-                                return rate && rate > 0 ? cost / rate : cost;
+                                const rawValue = rate && rate > 0 ? cost / rate : cost;
+                                return Number(rawValue.toFixed(2));
                               })()}
                               onChange={(e) => {
                                 const inputValue = Number.parseFloat(e.target.value) || 0;
@@ -273,7 +274,8 @@ export function Step3OrderDetails({
                                 const currency = orderForm.deliveryServices.servicioAcarreo?.currency || "USD";
                                 if (currency === "Bs") return cost;
                                 const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
-                                return rate && rate > 0 ? cost / rate : cost;
+                                const rawValue = rate && rate > 0 ? cost / rate : cost;
+                                return Number(rawValue.toFixed(2));
                               })()}
                               onChange={(e) => {
                                 const inputValue = e.target.value === "" ? undefined : Number.parseFloat(e.target.value) || 0;
@@ -363,7 +365,8 @@ export function Step3OrderDetails({
                                 if (cost === 0) return "";
                                 if (currency === "Bs") return cost;
                                 const rate = currency === "USD" ? orderForm.exchangeRates.USD?.rate : orderForm.exchangeRates.EUR?.rate;
-                                return rate && rate > 0 ? cost / rate : cost;
+                                const rawValue = rate && rate > 0 ? cost / rate : cost;
+                                return Number(rawValue.toFixed(2));
                               })()}
                               onChange={(e) => {
                                 const inputValue = Number.parseFloat(e.target.value) || 0;

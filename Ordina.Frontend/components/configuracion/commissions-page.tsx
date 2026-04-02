@@ -254,7 +254,7 @@ export function CommissionsPage() {
       </div>
 
       <Tabs defaultValue="categories" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="flex h-auto w-full justify-start overflow-x-auto sm:overflow-visible sm:grid sm:grid-cols-3">
           <TabsTrigger value="categories" className="flex items-center gap-2">
             <ShoppingBag className="w-4 h-4" />
             Por Familia de Producto

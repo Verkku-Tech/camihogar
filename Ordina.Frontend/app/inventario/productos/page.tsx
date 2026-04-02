@@ -216,7 +216,7 @@ export default function ProductosPage() {
   return (
     <div className="flex h-screen bg-background">
       <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
-      <div className="flex-start flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="w-full">

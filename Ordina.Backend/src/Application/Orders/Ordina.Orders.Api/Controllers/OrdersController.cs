@@ -272,6 +272,35 @@ public class OrdersController : ControllerBase
     }
 
     /// <summary>
+    /// Valida un ítem específico del pedido (cambiando su estado a Fabricándose)
+    /// </summary>
+    [HttpPatch("{id}/items/{itemId}/validate")]
+    [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderResponseDto>> ValidateOrderItem(string id, string itemId)
+    {
+        try
+        {
+            var order = await _orderService.ValidateOrderItemAsync(id, itemId);
+            return Ok(order);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al validar ítem del pedido con ID {OrderId}", id);
+            return StatusCode(500, new { message = "Error interno del servidor" });
+        }
+    }
+
+    /// <summary>
     /// Elimina un pedido
     /// </summary>
     /// <param name="id">ID del pedido a eliminar</param>

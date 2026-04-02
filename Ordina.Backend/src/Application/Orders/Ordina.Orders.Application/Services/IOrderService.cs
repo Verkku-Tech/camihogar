@@ -21,6 +21,7 @@ public interface IOrderService
     Task<OrderResponseDto?> GetOrderByOrderNumberAsync(string orderNumber);
     Task<OrderResponseDto> CreateOrderAsync(CreateOrderDto createDto);
     Task<OrderResponseDto> UpdateOrderAsync(string id, UpdateOrderDto updateDto);
+    Task<OrderResponseDto> ValidateOrderItemAsync(string id, string itemId);
     Task<bool> DeleteOrderAsync(string id);
     Task<bool> OrderExistsAsync(string id);
     Task<bool> OrderNumberExistsAsync(string orderNumber);

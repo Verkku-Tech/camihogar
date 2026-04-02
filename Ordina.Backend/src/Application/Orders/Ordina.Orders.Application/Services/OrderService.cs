@@ -191,6 +191,7 @@ public class OrderService : IOrderService
                 UpdatedAt = DateTime.UtcNow
             };
 
+            RecalculateOrderStatus(order);
             var createdOrder = await _orderRepository.CreateAsync(order);
             return MapToDto(createdOrder);
         }
@@ -280,12 +281,49 @@ public class OrderService : IOrderService
 
             existingOrder.UpdatedAt = DateTime.UtcNow;
 
+            RecalculateOrderStatus(existingOrder);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
             return MapToDto(updatedOrder);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al actualizar pedido con ID {OrderId}", id);
+            throw;
+        }
+    }
+
+    public async Task<OrderResponseDto> ValidateOrderItemAsync(string id, string itemId)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(itemId))
+            {
+                throw new ArgumentException("El ID del pedido y del ítem son requeridos");
+            }
+
+            var existingOrder = await _orderRepository.GetByIdAsync(id);
+            if (existingOrder == null)
+            {
+                throw new KeyNotFoundException($"Pedido con ID {id} no encontrado");
+            }
+
+            var product = existingOrder.Products.FirstOrDefault(p => p.Id == itemId);
+            if (product == null)
+            {
+                throw new KeyNotFoundException($"Producto con ID {itemId} no encontrado en el pedido");
+            }
+
+            product.LogisticStatus = "Validado";
+
+            existingOrder.UpdatedAt = DateTime.UtcNow;
+
+            RecalculateOrderStatus(existingOrder);
+            var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
+            return MapToDto(updatedOrder);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al validar ítem {ItemId} del pedido con ID {OrderId}", itemId, id);
             throw;
         }
     }
@@ -376,6 +414,52 @@ public class OrderService : IOrderService
         };
     }
 
+    private void RecalculateOrderStatus(Order order)
+    {
+        if (order.Products == null || !order.Products.Any())
+            return;
+
+        bool hasGenerado = false;
+        bool hasValidado = false;
+        bool hasFabricandose = false;
+        bool hasEnAlmacen = false;
+        bool hasEnRuta = false;
+        bool allCompletado = true;
+
+        foreach (var product in order.Products)
+        {
+            var status = product.LogisticStatus ?? "Generado";
+            if (status != "Completado")
+                allCompletado = false;
+
+            if (status == "Generado" || status == "Pendiente")
+                hasGenerado = true;
+            else if (status == "Validado")
+                hasValidado = true;
+            else if (status == "Fabricándose")
+                hasFabricandose = true;
+            else if (status == "En Almacén")
+                hasEnAlmacen = true;
+            else if (status == "En Ruta")
+                hasEnRuta = true;
+        }
+
+        if (allCompletado)
+            order.Status = "Completado";
+        else if (hasGenerado)
+            order.Status = "Generado";
+        else if (hasValidado)
+            order.Status = "Validado";
+        else if (hasFabricandose)
+            order.Status = "Fabricándose";
+        else if (hasEnAlmacen)
+            order.Status = "En Almacén";
+        else if (hasEnRuta)
+            order.Status = "En Ruta";
+        else
+            order.Status = "Generado";
+    }
+
     private OrderProductDto MapProductToDto(OrderProduct product)
     {
         return new OrderProductDto
@@ -398,6 +482,7 @@ public class OrderService : IOrderService
             ManufacturingCompletedAt = product.ManufacturingCompletedAt,
             ManufacturingNotes = product.ManufacturingNotes,
             LocationStatus = product.LocationStatus,
+            LogisticStatus = product.LogisticStatus,
             Images = product.Images?.Select(img => new ProductImageDto
             {
                 Id = img.Id,
@@ -434,6 +519,7 @@ public class OrderService : IOrderService
             ManufacturingCompletedAt = dto.ManufacturingCompletedAt,
             ManufacturingNotes = dto.ManufacturingNotes,
             LocationStatus = dto.LocationStatus,
+            LogisticStatus = dto.LogisticStatus ?? "Generado",
             Images = dto.Images?.Select(img => new ProductImage
             {
                 Id = img.Id,

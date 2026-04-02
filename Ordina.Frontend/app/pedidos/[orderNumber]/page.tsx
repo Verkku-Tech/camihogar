@@ -18,6 +18,7 @@ import {
   MapPin,
   Calendar,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import {
   getOrderByOrderNumberPreferBackend,
@@ -42,6 +43,7 @@ import {
 import { useCurrency } from "@/contexts/currency-context";
 import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
+import { apiClient } from "@/lib/api-client";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
@@ -176,7 +178,7 @@ const formatCurrencyWithUsdPrimary = (
 ): { primary: string; secondary?: string } => {
   // Intentar convertir a USD si hay tasa disponible
   const usdRate = exchangeRates?.USD?.rate;
-  
+
   if (usdRate && usdRate > 0) {
     const amountInUsd = amountInBs / usdRate;
     return {
@@ -184,7 +186,7 @@ const formatCurrencyWithUsdPrimary = (
       secondary: formatCurrency(amountInBs, "Bs"),
     };
   }
-  
+
   // Si no hay tasa USD, mostrar solo en Bs
   return {
     primary: formatCurrency(amountInBs, "Bs"),
@@ -192,19 +194,19 @@ const formatCurrencyWithUsdPrimary = (
 };
 
 // Componente para renderizar moneda con formato USD principal / Bs secundario
-const CurrencyDisplay = ({ 
-  amountInBs, 
+const CurrencyDisplay = ({
+  amountInBs,
   exchangeRates,
   className = "",
   inline = false
-}: { 
-  amountInBs: number; 
+}: {
+  amountInBs: number;
   exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } };
   className?: string;
   inline?: boolean;
 }) => {
   const formatted = formatCurrencyWithUsdPrimary(amountInBs, exchangeRates);
-  
+
   if (inline) {
     return (
       <span className={className}>
@@ -217,7 +219,7 @@ const CurrencyDisplay = ({
       </span>
     );
   }
-  
+
   return (
     <div className={`text-right ${className}`}>
       <div className="font-medium">
@@ -254,7 +256,7 @@ const FormattedCurrencyDisplay = ({
       </span>
     );
   }
-  
+
   return (
     <div className={`text-right ${className}`}>
       <div className="font-medium">
@@ -324,10 +326,10 @@ const calculateDetailedAttributeAdjustments = (
     if (categoryAttribute.valueType === "Number") {
       // Para atributos numéricos, el valor viene directamente de selectedValue
       // No hay valores predefinidos ni ajustes de precio
-      const numericValue = selectedValue !== undefined && selectedValue !== null && selectedValue !== "" 
-        ? selectedValue.toString() 
+      const numericValue = selectedValue !== undefined && selectedValue !== null && selectedValue !== ""
+        ? selectedValue.toString()
         : "";
-      
+
       adjustments.push({
         attributeName: categoryAttribute.title || attrKey,
         selectedValueLabel: numericValue,
@@ -423,18 +425,29 @@ function getStatusColor(status: string) {
   switch (status) {
     case "Presupuesto":
       return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300";
-    case "Generado":
-      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
-    case "Generada":
-      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
+    case "Validado":
+      return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300";
+    case "En Fabricación":
     case "Fabricación":
+    case "Fabricándose":
       return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+    case "Almacén":
+    case "En Almacén":
+      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
+    case "Despacho":
     case "Por despachar":
+    case "En Ruta":
       return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
+    case "Entregado":
     case "Completada":
+    case "Completado":
       return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+    case "Declinado":
     case "Cancelado":
       return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300";
+    case "Generado":
+    case "Generada":
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
     default:
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
   }
@@ -478,6 +491,40 @@ export default function OrderDetailPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [client, setClient] = useState<Client | null>(null);
+  const [validatingOrder, setValidatingOrder] = useState<boolean>(false);
+
+  const handleValidateOrder = async () => {
+    if (!order || !order.products) return;
+    
+    // Obtener productos que no están validados
+    const productsToValidate = order.products.filter(
+      p => !p.logisticStatus || p.logisticStatus === "Generado"
+    );
+    
+    if (productsToValidate.length === 0) {
+      toast.info("Todos los productos ya están validados.");
+      return;
+    }
+
+    try {
+      setValidatingOrder(true);
+      for (const p of productsToValidate) {
+        await apiClient.validateOrderItem(order.id, p.id);
+      }
+
+      // Actualizamos el pedido para ver reflejado el cambio global
+      const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
+      if (foundOrder) {
+        setOrder(foundOrder);
+      }
+      toast.success("Pedido validado exitosamente");
+    } catch (error) {
+      console.error("Error validando pedido:", error);
+      toast.error("Error al tratar de validar el pedido");
+    } finally {
+      setValidatingOrder(false);
+    }
+  };
   const [productBreakdowns, setProductBreakdowns] = useState<
     Record<
       string,
@@ -703,7 +750,7 @@ export default function OrderDetailPage() {
       if (!order) return;
 
       const totals: Record<string, { primary: string; secondary?: string }> = {};
-      
+
       // Usar siempre USD como principal
       totals.total = formatCurrencyWithUsdPrimary(order.total, localExchangeRates);
       totals.subtotal = formatCurrencyWithUsdPrimary(order.subtotal, localExchangeRates);
@@ -712,28 +759,28 @@ export default function OrderDetailPage() {
         order.subtotalBeforeDiscounts || 0,
         localExchangeRates
       );
-      
+
       if (order.productDiscountTotal && order.productDiscountTotal > 0) {
         totals.productDiscountTotal = formatCurrencyWithUsdPrimary(
           order.productDiscountTotal,
           localExchangeRates
         );
       }
-      
+
       if (order.generalDiscountAmount && order.generalDiscountAmount > 0) {
         totals.generalDiscountAmount = formatCurrencyWithUsdPrimary(
           order.generalDiscountAmount,
           localExchangeRates
         );
       }
-      
+
       if (order.deliveryCost > 0) {
         totals.deliveryCost = formatCurrencyWithUsdPrimary(
           order.deliveryCost,
           localExchangeRates
         );
       }
-      
+
       setFormattedTotals(totals);
     };
 
@@ -1188,9 +1235,21 @@ export default function OrderDetailPage() {
                     </HoverCardContent>
                   </HoverCard>
                 </div>
-                <Badge className={getStatusColor(order.status)}>
-                  {order.status}
-                </Badge>
+                <div className="flex items-center gap-3">
+                  {order.products.some(p => !p.logisticStatus || p.logisticStatus === "Generado") && (
+                    <Button
+                      onClick={handleValidateOrder}
+                      disabled={validatingOrder}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      {validatingOrder && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      Validar Pedido
+                    </Button>
+                  )}
+                  <Badge className={getStatusColor(order.status)}>
+                    {order.status}
+                  </Badge>
+                </div>
               </div>
 
               {/* Información General */}
@@ -1313,69 +1372,79 @@ export default function OrderDetailPage() {
                   <div className="space-y-4">
                     {order.products.map((product, idx) => {
                       const breakdown = productBreakdowns[product.id];
-                      
+
                       // DEBUG: Verificar imágenes de productos
                       if (product.images && product.images.length > 0) {
                         console.log(`📸 Producto ${idx} (${product.name}) tiene ${product.images.length} imágenes:`, product.images);
                       } else {
                         console.log(`⚠️ Producto ${idx} (${product.name}) NO tiene imágenes:`, product.images);
                       }
-                      
+
                       return (
                         <HoverCard key={idx} openDelay={200} closeDelay={100}>
                           <HoverCardTrigger asChild>
-                            <div className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-                              {/* Estado de ubicación */}
-                              <div className="mb-3 pb-3 border-b">
-                                {(() => {
-                                  let badgeText = "Disponibilidad Inmediata";
-                                  let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "secondary";
-                                  let badgeClassName = "text-sm";
+                            <div className={`border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors ${idx % 2 === 0 ? 'bg-background' : 'dark:bg-muted/30 bg-muted/30'}`}>
+                              {/* Estado de ubicación y logística */}
+                              <div className="mb-3 pb-3 border-b flex flex-col gap-3">
+                                <div className="flex justify-between items-center">
+                                  {/* Badge de Ubicación/Fabricación Original */}
+                                  {(() => {
+                                    let badgeText = "Disponibilidad Inmediata";
+                                    let badgeVariant: "default" | "destructive" | "secondary" | "outline" = "secondary";
+                                    let badgeClassName = "text-sm";
 
-                                  // Normalizar locationStatus para comparación (trim y manejar ambos formatos)
-                                  const locationStatus = product.locationStatus?.trim();
-                                  
-                                  // Debug temporal: descomentar para ver qué valor está llegando
-                                  // if (product.name) console.log(`Product: ${product.name}, locationStatus: "${locationStatus}", raw: "${product.locationStatus}"`);
-                                  
-                                  // Verificar si es "EN TIENDA" (ambos formatos)
-                                  if (locationStatus === "en_tienda" || locationStatus === "EN TIENDA") {
-                                    badgeText = "En Tienda";
-                                    badgeVariant = "default";
-                                  } 
-                                  // Verificar si es "FABRICACION"
-                                  // También verificar variaciones con espacios o mayúsculas/minúsculas
-                                  else if (
-                                    locationStatus === "FABRICACION" ||
-                                    locationStatus?.toUpperCase() === "FABRICACION" ||
-                                    (locationStatus && locationStatus.toLowerCase().includes("fabric"))
-                                  ) {
-                                    if (product.manufacturingStatus === "almacen_no_fabricado" || (product.manufacturingStatus as string) === "fabricado") {
-                                      badgeText = "En almacén";
+                                    // Normalizar locationStatus para comparación (trim y manejar ambos formatos)
+                                    const locationStatus = product.locationStatus?.trim();
+
+                                    // Verificar si es "EN TIENDA" (ambos formatos)
+                                    if (locationStatus === "en_tienda" || locationStatus === "EN TIENDA") {
+                                      badgeText = "En Tienda";
                                       badgeVariant = "default";
-                                      badgeClassName = "text-sm bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300";
-                                    } else if (product.manufacturingStatus === "fabricando") {
-                                      badgeText = "En Fabricación";
-                                      badgeVariant = "secondary";
-                                      badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
-                                    } else {
-                                      badgeText = "Mandar a Fabricar";
-                                      badgeVariant = "outline";
-                                      badgeClassName = "text-sm text-foreground border-0";
                                     }
-                                  }
+                                    // Verificar si es "FABRICACION"
+                                    // También verificar variaciones con espacios o mayúsculas/minúsculas
+                                    else if (
+                                      locationStatus === "FABRICACION" ||
+                                      locationStatus?.toUpperCase() === "FABRICACION" ||
+                                      (locationStatus && locationStatus.toLowerCase().includes("fabric"))
+                                    ) {
+                                      if (product.manufacturingStatus === "almacen_no_fabricado" || (product.manufacturingStatus as string) === "fabricado") {
+                                        badgeText = "En almacén";
+                                        badgeVariant = "default";
+                                        badgeClassName = "text-sm bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300";
+                                      } else if (product.manufacturingStatus === "fabricando") {
+                                        badgeText = "En Fabricación";
+                                        badgeVariant = "secondary";
+                                        badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+                                      } else {
+                                        badgeText = "Mandar a Fabricar";
+                                        badgeVariant = "outline";
+                                        badgeClassName = "text-sm text-foreground border-0";
+                                      }
+                                    }
 
-                                  return (
-                                    <Badge 
-                                      variant={badgeVariant}
-                                      className={badgeClassName}
-                                    >
-                                      {badgeText}
-                                    </Badge>
-                                  );
-                                })()}
+                                    return (
+                                      <Badge
+                                        variant={badgeVariant}
+                                        className={badgeClassName}
+                                        title="Estado de Producción/Ubicación"
+                                      >
+                                        {badgeText}
+                                      </Badge>
+                                    );
+                                  })()}
+
+                                  {/* Progress / Logistic Status */}
+                                  <Badge
+                                    variant={product.logisticStatus === "Completado" ? "default" : "secondary"}
+                                    title="Estado Logístico"
+                                  >
+                                    {product.logisticStatus || "Generado"}
+                                  </Badge>
+                                </div>
+
                               </div>
-                              
+
                               <div className="flex justify-between items-start mb-2">
                                 <div className="flex-1">
                                   <p className="font-semibold text-lg">
@@ -1388,8 +1457,8 @@ export default function OrderDetailPage() {
                                     <p className="text-sm text-red-600 mt-1">
                                       Descuento: -
                                       {formattedProductDiscounts[product.id] ? (
-                                        <FormattedCurrencyDisplay 
-                                          formatted={formattedProductDiscounts[product.id]} 
+                                        <FormattedCurrencyDisplay
+                                          formatted={formattedProductDiscounts[product.id]}
                                           inline={true}
                                           className="inline"
                                         />
@@ -1399,175 +1468,175 @@ export default function OrderDetailPage() {
                                     </p>
                                   )}
                                 </div>
-                            <div className="text-right">
-                              {formattedProductTotals[product.id] ? (
-                                <FormattedCurrencyDisplay 
-                                  formatted={formattedProductTotals[product.id]} 
-                                  className="font-semibold text-lg"
-                                />
-                              ) : (
-                                <p className="font-semibold text-lg">
-                                  {formatCurrency(
-                                    product.total - (product.discount || 0),
-                                    "Bs"
+                                <div className="text-right">
+                                  {formattedProductTotals[product.id] ? (
+                                    <FormattedCurrencyDisplay
+                                      formatted={formattedProductTotals[product.id]}
+                                      className="font-semibold text-lg"
+                                    />
+                                  ) : (
+                                    <p className="font-semibold text-lg">
+                                      {formatCurrency(
+                                        product.total - (product.discount || 0),
+                                        "Bs"
+                                      )}
+                                    </p>
                                   )}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Desglose detallado de precio */}
-                          {breakdown && (
-                            <div className="mt-4 pt-4 border-t space-y-2 text-sm">
-                              <div className="font-semibold mb-2">
-                                Desglose de Precio:
+                                </div>
                               </div>
 
-                              {/* Precio base */}
-                              <div className="flex justify-between">
-                                <span>Precio base:</span>
-                                {breakdown.basePrice ? (
-                                  <FormattedCurrencyDisplay formatted={breakdown.basePrice} />
-                                ) : null}
-                              </div>
+                              {/* Desglose detallado de precio */}
+                              {breakdown && (
+                                <div className="mt-4 pt-4 border-t space-y-2 text-sm">
+                                  <div className="font-semibold mb-2">
+                                    Desglose de Precio:
+                                  </div>
 
-                              {/* Ajustes de atributos normales */}
-                              {breakdown.attributeAdjustments.length > 0 && (
-                                <>
-                                  {breakdown.attributeAdjustments
-                                    .map(
-                                    (
-                                      adj: {
-                                        name: string;
-                                        value: string;
-                                        adjustment: { primary: string; secondary?: string };
-                                        adjustmentValue: number;
-                                      },
-                                      adjIdx: number
-                                    ) => (
-                                      <div
-                                        key={adjIdx}
-                                        className="flex justify-between pl-4"
-                                      >
-                                        <span className="text-muted-foreground">
-                                          {adj.name}
-                                          {adj.value ? ` (${adj.value})` : ""}:
-                                        </span>
-                                        <span className={
-                                          adj.adjustmentValue > 0
-                                            ? "text-green-600 dark:text-green-400"
-                                            : adj.adjustmentValue < 0
-                                            ? "text-red-600 dark:text-red-400"
-                                            : "text-muted-foreground"
-                                        }>
-                                          {adj.adjustmentValue > 0 ? "+" : ""}
-                                          <FormattedCurrencyDisplay 
-                                            formatted={adj.adjustment} 
-                                            inline={true}
-                                            className="inline"
-                                          />
-                                        </span>
-                                      </div>
-                                    )
-                                  )}
-                                </>
-                              )}
+                                  {/* Precio base */}
+                                  <div className="flex justify-between">
+                                    <span>Precio base:</span>
+                                    {breakdown.basePrice ? (
+                                      <FormattedCurrencyDisplay formatted={breakdown.basePrice} />
+                                    ) : null}
+                                  </div>
 
-                              {/* Productos como atributos */}
-                              {breakdown.productAttributes.length > 0 && (
-                                <>
-                                  {breakdown.productAttributes.map(
-                                    (
-                                      prodAttr: {
-                                        name: string;
-                                        price: { primary: string; secondary?: string };
-                                        priceValue: number;
-                                        adjustments: Array<{
-                                          name: string;
-                                          value: string;
-                                          adjustment: { primary: string; secondary?: string };
-                                          adjustmentValue: number;
-                                        }>;
-                                      },
-                                      prodIdx: number
-                                    ) => (
-                                      <div key={prodIdx} className="space-y-1">
-                                        {/* Precio del producto */}
-                                        <div className="flex justify-between pl-4">
-                                          <span className="text-muted-foreground">
-                                            {prodAttr.name}:
-                                          </span>
-                                          <span className="text-green-600 dark:text-green-400">
-                                            +<FormattedCurrencyDisplay 
-                                              formatted={prodAttr.price} 
-                                              inline={true}
-                                              className="inline"
-                                            />
-                                          </span>
-                                        </div>
-                                        {/* Ajustes de atributos del producto */}
-                                        {prodAttr.adjustments.length > 0 && (
-                                          <>
-                                            {prodAttr.adjustments
-                                              .map(
-                                              (
-                                                adj: {
-                                                  name: string;
-                                                  value: string;
-                                                  adjustment: { primary: string; secondary?: string };
-                                                  adjustmentValue: number;
-                                                },
-                                                adjIdx: number
-                                              ) => (
-                                                <div
-                                                  key={adjIdx}
-                                                  className="flex justify-between pl-8 text-xs"
-                                                >
-                                                  <span className="text-muted-foreground">
-                                                    {prodAttr.name} - {adj.name}
-                                                    {adj.value
-                                                      ? ` (${adj.value})`
-                                                      : ""}
-                                                    :
-                                                  </span>
-                                                  <span className={
-                                                    adj.adjustmentValue > 0
-                                                      ? "text-green-600 dark:text-green-400"
-                                                      : adj.adjustmentValue < 0
-                                                      ? "text-red-600 dark:text-red-400"
-                                                      : "text-muted-foreground"
-                                                  }>
-                                                    {adj.adjustmentValue > 0 ? "+" : ""}
-                                                    <FormattedCurrencyDisplay 
-                                                      formatted={adj.adjustment} 
-                                                      inline={true}
-                                                      className="inline"
-                                                    />
-                                                  </span>
-                                                </div>
-                                              )
-                                            )}
-                                          </>
+                                  {/* Ajustes de atributos normales */}
+                                  {breakdown.attributeAdjustments.length > 0 && (
+                                    <>
+                                      {breakdown.attributeAdjustments
+                                        .map(
+                                          (
+                                            adj: {
+                                              name: string;
+                                              value: string;
+                                              adjustment: { primary: string; secondary?: string };
+                                              adjustmentValue: number;
+                                            },
+                                            adjIdx: number
+                                          ) => (
+                                            <div
+                                              key={adjIdx}
+                                              className="flex justify-between pl-4"
+                                            >
+                                              <span className="text-muted-foreground">
+                                                {adj.name}
+                                                {adj.value ? ` (${adj.value})` : ""}:
+                                              </span>
+                                              <span className={
+                                                adj.adjustmentValue > 0
+                                                  ? "text-green-600 dark:text-green-400"
+                                                  : adj.adjustmentValue < 0
+                                                    ? "text-red-600 dark:text-red-400"
+                                                    : "text-muted-foreground"
+                                              }>
+                                                {adj.adjustmentValue > 0 ? "+" : ""}
+                                                <FormattedCurrencyDisplay
+                                                  formatted={adj.adjustment}
+                                                  inline={true}
+                                                  className="inline"
+                                                />
+                                              </span>
+                                            </div>
+                                          )
                                         )}
-                                      </div>
-                                    )
+                                    </>
                                   )}
-                                </>
-                              )}
-                            </div>
-                          )}
 
-                          {/* Observaciones Individuales - DESTACADAS */}
-                          {product.observations && (
-                            <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950 rounded border border-blue-200 dark:border-blue-800">
-                              <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">
-                                Observación de este producto:
-                              </p>
-                              <p className="text-sm text-blue-700 dark:text-blue-300 whitespace-pre-wrap">
-                                {product.observations}
-                              </p>
-                            </div>
-                          )}
+                                  {/* Productos como atributos */}
+                                  {breakdown.productAttributes.length > 0 && (
+                                    <>
+                                      {breakdown.productAttributes.map(
+                                        (
+                                          prodAttr: {
+                                            name: string;
+                                            price: { primary: string; secondary?: string };
+                                            priceValue: number;
+                                            adjustments: Array<{
+                                              name: string;
+                                              value: string;
+                                              adjustment: { primary: string; secondary?: string };
+                                              adjustmentValue: number;
+                                            }>;
+                                          },
+                                          prodIdx: number
+                                        ) => (
+                                          <div key={prodIdx} className="space-y-1">
+                                            {/* Precio del producto */}
+                                            <div className="flex justify-between pl-4">
+                                              <span className="text-muted-foreground">
+                                                {prodAttr.name}:
+                                              </span>
+                                              <span className="text-green-600 dark:text-green-400">
+                                                +<FormattedCurrencyDisplay
+                                                  formatted={prodAttr.price}
+                                                  inline={true}
+                                                  className="inline"
+                                                />
+                                              </span>
+                                            </div>
+                                            {/* Ajustes de atributos del producto */}
+                                            {prodAttr.adjustments.length > 0 && (
+                                              <>
+                                                {prodAttr.adjustments
+                                                  .map(
+                                                    (
+                                                      adj: {
+                                                        name: string;
+                                                        value: string;
+                                                        adjustment: { primary: string; secondary?: string };
+                                                        adjustmentValue: number;
+                                                      },
+                                                      adjIdx: number
+                                                    ) => (
+                                                      <div
+                                                        key={adjIdx}
+                                                        className="flex justify-between pl-8 text-xs"
+                                                      >
+                                                        <span className="text-muted-foreground">
+                                                          {prodAttr.name} - {adj.name}
+                                                          {adj.value
+                                                            ? ` (${adj.value})`
+                                                            : ""}
+                                                          :
+                                                        </span>
+                                                        <span className={
+                                                          adj.adjustmentValue > 0
+                                                            ? "text-green-600 dark:text-green-400"
+                                                            : adj.adjustmentValue < 0
+                                                              ? "text-red-600 dark:text-red-400"
+                                                              : "text-muted-foreground"
+                                                        }>
+                                                          {adj.adjustmentValue > 0 ? "+" : ""}
+                                                          <FormattedCurrencyDisplay
+                                                            formatted={adj.adjustment}
+                                                            inline={true}
+                                                            className="inline"
+                                                          />
+                                                        </span>
+                                                      </div>
+                                                    )
+                                                  )}
+                                              </>
+                                            )}
+                                          </div>
+                                        )
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Observaciones Individuales - DESTACADAS */}
+                              {product.observations && (
+                                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950 rounded border border-blue-200 dark:border-blue-800">
+                                  <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">
+                                    Observación de este producto:
+                                  </p>
+                                  <p className="text-sm text-blue-700 dark:text-blue-300 whitespace-pre-wrap">
+                                    {product.observations}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </HoverCardTrigger>
                           <HoverCardContent className="w-80" align="start">
@@ -1614,21 +1683,21 @@ export default function OrderDetailPage() {
                                   ))}
                                 </div>
                               )}
-                              {(!breakdown || 
-                                (breakdown.attributeAdjustments.length === 0 && 
-                                 breakdown.productAttributes.length === 0)) && (
-                                <p className="text-sm text-muted-foreground">
-                                  Sin atributos personalizados
-                                </p>
-                              )}
+                              {(!breakdown ||
+                                (breakdown.attributeAdjustments.length === 0 &&
+                                  breakdown.productAttributes.length === 0)) && (
+                                  <p className="text-sm text-muted-foreground">
+                                    Sin atributos personalizados
+                                  </p>
+                                )}
                             </div>
                           </HoverCardContent>
-                          
+
                           {/* Imágenes del Producto - FUERA del HoverCardTrigger para mejor visibilidad */}
                           {product.images && product.images.length > 0 && (
                             <div className="mt-3 pt-3 border-t">
-                              <ImageGallery 
-                                images={product.images} 
+                              <ImageGallery
+                                images={product.images}
                                 title="Imágenes de referencia"
                                 maxThumbnails={3}
                               />
@@ -1668,8 +1737,8 @@ export default function OrderDetailPage() {
                         {selectedCurrency === "Bs"
                           ? "Bolívares"
                           : selectedCurrency === "USD"
-                          ? "Dólares"
-                          : "Euros"}
+                            ? "Dólares"
+                            : "Euros"}
                       </Badge>
                     )}
                   </CardTitle>
@@ -1697,46 +1766,46 @@ export default function OrderDetailPage() {
                       {formattedTotals.subtotalBeforeDiscounts ? (
                         <FormattedCurrencyDisplay formatted={formattedTotals.subtotalBeforeDiscounts} />
                       ) : (
-                        <CurrencyDisplay 
-                          amountInBs={order.subtotalBeforeDiscounts || 0} 
+                        <CurrencyDisplay
+                          amountInBs={order.subtotalBeforeDiscounts || 0}
                           exchangeRates={localExchangeRates}
                         />
+                      )}
+                    </div>
+                    {order.productDiscountTotal && order.productDiscountTotal > 0 && (
+                      <div className="flex justify-between text-red-600">
+                        <span>Descuentos individuales:</span>
+                        {formattedTotals.productDiscountTotal ? (
+                          <FormattedCurrencyDisplay formatted={formattedTotals.productDiscountTotal} />
+                        ) : (
+                          <CurrencyDisplay
+                            amountInBs={order.productDiscountTotal}
+                            exchangeRates={localExchangeRates}
+                          />
+                        )}
+                      </div>
                     )}
-                  </div>
-                  {order.productDiscountTotal && order.productDiscountTotal > 0 && (
-                        <div className="flex justify-between text-red-600">
-                          <span>Descuentos individuales:</span>
-                          {formattedTotals.productDiscountTotal ? (
-                            <FormattedCurrencyDisplay formatted={formattedTotals.productDiscountTotal} />
-                          ) : (
-                            <CurrencyDisplay 
-                              amountInBs={order.productDiscountTotal} 
-                              exchangeRates={localExchangeRates}
-                            />
-                          )}
-                        </div>
-                      )}
                     {order.generalDiscountAmount && order.generalDiscountAmount > 0 && (
-                        <div className="flex justify-between text-red-600">
-                          <span>Descuento general:</span>
-                          {formattedTotals.generalDiscountAmount ? (
-                            <FormattedCurrencyDisplay formatted={formattedTotals.generalDiscountAmount} />
-                          ) : (
-                            <CurrencyDisplay 
-                              amountInBs={order.generalDiscountAmount} 
-                              exchangeRates={localExchangeRates}
-                            />
-                          )}
-                        </div>
-                      )}
+                      <div className="flex justify-between text-red-600">
+                        <span>Descuento general:</span>
+                        {formattedTotals.generalDiscountAmount ? (
+                          <FormattedCurrencyDisplay formatted={formattedTotals.generalDiscountAmount} />
+                        ) : (
+                          <CurrencyDisplay
+                            amountInBs={order.generalDiscountAmount}
+                            exchangeRates={localExchangeRates}
+                          />
+                        )}
+                      </div>
+                    )}
                     <Separator />
                     <div className="flex justify-between">
                       <span>Subtotal después de descuentos:</span>
                       {formattedTotals.subtotal ? (
                         <FormattedCurrencyDisplay formatted={formattedTotals.subtotal} />
                       ) : (
-                        <CurrencyDisplay 
-                          amountInBs={order.subtotal} 
+                        <CurrencyDisplay
+                          amountInBs={order.subtotal}
                           exchangeRates={localExchangeRates}
                         />
                       )}
@@ -1746,8 +1815,8 @@ export default function OrderDetailPage() {
                       {formattedTotals.tax ? (
                         <FormattedCurrencyDisplay formatted={formattedTotals.tax} />
                       ) : (
-                        <CurrencyDisplay 
-                          amountInBs={order.taxAmount} 
+                        <CurrencyDisplay
+                          amountInBs={order.taxAmount}
                           exchangeRates={localExchangeRates}
                         />
                       )}
@@ -1758,8 +1827,8 @@ export default function OrderDetailPage() {
                         {formattedTotals.deliveryCost ? (
                           <FormattedCurrencyDisplay formatted={formattedTotals.deliveryCost} />
                         ) : (
-                          <CurrencyDisplay 
-                            amountInBs={order.deliveryCost} 
+                          <CurrencyDisplay
+                            amountInBs={order.deliveryCost}
                             exchangeRates={localExchangeRates}
                           />
                         )}
@@ -1771,8 +1840,8 @@ export default function OrderDetailPage() {
                       {formattedTotals.total ? (
                         <FormattedCurrencyDisplay formatted={formattedTotals.total} />
                       ) : (
-                        <CurrencyDisplay 
-                          amountInBs={order.total} 
+                        <CurrencyDisplay
+                          amountInBs={order.total}
                           exchangeRates={localExchangeRates}
                         />
                       )}
@@ -1897,8 +1966,8 @@ export default function OrderDetailPage() {
                               {/* Comprobante de Pago - Imágenes */}
                               {payment.images && payment.images.length > 0 && (
                                 <div className="mt-2 pt-2 border-t">
-                                  <ImageGallery 
-                                    images={payment.images} 
+                                  <ImageGallery
+                                    images={payment.images}
                                     title={`Comprobante de ${payment.method}`}
                                     maxThumbnails={2}
                                   />
@@ -1972,8 +2041,8 @@ export default function OrderDetailPage() {
                             {/* Comprobante de Pago - Imágenes */}
                             {payment.images && payment.images.length > 0 && (
                               <div className="mt-2 pt-2 border-t">
-                                <ImageGallery 
-                                  images={payment.images} 
+                                <ImageGallery
+                                  images={payment.images}
                                   title={`Comprobante de ${payment.method}`}
                                   maxThumbnails={2}
                                 />
@@ -1985,8 +2054,8 @@ export default function OrderDetailPage() {
                       <Separator />
                       <div className="flex justify-between font-semibold">
                         <span>Total Pagado:</span>
-                        <CurrencyDisplay 
-                          amountInBs={order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)} 
+                        <CurrencyDisplay
+                          amountInBs={order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)}
                           exchangeRates={localExchangeRates}
                         />
                       </div>
@@ -2004,8 +2073,8 @@ export default function OrderDetailPage() {
                                 </span>
                               </div>
                               <div className="text-right">
-                                <CurrencyDisplay 
-                                  amountInBs={order.total - order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)} 
+                                <CurrencyDisplay
+                                  amountInBs={order.total - order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)}
                                   exchangeRates={localExchangeRates}
                                   className="font-bold text-lg text-red-700 dark:text-red-300"
                                 />
@@ -2043,8 +2112,8 @@ export default function OrderDetailPage() {
                           <span className="font-semibold text-red-700 dark:text-red-300">
                             Total pendiente:
                           </span>
-                          <CurrencyDisplay 
-                            amountInBs={order.total} 
+                          <CurrencyDisplay
+                            amountInBs={order.total}
                             exchangeRates={localExchangeRates}
                             className="font-bold text-lg text-red-700 dark:text-red-300"
                           />

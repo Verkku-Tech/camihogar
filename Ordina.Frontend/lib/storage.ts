@@ -1552,6 +1552,11 @@ export interface OrderProduct {
   refabricationHistory?: RefabricationRecord[]; // Historial de refabricaciones
   // Estado de ubicación del producto
   locationStatus?: "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | "EN DESPACHO" | "DESPACHADO"; // Estado de ubicación
+  logisticStatus?: string; // "Generado", "Fabricándose", "En Almacén", "En Ruta", "Completado"
+  // Campos de sobreprecio
+  surchargeEnabled?: boolean; // Checkbox "Sobre precio" activo
+  surchargeAmount?: number; // Monto del sobreprecio (en USD)
+  surchargeReason?: string; // Razón del sobreprecio
 }
 
 export interface PartialPayment {
@@ -1668,7 +1673,7 @@ export interface Order {
       currency: "Bs" | "USD" | "EUR";
     };
   };
-  status: "Presupuesto" | "Generado" | "Generada" | "Fabricación" | "Por despachar" | "Completada" | "Cancelado";
+  status: "Presupuesto" | "Generado" | "Validado" | "Fabricándose" | "En Almacén" | "En Ruta" | "Completado" | "Cancelado" | "Generada" | "Fabricación" | "Por despachar" | "Completada";
   createdAt: string;
   updatedAt: string;
   productMarkups?: Record<string, number>;
@@ -1816,6 +1821,10 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       if (!p.locationStatus || p.locationStatus === "") return "DISPONIBILIDAD INMEDIATA" as const
       return (p.locationStatus as "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | undefined) ?? "DISPONIBILIDAD INMEDIATA"
     })(),
+    logisticStatus: p.logisticStatus,
+    surchargeEnabled: p.surchargeEnabled,
+    surchargeAmount: p.surchargeAmount,
+    surchargeReason: p.surchargeReason,
   })),
   subtotal: dto.subtotal,
   taxAmount: dto.taxAmount,
@@ -1968,6 +1977,10 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
     manufacturingCompletedAt: p.manufacturingCompletedAt,
     manufacturingNotes: p.manufacturingNotes,
     locationStatus: p.locationStatus,
+    logisticStatus: p.logisticStatus,
+    surchargeEnabled: p.surchargeEnabled,
+    surchargeAmount: p.surchargeAmount,
+    surchargeReason: p.surchargeReason,
   })),
   subtotal: order.subtotal,
   taxAmount: order.taxAmount,
@@ -2350,6 +2363,7 @@ export const updateOrder = async (
               manufacturingCompletedAt: p.manufacturingCompletedAt,
               manufacturingNotes: p.manufacturingNotes,
               locationStatus: p.locationStatus,
+              logisticStatus: p.logisticStatus,
             })) : undefined,
             subtotal: updatedOrder.subtotal !== existingOrder.subtotal ? updatedOrder.subtotal : undefined,
             taxAmount: updatedOrder.taxAmount !== existingOrder.taxAmount ? updatedOrder.taxAmount : undefined,
@@ -2494,6 +2508,7 @@ export const updateOrder = async (
             manufacturingCompletedAt: p.manufacturingCompletedAt,
             manufacturingNotes: p.manufacturingNotes,
             locationStatus: p.locationStatus,
+            logisticStatus: p.logisticStatus,
           })),
           partialPayments: updatedOrder.partialPayments?.map((p) => ({
             id: p.id,
