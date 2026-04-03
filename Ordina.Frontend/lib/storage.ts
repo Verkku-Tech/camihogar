@@ -1595,6 +1595,8 @@ export interface PartialPayment {
     envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
     // TDD (Tarjeta de Débito)
     cardReference?: string; // Número de referencia del pago con tarjeta
+    /** Conciliación contable (reporte / offline) */
+    isConciliated?: boolean;
   };
 }
 
@@ -1650,6 +1652,7 @@ export interface Order {
     wallet?: string; // Para cuentas digitales: wallet
     // Zelle
     envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
+    isConciliated?: boolean;
   };
   partialPayments?: PartialPayment[]; // Ahora usa la interfaz exportada
   mixedPayments?: PartialPayment[]; // Para pagos mixtos
@@ -1854,6 +1857,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     bank: dto.paymentDetails.bank,
     email: dto.paymentDetails.email,
     wallet: dto.paymentDetails.wallet,
+    isConciliated: dto.paymentDetails.isConciliated,
   } : undefined,
   partialPayments: dto.partialPayments?.map((p) => ({
     id: p.id,
@@ -1887,6 +1891,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       bank: p.paymentDetails.bank,
       email: p.paymentDetails.email,
       wallet: p.paymentDetails.wallet,
+      isConciliated: p.paymentDetails.isConciliated,
     } : undefined,
   })),
   mixedPayments: dto.mixedPayments?.map((p) => ({
@@ -1921,6 +1926,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       bank: p.paymentDetails.bank,
       email: p.paymentDetails.email,
       wallet: p.paymentDetails.wallet,
+      isConciliated: p.paymentDetails.isConciliated,
     } : undefined,
   })),
   deliveryAddress: dto.deliveryAddress,

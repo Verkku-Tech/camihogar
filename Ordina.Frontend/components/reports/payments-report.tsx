@@ -10,6 +10,9 @@ import { Download, Wifi, WifiOff, Loader2 } from "lucide-react"
 import { getOrders, getAccounts, type Order, type PartialPayment, type Account } from "@/lib/storage"
 import { toast } from "sonner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { apiClient } from "@/lib/api-client"
+import { useAuth } from "@/contexts/auth-context"
+import { Badge } from "@/components/ui/badge"
 
 interface PaymentReportRow {
   id: string
@@ -25,6 +28,7 @@ interface PaymentReportRow {
   orderId: string
   paymentIndex: number
   paymentType: "mixed" | "partial" | "main"
+  isConciliated: boolean
 }
 
 const PAYMENT_METHODS = [
@@ -44,6 +48,8 @@ const PAYMENT_METHODS = [
 ] as const
 
 export function PaymentsReport() {
+  const { hasPermission } = useAuth()
+  const canConciliate = hasPermission("finance.conciliate")
   const [orders, setOrders] = useState<Order[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [startDate, setStartDate] = useState<string>("")
@@ -53,6 +59,7 @@ export function PaymentsReport() {
   const [reportData, setReportData] = useState<PaymentReportRow[]>([])
   const [isDownloading, setIsDownloading] = useState(false)
   const [isOnline, setIsOnline] = useState(true)
+  const [conciliatingId, setConciliatingId] = useState<string | null>(null)
 
   // Detectar estado de conexión
   useEffect(() => {
@@ -130,22 +137,29 @@ export function PaymentsReport() {
         }
 
         const data = await response.json()
-        // Mapear datos del backend al formato local
-        const mappedData: PaymentReportRow[] = data.map((row: any) => ({
-          id: `${row.pedido}-${row.fecha}-${row.metodoPago}`,
-          fecha: row.fecha,
-          pedido: row.pedido,
-          cliente: row.cliente,
-          metodoPago: row.metodoPago,
-          montoOriginal: row.montoOriginal,
-          monedaOriginal: row.monedaOriginal,
-          montoBs: row.montoBs,
-          referencia: row.referencia,
-          cuenta: row.cuenta,
-          orderId: "", // No disponible desde el backend
-          paymentIndex: -1,
-          paymentType: "main" as const,
-        }))
+        // Mapear datos del backend (camelCase desde ASP.NET)
+        const mappedData: PaymentReportRow[] = data.map((row: Record<string, unknown>) => {
+          const orderId = String(row.orderId ?? "")
+          const paymentType = (row.paymentType as string) || "main"
+          const paymentIndex =
+            typeof row.paymentIndex === "number" ? row.paymentIndex : -1
+          return {
+            id: `${orderId}-${paymentType}-${paymentIndex}`,
+            fecha: String(row.fecha ?? ""),
+            pedido: String(row.pedido ?? ""),
+            cliente: String(row.cliente ?? ""),
+            metodoPago: String(row.metodoPago ?? ""),
+            montoOriginal: Number(row.montoOriginal ?? 0),
+            monedaOriginal: String(row.monedaOriginal ?? ""),
+            montoBs: Number(row.montoBs ?? 0),
+            referencia: String(row.referencia ?? ""),
+            cuenta: String(row.cuenta ?? ""),
+            orderId,
+            paymentIndex,
+            paymentType: paymentType as "mixed" | "partial" | "main",
+            isConciliated: Boolean(row.isConciliated),
+          }
+        })
 
         setReportData(mappedData)
       } catch (error) {
@@ -249,6 +263,7 @@ export function PaymentsReport() {
               orderId: order.id,
               paymentIndex: index,
               paymentType: "mixed",
+              isConciliated: Boolean(payment.paymentDetails?.isConciliated),
             })
           })
         }
@@ -296,6 +311,7 @@ export function PaymentsReport() {
               orderId: order.id,
               paymentIndex: index,
               paymentType: "partial",
+              isConciliated: Boolean(payment.paymentDetails?.isConciliated),
             })
           })
         }
@@ -355,6 +371,7 @@ export function PaymentsReport() {
             orderId: order.id,
             paymentIndex: -1,
             paymentType: "main",
+            isConciliated: Boolean(order.paymentDetails?.isConciliated),
           })
         }
       })
@@ -483,6 +500,47 @@ export function PaymentsReport() {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount)
+  }
+
+  const handleToggleConciliation = async (row: PaymentReportRow) => {
+    if (!isOnline || !row.orderId) {
+      toast.error("No se puede actualizar la conciliación en este momento.")
+      return
+    }
+    setConciliatingId(row.id)
+    try {
+      const updated = await apiClient.conciliatePayments([
+        {
+          orderId: row.orderId,
+          paymentType: row.paymentType,
+          paymentIndex: row.paymentIndex,
+          isConciliated: !row.isConciliated,
+        },
+      ])
+      if (!updated) {
+        toast.warning(
+          "No se pudo actualizar. El pago podría no tener detalle guardado aún.",
+        )
+        return
+      }
+      toast.success(
+        row.isConciliated
+          ? "Conciliación desmarcada"
+          : "Pago marcado como conciliado",
+      )
+      setReportData((prev) =>
+        prev.map((r) =>
+          r.id === row.id ? { ...r, isConciliated: !r.isConciliated } : r,
+        ),
+      )
+    } catch (e) {
+      console.error(e)
+      toast.error(
+        e instanceof Error ? e.message : "Error al actualizar conciliación",
+      )
+    } finally {
+      setConciliatingId(null)
+    }
   }
 
   const handleDownloadExcel = async () => {
@@ -667,12 +725,14 @@ export function PaymentsReport() {
                   <TableHead>Monto en Bs</TableHead>
                   <TableHead>Cuenta</TableHead>
                   <TableHead>Referencia/Remitente</TableHead>
+                  <TableHead>Conciliado</TableHead>
+                  <TableHead className="text-right">Acción</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {reportData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       No hay datos para mostrar con los filtros seleccionados
                     </TableCell>
                   </TableRow>
@@ -696,6 +756,32 @@ export function PaymentsReport() {
                         <span className="max-w-xs truncate">
                           {row.referencia || "-"}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={row.isConciliated ? "default" : "secondary"}>
+                          {row.isConciliated ? "Sí" : "No"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {canConciliate ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={conciliatingId === row.id}
+                            onClick={() => handleToggleConciliation(row)}
+                          >
+                            {conciliatingId === row.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : row.isConciliated ? (
+                              "Desmarcar"
+                            ) : (
+                              "Conciliar"
+                            )}
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
