@@ -36,6 +36,19 @@ import {
   bsOnlyPaymentMethods,
 } from "../constants";
 
+/** `<input type="date" />` solo acepta yyyy-MM-dd; el API suele devolver ISO completo. */
+function paymentDateToInputValue(date: string | undefined): string {
+  if (date == null || String(date).trim() === "") return "";
+  const s = String(date).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 interface Step3OrderDetailsProps {
   orderForm: UseOrderFormReturn;
   onSubmit: () => void;
@@ -48,6 +61,8 @@ interface Step3OrderDetailsProps {
   updatePaymentImages?: (paymentId: string, images: ProductImage[]) => void;
   /** Cuando true (vendedor), solo se muestra la sección de pagos. */
   paymentsOnly?: boolean;
+  /** Si false, no se muestra eliminar línea de pago (p. ej. vendedores sin orders.delete). Por defecto true. */
+  allowRemovePayment?: boolean;
 }
 
 export function Step3OrderDetails({
@@ -61,6 +76,7 @@ export function Step3OrderDetails({
   saveAccountInfoToPayment,
   updatePaymentImages,
   paymentsOnly = false,
+  allowRemovePayment = true,
 }: Step3OrderDetailsProps) {
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -981,7 +997,7 @@ export function Step3OrderDetails({
                         <Label className="text-xs">Fecha</Label>
                         <Input
                           type="date"
-                          value={payment.date}
+                          value={paymentDateToInputValue(payment.date)}
                           onChange={(e) =>
                             updatePayment?.(
                               payment.id,
@@ -992,18 +1008,20 @@ export function Step3OrderDetails({
                           className="w-full"
                         />
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removePayment?.(payment.id)}
-                        className="w-full sm:w-auto self-end sm:self-auto"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        <span className="ml-2 sm:hidden">
-                          Eliminar
-                        </span>
-                      </Button>
+                      {allowRemovePayment && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removePayment?.(payment.id)}
+                          className="w-full sm:w-auto self-end sm:self-auto"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          <span className="ml-2 sm:hidden">
+                            Eliminar
+                          </span>
+                        </Button>
+                      )}
                     </div>
 
                     {/* Campos condicionales según método de pago */}

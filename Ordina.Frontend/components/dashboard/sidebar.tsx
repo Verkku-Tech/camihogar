@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigation } from "@/contexts/navigation-context"
 import { useAuth } from "@/contexts/auth-context"
 
@@ -46,13 +46,13 @@ const navigation = [
 
 const ordersSubmenu = [
   { id: "pedidos-list", name: "Pedidos", href: "/pedidos", icon: ShoppingCart },
+  { id: "fabricacion", name: "Fabricación", href: "/inventario/fabricacion", icon: Package },
   { id: "despachos", name: "Despachos", href: "/pedidos/despachos", icon: Truck },
 ]
 
 const inventorySubmenu = [
   { id: "categorias", name: "Categorías", href: "/inventario/categorias", icon: Tags },
   { id: "productos", name: "Productos", href: "/inventario/productos", icon: Box },
-  { id: "fabricacion", name: "Fabricación", href: "/inventario/fabricacion", icon: Package },
 ]
 
 const configurationSubmenu = [
@@ -83,10 +83,20 @@ const permissionMap: Record<string, string | string[]> = {
 
 export function Sidebar({ open, onOpenChange }: SidebarProps) {
   const pathname = usePathname()
+  const isFabricacionPage = pathname.startsWith("/inventario/fabricacion")
+  const isInventorySectionPath =
+    pathname.startsWith("/inventario") && !isFabricacionPage
   const [configOpen, setConfigOpen] = useState(pathname.startsWith("/configuracion"))
-  const [inventoryOpen, setInventoryOpen] = useState(pathname.startsWith("/inventario"))
-  const [ordersOpen, setOrdersOpen] = useState(pathname.startsWith("/pedidos"))
+  const [inventoryOpen, setInventoryOpen] = useState(isInventorySectionPath)
+  const [ordersOpen, setOrdersOpen] = useState(
+    pathname.startsWith("/pedidos") || isFabricacionPage,
+  )
   const { isNavigationItemActive } = useNavigation()
+
+  useEffect(() => {
+    setInventoryOpen(isInventorySectionPath)
+    setOrdersOpen(pathname.startsWith("/pedidos") || pathname.startsWith("/inventario/fabricacion"))
+  }, [pathname, isInventorySectionPath])
   const { hasPermission, user } = useAuth()
 
   const checkPermission = (id: string, itemPermission?: string) => {
@@ -180,7 +190,7 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
                   onClick={() => setInventoryOpen(!inventoryOpen)}
                   className={cn(
                     "flex items-center w-full px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                    pathname.startsWith("/inventario")
+                    isInventorySectionPath
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   )}
@@ -227,7 +237,7 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
                   onClick={() => setOrdersOpen(!ordersOpen)}
                   className={cn(
                     "flex items-center w-full px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                    pathname.startsWith("/pedidos")
+                    pathname.startsWith("/pedidos") || isFabricacionPage
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   )}

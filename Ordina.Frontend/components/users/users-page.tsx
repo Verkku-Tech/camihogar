@@ -55,11 +55,21 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
+  Copy,
+  KeyRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUsers } from "@/hooks/use-users";
 import { apiClient } from "@/lib/api-client";
 import type { CreateUserDto, UpdateUserDto } from "@/lib/api-client";
+
+function generateRandomPassword(length = 16): string {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const arr = new Uint8Array(length);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => chars[b % chars.length]).join("");
+}
 
 // Helper para mapear roles entre el formato del componente y el formato de API
 type ApiRole =
@@ -138,6 +148,7 @@ export function UsersPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserDisplay | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [isRegeneratingPassword, setIsRegeneratingPassword] = useState(false);
   const [formData, setFormData] = useState({
     fullName: "",
     username: "",
@@ -317,12 +328,6 @@ export function UsersPage() {
       return;
     }
 
-    // Validar contraseñas si se está cambiando
-    if (formData.password && formData.password !== formData.confirmPassword) {
-      toast.error("Las contraseñas no coinciden");
-      return;
-    }
-
     // Validar correo y username existentes (excluyendo el usuario actual)
     const emailToCheck = formData.email.trim().toLowerCase();
     const usernameToCheck = formData.username.trim().toLowerCase();
@@ -385,7 +390,6 @@ export function UsersPage() {
         email: formData.email.trim(),
         role: mapRoleToApi(formData.role),
         status: mapStatusToApi(formData.status),
-        ...(formData.password && { password: formData.password }),
       };
       
       const updatedUser = await updateUser(editingUser.id, updateUserDto);
@@ -420,6 +424,32 @@ export function UsersPage() {
       }
       
       toast.error(errorMessage);
+    }
+  };
+
+  const handleRegenerateUserPassword = async () => {
+    if (!editingUser) return;
+    setIsRegeneratingPassword(true);
+    try {
+      const { temporaryPassword } = await apiClient.regenerateUserPassword(
+        editingUser.id,
+      );
+      try {
+        await navigator.clipboard.writeText(temporaryPassword);
+        toast.success(
+          "Contraseña temporal generada y copiada al portapapeles",
+        );
+      } catch {
+        toast.success("Contraseña temporal generada", {
+          description: temporaryPassword,
+        });
+      }
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "No se pudo regenerar la contraseña";
+      toast.error(message);
+    } finally {
+      setIsRegeneratingPassword(false);
     }
   };
 
@@ -545,11 +575,17 @@ export function UsersPage() {
                 setIsCreateDialogOpen(open);
                 if (open) {
                   resetForm();
+                  const pwd = generateRandomPassword();
+                  setFormData((prev) => ({
+                    ...prev,
+                    password: pwd,
+                    confirmPassword: pwd,
+                  }));
                 }
               }}
             >
               <DialogTrigger asChild>
-                <Button onClick={resetForm}>
+                <Button>
                   <Plus className="w-4 h-4 mr-2" />
                   Nuevo Usuario
                 </Button>
@@ -625,48 +661,71 @@ export function UsersPage() {
                     </Select>
                   </div>
                   <div>
-                    <Label htmlFor="password">Contraseña *</Label>
-                    <div className="relative">
-                      <Input
-                        id="password"
-                        type={showPassword ? "text" : "password"}
-                        value={formData.password}
-                        onChange={(e) =>
-                          setFormData({ ...formData, password: e.target.value })
-                        }
-                        placeholder="Ingresa la contraseña"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                      </Button>
+                    <Label htmlFor="password">Contraseña generada *</Label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Se genera al abrir el formulario. Cópiala y entrégala al
+                      usuario; el usuario podrá cambiarla desde su perfil.
+                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                      <div className="relative flex-1 min-w-0">
+                        <Input
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          readOnly
+                          className="pr-10"
+                          value={formData.password}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          title="Generar otra contraseña"
+                          onClick={() => {
+                            const pwd = generateRandomPassword();
+                            setFormData({
+                              ...formData,
+                              password: pwd,
+                              confirmPassword: pwd,
+                            });
+                          }}
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          title="Copiar"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(
+                                formData.password,
+                              );
+                              toast.success("Contraseña copiada");
+                            } catch {
+                              toast.error("No se pudo copiar al portapapeles");
+                            }
+                          }}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="confirmPassword">
-                      Confirmar Contraseña *
-                    </Label>
-                    <Input
-                      id="confirmPassword"
-                      type={showPassword ? "text" : "password"}
-                      value={formData.confirmPassword}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          confirmPassword: e.target.value,
-                        })
-                      }
-                      placeholder="Confirma la contraseña"
-                    />
                   </div>
                 </div>
                 <DialogFooter>
@@ -964,32 +1023,25 @@ export function UsersPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="editPassword">Nueva Contraseña (opcional)</Label>
-              <div className="relative">
-                <Input
-                  id="editPassword"
-                  type={showPassword ? "text" : "password"}
-                  value={formData.password}
-                  onChange={(e) =>
-                    setFormData({ ...formData, password: e.target.value })
-                  }
-                  placeholder="Dejar vacío para mantener la actual"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+            <div className="rounded-md border border-border p-3 space-y-2">
+              <Label>Contraseña temporal</Label>
+              <p className="text-xs text-muted-foreground">
+                No se puede ver la contraseña actual. Genera una nueva
+                temporal, se copiará al portapapeles para que se la entregues al
+                usuario.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={isRegeneratingPassword}
+                onClick={handleRegenerateUserPassword}
+              >
+                <KeyRound className="w-4 h-4 mr-2" />
+                {isRegeneratingPassword
+                  ? "Generando…"
+                  : "Generar nueva contraseña temporal"}
+              </Button>
             </div>
           </div>
           <DialogFooter>

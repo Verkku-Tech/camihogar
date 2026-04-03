@@ -14,6 +14,7 @@ import {
   LogOut,
   AlertCircle,
   DollarSign,
+  KeyRound,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -34,9 +35,19 @@ interface DashboardHeaderProps {
 }
 
 import { CurrencyCalculatorDialog } from "@/components/currency/currency-calculator-dialog";
-import { Calculator } from "lucide-react";
-
-// ... existing imports ...
+import { OrderAuditLogDialog } from "@/components/orders/order-audit-log-dialog";
+import { Calculator, ScrollText } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { apiClient } from "@/lib/api-client";
+import { toast } from "sonner";
 
 export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
   const { theme, setTheme } = useTheme();
@@ -45,6 +56,12 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
   const router = useRouter();
   const [hasActiveExchangeRates, setHasActiveExchangeRates] = useState(true);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+  const [isAuditLogOpen, setIsAuditLogOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -100,6 +117,38 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
     logout();
   };
 
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmNewPassword) {
+      toast.error("Las contraseñas nuevas no coinciden");
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast.error("La nueva contraseña debe tener al menos 6 caracteres");
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      await apiClient.changePassword(currentPassword, newPassword);
+      toast.success("Contraseña actualizada correctamente");
+      setIsChangePasswordOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error al cambiar la contraseña";
+      toast.error(message);
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const canViewOrderAuditLogs =
+    user?.role === "Super Administrator" || user?.role === "Administrator";
+
   const CalculatorButton = () => (
     <Button
       variant="ghost"
@@ -110,6 +159,18 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
       <Calculator className="w-5 h-5" />
     </Button>
   );
+
+  const AuditLogButton = () =>
+    canViewOrderAuditLogs ? (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setIsAuditLogOpen(true)}
+        title="Auditoría de pedidos"
+      >
+        <ScrollText className="w-5 h-5" />
+      </Button>
+    ) : null;
 
   if (!mounted) {
     return (
@@ -131,6 +192,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           </div>
 
           <CalculatorButton />
+          <AuditLogButton />
 
           <DropdownMenu>
             {/* ... Bell Dropdown ... */}
@@ -212,6 +274,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           </DropdownMenu>
         </div>
         <CurrencyCalculatorDialog open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen} />
+        <OrderAuditLogDialog open={isAuditLogOpen} onOpenChange={setIsAuditLogOpen} />
       </header>
     );
   }
@@ -236,6 +299,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
         </div>
 
         <CalculatorButton />
+        <AuditLogButton />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -320,8 +384,13 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
               <div className="text-xs">{user?.role}</div>
             </div>
             <DropdownMenuSeparator />
-
-            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onClick={() => setIsChangePasswordOpen(true)}
+            >
+              <KeyRound className="mr-2 h-4 w-4" />
+              Cambiar contraseña
+            </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={handleLogout}
               className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 focus:bg-red-50 dark:focus:bg-red-950/50 cursor-pointer font-medium hover:bg-red-50 dark:hover:bg-red-950/30"
@@ -332,7 +401,82 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      <Dialog
+        open={isChangePasswordOpen}
+        onOpenChange={(open) => {
+          setIsChangePasswordOpen(open);
+          if (!open) {
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmNewPassword("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={handleChangePasswordSubmit}>
+            <DialogHeader>
+              <DialogTitle>Cambiar contraseña</DialogTitle>
+              <DialogDescription>
+                Introduce tu contraseña actual y la nueva contraseña que
+                deseas usar.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="current-password">Contraseña actual</Label>
+                <Input
+                  id="current-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-password">Nueva contraseña</Label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-new-password">
+                  Confirmar nueva contraseña
+                </Label>
+                <Input
+                  id="confirm-new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsChangePasswordOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isChangingPassword}>
+                {isChangingPassword ? "Guardando…" : "Guardar"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       <CurrencyCalculatorDialog open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen} />
+      <OrderAuditLogDialog open={isAuditLogOpen} onOpenChange={setIsAuditLogOpen} />
     </header>
   );
 }

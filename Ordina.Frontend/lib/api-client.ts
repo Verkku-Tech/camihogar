@@ -590,6 +590,13 @@ export class ApiClient {
     });
   }
 
+  async changePassword(currentPassword: string, newPassword: string) {
+    return this.request<{ message: string }>("/api/Auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
   // Users endpoints
   async getUsers(status?: string) {
     const query = status ? `?status=${status}` : "";
@@ -668,6 +675,13 @@ export class ApiClient {
       method: "PUT",
       body: JSON.stringify(user),
     });
+  }
+
+  async regenerateUserPassword(userId: string) {
+    return this.request<{ temporaryPassword: string }>(
+      `/api/users/${userId}/regenerate-password`,
+      { method: "POST" },
+    );
   }
 
   async deleteUser(id: string) {
@@ -1214,6 +1228,37 @@ export class ApiClient {
     });
   }
 
+  /** Marca o desmarca conciliación de uno o más pagos (pedido). */
+  async conciliatePayments(requests: ConciliatePaymentRequestDto[]) {
+    return this.request<boolean>("/api/Orders/payments/conciliate", {
+      method: "POST",
+      body: JSON.stringify(requests),
+    });
+  }
+
+  async getOrderAuditLogs(params: {
+    page?: number;
+    pageSize?: number;
+    userId?: string;
+    orderNumber?: string;
+    action?: string;
+    from?: string;
+    to?: string;
+  } = {}) {
+    const sp = new URLSearchParams();
+    if (params.page != null) sp.set("page", String(params.page));
+    if (params.pageSize != null) sp.set("pageSize", String(params.pageSize));
+    if (params.userId) sp.set("userId", params.userId);
+    if (params.orderNumber) sp.set("orderNumber", params.orderNumber);
+    if (params.action) sp.set("action", params.action);
+    if (params.from) sp.set("from", params.from);
+    if (params.to) sp.set("to", params.to);
+    const q = sp.toString();
+    return this.request<PagedAuditLogsResponseDto>(
+      `/api/Orders/audit-logs${q ? `?${q}` : ""}`,
+    );
+  }
+
   // ===== PRODUCT COMMISSIONS (Comisiones por Categoría/Familia) =====
 
   async getProductCommissions(): Promise<ProductCommissionDto[]> {
@@ -1501,7 +1546,6 @@ export interface UpdateUserDto {
   name?: string;
   role?: string;
   status?: string;
-  password?: string;
   exclusiveCommission?: boolean;
   baseSalary?: number;
   baseSalaryCurrency?: string;
@@ -1808,6 +1852,16 @@ export interface PaymentDetailsDto {
   wallet?: string; // Para cuentas digitales
   // Zelle
   envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
+  /** Conciliación contable del pago */
+  isConciliated?: boolean;
+}
+
+/** Solicitud para marcar/desmarcar conciliación de un pago (alinea con ConciliatePaymentRequestDto en API). */
+export interface ConciliatePaymentRequestDto {
+  orderId: string;
+  paymentType: "main" | "partial" | "mixed";
+  paymentIndex: number;
+  isConciliated: boolean;
 }
 
 export interface ProductImageDto {
@@ -1898,6 +1952,35 @@ export interface OrderResponseDto {
   completedAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Cambio granular en auditoría de pedidos */
+export interface AuditChangeDto {
+  field: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+}
+
+/** Entrada de log de auditoría de pedidos */
+export interface OrderAuditLogDto {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  action: string;
+  userId: string;
+  userName: string;
+  summary: string;
+  changes: AuditChangeDto[];
+  timestamp: string;
+}
+
+/** Respuesta paginada de logs de auditoría */
+export interface PagedAuditLogsResponseDto {
+  items: OrderAuditLogDto[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
 }
 
 /** Respuesta paginada de pedidos con información de sincronización */

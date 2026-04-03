@@ -1,4 +1,4 @@
-﻿using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Bson.Serialization.Attributes;
 
 namespace Ordina.Database.Entities.Order;
 
@@ -68,4 +68,8 @@ public class PaymentDetails
     // Zelle
     [BsonElement("envia")]
     public string? Envia { get; set; }
+
+    // Estado Conciliación
+    [BsonElement("isConciliated")]
+    public bool IsConciliated { get; set; } = false;
 }

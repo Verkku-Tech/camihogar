@@ -160,6 +160,46 @@ public class AuthService : IAuthService
         };
     }
 
+    public async Task ChangePasswordAsync(string userId, ChangePasswordRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new ArgumentException("El ID de usuario es requerido", nameof(userId));
+        }
+
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user == null)
+        {
+            throw new InvalidOperationException("Usuario no encontrado");
+        }
+
+        if (user.Status != "active")
+        {
+            throw new InvalidOperationException("Tu cuenta está desactivada. Contacta al administrador.");
+        }
+
+        if (string.IsNullOrEmpty(user.PasswordHash) ||
+            !VerifyPassword(request.CurrentPassword, user.PasswordHash))
+        {
+            throw new InvalidOperationException("La contraseña actual es incorrecta");
+        }
+
+        if (request.NewPassword == request.CurrentPassword)
+        {
+            throw new InvalidOperationException("La nueva contraseña debe ser distinta a la actual");
+        }
+
+        user.PasswordHash = HashPassword(request.NewPassword);
+        await _userRepository.UpdateAsync(user);
+    }
+
+    private static string HashPassword(string password)
+    {
+        using var sha256 = SHA256.Create();
+        var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+        return BitConverter.ToString(hashedBytes).Replace("-", "").ToLowerInvariant();
+    }
+
     private bool VerifyPassword(string password, string passwordHash)
     {
         // Implementación con SHA256 para desarrollo

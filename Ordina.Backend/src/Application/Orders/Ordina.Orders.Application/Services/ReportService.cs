@@ -720,7 +720,11 @@ public class ReportService : IReportService
                 MonedaOriginal = row.MonedaOriginal,
                 MontoBs = row.MontoBs,
                 Cuenta = row.Cuenta,
-                Referencia = row.Referencia
+                Referencia = row.Referencia,
+                OrderId = row.OrderId,
+                PaymentType = row.PaymentType,
+                PaymentIndex = row.PaymentIndex,
+                IsConciliated = row.IsConciliated
             }).ToList();
         }
         catch (Exception ex)
@@ -767,13 +771,14 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 7, "Monto en Bs");
                 sl.SetCellValue(1, 8, "Cuenta");
                 sl.SetCellValue(1, 9, "Referencia/Remitente");
+                sl.SetCellValue(1, 10, "Conciliado");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 9; col++)
+                for (int col = 1; col <= 10; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -791,6 +796,7 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 7, (double)item.MontoBs);
                     sl.SetCellValue(row, 8, item.Cuenta);
                     sl.SetCellValue(row, 9, item.Referencia);
+                    sl.SetCellValue(row, 10, item.IsConciliated ? "Sí" : "No");
                     row++;
                 }
 
@@ -804,6 +810,7 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(7, 15);  // Monto en Bs
                 sl.SetColumnWidth(8, 30);  // Cuenta
                 sl.SetColumnWidth(9, 30);  // Referencia/Remitente
+                sl.SetColumnWidth(10, 12); // Conciliado
 
                 // Guardar en el stream
                 sl.SaveAs(stream);
@@ -848,8 +855,9 @@ public class ReportService : IReportService
             // Procesar pagos mixtos si existen
             if (order.MixedPayments != null && order.MixedPayments.Count > 0)
             {
-                foreach (var payment in order.MixedPayments)
+                for (int i = 0; i < order.MixedPayments.Count; i++)
                 {
+                    var payment = order.MixedPayments[i];
                     // Filtrar por método de pago
                     if (!string.IsNullOrWhiteSpace(paymentMethod) && payment.Method != paymentMethod)
                     {
@@ -866,7 +874,7 @@ public class ReportService : IReportService
                         }
                     }
 
-                    var row = CreatePaymentReportRow(order, payment, payment.Date);
+                    var row = CreatePaymentReportRow(order, payment, payment.Date, "mixed", i);
                     reportData.Add(row);
                 }
             }
@@ -874,8 +882,9 @@ public class ReportService : IReportService
             // Procesar pagos parciales si existen
             if (order.PartialPayments != null && order.PartialPayments.Count > 0)
             {
-                foreach (var payment in order.PartialPayments)
+                for (int i = 0; i < order.PartialPayments.Count; i++)
                 {
+                    var payment = order.PartialPayments[i];
                     // Filtrar por método de pago
                     if (!string.IsNullOrWhiteSpace(paymentMethod) && payment.Method != paymentMethod)
                     {
@@ -892,7 +901,7 @@ public class ReportService : IReportService
                         }
                     }
 
-                    var row = CreatePaymentReportRow(order, payment, payment.Date);
+                    var row = CreatePaymentReportRow(order, payment, payment.Date, "partial", i);
                     reportData.Add(row);
                 }
             }
@@ -945,7 +954,11 @@ public class ReportService : IReportService
                     MonedaOriginal = monedaOriginal,
                     MontoBs = montoBs,
                     Cuenta = cuenta,
-                    Referencia = referencia
+                    Referencia = referencia,
+                    OrderId = order.Id,
+                    PaymentType = "main",
+                    PaymentIndex = -1,
+                    IsConciliated = order.PaymentDetails?.IsConciliated ?? false
                 });
             }
         }
@@ -953,7 +966,7 @@ public class ReportService : IReportService
         return reportData;
     }
 
-    private PaymentReportRow CreatePaymentReportRow(Order order, PartialPayment payment, DateTime paymentDate)
+    private PaymentReportRow CreatePaymentReportRow(Order order, PartialPayment payment, DateTime paymentDate, string paymentType, int paymentIndex)
     {
         var referencia = GetPaymentReference(payment.PaymentDetails, payment.Method);
         var cuenta = GetAccountDisplay(payment.PaymentDetails);
@@ -983,7 +996,11 @@ public class ReportService : IReportService
             MonedaOriginal = monedaOriginal,
             MontoBs = montoBs,
             Cuenta = cuenta,
-            Referencia = referencia
+            Referencia = referencia,
+            OrderId = order.Id,
+            PaymentType = paymentType,
+            PaymentIndex = paymentIndex,
+            IsConciliated = payment.PaymentDetails?.IsConciliated ?? false
         };
     }
 
@@ -1442,6 +1459,10 @@ public class ReportService : IReportService
         public decimal MontoBs { get; set; }
         public string Cuenta { get; set; } = string.Empty;
         public string Referencia { get; set; } = string.Empty;
+        public string OrderId { get; set; } = string.Empty;
+        public string PaymentType { get; set; } = string.Empty;
+        public int PaymentIndex { get; set; } = -1;
+        public bool IsConciliated { get; set; }
     }
 
     // ================================================================
@@ -1600,8 +1621,8 @@ public class ReportService : IReportService
 
         foreach (var order in orders)
         {
-            // Solo pedidos completados (listos para despacho)
-            if (order.Status != "Completado" && order.Status != "Completada")
+            // Pedidos completados o con despacho en ruta (al menos un ítem en camino)
+            if (order.Status != "Completado" && order.Status != "Completada" && order.Status != "En Ruta")
                 continue;
 
             // Filtrar por zona (FILTRO PRINCIPAL)

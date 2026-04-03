@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Ordina.Database.Entities.Account;
+using Ordina.Database.Entities.Audit;
 using Ordina.Database.Entities.Category;
 using Ordina.Database.Entities.Client;
 using Ordina.Database.Entities.Commission;
@@ -77,4 +78,7 @@ public class MongoDbContext
 
     public IMongoCollection<Role> Roles =>
         _database.GetCollection<Role>("roles");
+
+    public IMongoCollection<OrderAuditLog> OrderAuditLogs =>
+        _database.GetCollection<OrderAuditLog>("orderAuditLogs");
 }

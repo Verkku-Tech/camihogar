@@ -20,9 +20,6 @@ public class UpdateUserDto
     [StringLength(20, ErrorMessage = "El estado no puede exceder 20 caracteres")]
     public string? Status { get; set; }
 
-    [StringLength(500, ErrorMessage = "La contraseña no puede exceder 500 caracteres")]
-    public string? Password { get; set; }
-
     // Campos para comisiones
     public bool? ExclusiveCommission { get; set; } // Vendedores que NO comparten comisión con referidos
 
