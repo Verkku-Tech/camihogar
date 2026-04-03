@@ -771,13 +771,14 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 7, "Monto en Bs");
                 sl.SetCellValue(1, 8, "Cuenta");
                 sl.SetCellValue(1, 9, "Referencia/Remitente");
+                sl.SetCellValue(1, 10, "Conciliado");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 9; col++)
+                for (int col = 1; col <= 10; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -795,6 +796,7 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 7, (double)item.MontoBs);
                     sl.SetCellValue(row, 8, item.Cuenta);
                     sl.SetCellValue(row, 9, item.Referencia);
+                    sl.SetCellValue(row, 10, item.IsConciliated ? "Sí" : "No");
                     row++;
                 }
 
@@ -808,6 +810,7 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(7, 15);  // Monto en Bs
                 sl.SetColumnWidth(8, 30);  // Cuenta
                 sl.SetColumnWidth(9, 30);  // Referencia/Remitente
+                sl.SetColumnWidth(10, 12); // Conciliado
 
                 // Guardar en el stream
                 sl.SaveAs(stream);

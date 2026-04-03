@@ -1228,6 +1228,14 @@ export class ApiClient {
     });
   }
 
+  /** Marca o desmarca conciliación de uno o más pagos (pedido). */
+  async conciliatePayments(requests: ConciliatePaymentRequestDto[]) {
+    return this.request<boolean>("/api/Orders/payments/conciliate", {
+      method: "POST",
+      body: JSON.stringify(requests),
+    });
+  }
+
   async getOrderAuditLogs(params: {
     page?: number;
     pageSize?: number;
@@ -1844,6 +1852,16 @@ export interface PaymentDetailsDto {
   wallet?: string; // Para cuentas digitales
   // Zelle
   envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
+  /** Conciliación contable del pago */
+  isConciliated?: boolean;
+}
+
+/** Solicitud para marcar/desmarcar conciliación de un pago (alinea con ConciliatePaymentRequestDto en API). */
+export interface ConciliatePaymentRequestDto {
+  orderId: string;
+  paymentType: "main" | "partial" | "mixed";
+  paymentIndex: number;
+  isConciliated: boolean;
 }
 
 export interface ProductImageDto {
