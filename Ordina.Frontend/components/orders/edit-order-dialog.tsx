@@ -32,6 +32,7 @@ import {
 } from "@/lib/storage";
 import { Currency } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
+import { useAuth } from "@/contexts/auth-context";
 
 interface EditOrderDialogProps {
   open: boolean;
@@ -82,6 +83,8 @@ export const DELIVERY_ZONES = [
 
 export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: EditOrderDialogProps) {
   const { preferredCurrency } = useCurrency();
+  const { hasPermission } = useAuth();
+  const allowRemovePayment = hasPermission("orders.delete");
   const orderForm = useEditOrderForm(open, order);
   const isPaymentsOnly = mode === "payments";
 
@@ -238,6 +241,7 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
   };
 
   const removePayment = (id: string) => {
+    if (!hasPermission("orders.delete")) return;
     orderForm.setPayments((paymentsList) =>
       paymentsList.filter((payment) => payment.id !== id)
     );
@@ -740,6 +744,7 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
               saveAccountInfoToPayment={saveAccountInfoToPayment}
               updatePaymentImages={updatePaymentImages}
               paymentsOnly={isPaymentsOnly}
+              allowRemovePayment={allowRemovePayment}
             />
           )}
 

@@ -35,6 +35,15 @@ public class OrdersController : ControllerBase
         return (id, name);
     }
 
+    /// <summary>JWT incluye claims "permissions" por permiso; Super Administrator puede todo.</summary>
+    private static bool UserHasPermission(ClaimsPrincipal user, string permission)
+    {
+        var role = user.FindFirstValue(ClaimTypes.Role);
+        if (string.Equals(role, "Super Administrator", StringComparison.Ordinal))
+            return true;
+        return user.Claims.Any(c => c.Type == "permissions" && c.Value == permission);
+    }
+
     /// <summary>
     /// Obtiene pedidos con paginación y filtro de sincronización incremental
     /// </summary>
@@ -363,6 +372,9 @@ public class OrdersController : ControllerBase
     {
         try
         {
+            if (!UserHasPermission(User, "orders.delete"))
+                return Forbid();
+
             if (string.IsNullOrWhiteSpace(id))
             {
                 return BadRequest(new { message = "El ID del pedido es requerido" });

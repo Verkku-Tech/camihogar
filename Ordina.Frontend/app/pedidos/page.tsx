@@ -173,6 +173,12 @@ export default function PedidosPage() {
 
   const handleDelete = async () => {
     if (!orderToDelete) return
+    if (!canDeleteOrder(orderToDelete)) {
+      toast.error("No tienes permiso para eliminar este registro.")
+      setIsDeleteDialogOpen(false)
+      setOrderToDelete(null)
+      return
+    }
 
     try {
       // Eliminar según el tipo (pedido o presupuesto)
@@ -226,7 +232,16 @@ export default function PedidosPage() {
   const canEditOrder = (order: UnifiedOrder) =>
     canEditAllOrders || (canEditOrderPaymentsOnly && order.type === "order")
 
+  const canDeleteOrder = (order: UnifiedOrder) =>
+    order.type === "order"
+      ? hasPermission("orders.delete")
+      : hasPermission("budgets.delete")
+
   const handleDeleteClick = (order: UnifiedOrder) => {
+    if (!canDeleteOrder(order)) {
+      toast.error("No tienes permiso para eliminar este registro.")
+      return
+    }
     setOrderToDelete(order)
     setIsDeleteDialogOpen(true)
   }
@@ -418,15 +433,21 @@ export default function PedidosPage() {
                                     <Edit className="w-4 h-4" />
                                   </Button>
                                 )}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleDeleteClick(order)}
-                                  title="Eliminar pedido"
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
+                                {canDeleteOrder(order) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteClick(order)}
+                                    title={
+                                      order.type === "order"
+                                        ? "Eliminar pedido"
+                                        : "Eliminar presupuesto"
+                                    }
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
