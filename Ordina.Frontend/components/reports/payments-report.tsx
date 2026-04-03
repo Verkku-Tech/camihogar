@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { apiClient } from "@/lib/api-client"
 import { useAuth } from "@/contexts/auth-context"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface PaymentReportRow {
   id: string
@@ -60,6 +61,39 @@ export function PaymentsReport() {
   const [isDownloading, setIsDownloading] = useState(false)
   const [isOnline, setIsOnline] = useState(true)
   const [conciliatingId, setConciliatingId] = useState<string | null>(null)
+  const [conciliatingBulk, setConciliatingBulk] = useState(false)
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(() => new Set())
+
+  const selectableRows = useMemo(
+    () => reportData.filter((r) => r.orderId),
+    [reportData],
+  )
+  const allSelectableSelected =
+    selectableRows.length > 0 &&
+    selectableRows.every((r) => selectedRowIds.has(r.id))
+  const selectedCount = selectedRowIds.size
+
+  const toggleRowSelection = useCallback((id: string) => {
+    setSelectedRowIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const selectAllSelectable = useCallback(() => {
+    setSelectedRowIds(new Set(selectableRows.map((r) => r.id)))
+  }, [selectableRows])
+
+  const clearRowSelection = useCallback(() => {
+    setSelectedRowIds(new Set())
+  }, [])
+
+  // Limpiar selección al cambiar filtros (nueva consulta)
+  useEffect(() => {
+    setSelectedRowIds(new Set())
+  }, [startDate, endDate, selectedPaymentMethod, selectedAccount])
 
   // Detectar estado de conexión
   useEffect(() => {
@@ -503,6 +537,7 @@ export function PaymentsReport() {
   }
 
   const handleToggleConciliation = async (row: PaymentReportRow) => {
+    if (conciliatingBulk) return
     if (!isOnline || !row.orderId) {
       toast.error("No se puede actualizar la conciliación en este momento.")
       return
@@ -540,6 +575,59 @@ export function PaymentsReport() {
       )
     } finally {
       setConciliatingId(null)
+    }
+  }
+
+  const handleBulkSetConciliated = async (targetConciliated: boolean) => {
+    if (!isOnline || conciliatingBulk || conciliatingId !== null) return
+    const selected = reportData.filter(
+      (r) => selectedRowIds.has(r.id) && r.orderId,
+    )
+    const toUpdate = targetConciliated
+      ? selected.filter((r) => !r.isConciliated)
+      : selected.filter((r) => r.isConciliated)
+    if (toUpdate.length === 0) {
+      toast.info(
+        targetConciliated
+          ? "No hay pagos pendientes de conciliar en la selección."
+          : "No hay pagos conciliados para desmarcar en la selección.",
+      )
+      return
+    }
+    setConciliatingBulk(true)
+    try {
+      const requests = toUpdate.map((r) => ({
+        orderId: r.orderId,
+        paymentType: r.paymentType,
+        paymentIndex: r.paymentIndex,
+        isConciliated: targetConciliated,
+      }))
+      const updated = await apiClient.conciliatePayments(requests)
+      if (!updated) {
+        toast.warning(
+          "No se pudieron aplicar todos los cambios. Revisa que cada pago tenga detalle guardado.",
+        )
+        return
+      }
+      const ids = new Set(toUpdate.map((r) => r.id))
+      setReportData((prev) =>
+        prev.map((r) =>
+          ids.has(r.id) ? { ...r, isConciliated: targetConciliated } : r,
+        ),
+      )
+      setSelectedRowIds(new Set())
+      toast.success(
+        targetConciliated
+          ? `${toUpdate.length} pago(s) marcado(s) como conciliado(s)`
+          : `${toUpdate.length} pago(s) desmarcado(s)`,
+      )
+    } catch (e) {
+      console.error(e)
+      toast.error(
+        e instanceof Error ? e.message : "Error en conciliación masiva",
+      )
+    } finally {
+      setConciliatingBulk(false)
     }
   }
 
@@ -706,17 +794,86 @@ export function PaymentsReport() {
 
       {/* Tabla de datos */}
       <Card>
-        <CardHeader>
-          <CardTitle>Vista Previa del Reporte</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Total de registros: {reportData.length}
-          </p>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between space-y-0">
+          <div>
+            <CardTitle>Vista Previa del Reporte</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Total de registros: {reportData.length}
+            </p>
+          </div>
+          {canConciliate && reportData.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {selectedCount > 0 && (
+                <span className="text-sm text-muted-foreground">
+                  {selectedCount} seleccionado(s)
+                </span>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                disabled={
+                  !isOnline ||
+                  conciliatingBulk ||
+                  conciliatingId !== null ||
+                  selectedCount === 0
+                }
+                onClick={() => handleBulkSetConciliated(true)}
+              >
+                {conciliatingBulk ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Aplicando…
+                  </>
+                ) : (
+                  "Conciliar seleccionados"
+                )}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={
+                  !isOnline ||
+                  conciliatingBulk ||
+                  conciliatingId !== null ||
+                  selectedCount === 0
+                }
+                onClick={() => handleBulkSetConciliated(false)}
+              >
+                Desmarcar seleccionados
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
+                  {canConciliate && (
+                    <TableHead className="w-10 pr-2">
+                      <Checkbox
+                        checked={
+                          allSelectableSelected
+                            ? true
+                            : selectedCount > 0
+                              ? "indeterminate"
+                              : false
+                        }
+                        onCheckedChange={(checked) => {
+                          if (checked === true) selectAllSelectable()
+                          else clearRowSelection()
+                        }}
+                        disabled={
+                          conciliatingBulk ||
+                          conciliatingId !== null ||
+                          selectableRows.length === 0
+                        }
+                        aria-label="Seleccionar todos los pagos conciliables"
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Fecha</TableHead>
                   <TableHead>Pedido</TableHead>
                   <TableHead>Cliente</TableHead>
@@ -732,13 +889,28 @@ export function PaymentsReport() {
               <TableBody>
                 {reportData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                    <TableCell
+                      colSpan={canConciliate ? 11 : 10}
+                      className="text-center text-muted-foreground py-8"
+                    >
                       No hay datos para mostrar con los filtros seleccionados
                     </TableCell>
                   </TableRow>
                 ) : (
                   reportData.map((row) => (
                     <TableRow key={row.id}>
+                      {canConciliate && (
+                        <TableCell className="w-10 pr-2">
+                          {row.orderId ? (
+                            <Checkbox
+                              checked={selectedRowIds.has(row.id)}
+                              onCheckedChange={() => toggleRowSelection(row.id)}
+                              disabled={conciliatingBulk || conciliatingId !== null}
+                              aria-label={`Seleccionar pago ${row.pedido}`}
+                            />
+                          ) : null}
+                        </TableCell>
+                      )}
                       <TableCell>{row.fecha}</TableCell>
                       <TableCell className="font-medium">{row.pedido}</TableCell>
                       <TableCell>{row.cliente}</TableCell>
@@ -768,7 +940,11 @@ export function PaymentsReport() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            disabled={conciliatingId === row.id}
+                            disabled={
+                              conciliatingBulk ||
+                              (conciliatingId !== null &&
+                                conciliatingId !== row.id)
+                            }
                             onClick={() => handleToggleConciliation(row)}
                           >
                             {conciliatingId === row.id ? (
