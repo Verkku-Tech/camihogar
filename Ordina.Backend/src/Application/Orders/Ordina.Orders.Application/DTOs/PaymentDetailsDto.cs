@@ -23,5 +23,7 @@ public class PaymentDetailsDto
     public string? Wallet { get; set; }
     // Zelle
     public string? Envia { get; set; }
+    // Estado Conciliación
+    public bool IsConciliated { get; set; }
 }
 

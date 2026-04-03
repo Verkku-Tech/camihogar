@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Ordina.Database.Entities.Audit;
 using Ordina.Database.Entities.Category;
 using Ordina.Database.Entities.Client;
 using Ordina.Database.Entities.Order;
@@ -26,6 +27,7 @@ public static class IndexManager
         CreateVendorIndexes(context.Vendors);
         CreatePaymentIndexes(context.Payments);
         CreatePaymentMethodIndexes(context.PaymentMethods);
+        CreateOrderAuditLogIndexes(context.OrderAuditLogs);
     }
 
     private static void CreateCategoryIndexes(IMongoCollection<Category> collection)
@@ -97,6 +99,37 @@ public static class IndexManager
             new CreateIndexModel<Order>(
                 Builders<Order>.IndexKeys.Descending(x => x.CreatedAt),
                 new CreateIndexOptions { Name = "idx_order_createdAt" }
+            )
+        );
+    }
+
+    private static void CreateOrderAuditLogIndexes(IMongoCollection<OrderAuditLog> collection)
+    {
+        collection.Indexes.CreateOne(
+            new CreateIndexModel<OrderAuditLog>(
+                Builders<OrderAuditLog>.IndexKeys.Descending(x => x.Timestamp),
+                new CreateIndexOptions { Name = "idx_orderAuditLog_timestamp" }
+            )
+        );
+
+        collection.Indexes.CreateOne(
+            new CreateIndexModel<OrderAuditLog>(
+                Builders<OrderAuditLog>.IndexKeys.Ascending(x => x.OrderId),
+                new CreateIndexOptions { Name = "idx_orderAuditLog_orderId" }
+            )
+        );
+
+        collection.Indexes.CreateOne(
+            new CreateIndexModel<OrderAuditLog>(
+                Builders<OrderAuditLog>.IndexKeys.Ascending(x => x.UserId),
+                new CreateIndexOptions { Name = "idx_orderAuditLog_userId" }
+            )
+        );
+
+        collection.Indexes.CreateOne(
+            new CreateIndexModel<OrderAuditLog>(
+                Builders<OrderAuditLog>.IndexKeys.Ascending(x => x.Action),
+                new CreateIndexOptions { Name = "idx_orderAuditLog_action" }
             )
         );
     }

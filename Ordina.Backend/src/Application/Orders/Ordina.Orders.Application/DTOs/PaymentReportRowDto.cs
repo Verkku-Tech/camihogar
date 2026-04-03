@@ -11,5 +11,9 @@ public class PaymentReportRowDto
     public decimal MontoBs { get; set; }
     public string Cuenta { get; set; } = string.Empty;
     public string Referencia { get; set; } = string.Empty;
+    public string OrderId { get; set; } = string.Empty;
+    public string PaymentType { get; set; } = string.Empty;
+    public int PaymentIndex { get; set; } = -1;
+    public bool IsConciliated { get; set; }
 }
 

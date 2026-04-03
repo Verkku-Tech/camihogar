@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ordina.Security.Application.DTOs;
@@ -70,6 +71,42 @@ public class AuthController : ControllerBase
     {
         // Si llegamos aquí, el token es válido (gracias al middleware de autenticación)
         return Ok(new { message = "Token válido" });
+    }
+
+    /// <summary>
+    /// Cambiar la contraseña del usuario autenticado
+    /// </summary>
+    [HttpPost("change-password")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized(new { message = "Token inválido" });
+        }
+
+        try
+        {
+            await _authService.ChangePasswordAsync(userId, request);
+            return Ok(new { message = "Contraseña actualizada correctamente" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 }
 
