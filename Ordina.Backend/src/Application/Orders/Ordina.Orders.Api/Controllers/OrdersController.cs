@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ordina.Orders.Application.DTOs;
 using Ordina.Orders.Application.Services;
@@ -10,12 +12,27 @@ namespace Ordina.Orders.Api.Controllers;
 public class OrdersController : ControllerBase
 {
     private readonly IOrderService _orderService;
+    private readonly IOrderAuditLogService _auditLogService;
     private readonly ILogger<OrdersController> _logger;
 
-    public OrdersController(IOrderService orderService, ILogger<OrdersController> logger)
+    public OrdersController(
+        IOrderService orderService,
+        IOrderAuditLogService auditLogService,
+        ILogger<OrdersController> logger)
     {
         _orderService = orderService;
+        _auditLogService = auditLogService;
         _logger = logger;
+    }
+
+    private static (string UserId, string UserName) GetActor(ClaimsPrincipal user)
+    {
+        var id = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+        var name = user.FindFirstValue("full_name")
+            ?? user.FindFirstValue(ClaimTypes.Name)
+            ?? user.FindFirstValue(ClaimTypes.Email)
+            ?? "unknown";
+        return (id, name);
     }
 
     /// <summary>
@@ -47,6 +64,33 @@ public class OrdersController : ControllerBase
         {
             _logger.LogError(ex, "Error al obtener pedidos paginados");
             return StatusCode(500, new { message = "Error interno del servidor al obtener pedidos" });
+        }
+    }
+
+    /// <summary>
+    /// Registro de auditoría de pedidos (paginado, con filtros)
+    /// </summary>
+    [HttpGet("audit-logs")]
+    [Authorize]
+    [ProducesResponseType(typeof(PagedAuditLogsResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedAuditLogsResponseDto>> GetOrderAuditLogs(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? userId = null,
+        [FromQuery] string? orderNumber = null,
+        [FromQuery] string? action = null,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null)
+    {
+        try
+        {
+            var result = await _auditLogService.GetPagedLogsAsync(page, pageSize, userId, orderNumber, action, from, to);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener logs de auditoría de pedidos");
+            return StatusCode(500, new { message = "Error interno del servidor al obtener el registro de auditoría" });
         }
     }
 
@@ -208,6 +252,7 @@ public class OrdersController : ControllerBase
     /// <param name="createDto">Datos del pedido a crear</param>
     /// <returns>Pedido creado</returns>
     [HttpPost]
+    [Authorize]
     [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<OrderResponseDto>> CreateOrder([FromBody] CreateOrderDto createDto)
@@ -219,7 +264,8 @@ public class OrdersController : ControllerBase
                 return BadRequest(ModelState);
             }
 
-            var order = await _orderService.CreateOrderAsync(createDto);
+            var (userId, userName) = GetActor(User);
+            var order = await _orderService.CreateOrderAsync(createDto, userId, userName);
             return CreatedAtAction(nameof(GetOrderById), new { id = order.Id }, order);
         }
         catch (Exception ex)
@@ -236,6 +282,7 @@ public class OrdersController : ControllerBase
     /// <param name="updateDto">Datos del pedido a actualizar</param>
     /// <returns>Pedido actualizado</returns>
     [HttpPut("{id}")]
+    [Authorize]
     [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -253,7 +300,8 @@ public class OrdersController : ControllerBase
                 return BadRequest(ModelState);
             }
 
-            var order = await _orderService.UpdateOrderAsync(id, updateDto);
+            var (userId, userName) = GetActor(User);
+            var order = await _orderService.UpdateOrderAsync(id, updateDto, userId, userName);
             return Ok(order);
         }
         catch (ArgumentException ex)
@@ -275,6 +323,7 @@ public class OrdersController : ControllerBase
     /// Valida un ítem específico del pedido (cambiando su estado a Fabricándose)
     /// </summary>
     [HttpPatch("{id}/items/{itemId}/validate")]
+    [Authorize]
     [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -282,7 +331,8 @@ public class OrdersController : ControllerBase
     {
         try
         {
-            var order = await _orderService.ValidateOrderItemAsync(id, itemId);
+            var (userId, userName) = GetActor(User);
+            var order = await _orderService.ValidateOrderItemAsync(id, itemId, userId, userName);
             return Ok(order);
         }
         catch (ArgumentException ex)
@@ -306,6 +356,7 @@ public class OrdersController : ControllerBase
     /// <param name="id">ID del pedido a eliminar</param>
     /// <returns>Confirmación de eliminación</returns>
     [HttpDelete("{id}")]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteOrder(string id)
@@ -317,7 +368,8 @@ public class OrdersController : ControllerBase
                 return BadRequest(new { message = "El ID del pedido es requerido" });
             }
 
-            var deleted = await _orderService.DeleteOrderAsync(id);
+            var (userId, userName) = GetActor(User);
+            var deleted = await _orderService.DeleteOrderAsync(id, userId, userName);
             if (!deleted)
             {
                 return NotFound(new { message = $"Pedido con ID {id} no encontrado" });
@@ -393,6 +445,33 @@ public class OrdersController : ControllerBase
         {
             _logger.LogError(ex, "Error al verificar existencia del número de pedido {OrderNumber}", orderNumber);
             return StatusCode(500, new { message = "Error interno del servidor al verificar el número de pedido" });
+        }
+    }
+    /// <summary>
+    /// Concilia múltiples pagos de manera masiva
+    /// </summary>
+    /// <param name="requests">Lista de pagos a conciliar</param>
+    /// <returns>Verdadero si se actualizaron pagos</returns>
+    [HttpPost("payments/conciliate")]
+    [Authorize]
+    [ProducesResponseType(typeof(bool), StatusCodes.Status200OK)]
+    public async Task<ActionResult<bool>> ConciliatePayments([FromBody] List<ConciliatePaymentRequestDto> requests)
+    {
+        try
+        {
+            if (requests == null || !requests.Any())
+            {
+                return BadRequest(new { message = "Se requiere una lista de pagos a conciliar" });
+            }
+
+            var (userId, userName) = GetActor(User);
+            var result = await _orderService.ConciliatePaymentsAsync(requests, userId, userName);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al conciliar pagos masivamente");
+            return StatusCode(500, new { message = "Error interno del servidor al conciliar pagos" });
         }
     }
 }

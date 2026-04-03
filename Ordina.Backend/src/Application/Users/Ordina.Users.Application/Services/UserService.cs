@@ -194,12 +194,6 @@ public class UserService : IUserService
             if (!string.IsNullOrWhiteSpace(updateDto.Status))
                 existingUser.Status = updateDto.Status;
 
-            // Hashear la contraseña antes de guardarla
-            if (!string.IsNullOrWhiteSpace(updateDto.Password))
-            {
-                existingUser.PasswordHash = HashPassword(updateDto.Password);
-            }
-
             // Actualizar campos de comisiones
             if (updateDto.ExclusiveCommission.HasValue)
                 existingUser.ExclusiveCommission = updateDto.ExclusiveCommission.Value;
@@ -218,6 +212,26 @@ public class UserService : IUserService
             _logger.LogError(ex, "Error al actualizar usuario con ID {UserId}", id);
             throw;
         }
+    }
+
+    public async Task<RegeneratePasswordResponseDto> RegeneratePasswordAsync(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            throw new ArgumentException("El ID del usuario es requerido", nameof(id));
+        }
+
+        var existingUser = await _userRepository.GetByIdAsync(id);
+        if (existingUser == null)
+        {
+            throw new KeyNotFoundException($"Usuario con ID {id} no encontrado");
+        }
+
+        var temporaryPassword = GenerateTemporaryPassword();
+        existingUser.PasswordHash = HashPassword(temporaryPassword);
+        await _userRepository.UpdateAsync(existingUser);
+
+        return new RegeneratePasswordResponseDto { TemporaryPassword = temporaryPassword };
     }
 
     public async Task<bool> DeleteUserAsync(string id)
@@ -277,6 +291,20 @@ public class UserService : IUserService
             BaseSalary = user.BaseSalary,
             BaseSalaryCurrency = user.BaseSalaryCurrency
         };
+    }
+
+    private static string GenerateTemporaryPassword(int length = 16)
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        var data = new byte[length];
+        RandomNumberGenerator.Fill(data);
+        var result = new char[length];
+        for (var i = 0; i < length; i++)
+        {
+            result[i] = chars[data[i] % chars.Length];
+        }
+
+        return new string(result);
     }
 
     /// <summary>

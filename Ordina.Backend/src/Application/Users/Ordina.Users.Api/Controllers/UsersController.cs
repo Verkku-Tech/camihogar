@@ -1,6 +1,9 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Ordina.Users.Api.Authorization;
 using Ordina.Users.Application.DTOs;
 using Ordina.Users.Application.Services;
+using Ordina.Users.Domain.Constants;
 
 namespace Ordina.Users.Api.Controllers;
 
@@ -226,6 +229,42 @@ public class UsersController : ControllerBase
         {
             _logger.LogError(ex, "Error al actualizar usuario con ID {UserId}", id);
             return StatusCode(500, new { message = "Error interno del servidor al actualizar el usuario" });
+        }
+    }
+
+    /// <summary>
+    /// Genera una contraseña temporal nueva para el usuario y la devuelve una sola vez (para que el administrador la entregue al usuario).
+    /// </summary>
+    [HttpPost("{id}/regenerate-password")]
+    [Authorize]
+    [HasPermission(Permissions.Users.ModifyPasswords)]
+    [ProducesResponseType(typeof(RegeneratePasswordResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<RegeneratePasswordResponseDto>> RegeneratePassword(string id)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return BadRequest(new { message = "El ID del usuario es requerido" });
+            }
+
+            var result = await _userService.RegeneratePasswordAsync(id);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al regenerar contraseña para usuario {UserId}", id);
+            return StatusCode(500, new { message = "Error interno del servidor al regenerar la contraseña" });
         }
     }
 

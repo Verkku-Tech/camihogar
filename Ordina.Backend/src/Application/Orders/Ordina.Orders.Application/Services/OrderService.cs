@@ -10,13 +10,16 @@ namespace Ordina.Orders.Application.Services;
 public class OrderService : IOrderService
 {
     private readonly IOrderRepository _orderRepository;
+    private readonly IOrderAuditLogService _auditLogService;
     private readonly ILogger<OrderService> _logger;
 
     public OrderService(
         IOrderRepository orderRepository,
+        IOrderAuditLogService auditLogService,
         ILogger<OrderService> logger)
     {
         _orderRepository = orderRepository;
+        _auditLogService = auditLogService;
         _logger = logger;
     }
 
@@ -138,7 +141,7 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<OrderResponseDto> CreateOrderAsync(CreateOrderDto createDto)
+    public async Task<OrderResponseDto> CreateOrderAsync(CreateOrderDto createDto, string userId, string userName)
     {
         try
         {
@@ -193,6 +196,7 @@ public class OrderService : IOrderService
 
             RecalculateOrderStatus(order);
             var createdOrder = await _orderRepository.CreateAsync(order);
+            await _auditLogService.LogOrderCreatedAsync(createdOrder, userId, userName);
             return MapToDto(createdOrder);
         }
         catch (Exception ex)
@@ -202,7 +206,7 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<OrderResponseDto> UpdateOrderAsync(string id, UpdateOrderDto updateDto)
+    public async Task<OrderResponseDto> UpdateOrderAsync(string id, UpdateOrderDto updateDto, string userId, string userName)
     {
         try
         {
@@ -216,6 +220,8 @@ public class OrderService : IOrderService
             {
                 throw new KeyNotFoundException($"Pedido con ID {id} no encontrado");
             }
+
+            var oldSnapshot = OrderDeepClone.Clone(existingOrder);
 
             // Actualizar campos si están presentes
             if (!string.IsNullOrEmpty(updateDto.ClientId))
@@ -283,6 +289,7 @@ public class OrderService : IOrderService
 
             RecalculateOrderStatus(existingOrder);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
+            await _auditLogService.LogOrderUpdatedAsync(oldSnapshot, updatedOrder, userId, userName);
             return MapToDto(updatedOrder);
         }
         catch (Exception ex)
@@ -292,7 +299,7 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<OrderResponseDto> ValidateOrderItemAsync(string id, string itemId)
+    public async Task<OrderResponseDto> ValidateOrderItemAsync(string id, string itemId, string userId, string userName)
     {
         try
         {
@@ -319,6 +326,7 @@ public class OrderService : IOrderService
 
             RecalculateOrderStatus(existingOrder);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
+            await _auditLogService.LogItemValidatedAsync(updatedOrder, itemId, userId, userName);
             return MapToDto(updatedOrder);
         }
         catch (Exception ex)
@@ -328,7 +336,7 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<bool> DeleteOrderAsync(string id)
+    public async Task<bool> DeleteOrderAsync(string id, string userId, string userName)
     {
         try
         {
@@ -337,6 +345,13 @@ public class OrderService : IOrderService
                 throw new ArgumentException("El ID del pedido es requerido", nameof(id));
             }
 
+            var existing = await _orderRepository.GetByIdAsync(id);
+            if (existing == null)
+            {
+                return false;
+            }
+
+            await _auditLogService.LogOrderDeletedAsync(existing, userId, userName);
             return await _orderRepository.DeleteAsync(id);
         }
         catch (Exception ex)
@@ -368,6 +383,80 @@ public class OrderService : IOrderService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al verificar existencia del número de pedido {OrderNumber}", orderNumber);
+            throw;
+        }
+    }
+
+    public async Task<bool> ConciliatePaymentsAsync(List<ConciliatePaymentRequestDto> requests, string userId, string userName)
+    {
+        try
+        {
+            if (requests == null || !requests.Any())
+                return false;
+
+            // Group requests by OrderId to minimize DB updates
+            var requestsByOrder = requests.GroupBy(r => r.OrderId);
+            bool anyUpdated = false;
+
+            foreach (var orderGroup in requestsByOrder)
+            {
+                var order = await _orderRepository.GetByIdAsync(orderGroup.Key);
+                if (order == null) continue;
+
+                var orderBefore = OrderDeepClone.Clone(order);
+
+                bool orderUpdated = false;
+                foreach (var req in orderGroup)
+                {
+                    if (req.PaymentType == "main")
+                    {
+                        if (order.PaymentDetails != null)
+                        {
+                            order.PaymentDetails.IsConciliated = req.IsConciliated;
+                            orderUpdated = true;
+                        }
+                    }
+                    else if (req.PaymentType == "partial")
+                    {
+                        if (order.PartialPayments != null && req.PaymentIndex >= 0 && req.PaymentIndex < order.PartialPayments.Count)
+                        {
+                            var payment = order.PartialPayments[req.PaymentIndex];
+                            if (payment.PaymentDetails != null)
+                            {
+                                payment.PaymentDetails.IsConciliated = req.IsConciliated;
+                                orderUpdated = true;
+                            }
+                        }
+                    }
+                    else if (req.PaymentType == "mixed")
+                    {
+                        if (order.MixedPayments != null && req.PaymentIndex >= 0 && req.PaymentIndex < order.MixedPayments.Count)
+                        {
+                            var payment = order.MixedPayments[req.PaymentIndex];
+                            if (payment.PaymentDetails != null)
+                            {
+                                payment.PaymentDetails.IsConciliated = req.IsConciliated;
+                                orderUpdated = true;
+                            }
+                        }
+                    }
+                }
+
+                if (orderUpdated)
+                {
+                    order.UpdatedAt = DateTime.UtcNow;
+                    await _orderRepository.UpdateAsync(order);
+                    var groupList = orderGroup.ToList();
+                    await _auditLogService.LogPaymentsConciliatedAsync(orderBefore, order, groupList, userId, userName);
+                    anyUpdated = true;
+                }
+            }
+
+            return anyUpdated;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al conciliar pagos");
             throw;
         }
     }
@@ -553,7 +642,8 @@ public class OrderService : IOrderService
             AccountNumber = paymentDetails.AccountNumber,
             Bank = paymentDetails.Bank,
             Email = paymentDetails.Email,
-            Wallet = paymentDetails.Wallet
+            Wallet = paymentDetails.Wallet,
+            IsConciliated = paymentDetails.IsConciliated
         };
     }
 
@@ -578,7 +668,8 @@ public class OrderService : IOrderService
             AccountNumber = dto.AccountNumber,
             Bank = dto.Bank,
             Email = dto.Email,
-            Wallet = dto.Wallet
+            Wallet = dto.Wallet,
+            IsConciliated = dto.IsConciliated
         };
     }
 
