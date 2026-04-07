@@ -142,8 +142,9 @@ export default function PedidosPage() {
 
   const filteredOrders = orders.filter((order) => {
     // Filtro de búsqueda general (existente)
+    const on = (order.orderNumber ?? "").toLowerCase()
     const matchesSearch =
-      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      on.includes(searchTerm.toLowerCase()) ||
       order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
 
