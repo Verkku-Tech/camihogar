@@ -1778,7 +1778,10 @@ export interface Vendor {
 // Helper functions para mapear orders entre frontend y backend
 const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   id: dto.id,
-  orderNumber: dto.orderNumber,
+  orderNumber:
+    dto.orderNumber ??
+    (dto as unknown as { OrderNumber?: string }).OrderNumber ??
+    "",
   clientId: dto.clientId,
   clientName: dto.clientName,
   vendorId: dto.vendorId,
@@ -2843,7 +2846,10 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
     // Convertir presupuestos a formato unificado
     const unifiedBudgets: UnifiedOrder[] = budgets.map((budget) => ({
       id: budget.id,
-      orderNumber: budget.budgetNumber, // Usar budgetNumber como orderNumber
+      orderNumber:
+        budget.budgetNumber ||
+        (budget as unknown as { orderNumber?: string }).orderNumber ||
+        "",
       clientId: budget.clientId,
       clientName: budget.clientName,
       vendorId: budget.vendorId,
@@ -3189,6 +3195,49 @@ export interface Budget {
   convertedToOrderId?: string;
 }
 
+/** Presupuesto en API = Order con type Budget; en cliente necesitamos `budgetNumber` (= orderNumber del API). */
+function orderMappedToBudget(
+  order: Order,
+  opts?: { expiresAt?: string; validForDays?: number },
+): Budget {
+  const validForDays = opts?.validForDays ?? 30;
+  const num = order.orderNumber || "";
+  let expiresAt = opts?.expiresAt;
+  if (!expiresAt) {
+    const d = new Date(order.createdAt);
+    d.setDate(d.getDate() + validForDays);
+    expiresAt = d.toISOString();
+  }
+  return {
+    id: order.id,
+    budgetNumber: num,
+    clientId: order.clientId,
+    clientName: order.clientName,
+    vendorId: order.vendorId,
+    vendorName: order.vendorName,
+    referrerId: order.referrerId,
+    referrerName: order.referrerName,
+    products: order.products,
+    subtotal: order.subtotal,
+    taxAmount: order.taxAmount,
+    deliveryCost: order.deliveryCost,
+    total: order.total,
+    subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
+    productDiscountTotal: order.productDiscountTotal,
+    generalDiscountAmount: order.generalDiscountAmount,
+    deliveryAddress: order.deliveryAddress,
+    hasDelivery: order.hasDelivery,
+    status: order.status as Budget["status"],
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+    expiresAt,
+    validForDays,
+    observations: order.observations,
+    baseCurrency: order.baseCurrency,
+    exchangeRatesAtCreation: order.exchangeRatesAtCreation,
+  };
+}
+
 export const getBudgets = async (): Promise<Budget[]> => {
   try {
     // Cargar siempre presupuestos locales desde IndexedDB primero (offline-first)
@@ -3197,7 +3246,9 @@ export const getBudgets = async (): Promise<Budget[]> => {
     // Si hay conexión, intentar sincronizar con backend
     if (isOnline()) {
       try {
-        const backendBudgets = (await apiClient.getOrdersByStatus("Presupuesto")).map(orderFromBackendDto);
+        const backendBudgets = (await apiClient.getOrdersByStatus("Presupuesto")).map((dto) =>
+          orderMappedToBudget(orderFromBackendDto(dto)),
+        );
         // Hacemos merge con IndexedDB
         for (const budget of backendBudgets) {
           const localItem = localBudgets.find((o) => o.id === budget.id);
@@ -3280,11 +3331,10 @@ export const addBudget = async (
       createDto.paymentMethod = createDto.paymentMethod || "N/A";
 
       const backendOrder = await apiClient.createOrder(createDto);
-      newBudget = {
-         ...orderFromBackendDto(backendOrder) as unknown as Budget,
-         validForDays,
-         expiresAt: expiresAt.toISOString(),
-      };
+      newBudget = orderMappedToBudget(orderFromBackendDto(backendOrder), {
+        expiresAt: expiresAt.toISOString(),
+        validForDays,
+      });
 
       console.log("✅ Presupuesto guardado en backend:", newBudget.budgetNumber);
       syncedToBackend = true;
