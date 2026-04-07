@@ -145,15 +145,15 @@ public class OrderService : IOrderService
     {
         try
         {
-            // Generar número de pedido único
-            var existingOrders = await _orderRepository.GetAllAsync();
-            var orderNumber = $"ORD-{String.Format("{0:D3}", existingOrders.Count() + 1)}";
+            var isBudget = createDto.Type == "Budget";
+            var prefix = isBudget ? "PRE-" : "ORD-";
+            var orderNumber = $"{prefix}{String.Format("{0:D3}", existingOrders.Count(o => o.Type == (isBudget ? "Budget" : "Order")) + 1)}";
 
             // Verificar que el número no exista (por si acaso)
             int attempts = 0;
             while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
             {
-                orderNumber = $"ORD-{String.Format("{0:D3}", existingOrders.Count() + attempts + 2)}";
+                orderNumber = $"{prefix}{String.Format("{0:D3}", existingOrders.Count(o => o.Type == (isBudget ? "Budget" : "Order")) + attempts + 2)}";
                 attempts++;
             }
 
@@ -190,6 +190,7 @@ public class OrderService : IOrderService
                 DeliveryType = createDto.DeliveryType,
                 DeliveryZone = createDto.DeliveryZone,
                 ExchangeRatesAtCreation = createDto.ExchangeRatesAtCreation != null ? MapExchangeRatesFromDto(createDto.ExchangeRatesAtCreation) : null,
+                Type = createDto.Type,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -284,6 +285,8 @@ public class OrderService : IOrderService
                 existingOrder.DeliveryZone = updateDto.DeliveryZone;
             if (updateDto.ExchangeRatesAtCreation != null)
                 existingOrder.ExchangeRatesAtCreation = MapExchangeRatesFromDto(updateDto.ExchangeRatesAtCreation);
+            if (!string.IsNullOrEmpty(updateDto.Type))
+                existingOrder.Type = updateDto.Type;
 
             existingOrder.UpdatedAt = DateTime.UtcNow;
 
@@ -499,12 +502,16 @@ public class OrderService : IOrderService
             DeliveryZone = order.DeliveryZone,
             ExchangeRatesAtCreation = order.ExchangeRatesAtCreation != null ? MapExchangeRatesToDto(order.ExchangeRatesAtCreation) : null,
             CreatedAt = order.CreatedAt,
-            UpdatedAt = order.UpdatedAt
+            UpdatedAt = order.UpdatedAt,
+            Type = order.Type
         };
     }
 
     private void RecalculateOrderStatus(Order order)
     {
+        if (order.Type == "Budget")
+            return;
+
         if (order.Products == null || !order.Products.Any())
             return;
 
