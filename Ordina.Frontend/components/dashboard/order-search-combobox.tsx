@@ -33,7 +33,7 @@ export function OrderSearchCombobox() {
   const handleSelect = (orderNumber: string) => {
     setOpen(false)
     setSearchValue("")
-    router.push(`/dashboard/pedidos/${orderNumber}`)
+    router.push(`/pedidos/${orderNumber}`)
   }
 
   return (
@@ -47,13 +47,13 @@ export function OrderSearchCombobox() {
             className="w-64 justify-start text-muted-foreground font-normal relative h-10 px-3 pl-10"
           >
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            {searchValue ? searchValue : "Buscar orden..."}
+            {searchValue ? searchValue : "Buscar orden"}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-80 p-0" align="start">
           <Command>
             <CommandInput 
-              placeholder="Buscar por número o cliente..." 
+              placeholder="Buscar orden" 
               value={searchValue}
               onValueChange={setSearchValue}
             />

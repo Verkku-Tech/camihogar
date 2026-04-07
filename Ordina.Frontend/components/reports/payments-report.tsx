@@ -210,19 +210,32 @@ export function PaymentsReport() {
   const getOriginalPaymentAmount = (
     payment: PartialPayment
   ): { amount: number; currency: string } => {
+    const details = payment.paymentDetails;
+    const detailsHasValues =
+      details &&
+      Object.values(details).some(
+        (v) => v !== undefined && v !== null && v !== "" && v !== false,
+      );
+
     // Para Efectivo, el monto original está en cashReceived
-    if (payment.method === "Efectivo" && payment.paymentDetails?.cashReceived) {
+    if (
+      payment.method === "Efectivo" &&
+      details &&
+      detailsHasValues &&
+      details.cashReceived != null &&
+      details.cashReceived > 0
+    ) {
       return {
-        amount: payment.paymentDetails.cashReceived,
-        currency: payment.paymentDetails.cashCurrency || payment.currency || "Bs",
+        amount: details.cashReceived,
+        currency: details.cashCurrency || payment.currency || "Bs",
       };
     }
 
     // Si hay monto original guardado (para Pago Móvil y Transferencia)
-    if (payment.paymentDetails?.originalAmount !== undefined) {
+    if (details && detailsHasValues && details.originalAmount !== undefined) {
       return {
-        amount: payment.paymentDetails.originalAmount,
-        currency: payment.paymentDetails.originalCurrency || payment.currency || "Bs",
+        amount: details.originalAmount,
+        currency: details.originalCurrency || payment.currency || "Bs",
       };
     }
 
