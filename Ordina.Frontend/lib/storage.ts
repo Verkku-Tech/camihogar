@@ -1829,6 +1829,21 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     surchargeEnabled: p.surchargeEnabled,
     surchargeAmount: p.surchargeAmount,
     surchargeReason: p.surchargeReason,
+    refabricationReason: p.refabricationReason,
+    refabricatedAt: p.refabricatedAt,
+    refabricationHistory: p.refabricationHistory?.map((r) => ({
+      reason: r.reason ?? (r as { Reason?: string }).Reason ?? "",
+      date:
+        typeof r.date === "string"
+          ? r.date
+          : r.date != null
+            ? new Date(r.date as string | number | Date).toISOString()
+            : (r as { Date?: string }).Date ?? "",
+      previousProviderId: r.previousProviderId ?? (r as { PreviousProviderId?: string }).PreviousProviderId,
+      previousProviderName: r.previousProviderName ?? (r as { PreviousProviderName?: string }).PreviousProviderName,
+      newProviderId: r.newProviderId ?? (r as { NewProviderId?: string }).NewProviderId,
+      newProviderName: r.newProviderName ?? (r as { NewProviderName?: string }).NewProviderName,
+    })),
   })),
   subtotal: dto.subtotal,
   taxAmount: dto.taxAmount,
@@ -1858,6 +1873,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     bank: dto.paymentDetails.bank,
     email: dto.paymentDetails.email,
     wallet: dto.paymentDetails.wallet,
+    envia: dto.paymentDetails.envia,
     isConciliated: dto.paymentDetails.isConciliated,
   } : undefined,
   partialPayments: dto.partialPayments?.map((p) => ({
@@ -1878,6 +1894,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
       pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      pagomovilDate: p.paymentDetails.pagomovilDate,
       transferenciaBank: p.paymentDetails.transferenciaBank,
       transferenciaReference: p.paymentDetails.transferenciaReference,
       transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -1892,6 +1909,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       bank: p.paymentDetails.bank,
       email: p.paymentDetails.email,
       wallet: p.paymentDetails.wallet,
+      envia: p.paymentDetails.envia,
       isConciliated: p.paymentDetails.isConciliated,
     } : undefined,
   })),
@@ -1913,6 +1931,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
       pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      pagomovilDate: p.paymentDetails.pagomovilDate,
       transferenciaBank: p.paymentDetails.transferenciaBank,
       transferenciaReference: p.paymentDetails.transferenciaReference,
       transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -1927,6 +1946,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       bank: p.paymentDetails.bank,
       email: p.paymentDetails.email,
       wallet: p.paymentDetails.wallet,
+      envia: p.paymentDetails.envia,
       isConciliated: p.paymentDetails.isConciliated,
     } : undefined,
   })),
@@ -1988,6 +2008,16 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
     surchargeEnabled: p.surchargeEnabled,
     surchargeAmount: p.surchargeAmount,
     surchargeReason: p.surchargeReason,
+    refabricationReason: p.refabricationReason,
+    refabricatedAt: p.refabricatedAt,
+    refabricationHistory: p.refabricationHistory?.map((r) => ({
+      reason: r.reason,
+      date: r.date,
+      previousProviderId: r.previousProviderId,
+      previousProviderName: r.previousProviderName,
+      newProviderId: r.newProviderId,
+      newProviderName: r.newProviderName,
+    })),
   })),
   subtotal: order.subtotal,
   taxAmount: order.taxAmount,
@@ -2017,6 +2047,8 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
     bank: order.paymentDetails.bank,
     email: order.paymentDetails.email,
     wallet: order.paymentDetails.wallet,
+    envia: order.paymentDetails.envia,
+    isConciliated: order.paymentDetails.isConciliated,
   } : undefined,
   partialPayments: order.partialPayments?.map((p) => ({
     id: p.id,
@@ -2035,6 +2067,7 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
       pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      pagomovilDate: p.paymentDetails.pagomovilDate,
       transferenciaBank: p.paymentDetails.transferenciaBank,
       transferenciaReference: p.paymentDetails.transferenciaReference,
       transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2049,6 +2082,8 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
       bank: p.paymentDetails.bank,
       email: p.paymentDetails.email,
       wallet: p.paymentDetails.wallet,
+      envia: p.paymentDetails.envia,
+      isConciliated: p.paymentDetails.isConciliated,
     } : undefined,
   })),
   mixedPayments: order.mixedPayments?.map((p) => ({
@@ -2068,6 +2103,7 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
       pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      pagomovilDate: p.paymentDetails.pagomovilDate,
       transferenciaBank: p.paymentDetails.transferenciaBank,
       transferenciaReference: p.paymentDetails.transferenciaReference,
       transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2082,6 +2118,8 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
       bank: p.paymentDetails.bank,
       email: p.paymentDetails.email,
       wallet: p.paymentDetails.wallet,
+      envia: p.paymentDetails.envia,
+      isConciliated: p.paymentDetails.isConciliated,
     } : undefined,
   })),
   deliveryAddress: order.deliveryAddress,
@@ -2371,6 +2409,19 @@ export const updateOrder = async (
               manufacturingNotes: p.manufacturingNotes,
               locationStatus: p.locationStatus,
               logisticStatus: p.logisticStatus,
+              surchargeEnabled: p.surchargeEnabled,
+              surchargeAmount: p.surchargeAmount,
+              surchargeReason: p.surchargeReason,
+              refabricationReason: p.refabricationReason,
+              refabricatedAt: p.refabricatedAt,
+              refabricationHistory: p.refabricationHistory?.map((r) => ({
+                reason: r.reason,
+                date: r.date,
+                previousProviderId: r.previousProviderId,
+                previousProviderName: r.previousProviderName,
+                newProviderId: r.newProviderId,
+                newProviderName: r.newProviderName,
+              })),
             })) : undefined,
             subtotal: updatedOrder.subtotal !== existingOrder.subtotal ? updatedOrder.subtotal : undefined,
             taxAmount: updatedOrder.taxAmount !== existingOrder.taxAmount ? updatedOrder.taxAmount : undefined,
@@ -2398,6 +2449,7 @@ export const updateOrder = async (
                 pagomovilReference: p.paymentDetails.pagomovilReference,
                 pagomovilBank: p.paymentDetails.pagomovilBank,
                 pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                pagomovilDate: p.paymentDetails.pagomovilDate,
                 transferenciaBank: p.paymentDetails.transferenciaBank,
                 transferenciaReference: p.paymentDetails.transferenciaReference,
                 transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2412,6 +2464,8 @@ export const updateOrder = async (
                 bank: p.paymentDetails.bank,
                 email: p.paymentDetails.email,
                 wallet: p.paymentDetails.wallet,
+                envia: p.paymentDetails.envia,
+                isConciliated: p.paymentDetails.isConciliated,
               } : undefined,
             })) : undefined,
             mixedPayments: updatedOrder.mixedPayments !== existingOrder.mixedPayments ? updatedOrder.mixedPayments?.map((p) => ({
@@ -2431,6 +2485,7 @@ export const updateOrder = async (
                 pagomovilReference: p.paymentDetails.pagomovilReference,
                 pagomovilBank: p.paymentDetails.pagomovilBank,
                 pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                pagomovilDate: p.paymentDetails.pagomovilDate,
                 transferenciaBank: p.paymentDetails.transferenciaBank,
                 transferenciaReference: p.paymentDetails.transferenciaReference,
                 transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2445,6 +2500,8 @@ export const updateOrder = async (
                 bank: p.paymentDetails.bank,
                 email: p.paymentDetails.email,
                 wallet: p.paymentDetails.wallet,
+                envia: p.paymentDetails.envia,
+                isConciliated: p.paymentDetails.isConciliated,
               } : undefined,
             })) : undefined,
             deliveryAddress: updatedOrder.deliveryAddress !== existingOrder.deliveryAddress ? updatedOrder.deliveryAddress : undefined,
@@ -2516,6 +2573,19 @@ export const updateOrder = async (
             manufacturingNotes: p.manufacturingNotes,
             locationStatus: p.locationStatus,
             logisticStatus: p.logisticStatus,
+            surchargeEnabled: p.surchargeEnabled,
+            surchargeAmount: p.surchargeAmount,
+            surchargeReason: p.surchargeReason,
+            refabricationReason: p.refabricationReason,
+            refabricatedAt: p.refabricatedAt,
+            refabricationHistory: p.refabricationHistory?.map((r) => ({
+              reason: r.reason,
+              date: r.date,
+              previousProviderId: r.previousProviderId,
+              previousProviderName: r.previousProviderName,
+              newProviderId: r.newProviderId,
+              newProviderName: r.newProviderName,
+            })),
           })),
           partialPayments: updatedOrder.partialPayments?.map((p) => ({
             id: p.id,
@@ -2534,6 +2604,7 @@ export const updateOrder = async (
               pagomovilReference: p.paymentDetails.pagomovilReference,
               pagomovilBank: p.paymentDetails.pagomovilBank,
               pagomovilPhone: p.paymentDetails.pagomovilPhone,
+              pagomovilDate: p.paymentDetails.pagomovilDate,
               transferenciaBank: p.paymentDetails.transferenciaBank,
               transferenciaReference: p.paymentDetails.transferenciaReference,
               transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2548,6 +2619,8 @@ export const updateOrder = async (
               bank: p.paymentDetails.bank,
               email: p.paymentDetails.email,
               wallet: p.paymentDetails.wallet,
+              envia: p.paymentDetails.envia,
+              isConciliated: p.paymentDetails.isConciliated,
             } : undefined,
           })),
           mixedPayments: updatedOrder.mixedPayments?.map((p) => ({
@@ -2567,6 +2640,7 @@ export const updateOrder = async (
               pagomovilReference: p.paymentDetails.pagomovilReference,
               pagomovilBank: p.paymentDetails.pagomovilBank,
               pagomovilPhone: p.paymentDetails.pagomovilPhone,
+              pagomovilDate: p.paymentDetails.pagomovilDate,
               transferenciaBank: p.paymentDetails.transferenciaBank,
               transferenciaReference: p.paymentDetails.transferenciaReference,
               transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2581,6 +2655,8 @@ export const updateOrder = async (
               bank: p.paymentDetails.bank,
               email: p.paymentDetails.email,
               wallet: p.paymentDetails.wallet,
+              envia: p.paymentDetails.envia,
+              isConciliated: p.paymentDetails.isConciliated,
             } : undefined,
           })),
           status: updatedOrder.status,
@@ -3200,7 +3276,9 @@ export const addBudget = async (
       const createDto = orderToBackendDto(budget as any);
       createDto.type = "Budget";
       createDto.status = "Presupuesto";
-      
+      createDto.paymentType = createDto.paymentType || "N/A";
+      createDto.paymentMethod = createDto.paymentMethod || "N/A";
+
       const backendOrder = await apiClient.createOrder(createDto);
       newBudget = {
          ...orderFromBackendDto(backendOrder) as unknown as Budget,
@@ -3238,6 +3316,8 @@ export const addBudget = async (
         const createDto = orderToBackendDto(newBudget as any);
         createDto.type = "Budget";
         createDto.status = "Presupuesto";
+        createDto.paymentType = createDto.paymentType || "N/A";
+        createDto.paymentMethod = createDto.paymentMethod || "N/A";
         const { syncManager } = await import("./sync-manager");
         await syncManager.addToQueue({
           type: "create",
@@ -4357,19 +4437,38 @@ export const getVendors = async (): Promise<Vendor[]> => {
     // Obtener todos los usuarios
     const users = await getUsers();
 
-    // Filtrar usuarios con rol de vendedor de tienda (activos)
-    // Los roles pueden venir en formato API ("Store Seller") o display ("Vendedor de tienda")
-    const vendorUsers = users.filter(
-      (user) => user.status === "active" && ((user.role as string) === "Store Seller" || (user.role as string) === "Online Seller" || (user.role as string) === "Vendedor de tienda" || (user.role as string) === "Vendedor Online")
-    );
+    // Filtrar usuarios con rol de vendedor de tienda u online (activos)
+    // Normalizar rol (trim + comparación insensible a mayúsculas para etiquetas en español)
+    const vendorUsers = users.filter((user) => {
+      if (user.status !== "active") return false;
+      const raw = ((user.role as string) || "").trim();
+      if (!raw) return false;
+      const r = raw.toLowerCase();
+      return (
+        raw === "Store Seller" ||
+        raw === "Online Seller" ||
+        r === "vendedor de tienda" ||
+        r === "vendedor online"
+      );
+    });
 
     // Convertir usuarios a formato Vendor
-    const vendors: Vendor[] = vendorUsers.map((user) => ({
-      id: user.id,
-      name: user.name,
-      role: user.role === "Store Seller" ? "Vendedor de tienda" : user.role,
-      type: "vendor" as const,
-    }));
+    const vendors: Vendor[] = vendorUsers.map((user) => {
+      const raw = ((user.role as string) || "").trim();
+      const rl = raw.toLowerCase();
+      const displayRole =
+        raw === "Store Seller" || rl === "vendedor de tienda"
+          ? "Vendedor de tienda"
+          : raw === "Online Seller" || rl === "vendedor online"
+            ? "Vendedor Online"
+            : user.role as string;
+      return {
+        id: user.id,
+        name: user.name,
+        role: displayRole,
+        type: "vendor" as const,
+      };
+    });
 
     return vendors;
   } catch (error) {
@@ -4388,10 +4487,13 @@ export const getReferrers = async (): Promise<Vendor[]> => {
     const users = await getUsers();
 
     // Filtrar usuarios con rol de vendedor online (activos)
-    // Los roles pueden venir en formato API ("Online Seller") o display ("Vendedor Online")
-    const referrerUsers = users.filter(
-      (user) => user.status === "active" && ((user.role as string) === "Online Seller" || (user.role as string) === "Vendedor Online")
-    );
+    const referrerUsers = users.filter((user) => {
+      if (user.status !== "active") return false;
+      const raw = ((user.role as string) || "").trim();
+      if (!raw) return false;
+      const r = raw.toLowerCase();
+      return raw === "Online Seller" || r === "vendedor online";
+    });
 
     // Convertir usuarios a formato Vendor
     const referrers: Vendor[] = referrerUsers.map((user) => ({

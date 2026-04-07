@@ -35,11 +35,11 @@ public class CreateOrderDto
     public decimal? ProductDiscountTotal { get; set; }
     public decimal? GeneralDiscountAmount { get; set; }
     
-    [Required(ErrorMessage = "El tipo de pago es requerido")]
-    public string PaymentType { get; set; } = string.Empty;
+    /// <summary>Obligatorio para pedidos (<see cref="Type"/> Order). Opcional para presupuestos (Budget).</summary>
+    public string? PaymentType { get; set; }
     
-    [Required(ErrorMessage = "El método de pago es requerido")]
-    public string PaymentMethod { get; set; } = string.Empty;
+    /// <summary>Obligatorio para pedidos (<see cref="Type"/> Order). Opcional para presupuestos (Budget).</summary>
+    public string? PaymentMethod { get; set; }
     
     public PaymentDetailsDto? PaymentDetails { get; set; }
     public List<PartialPaymentDto>? PartialPayments { get; set; }

@@ -277,6 +277,11 @@ public class OrdersController : ControllerBase
             var order = await _orderService.CreateOrderAsync(createDto, userId, userName);
             return CreatedAtAction(nameof(GetOrderById), new { id = order.Id }, order);
         }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "Validación al crear pedido");
+            return BadRequest(new { message = ex.Message });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al crear pedido");
