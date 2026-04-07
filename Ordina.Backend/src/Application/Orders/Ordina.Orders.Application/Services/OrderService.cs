@@ -146,6 +146,15 @@ public class OrderService : IOrderService
         try
         {
             var isBudget = createDto.Type == "Budget";
+            if (!isBudget)
+            {
+                if (string.IsNullOrWhiteSpace(createDto.PaymentType))
+                    throw new ArgumentException("El tipo de pago es requerido para pedidos", nameof(createDto.PaymentType));
+                if (string.IsNullOrWhiteSpace(createDto.PaymentMethod))
+                    throw new ArgumentException("El método de pago es requerido para pedidos", nameof(createDto.PaymentMethod));
+            }
+
+            var existingOrders = (await _orderRepository.GetAllAsync()).ToList();
             var prefix = isBudget ? "PRE-" : "ORD-";
             var orderNumber = $"{prefix}{String.Format("{0:D3}", existingOrders.Count(o => o.Type == (isBudget ? "Budget" : "Order")) + 1)}";
 
@@ -156,6 +165,13 @@ public class OrderService : IOrderService
                 orderNumber = $"{prefix}{String.Format("{0:D3}", existingOrders.Count(o => o.Type == (isBudget ? "Budget" : "Order")) + attempts + 2)}";
                 attempts++;
             }
+
+            var paymentType = isBudget
+                ? (string.IsNullOrWhiteSpace(createDto.PaymentType) ? "N/A" : createDto.PaymentType!)
+                : createDto.PaymentType!;
+            var paymentMethod = isBudget
+                ? (string.IsNullOrWhiteSpace(createDto.PaymentMethod) ? "N/A" : createDto.PaymentMethod!)
+                : createDto.PaymentMethod!;
 
             var order = new Order
             {
@@ -174,8 +190,8 @@ public class OrderService : IOrderService
                 SubtotalBeforeDiscounts = createDto.SubtotalBeforeDiscounts,
                 ProductDiscountTotal = createDto.ProductDiscountTotal,
                 GeneralDiscountAmount = createDto.GeneralDiscountAmount,
-                PaymentType = createDto.PaymentType,
-                PaymentMethod = createDto.PaymentMethod,
+                PaymentType = paymentType,
+                PaymentMethod = paymentMethod,
                 PaymentDetails = createDto.PaymentDetails != null ? MapPaymentDetailsFromDto(createDto.PaymentDetails) : null,
                 PartialPayments = createDto.PartialPayments?.Select(MapPartialPaymentFromDto).ToList(),
                 MixedPayments = createDto.MixedPayments?.Select(MapPartialPaymentFromDto).ToList(),
@@ -579,6 +595,20 @@ public class OrderService : IOrderService
             ManufacturingNotes = product.ManufacturingNotes,
             LocationStatus = product.LocationStatus,
             LogisticStatus = product.LogisticStatus,
+            RefabricationReason = product.RefabricationReason,
+            RefabricatedAt = product.RefabricatedAt,
+            RefabricationHistory = product.RefabricationHistory?.Select(r => new RefabricationRecordDto
+            {
+                Reason = r.Reason,
+                Date = r.Date,
+                PreviousProviderId = r.PreviousProviderId,
+                PreviousProviderName = r.PreviousProviderName,
+                NewProviderId = r.NewProviderId,
+                NewProviderName = r.NewProviderName
+            }).ToList(),
+            SurchargeEnabled = product.SurchargeEnabled,
+            SurchargeAmount = product.SurchargeAmount,
+            SurchargeReason = product.SurchargeReason,
             Images = product.Images?.Select(img => new ProductImageDto
             {
                 Id = img.Id,
@@ -616,6 +646,20 @@ public class OrderService : IOrderService
             ManufacturingNotes = dto.ManufacturingNotes,
             LocationStatus = dto.LocationStatus,
             LogisticStatus = dto.LogisticStatus ?? "Generado",
+            RefabricationReason = dto.RefabricationReason,
+            RefabricatedAt = dto.RefabricatedAt,
+            RefabricationHistory = dto.RefabricationHistory?.Select(r => new RefabricationRecord
+            {
+                Reason = r.Reason,
+                Date = r.Date,
+                PreviousProviderId = r.PreviousProviderId,
+                PreviousProviderName = r.PreviousProviderName,
+                NewProviderId = r.NewProviderId,
+                NewProviderName = r.NewProviderName
+            }).ToList(),
+            SurchargeEnabled = dto.SurchargeEnabled,
+            SurchargeAmount = dto.SurchargeAmount,
+            SurchargeReason = dto.SurchargeReason,
             Images = dto.Images?.Select(img => new ProductImage
             {
                 Id = img.Id,

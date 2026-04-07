@@ -1236,7 +1236,7 @@ export default function OrderDetailPage() {
                   </HoverCard>
                 </div>
                 <div className="flex items-center gap-3">
-                  {order.status === "Generado" && (
+                  {(order.status === "Generado" || order.status === "Generada") && (
                     <Button
                       onClick={handleValidateOrder}
                       disabled={validatingOrder}

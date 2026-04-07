@@ -247,6 +247,29 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
     );
   };
 
+  // Normaliza abonos para el backend: evita duplicar filas en reporte (partial + mixed) y rellena monto original en Bs si falta
+  const normalizePaymentsForSave = (payments: PartialPayment[]): PartialPayment[] => {
+    return payments.map((p) => {
+      const base = { ...(p.paymentDetails || {}) } as NonNullable<PartialPayment["paymentDetails"]>;
+      if (
+        p.amount > 0 &&
+        base.originalAmount === undefined &&
+        base.cashReceived === undefined
+      ) {
+        base.originalAmount = p.amount;
+        base.originalCurrency = (p.currency as "Bs" | "USD" | "EUR" | undefined) || "Bs";
+      }
+      const hasDetail = Object.keys(base).some((k) => {
+        const v = base[k as keyof typeof base];
+        return v !== undefined && v !== null && v !== "";
+      });
+      return {
+        ...p,
+        paymentDetails: hasDetail ? base : undefined,
+      };
+    });
+  };
+
   // Guardar solo pagos (modo vendedor): actualiza únicamente los campos de pago del pedido
   const handleSavePaymentsOnly = async () => {
     if (!order) return;
@@ -256,15 +279,14 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
         toast.error("Debe agregar al menos un pago");
         return;
       }
+      const paymentsNorm = normalizePaymentsForSave(orderForm.payments);
+      const multi = paymentsNorm.length > 1;
       await updateOrder(order.id, {
-        partialPayments: orderForm.payments,
-        paymentMethod:
-          orderForm.payments.length > 1
-            ? "Mixto"
-            : orderForm.payments[0]?.method ?? order.paymentMethod ?? "",
-        paymentDetails:
-          orderForm.payments.length === 1 ? orderForm.payments[0]?.paymentDetails : undefined,
-        mixedPayments: orderForm.payments.length > 1 ? orderForm.payments : undefined,
+        // Un solo arreglo activo: varios pagos → solo mixedPayments (evita duplicados en reporte de pagos)
+        partialPayments: multi ? [] : paymentsNorm,
+        paymentMethod: multi ? "Mixto" : paymentsNorm[0]?.method ?? order.paymentMethod ?? "",
+        paymentDetails: !multi ? paymentsNorm[0]?.paymentDetails : undefined,
+        mixedPayments: multi ? paymentsNorm : [],
       });
       toast.success("Pagos actualizados correctamente");
       onOpenChange(false);

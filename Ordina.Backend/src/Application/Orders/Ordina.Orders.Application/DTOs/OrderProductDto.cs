@@ -23,6 +23,12 @@ public class OrderProductDto
     public string? ManufacturingNotes { get; set; }
     public string? LocationStatus { get; set; }
     public string LogisticStatus { get; set; } = "Generado";
+
+    // Refabricación
+    public string? RefabricationReason { get; set; }
+    public DateTime? RefabricatedAt { get; set; }
+    public List<RefabricationRecordDto>? RefabricationHistory { get; set; }
+
     // Campos de sobreprecio
     public bool? SurchargeEnabled { get; set; }
     public decimal? SurchargeAmount { get; set; }
