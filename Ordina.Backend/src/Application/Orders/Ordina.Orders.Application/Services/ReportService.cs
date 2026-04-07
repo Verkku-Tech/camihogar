@@ -155,7 +155,8 @@ public class ReportService : IReportService
                 Cantidad = row.Cantidad,
                 Descripcion = row.Descripcion,
                 ObservacionesVendedor = row.ObservacionesVendedor,
-                ObservacionesFabricante = row.ObservacionesFabricante
+                ObservacionesFabricante = row.ObservacionesFabricante,
+                NotasRefabricacion = row.NotasRefabricacion
             }).ToList();
         }
         catch (Exception ex)
@@ -214,13 +215,14 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 7, "Descripción");
                 sl.SetCellValue(1, 8, "Obs. Vendedor");
                 sl.SetCellValue(1, 9, "Obs. Fabricante");
+                sl.SetCellValue(1, 10, "Notas Refabricación");
 
                 // Estilo de headers - solo negrita por ahora
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 9; col++)
+                for (int col = 1; col <= 10; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -238,6 +240,7 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 7, item.Descripcion);
                     sl.SetCellValue(row, 8, item.ObservacionesVendedor);
                     sl.SetCellValue(row, 9, item.ObservacionesFabricante);
+                    sl.SetCellValue(row, 10, item.NotasRefabricacion);
                     row++;
                 }
 
@@ -251,6 +254,7 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(7, 50);  // Descripción
                 sl.SetColumnWidth(8, 35);  // Obs. Vendedor
                 sl.SetColumnWidth(9, 35);  // Obs. Fabricante
+                sl.SetColumnWidth(10, 35); // Notas Refabricación
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
@@ -387,7 +391,8 @@ public class ReportService : IReportService
                         Cantidad = product.Quantity,
                         Descripcion = await FormatProductDescriptionAsync(product),
                         ObservacionesVendedor = product.Observations ?? string.Empty,
-                        ObservacionesFabricante = product.ManufacturingNotes ?? string.Empty
+                        ObservacionesFabricante = product.ManufacturingNotes ?? string.Empty,
+                        NotasRefabricacion = product.RefabricationReason ?? string.Empty
                     });
                 }
                 catch (Exception ex)
@@ -692,6 +697,7 @@ public class ReportService : IReportService
         public string Descripcion { get; set; } = string.Empty;
         public string ObservacionesVendedor { get; set; } = string.Empty;
         public string ObservacionesFabricante { get; set; } = string.Empty;
+        public string NotasRefabricacion { get; set; } = string.Empty;
     }
 
     public async Task<List<PaymentReportRowDto>> GetPaymentsReportDataAsync(
@@ -842,22 +848,17 @@ public class ReportService : IReportService
 
         foreach (var order in orders)
         {
-            // Filtrar por rango de fechas si se especifica
-            if (startDate.HasValue && order.CreatedAt < startDate.Value)
-            {
-                continue;
-            }
-            if (endDate.HasValue && order.CreatedAt > endDate.Value.AddDays(1).AddSeconds(-1))
-            {
-                continue;
-            }
-
             // Procesar pagos mixtos si existen
             if (order.MixedPayments != null && order.MixedPayments.Count > 0)
             {
                 for (int i = 0; i < order.MixedPayments.Count; i++)
                 {
                     var payment = order.MixedPayments[i];
+                    
+                    // Filtrar por rango de fechas del pago
+                    if (startDate.HasValue && payment.Date < startDate.Value) continue;
+                    if (endDate.HasValue && payment.Date > endDate.Value.AddDays(1).AddSeconds(-1)) continue;
+
                     // Filtrar por método de pago
                     if (!string.IsNullOrWhiteSpace(paymentMethod) && payment.Method != paymentMethod)
                     {
@@ -885,6 +886,11 @@ public class ReportService : IReportService
                 for (int i = 0; i < order.PartialPayments.Count; i++)
                 {
                     var payment = order.PartialPayments[i];
+
+                    // Filtrar por rango de fechas del pago
+                    if (startDate.HasValue && payment.Date < startDate.Value) continue;
+                    if (endDate.HasValue && payment.Date > endDate.Value.AddDays(1).AddSeconds(-1)) continue;
+
                     // Filtrar por método de pago
                     if (!string.IsNullOrWhiteSpace(paymentMethod) && payment.Method != paymentMethod)
                     {
@@ -906,11 +912,15 @@ public class ReportService : IReportService
                 }
             }
 
-            // Si no hay pagos parciales ni mixtos, usar el pago principal
+            // Si no hay pagos parciales ni mixtos, usar el pago principal (filtrado por la fecha de la orden)
             if ((order.PartialPayments == null || order.PartialPayments.Count == 0) &&
                 (order.MixedPayments == null || order.MixedPayments.Count == 0) &&
                 !string.IsNullOrWhiteSpace(order.PaymentMethod))
             {
+                // Filtrar por rango de fechas de la orden
+                if (startDate.HasValue && order.CreatedAt < startDate.Value) continue;
+                if (endDate.HasValue && order.CreatedAt > endDate.Value.AddDays(1).AddSeconds(-1)) continue;
+
                 // Filtrar por método de pago
                 if (!string.IsNullOrWhiteSpace(paymentMethod) && order.PaymentMethod != paymentMethod)
                 {

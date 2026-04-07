@@ -1682,6 +1682,7 @@ export interface Order {
   productMarkups?: Record<string, number>;
   createSupplierOrder?: boolean;
   observations?: string; // Observaciones generales del pedido
+  type?: string;
   baseCurrency?: "Bs" | "USD" | "EUR"; // Moneda base para visualización del pedido
   exchangeRatesAtCreation?: {
     USD?: { rate: number; effectiveDate: string };
@@ -3100,6 +3101,7 @@ export interface Budget {
   hasDelivery: boolean;
   status: "Presupuesto" | "Aprobado" | "Rechazado" | "Vencido" | "Convertido";
   createdAt: string;
+  updatedAt?: string;
   expiresAt: string;
   validForDays: number;
   observations?: string;
@@ -3116,11 +3118,23 @@ export const getBudgets = async (): Promise<Budget[]> => {
     // Cargar siempre presupuestos locales desde IndexedDB primero (offline-first)
     const localBudgets = await db.getAll<Budget>("budgets");
 
-    // Si hay conexión, intentar sincronizar con backend (por ahora solo local)
+    // Si hay conexión, intentar sincronizar con backend
     if (isOnline()) {
-      // TODO: Cuando el backend esté listo, descomentar:
-      // const backendBudgets = await apiClient.getBudgets();
-      // Hacer merge similar a orders
+      try {
+        const backendBudgets = (await apiClient.getOrdersByStatus("Presupuesto")).map(orderFromBackendDto);
+        // Hacemos merge con IndexedDB
+        for (const budget of backendBudgets) {
+          const localItem = localBudgets.find((o) => o.id === budget.id);
+          const backendUpdated = budget.updatedAt ? new Date(budget.updatedAt) : new Date(0);
+          const localUpdated = localItem?.updatedAt ? new Date(localItem.updatedAt) : new Date(0);
+          if (!localItem || backendUpdated > localUpdated) {
+             await db.put("budgets", budget as any);
+          }
+        }
+        return await db.getAll<Budget>("budgets");
+      } catch (error) {
+        console.warn("Error cargando presupuestos del backend:", error);
+      }
     }
 
     console.log(`✅ Presupuestos cargados desde IndexedDB: ${localBudgets.length}`);
@@ -3173,27 +3187,69 @@ export const addBudget = async (
     validForDays?: number;
   }
 ): Promise<Budget> => {
+  let newBudget: Budget;
+  let syncedToBackend = false;
+
+  const validForDays = budget.validForDays || 30;
+  const now = new Date();
+  const expiresAt = new Date(now);
+  expiresAt.setDate(now.getDate() + validForDays);
+
+  if (isOnline()) {
+    try {
+      const createDto = orderToBackendDto(budget as any);
+      createDto.type = "Budget";
+      createDto.status = "Presupuesto";
+      
+      const backendOrder = await apiClient.createOrder(createDto);
+      newBudget = {
+         ...orderFromBackendDto(backendOrder) as unknown as Budget,
+         validForDays,
+         expiresAt: expiresAt.toISOString(),
+      };
+
+      console.log("✅ Presupuesto guardado en backend:", newBudget.budgetNumber);
+      syncedToBackend = true;
+      return newBudget;
+    } catch (error) {
+      console.warn("⚠️ Error guardando presupuesto en backend, guardando localmente:", error);
+    }
+  }
+
   try {
     const budgets = await getBudgets();
     const budgetNumber = `PRE-${String(budgets.length + 1).padStart(3, "0")}`;
 
-    const now = new Date();
-    const validForDays = budget.validForDays || 30;
-    const expiresAt = new Date(now);
-    expiresAt.setDate(now.getDate() + validForDays);
-
-    const newBudget: Budget = {
+    newBudget = {
       ...budget,
       id: Date.now().toString(),
       budgetNumber,
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
-      status: "Presupuesto", // Nuevo estado inicial
+      status: "Presupuesto",
       validForDays,
     };
 
     await db.add("budgets", newBudget);
     console.log("✅ Presupuesto guardado en IndexedDB:", newBudget.budgetNumber);
+
+    if (!syncedToBackend) {
+      try {
+        const createDto = orderToBackendDto(newBudget as any);
+        createDto.type = "Budget";
+        createDto.status = "Presupuesto";
+        const { syncManager } = await import("./sync-manager");
+        await syncManager.addToQueue({
+          type: "create",
+          entity: "order", // we sync it as an order
+          entityId: newBudget.id,
+          data: createDto,
+        });
+      } catch (e) {
+        console.warn("Error encolando presupuesto", e);
+      }
+    }
+
     return newBudget;
   } catch (error) {
     console.error("Error adding budget to IndexedDB:", error);
@@ -4304,7 +4360,7 @@ export const getVendors = async (): Promise<Vendor[]> => {
     // Filtrar usuarios con rol de vendedor de tienda (activos)
     // Los roles pueden venir en formato API ("Store Seller") o display ("Vendedor de tienda")
     const vendorUsers = users.filter(
-      (user) => user.status === "active" && user.role === "Store Seller"
+      (user) => user.status === "active" && ((user.role as string) === "Store Seller" || (user.role as string) === "Online Seller" || (user.role as string) === "Vendedor de tienda" || (user.role as string) === "Vendedor Online")
     );
 
     // Convertir usuarios a formato Vendor
@@ -4334,7 +4390,7 @@ export const getReferrers = async (): Promise<Vendor[]> => {
     // Filtrar usuarios con rol de vendedor online (activos)
     // Los roles pueden venir en formato API ("Online Seller") o display ("Vendedor Online")
     const referrerUsers = users.filter(
-      (user) => user.status === "active" && user.role === "Online Seller"
+      (user) => user.status === "active" && ((user.role as string) === "Online Seller" || (user.role as string) === "Vendedor Online")
     );
 
     // Convertir usuarios a formato Vendor

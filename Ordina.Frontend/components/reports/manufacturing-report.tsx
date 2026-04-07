@@ -26,6 +26,7 @@ interface ManufacturingReportRow {
   descripcion: string
   observacionesVendedor: string
   observacionesFabricante: string
+  notasRefabricacion: string
 }
 
 export function ManufacturingReport() {
@@ -150,6 +151,7 @@ export function ManufacturingReport() {
           descripcion: row.Descripcion || row.descripcion || "",
           observacionesVendedor: row.ObservacionesVendedor || row.observacionesVendedor || "",
           observacionesFabricante: row.ObservacionesFabricante || row.observacionesFabricante || "",
+          notasRefabricacion: row.NotasRefabricacion || row.notasRefabricacion || "",
         }))
         console.log("📋 Datos mapeados:", mappedData)
         
@@ -726,6 +728,7 @@ export function ManufacturingReport() {
                       <TableHead className="font-medium text-muted-foreground">Descripción</TableHead>
                       <TableHead className="font-medium text-muted-foreground">Obs. Vendedor</TableHead>
                       <TableHead className="font-medium text-muted-foreground">Obs. Fabricante</TableHead>
+                      <TableHead className="font-medium text-muted-foreground">Notas Refab.</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -768,6 +771,9 @@ export function ManufacturingReport() {
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {row.observacionesFabricante || "-"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {row.notasRefabricacion || "-"}
                         </TableCell>
                       </TableRow>
                     ))}

@@ -237,26 +237,21 @@ export function PaymentsReport() {
   const generateLocalReportData = () => {
     let filteredOrders = orders
 
-    // Filtrar por fecha
-    if (startDate || endDate) {
-      filteredOrders = orders.filter((order) => {
-        const orderDate = new Date(order.createdAt)
-        if (startDate && orderDate < new Date(startDate)) return false
-        if (endDate) {
-          const endDateObj = new Date(endDate)
-          endDateObj.setHours(23, 59, 59, 999) // Incluir todo el día final
-          if (orderDate > endDateObj) return false
-        }
-        return true
-      })
-    }
-
     const rows: PaymentReportRow[] = []
+    const startDateObj = startDate ? new Date(startDate) : null
+    const endDateObj = endDate ? new Date(endDate) : null
+    if (endDateObj) endDateObj.setHours(23, 59, 59, 999)
 
-      filteredOrders.forEach((order) => {
+    orders.forEach((order) => {
         // Procesar pagos mixtos si existen
         if (order.mixedPayments && order.mixedPayments.length > 0) {
           order.mixedPayments.forEach((payment, index) => {
+            const paymentDate = new Date(payment.date)
+            
+            // Filtrar por rango de fechas del pago
+            if (startDateObj && paymentDate < startDateObj) return
+            if (endDateObj && paymentDate > endDateObj) return
+
             // Filtrar por método de pago
             if (selectedPaymentMethod !== "Todos" && payment.method !== selectedPaymentMethod) {
               return
@@ -305,6 +300,12 @@ export function PaymentsReport() {
         // Procesar pagos parciales si existen
         if (order.partialPayments && order.partialPayments.length > 0) {
           order.partialPayments.forEach((payment, index) => {
+            const paymentDate = new Date(payment.date)
+            
+            // Filtrar por rango de fechas del pago
+            if (startDateObj && paymentDate < startDateObj) return
+            if (endDateObj && paymentDate > endDateObj) return
+
             // Filtrar por método de pago
             if (selectedPaymentMethod !== "Todos" && payment.method !== selectedPaymentMethod) {
               return
@@ -356,6 +357,12 @@ export function PaymentsReport() {
           (!order.mixedPayments || order.mixedPayments.length === 0) &&
           order.paymentMethod
         ) {
+          const orderDate = new Date(order.createdAt)
+          
+          // Filtrar por rango de fechas de la orden (para el pago principal)
+          if (startDateObj && orderDate < startDateObj) return
+          if (endDateObj && orderDate > endDateObj) return
+
           // Filtrar por método de pago
           if (selectedPaymentMethod !== "Todos" && order.paymentMethod !== selectedPaymentMethod) {
             return
