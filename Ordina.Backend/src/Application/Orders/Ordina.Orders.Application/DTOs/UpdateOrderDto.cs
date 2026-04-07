@@ -32,5 +32,6 @@ public class UpdateOrderDto
     public string? DeliveryType { get; set; }
     public string? DeliveryZone { get; set; }
     public ExchangeRatesAtCreationDto? ExchangeRatesAtCreation { get; set; }
+    public string? Type { get; set; }
 }
 

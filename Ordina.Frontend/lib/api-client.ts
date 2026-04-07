@@ -1950,6 +1950,7 @@ export interface OrderResponseDto {
   completedAt?: string;
   createdAt: string;
   updatedAt: string;
+  type?: string;
 }
 
 /** Cambio granular en auditoría de pedidos */
@@ -2053,6 +2054,7 @@ export interface CreateOrderDto {
     usd?: { rate: number; effectiveDate: string } | null;
     eur?: { rate: number; effectiveDate: string } | null;
   };
+  type?: string;
 }
 
 export interface UpdateOrderDto {
@@ -2107,6 +2109,7 @@ export interface UpdateOrderDto {
     usd?: { rate: number; effectiveDate: string } | null;
     eur?: { rate: number; effectiveDate: string } | null;
   };
+  type?: string;
 }
 
 // ===== ACCOUNTS DTOs =====
