@@ -155,7 +155,8 @@ public class ReportService : IReportService
                 Cantidad = row.Cantidad,
                 Descripcion = row.Descripcion,
                 ObservacionesVendedor = row.ObservacionesVendedor,
-                ObservacionesFabricante = row.ObservacionesFabricante
+                ObservacionesFabricante = row.ObservacionesFabricante,
+                NotasRefabricacion = row.NotasRefabricacion
             }).ToList();
         }
         catch (Exception ex)
@@ -214,13 +215,14 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 7, "Descripción");
                 sl.SetCellValue(1, 8, "Obs. Vendedor");
                 sl.SetCellValue(1, 9, "Obs. Fabricante");
+                sl.SetCellValue(1, 10, "Notas Refabricación");
 
                 // Estilo de headers - solo negrita por ahora
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 9; col++)
+                for (int col = 1; col <= 10; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -238,6 +240,7 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 7, item.Descripcion);
                     sl.SetCellValue(row, 8, item.ObservacionesVendedor);
                     sl.SetCellValue(row, 9, item.ObservacionesFabricante);
+                    sl.SetCellValue(row, 10, item.NotasRefabricacion);
                     row++;
                 }
 
@@ -251,6 +254,7 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(7, 50);  // Descripción
                 sl.SetColumnWidth(8, 35);  // Obs. Vendedor
                 sl.SetColumnWidth(9, 35);  // Obs. Fabricante
+                sl.SetColumnWidth(10, 35); // Notas Refabricación
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
@@ -387,7 +391,8 @@ public class ReportService : IReportService
                         Cantidad = product.Quantity,
                         Descripcion = await FormatProductDescriptionAsync(product),
                         ObservacionesVendedor = product.Observations ?? string.Empty,
-                        ObservacionesFabricante = product.ManufacturingNotes ?? string.Empty
+                        ObservacionesFabricante = product.ManufacturingNotes ?? string.Empty,
+                        NotasRefabricacion = product.RefabricationReason ?? string.Empty
                     });
                 }
                 catch (Exception ex)
@@ -692,6 +697,7 @@ public class ReportService : IReportService
         public string Descripcion { get; set; } = string.Empty;
         public string ObservacionesVendedor { get; set; } = string.Empty;
         public string ObservacionesFabricante { get; set; } = string.Empty;
+        public string NotasRefabricacion { get; set; } = string.Empty;
     }
 
     public async Task<List<PaymentReportRowDto>> GetPaymentsReportDataAsync(
@@ -719,6 +725,7 @@ public class ReportService : IReportService
                 MontoOriginal = row.MontoOriginal,
                 MonedaOriginal = row.MonedaOriginal,
                 MontoBs = row.MontoBs,
+                MontoUsd = row.MontoUsd,
                 Cuenta = row.Cuenta,
                 Referencia = row.Referencia,
                 OrderId = row.OrderId,
@@ -769,16 +776,17 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 5, "Monto");
                 sl.SetCellValue(1, 6, "Moneda");
                 sl.SetCellValue(1, 7, "Monto en Bs");
-                sl.SetCellValue(1, 8, "Cuenta");
-                sl.SetCellValue(1, 9, "Referencia/Remitente");
-                sl.SetCellValue(1, 10, "Conciliado");
+                sl.SetCellValue(1, 8, "Equiv. USD (tasa pedido)");
+                sl.SetCellValue(1, 9, "Cuenta");
+                sl.SetCellValue(1, 10, "Referencia/Remitente");
+                sl.SetCellValue(1, 11, "Conciliado");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 10; col++)
+                for (int col = 1; col <= 11; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -794,9 +802,11 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 5, (double)item.MontoOriginal);
                     sl.SetCellValue(row, 6, item.MonedaOriginal);
                     sl.SetCellValue(row, 7, (double)item.MontoBs);
-                    sl.SetCellValue(row, 8, item.Cuenta);
-                    sl.SetCellValue(row, 9, item.Referencia);
-                    sl.SetCellValue(row, 10, item.IsConciliated ? "Sí" : "No");
+                    if (item.MontoUsd.HasValue)
+                        sl.SetCellValue(row, 8, (double)item.MontoUsd.Value);
+                    sl.SetCellValue(row, 9, item.Cuenta);
+                    sl.SetCellValue(row, 10, item.Referencia);
+                    sl.SetCellValue(row, 11, item.IsConciliated ? "Sí" : "No");
                     row++;
                 }
 
@@ -808,9 +818,10 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(5, 15);  // Monto
                 sl.SetColumnWidth(6, 10);  // Moneda
                 sl.SetColumnWidth(7, 15);  // Monto en Bs
-                sl.SetColumnWidth(8, 30);  // Cuenta
-                sl.SetColumnWidth(9, 30);  // Referencia/Remitente
-                sl.SetColumnWidth(10, 12); // Conciliado
+                sl.SetColumnWidth(8, 18);  // Equiv. USD
+                sl.SetColumnWidth(9, 30);  // Cuenta
+                sl.SetColumnWidth(10, 30);  // Referencia/Remitente
+                sl.SetColumnWidth(11, 12); // Conciliado
 
                 // Guardar en el stream
                 sl.SaveAs(stream);
@@ -842,22 +853,17 @@ public class ReportService : IReportService
 
         foreach (var order in orders)
         {
-            // Filtrar por rango de fechas si se especifica
-            if (startDate.HasValue && order.CreatedAt < startDate.Value)
-            {
-                continue;
-            }
-            if (endDate.HasValue && order.CreatedAt > endDate.Value.AddDays(1).AddSeconds(-1))
-            {
-                continue;
-            }
-
             // Procesar pagos mixtos si existen
             if (order.MixedPayments != null && order.MixedPayments.Count > 0)
             {
                 for (int i = 0; i < order.MixedPayments.Count; i++)
                 {
                     var payment = order.MixedPayments[i];
+                    
+                    // Filtrar por rango de fechas del pago
+                    if (startDate.HasValue && payment.Date < startDate.Value) continue;
+                    if (endDate.HasValue && payment.Date > endDate.Value.AddDays(1).AddSeconds(-1)) continue;
+
                     // Filtrar por método de pago
                     if (!string.IsNullOrWhiteSpace(paymentMethod) && payment.Method != paymentMethod)
                     {
@@ -885,6 +891,11 @@ public class ReportService : IReportService
                 for (int i = 0; i < order.PartialPayments.Count; i++)
                 {
                     var payment = order.PartialPayments[i];
+
+                    // Filtrar por rango de fechas del pago
+                    if (startDate.HasValue && payment.Date < startDate.Value) continue;
+                    if (endDate.HasValue && payment.Date > endDate.Value.AddDays(1).AddSeconds(-1)) continue;
+
                     // Filtrar por método de pago
                     if (!string.IsNullOrWhiteSpace(paymentMethod) && payment.Method != paymentMethod)
                     {
@@ -906,11 +917,15 @@ public class ReportService : IReportService
                 }
             }
 
-            // Si no hay pagos parciales ni mixtos, usar el pago principal
+            // Si no hay pagos parciales ni mixtos, usar el pago principal (filtrado por la fecha de la orden)
             if ((order.PartialPayments == null || order.PartialPayments.Count == 0) &&
                 (order.MixedPayments == null || order.MixedPayments.Count == 0) &&
                 !string.IsNullOrWhiteSpace(order.PaymentMethod))
             {
+                // Filtrar por rango de fechas de la orden
+                if (startDate.HasValue && order.CreatedAt < startDate.Value) continue;
+                if (endDate.HasValue && order.CreatedAt > endDate.Value.AddDays(1).AddSeconds(-1)) continue;
+
                 // Filtrar por método de pago
                 if (!string.IsNullOrWhiteSpace(paymentMethod) && order.PaymentMethod != paymentMethod)
                 {
@@ -953,6 +968,7 @@ public class ReportService : IReportService
                     MontoOriginal = montoOriginal,
                     MonedaOriginal = monedaOriginal,
                     MontoBs = montoBs,
+                    MontoUsd = GetMontoUsdForBsPayment(order, monedaOriginal, montoBs),
                     Cuenta = cuenta,
                     Referencia = referencia,
                     OrderId = order.Id,
@@ -995,6 +1011,7 @@ public class ReportService : IReportService
             MontoOriginal = montoOriginal,
             MonedaOriginal = monedaOriginal,
             MontoBs = montoBs,
+            MontoUsd = GetMontoUsdForBsPayment(order, monedaOriginal, montoBs),
             Cuenta = cuenta,
             Referencia = referencia,
             OrderId = order.Id,
@@ -1002,6 +1019,25 @@ public class ReportService : IReportService
             PaymentIndex = paymentIndex,
             IsConciliated = payment.PaymentDetails?.IsConciliated ?? false
         };
+    }
+
+    /// <summary>Equivalente USD para filas en Bs usando la tasa del pedido (sin fallar si no hay tasa).</summary>
+    private decimal? GetMontoUsdForBsPayment(Order order, string monedaOriginal, decimal montoBs)
+    {
+        if (!string.Equals(monedaOriginal?.Trim(), "Bs", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        try
+        {
+            var rate = GetUsdExchangeRate(order);
+            if (rate <= 0)
+                return null;
+            return Math.Round(montoBs / rate, 2, MidpointRounding.AwayFromZero);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private string GetPaymentReference(PaymentDetails? paymentDetails, string paymentMethod)
@@ -1457,6 +1493,7 @@ public class ReportService : IReportService
         public decimal MontoOriginal { get; set; }
         public string MonedaOriginal { get; set; } = string.Empty;
         public decimal MontoBs { get; set; }
+        public decimal? MontoUsd { get; set; }
         public string Cuenta { get; set; } = string.Empty;
         public string Referencia { get; set; } = string.Empty;
         public string OrderId { get; set; } = string.Empty;

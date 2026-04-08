@@ -1682,6 +1682,7 @@ export interface Order {
   productMarkups?: Record<string, number>;
   createSupplierOrder?: boolean;
   observations?: string; // Observaciones generales del pedido
+  type?: string;
   baseCurrency?: "Bs" | "USD" | "EUR"; // Moneda base para visualización del pedido
   exchangeRatesAtCreation?: {
     USD?: { rate: number; effectiveDate: string };
@@ -1774,10 +1775,22 @@ export interface Vendor {
 
 // ===== ORDERS STORAGE (IndexedDB) =====
 
+/** Presupuestos del API (Type=Budget / PRE-*) no deben mezclarse en el store `orders` ni duplicarse en listados unificados. */
+function isBackendBudgetOrder(order: Pick<Order, "type" | "status" | "orderNumber">): boolean {
+  const t = (order.type || "").trim().toLowerCase();
+  if (t === "budget") return true;
+  const num = (order.orderNumber || "").toUpperCase();
+  if (num.startsWith("PRE-") && order.status === "Presupuesto") return true;
+  return false;
+}
+
 // Helper functions para mapear orders entre frontend y backend
 const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   id: dto.id,
-  orderNumber: dto.orderNumber,
+  orderNumber:
+    dto.orderNumber ??
+    (dto as unknown as { OrderNumber?: string }).OrderNumber ??
+    "",
   clientId: dto.clientId,
   clientName: dto.clientName,
   vendorId: dto.vendorId,
@@ -1828,6 +1841,21 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     surchargeEnabled: p.surchargeEnabled,
     surchargeAmount: p.surchargeAmount,
     surchargeReason: p.surchargeReason,
+    refabricationReason: p.refabricationReason,
+    refabricatedAt: p.refabricatedAt,
+    refabricationHistory: p.refabricationHistory?.map((r) => ({
+      reason: r.reason ?? (r as { Reason?: string }).Reason ?? "",
+      date:
+        typeof r.date === "string"
+          ? r.date
+          : r.date != null
+            ? new Date(r.date as string | number | Date).toISOString()
+            : (r as { Date?: string }).Date ?? "",
+      previousProviderId: r.previousProviderId ?? (r as { PreviousProviderId?: string }).PreviousProviderId,
+      previousProviderName: r.previousProviderName ?? (r as { PreviousProviderName?: string }).PreviousProviderName,
+      newProviderId: r.newProviderId ?? (r as { NewProviderId?: string }).NewProviderId,
+      newProviderName: r.newProviderName ?? (r as { NewProviderName?: string }).NewProviderName,
+    })),
   })),
   subtotal: dto.subtotal,
   taxAmount: dto.taxAmount,
@@ -1857,6 +1885,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     bank: dto.paymentDetails.bank,
     email: dto.paymentDetails.email,
     wallet: dto.paymentDetails.wallet,
+    envia: dto.paymentDetails.envia,
     isConciliated: dto.paymentDetails.isConciliated,
   } : undefined,
   partialPayments: dto.partialPayments?.map((p) => ({
@@ -1877,6 +1906,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
       pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      pagomovilDate: p.paymentDetails.pagomovilDate,
       transferenciaBank: p.paymentDetails.transferenciaBank,
       transferenciaReference: p.paymentDetails.transferenciaReference,
       transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -1891,6 +1921,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       bank: p.paymentDetails.bank,
       email: p.paymentDetails.email,
       wallet: p.paymentDetails.wallet,
+      envia: p.paymentDetails.envia,
       isConciliated: p.paymentDetails.isConciliated,
     } : undefined,
   })),
@@ -1912,6 +1943,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
       pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      pagomovilDate: p.paymentDetails.pagomovilDate,
       transferenciaBank: p.paymentDetails.transferenciaBank,
       transferenciaReference: p.paymentDetails.transferenciaReference,
       transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -1926,6 +1958,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       bank: p.paymentDetails.bank,
       email: p.paymentDetails.email,
       wallet: p.paymentDetails.wallet,
+      envia: p.paymentDetails.envia,
       isConciliated: p.paymentDetails.isConciliated,
     } : undefined,
   })),
@@ -1947,6 +1980,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   baseCurrency: dto.baseCurrency,
   dispatchDate: dto.dispatchDate,
   completedAt: dto.completedAt,
+  type: dto.type ?? (dto as unknown as { Type?: string }).Type ?? "Order",
 });
 
 export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">): CreateOrderDto => ({
@@ -1987,6 +2021,16 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
     surchargeEnabled: p.surchargeEnabled,
     surchargeAmount: p.surchargeAmount,
     surchargeReason: p.surchargeReason,
+    refabricationReason: p.refabricationReason,
+    refabricatedAt: p.refabricatedAt,
+    refabricationHistory: p.refabricationHistory?.map((r) => ({
+      reason: r.reason,
+      date: r.date,
+      previousProviderId: r.previousProviderId,
+      previousProviderName: r.previousProviderName,
+      newProviderId: r.newProviderId,
+      newProviderName: r.newProviderName,
+    })),
   })),
   subtotal: order.subtotal,
   taxAmount: order.taxAmount,
@@ -2016,6 +2060,8 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
     bank: order.paymentDetails.bank,
     email: order.paymentDetails.email,
     wallet: order.paymentDetails.wallet,
+    envia: order.paymentDetails.envia,
+    isConciliated: order.paymentDetails.isConciliated,
   } : undefined,
   partialPayments: order.partialPayments?.map((p) => ({
     id: p.id,
@@ -2034,6 +2080,7 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
       pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      pagomovilDate: p.paymentDetails.pagomovilDate,
       transferenciaBank: p.paymentDetails.transferenciaBank,
       transferenciaReference: p.paymentDetails.transferenciaReference,
       transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2048,6 +2095,8 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
       bank: p.paymentDetails.bank,
       email: p.paymentDetails.email,
       wallet: p.paymentDetails.wallet,
+      envia: p.paymentDetails.envia,
+      isConciliated: p.paymentDetails.isConciliated,
     } : undefined,
   })),
   mixedPayments: order.mixedPayments?.map((p) => ({
@@ -2067,6 +2116,7 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
       pagomovilReference: p.paymentDetails.pagomovilReference,
       pagomovilBank: p.paymentDetails.pagomovilBank,
       pagomovilPhone: p.paymentDetails.pagomovilPhone,
+      pagomovilDate: p.paymentDetails.pagomovilDate,
       transferenciaBank: p.paymentDetails.transferenciaBank,
       transferenciaReference: p.paymentDetails.transferenciaReference,
       transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2081,6 +2131,8 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
       bank: p.paymentDetails.bank,
       email: p.paymentDetails.email,
       wallet: p.paymentDetails.wallet,
+      envia: p.paymentDetails.envia,
+      isConciliated: p.paymentDetails.isConciliated,
     } : undefined,
   })),
   deliveryAddress: order.deliveryAddress,
@@ -2130,10 +2182,28 @@ export const getOrders = async (
         );
       }
 
-      const backendNumbers = new Set(allOrders.map((o) => o.orderNumber));
-      const localOnly = localOrders.filter((o) => !backendNumbers.has(o.orderNumber));
-
+      // Presupuestos: misma sincronización paginada que los pedidos → cache en `budgets` (lista estable al refrescar).
       for (const order of allOrders) {
+        if (!isBackendBudgetOrder(order)) continue;
+        try {
+          await db.remove("orders", order.id);
+        } catch {
+          /* no estaba en orders */
+        }
+        try {
+          await db.put("budgets", orderMappedToBudget(order));
+        } catch (err) {
+          console.warn(`Error guardando presupuesto ${order.orderNumber} en IndexedDB:`, err);
+        }
+      }
+
+      const ordersOnly = allOrders.filter((o) => !isBackendBudgetOrder(o));
+      const backendNumbers = new Set(ordersOnly.map((o) => o.orderNumber));
+      const localOnly = localOrders.filter(
+        (o) => !backendNumbers.has(o.orderNumber) && !isBackendBudgetOrder(o),
+      );
+
+      for (const order of ordersOnly) {
         try {
           await db.put("orders", order);
         } catch (err) {
@@ -2141,9 +2211,9 @@ export const getOrders = async (
         }
       }
 
-      const merged = [...allOrders, ...localOnly];
+      const merged = [...ordersOnly, ...localOnly];
       console.log(
-        `Órdenes: ${allOrders.length} del servidor + ${localOnly.length} solo locales = ${merged.length}`
+        `Órdenes (sin presupuestos en store orders): ${ordersOnly.length} del servidor + ${localOnly.length} solo locales = ${merged.length}`
       );
       return merged;
     } catch (error) {
@@ -2370,6 +2440,19 @@ export const updateOrder = async (
               manufacturingNotes: p.manufacturingNotes,
               locationStatus: p.locationStatus,
               logisticStatus: p.logisticStatus,
+              surchargeEnabled: p.surchargeEnabled,
+              surchargeAmount: p.surchargeAmount,
+              surchargeReason: p.surchargeReason,
+              refabricationReason: p.refabricationReason,
+              refabricatedAt: p.refabricatedAt,
+              refabricationHistory: p.refabricationHistory?.map((r) => ({
+                reason: r.reason,
+                date: r.date,
+                previousProviderId: r.previousProviderId,
+                previousProviderName: r.previousProviderName,
+                newProviderId: r.newProviderId,
+                newProviderName: r.newProviderName,
+              })),
             })) : undefined,
             subtotal: updatedOrder.subtotal !== existingOrder.subtotal ? updatedOrder.subtotal : undefined,
             taxAmount: updatedOrder.taxAmount !== existingOrder.taxAmount ? updatedOrder.taxAmount : undefined,
@@ -2397,6 +2480,7 @@ export const updateOrder = async (
                 pagomovilReference: p.paymentDetails.pagomovilReference,
                 pagomovilBank: p.paymentDetails.pagomovilBank,
                 pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                pagomovilDate: p.paymentDetails.pagomovilDate,
                 transferenciaBank: p.paymentDetails.transferenciaBank,
                 transferenciaReference: p.paymentDetails.transferenciaReference,
                 transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2411,6 +2495,8 @@ export const updateOrder = async (
                 bank: p.paymentDetails.bank,
                 email: p.paymentDetails.email,
                 wallet: p.paymentDetails.wallet,
+                envia: p.paymentDetails.envia,
+                isConciliated: p.paymentDetails.isConciliated,
               } : undefined,
             })) : undefined,
             mixedPayments: updatedOrder.mixedPayments !== existingOrder.mixedPayments ? updatedOrder.mixedPayments?.map((p) => ({
@@ -2430,6 +2516,7 @@ export const updateOrder = async (
                 pagomovilReference: p.paymentDetails.pagomovilReference,
                 pagomovilBank: p.paymentDetails.pagomovilBank,
                 pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                pagomovilDate: p.paymentDetails.pagomovilDate,
                 transferenciaBank: p.paymentDetails.transferenciaBank,
                 transferenciaReference: p.paymentDetails.transferenciaReference,
                 transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2444,6 +2531,8 @@ export const updateOrder = async (
                 bank: p.paymentDetails.bank,
                 email: p.paymentDetails.email,
                 wallet: p.paymentDetails.wallet,
+                envia: p.paymentDetails.envia,
+                isConciliated: p.paymentDetails.isConciliated,
               } : undefined,
             })) : undefined,
             deliveryAddress: updatedOrder.deliveryAddress !== existingOrder.deliveryAddress ? updatedOrder.deliveryAddress : undefined,
@@ -2515,6 +2604,19 @@ export const updateOrder = async (
             manufacturingNotes: p.manufacturingNotes,
             locationStatus: p.locationStatus,
             logisticStatus: p.logisticStatus,
+            surchargeEnabled: p.surchargeEnabled,
+            surchargeAmount: p.surchargeAmount,
+            surchargeReason: p.surchargeReason,
+            refabricationReason: p.refabricationReason,
+            refabricatedAt: p.refabricatedAt,
+            refabricationHistory: p.refabricationHistory?.map((r) => ({
+              reason: r.reason,
+              date: r.date,
+              previousProviderId: r.previousProviderId,
+              previousProviderName: r.previousProviderName,
+              newProviderId: r.newProviderId,
+              newProviderName: r.newProviderName,
+            })),
           })),
           partialPayments: updatedOrder.partialPayments?.map((p) => ({
             id: p.id,
@@ -2533,6 +2635,7 @@ export const updateOrder = async (
               pagomovilReference: p.paymentDetails.pagomovilReference,
               pagomovilBank: p.paymentDetails.pagomovilBank,
               pagomovilPhone: p.paymentDetails.pagomovilPhone,
+              pagomovilDate: p.paymentDetails.pagomovilDate,
               transferenciaBank: p.paymentDetails.transferenciaBank,
               transferenciaReference: p.paymentDetails.transferenciaReference,
               transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2547,6 +2650,8 @@ export const updateOrder = async (
               bank: p.paymentDetails.bank,
               email: p.paymentDetails.email,
               wallet: p.paymentDetails.wallet,
+              envia: p.paymentDetails.envia,
+              isConciliated: p.paymentDetails.isConciliated,
             } : undefined,
           })),
           mixedPayments: updatedOrder.mixedPayments?.map((p) => ({
@@ -2566,6 +2671,7 @@ export const updateOrder = async (
               pagomovilReference: p.paymentDetails.pagomovilReference,
               pagomovilBank: p.paymentDetails.pagomovilBank,
               pagomovilPhone: p.paymentDetails.pagomovilPhone,
+              pagomovilDate: p.paymentDetails.pagomovilDate,
               transferenciaBank: p.paymentDetails.transferenciaBank,
               transferenciaReference: p.paymentDetails.transferenciaReference,
               transferenciaDate: p.paymentDetails.transferenciaDate,
@@ -2580,6 +2686,8 @@ export const updateOrder = async (
               bank: p.paymentDetails.bank,
               email: p.paymentDetails.email,
               wallet: p.paymentDetails.wallet,
+              envia: p.paymentDetails.envia,
+              isConciliated: p.paymentDetails.isConciliated,
             } : undefined,
           })),
           status: updatedOrder.status,
@@ -2721,13 +2829,25 @@ export interface UnifiedOrder {
 // Función para obtener pedidos y presupuestos unificados
 export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
   try {
-    const [orders, budgets] = await Promise.all([
-      getOrders(),
-      getBudgets(),
-    ]);
+    // Secuencial: getOrders sincroniza primero y escribe presupuestos en `budgets`; luego getBudgets refina con el API por estado.
+    const orders = await getOrders();
+    const budgets = await getBudgets();
+
+    const budgetIds = new Set(budgets.map((b) => b.id));
+    const budgetNumbers = new Set(
+      budgets.map((b) => b.budgetNumber).filter(Boolean),
+    );
+
+    // Pedidos reales: excluir presupuestos (evita duplicar con la lista de getBudgets)
+    const ordersForUnified = orders.filter(
+      (o) =>
+        !isBackendBudgetOrder(o) &&
+        !budgetIds.has(o.id) &&
+        !budgetNumbers.has(o.orderNumber),
+    );
 
     // Convertir pedidos a formato unificado
-    const unifiedOrders: UnifiedOrder[] = orders.map((order) => ({
+    const unifiedOrders: UnifiedOrder[] = ordersForUnified.map((order) => ({
       id: order.id,
       orderNumber: order.orderNumber,
       clientId: order.clientId,
@@ -2766,7 +2886,10 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
     // Convertir presupuestos a formato unificado
     const unifiedBudgets: UnifiedOrder[] = budgets.map((budget) => ({
       id: budget.id,
-      orderNumber: budget.budgetNumber, // Usar budgetNumber como orderNumber
+      orderNumber:
+        budget.budgetNumber ||
+        (budget as unknown as { orderNumber?: string }).orderNumber ||
+        "",
       clientId: budget.clientId,
       clientName: budget.clientName,
       vendorId: budget.vendorId,
@@ -3100,6 +3223,7 @@ export interface Budget {
   hasDelivery: boolean;
   status: "Presupuesto" | "Aprobado" | "Rechazado" | "Vencido" | "Convertido";
   createdAt: string;
+  updatedAt?: string;
   expiresAt: string;
   validForDays: number;
   observations?: string;
@@ -3111,16 +3235,72 @@ export interface Budget {
   convertedToOrderId?: string;
 }
 
+/** Presupuesto en API = Order con type Budget; en cliente necesitamos `budgetNumber` (= orderNumber del API). */
+function orderMappedToBudget(
+  order: Order,
+  opts?: { expiresAt?: string; validForDays?: number },
+): Budget {
+  const validForDays = opts?.validForDays ?? 30;
+  const num = order.orderNumber || "";
+  let expiresAt = opts?.expiresAt;
+  if (!expiresAt) {
+    const d = new Date(order.createdAt);
+    d.setDate(d.getDate() + validForDays);
+    expiresAt = d.toISOString();
+  }
+  return {
+    id: order.id,
+    budgetNumber: num,
+    clientId: order.clientId,
+    clientName: order.clientName,
+    vendorId: order.vendorId,
+    vendorName: order.vendorName,
+    referrerId: order.referrerId,
+    referrerName: order.referrerName,
+    products: order.products,
+    subtotal: order.subtotal,
+    taxAmount: order.taxAmount,
+    deliveryCost: order.deliveryCost,
+    total: order.total,
+    subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
+    productDiscountTotal: order.productDiscountTotal,
+    generalDiscountAmount: order.generalDiscountAmount,
+    deliveryAddress: order.deliveryAddress,
+    hasDelivery: order.hasDelivery,
+    status: order.status as Budget["status"],
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+    expiresAt,
+    validForDays,
+    observations: order.observations,
+    baseCurrency: order.baseCurrency,
+    exchangeRatesAtCreation: order.exchangeRatesAtCreation,
+  };
+}
+
 export const getBudgets = async (): Promise<Budget[]> => {
   try {
     // Cargar siempre presupuestos locales desde IndexedDB primero (offline-first)
     const localBudgets = await db.getAll<Budget>("budgets");
 
-    // Si hay conexión, intentar sincronizar con backend (por ahora solo local)
+    // Si hay conexión, intentar sincronizar con backend
     if (isOnline()) {
-      // TODO: Cuando el backend esté listo, descomentar:
-      // const backendBudgets = await apiClient.getBudgets();
-      // Hacer merge similar a orders
+      try {
+        const backendBudgets = (await apiClient.getOrdersByStatus("Presupuesto")).map((dto) =>
+          orderMappedToBudget(orderFromBackendDto(dto)),
+        );
+        // Server-first: el API por estado es la fuente de verdad cuando responde
+        for (const budget of backendBudgets) {
+          await db.put("budgets", budget as Budget);
+        }
+        const merged = await db.getAll<Budget>("budgets");
+        console.log(`✅ Presupuestos sincronizados (API): ${backendBudgets.length} del servidor, ${merged.length} en IndexedDB`);
+        return merged;
+      } catch (error) {
+        console.warn("Error cargando presupuestos del backend:", error);
+        // Tras getOrders, IndexedDB ya puede tener PRE del listado paginado; no devolver snapshot viejo.
+        return await db.getAll<Budget>("budgets");
+      }
     }
 
     console.log(`✅ Presupuestos cargados desde IndexedDB: ${localBudgets.length}`);
@@ -3173,27 +3353,78 @@ export const addBudget = async (
     validForDays?: number;
   }
 ): Promise<Budget> => {
+  let newBudget: Budget;
+  let syncedToBackend = false;
+
+  const validForDays = budget.validForDays || 30;
+  const now = new Date();
+  const expiresAt = new Date(now);
+  expiresAt.setDate(now.getDate() + validForDays);
+
+  if (isOnline()) {
+    try {
+      const createDto = orderToBackendDto(budget as any);
+      createDto.type = "Budget";
+      createDto.status = "Presupuesto";
+      createDto.paymentType = createDto.paymentType || "N/A";
+      createDto.paymentMethod = createDto.paymentMethod || "N/A";
+
+      const backendOrder = await apiClient.createOrder(createDto);
+      newBudget = orderMappedToBudget(orderFromBackendDto(backendOrder), {
+        expiresAt: expiresAt.toISOString(),
+        validForDays,
+      });
+
+      try {
+        await db.put("budgets", newBudget);
+      } catch (e) {
+        console.warn("No se pudo cachear presupuesto en IndexedDB:", e);
+      }
+
+      console.log("✅ Presupuesto guardado en backend:", newBudget.budgetNumber);
+      syncedToBackend = true;
+      return newBudget;
+    } catch (error) {
+      console.warn("⚠️ Error guardando presupuesto en backend, guardando localmente:", error);
+    }
+  }
+
   try {
     const budgets = await getBudgets();
     const budgetNumber = `PRE-${String(budgets.length + 1).padStart(3, "0")}`;
 
-    const now = new Date();
-    const validForDays = budget.validForDays || 30;
-    const expiresAt = new Date(now);
-    expiresAt.setDate(now.getDate() + validForDays);
-
-    const newBudget: Budget = {
+    newBudget = {
       ...budget,
       id: Date.now().toString(),
       budgetNumber,
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
-      status: "Presupuesto", // Nuevo estado inicial
+      status: "Presupuesto",
       validForDays,
     };
 
     await db.add("budgets", newBudget);
     console.log("✅ Presupuesto guardado en IndexedDB:", newBudget.budgetNumber);
+
+    if (!syncedToBackend) {
+      try {
+        const createDto = orderToBackendDto(newBudget as any);
+        createDto.type = "Budget";
+        createDto.status = "Presupuesto";
+        createDto.paymentType = createDto.paymentType || "N/A";
+        createDto.paymentMethod = createDto.paymentMethod || "N/A";
+        const { syncManager } = await import("./sync-manager");
+        await syncManager.addToQueue({
+          type: "create",
+          entity: "order", // we sync it as an order
+          entityId: newBudget.id,
+          data: createDto,
+        });
+      } catch (e) {
+        console.warn("Error encolando presupuesto", e);
+      }
+    }
+
     return newBudget;
   } catch (error) {
     console.error("Error adding budget to IndexedDB:", error);
@@ -3223,9 +3454,40 @@ export const updateBudget = async (id: string, updates: Partial<Budget>): Promis
 
 export const deleteBudget = async (id: string): Promise<void> => {
   try {
-    await db.remove("budgets", id);
+    const existing = await getBudget(id);
+    const budgetNumber = existing?.budgetNumber;
+
+    if (isOnline()) {
+      try {
+        let backendId = id;
+        if (budgetNumber) {
+          const dto = await apiClient
+            .getOrderByOrderNumber(budgetNumber)
+            .catch(() => null);
+          if (dto?.id) backendId = dto.id;
+        }
+        await apiClient.deleteOrder(backendId);
+        console.log("✅ Presupuesto eliminado del backend:", budgetNumber ?? id);
+      } catch (error) {
+        console.warn(
+          "⚠️ Error eliminando presupuesto en backend (se limpia IndexedDB):",
+          error,
+        );
+      }
+    }
+
+    try {
+      await db.remove("budgets", id);
+    } catch (error) {
+      console.warn("⚠️ No estaba en store budgets:", error);
+    }
+    try {
+      await db.remove("orders", id);
+    } catch {
+      /* no duplicado en orders */
+    }
   } catch (error) {
-    console.error("Error deleting budget from IndexedDB:", error);
+    console.error("Error deleting budget:", error);
     throw error;
   }
 };
@@ -4301,19 +4563,38 @@ export const getVendors = async (): Promise<Vendor[]> => {
     // Obtener todos los usuarios
     const users = await getUsers();
 
-    // Filtrar usuarios con rol de vendedor de tienda (activos)
-    // Los roles pueden venir en formato API ("Store Seller") o display ("Vendedor de tienda")
-    const vendorUsers = users.filter(
-      (user) => user.status === "active" && user.role === "Store Seller"
-    );
+    // Filtrar usuarios con rol de vendedor de tienda u online (activos)
+    // Normalizar rol (trim + comparación insensible a mayúsculas para etiquetas en español)
+    const vendorUsers = users.filter((user) => {
+      if (user.status !== "active") return false;
+      const raw = ((user.role as string) || "").trim();
+      if (!raw) return false;
+      const r = raw.toLowerCase();
+      return (
+        raw === "Store Seller" ||
+        raw === "Online Seller" ||
+        r === "vendedor de tienda" ||
+        r === "vendedor online"
+      );
+    });
 
     // Convertir usuarios a formato Vendor
-    const vendors: Vendor[] = vendorUsers.map((user) => ({
-      id: user.id,
-      name: user.name,
-      role: user.role === "Store Seller" ? "Vendedor de tienda" : user.role,
-      type: "vendor" as const,
-    }));
+    const vendors: Vendor[] = vendorUsers.map((user) => {
+      const raw = ((user.role as string) || "").trim();
+      const rl = raw.toLowerCase();
+      const displayRole =
+        raw === "Store Seller" || rl === "vendedor de tienda"
+          ? "Vendedor de tienda"
+          : raw === "Online Seller" || rl === "vendedor online"
+            ? "Vendedor Online"
+            : user.role as string;
+      return {
+        id: user.id,
+        name: user.name,
+        role: displayRole,
+        type: "vendor" as const,
+      };
+    });
 
     return vendors;
   } catch (error) {
@@ -4332,10 +4613,13 @@ export const getReferrers = async (): Promise<Vendor[]> => {
     const users = await getUsers();
 
     // Filtrar usuarios con rol de vendedor online (activos)
-    // Los roles pueden venir en formato API ("Online Seller") o display ("Vendedor Online")
-    const referrerUsers = users.filter(
-      (user) => user.status === "active" && user.role === "Online Seller"
-    );
+    const referrerUsers = users.filter((user) => {
+      if (user.status !== "active") return false;
+      const raw = ((user.role as string) || "").trim();
+      if (!raw) return false;
+      const r = raw.toLowerCase();
+      return raw === "Online Seller" || r === "vendedor online";
+    });
 
     // Convertir usuarios a formato Vendor
     const referrers: Vendor[] = referrerUsers.map((user) => ({

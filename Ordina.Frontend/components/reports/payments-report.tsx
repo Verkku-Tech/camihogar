@@ -24,12 +24,30 @@ interface PaymentReportRow {
   montoOriginal: number
   monedaOriginal: string
   montoBs: number
+  /** Equivalente USD para pagos en Bs (tasa del día del pedido), desde API o cálculo local */
+  montoUsd?: number
   referencia: string
   cuenta: string
   orderId: string
   paymentIndex: number
   paymentType: "mixed" | "partial" | "main"
   isConciliated: boolean
+}
+
+/** USD equivalente para filas en Bs usando tasas guardadas en el pedido */
+function computeMontoUsdForBsPayment(
+  order: Order,
+  monedaOriginal: string,
+  montoBs: number,
+): number | undefined {
+  if (monedaOriginal !== "Bs") return undefined
+  const ex = order.exchangeRatesAtCreation as
+    | { USD?: { rate: number }; usd?: { rate: number } }
+    | undefined
+  if (!ex) return undefined
+  const rate = ex.USD?.rate ?? ex.usd?.rate
+  if (rate == null || rate <= 0) return undefined
+  return Math.round((montoBs / rate) * 100) / 100
 }
 
 const PAYMENT_METHODS = [
@@ -186,6 +204,14 @@ export function PaymentsReport() {
             montoOriginal: Number(row.montoOriginal ?? 0),
             monedaOriginal: String(row.monedaOriginal ?? ""),
             montoBs: Number(row.montoBs ?? 0),
+            montoUsd: (() => {
+              const raw =
+                row.montoUsd ??
+                (row as Record<string, unknown>).MontoUsd
+              if (raw == null || raw === "") return undefined
+              const n = Number(raw)
+              return Number.isFinite(n) ? n : undefined
+            })(),
             referencia: String(row.referencia ?? ""),
             cuenta: String(row.cuenta ?? ""),
             orderId,
@@ -210,19 +236,32 @@ export function PaymentsReport() {
   const getOriginalPaymentAmount = (
     payment: PartialPayment
   ): { amount: number; currency: string } => {
+    const details = payment.paymentDetails;
+    const detailsHasValues =
+      details &&
+      Object.values(details).some(
+        (v) => v !== undefined && v !== null && v !== "" && v !== false,
+      );
+
     // Para Efectivo, el monto original está en cashReceived
-    if (payment.method === "Efectivo" && payment.paymentDetails?.cashReceived) {
+    if (
+      payment.method === "Efectivo" &&
+      details &&
+      detailsHasValues &&
+      details.cashReceived != null &&
+      details.cashReceived > 0
+    ) {
       return {
-        amount: payment.paymentDetails.cashReceived,
-        currency: payment.paymentDetails.cashCurrency || payment.currency || "Bs",
+        amount: details.cashReceived,
+        currency: details.cashCurrency || payment.currency || "Bs",
       };
     }
 
     // Si hay monto original guardado (para Pago Móvil y Transferencia)
-    if (payment.paymentDetails?.originalAmount !== undefined) {
+    if (details && detailsHasValues && details.originalAmount !== undefined) {
       return {
-        amount: payment.paymentDetails.originalAmount,
-        currency: payment.paymentDetails.originalCurrency || payment.currency || "Bs",
+        amount: details.originalAmount,
+        currency: details.originalCurrency || payment.currency || "Bs",
       };
     }
 
@@ -237,26 +276,21 @@ export function PaymentsReport() {
   const generateLocalReportData = () => {
     let filteredOrders = orders
 
-    // Filtrar por fecha
-    if (startDate || endDate) {
-      filteredOrders = orders.filter((order) => {
-        const orderDate = new Date(order.createdAt)
-        if (startDate && orderDate < new Date(startDate)) return false
-        if (endDate) {
-          const endDateObj = new Date(endDate)
-          endDateObj.setHours(23, 59, 59, 999) // Incluir todo el día final
-          if (orderDate > endDateObj) return false
-        }
-        return true
-      })
-    }
-
     const rows: PaymentReportRow[] = []
+    const startDateObj = startDate ? new Date(startDate) : null
+    const endDateObj = endDate ? new Date(endDate) : null
+    if (endDateObj) endDateObj.setHours(23, 59, 59, 999)
 
-      filteredOrders.forEach((order) => {
+    orders.forEach((order) => {
         // Procesar pagos mixtos si existen
         if (order.mixedPayments && order.mixedPayments.length > 0) {
           order.mixedPayments.forEach((payment, index) => {
+            const paymentDate = new Date(payment.date)
+            
+            // Filtrar por rango de fechas del pago
+            if (startDateObj && paymentDate < startDateObj) return
+            if (endDateObj && paymentDate > endDateObj) return
+
             // Filtrar por método de pago
             if (selectedPaymentMethod !== "Todos" && payment.method !== selectedPaymentMethod) {
               return
@@ -292,6 +326,7 @@ export function PaymentsReport() {
               montoOriginal: montoOriginal,
               monedaOriginal: monedaOriginal,
               montoBs: montoBs,
+              montoUsd: computeMontoUsdForBsPayment(order, monedaOriginal, montoBs),
               referencia: referencia,
               cuenta: cuenta,
               orderId: order.id,
@@ -305,6 +340,12 @@ export function PaymentsReport() {
         // Procesar pagos parciales si existen
         if (order.partialPayments && order.partialPayments.length > 0) {
           order.partialPayments.forEach((payment, index) => {
+            const paymentDate = new Date(payment.date)
+            
+            // Filtrar por rango de fechas del pago
+            if (startDateObj && paymentDate < startDateObj) return
+            if (endDateObj && paymentDate > endDateObj) return
+
             // Filtrar por método de pago
             if (selectedPaymentMethod !== "Todos" && payment.method !== selectedPaymentMethod) {
               return
@@ -340,6 +381,7 @@ export function PaymentsReport() {
               montoOriginal: montoOriginal,
               monedaOriginal: monedaOriginal,
               montoBs: montoBs,
+              montoUsd: computeMontoUsdForBsPayment(order, monedaOriginal, montoBs),
               referencia: referencia,
               cuenta: cuenta,
               orderId: order.id,
@@ -356,6 +398,12 @@ export function PaymentsReport() {
           (!order.mixedPayments || order.mixedPayments.length === 0) &&
           order.paymentMethod
         ) {
+          const orderDate = new Date(order.createdAt)
+          
+          // Filtrar por rango de fechas de la orden (para el pago principal)
+          if (startDateObj && orderDate < startDateObj) return
+          if (endDateObj && orderDate > endDateObj) return
+
           // Filtrar por método de pago
           if (selectedPaymentMethod !== "Todos" && order.paymentMethod !== selectedPaymentMethod) {
             return
@@ -400,6 +448,7 @@ export function PaymentsReport() {
             montoOriginal: montoOriginal,
             monedaOriginal: monedaOriginal,
             montoBs: montoBs,
+            montoUsd: computeMontoUsdForBsPayment(order, monedaOriginal, montoBs),
             referencia: referencia,
             cuenta: cuenta,
             orderId: order.id,
@@ -915,8 +964,22 @@ export function PaymentsReport() {
                       <TableCell className="font-medium">{row.pedido}</TableCell>
                       <TableCell>{row.cliente}</TableCell>
                       <TableCell>{row.metodoPago}</TableCell>
-                      <TableCell>
-                        {formatCurrency(row.montoOriginal, row.monedaOriginal)}
+                      <TableCell className="text-right align-top">
+                        {row.monedaOriginal === "Bs" &&
+                        row.montoUsd != null &&
+                        Number.isFinite(row.montoUsd) &&
+                        row.montoUsd > 0 ? (
+                          <div>
+                            <div className="font-medium">
+                              {formatCurrency(row.montoUsd, "USD")}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatCurrency(row.montoOriginal, "Bs")}
+                            </div>
+                          </div>
+                        ) : (
+                          formatCurrency(row.montoOriginal, row.monedaOriginal)
+                        )}
                       </TableCell>
                       <TableCell>
                         {formatCurrency(row.montoBs, "Bs")}

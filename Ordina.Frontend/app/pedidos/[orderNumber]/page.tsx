@@ -1236,7 +1236,7 @@ export default function OrderDetailPage() {
                   </HoverCard>
                 </div>
                 <div className="flex items-center gap-3">
-                  {order.products.some(p => !p.logisticStatus || p.logisticStatus === "Generado") && (
+                  {(order.status === "Generado" || order.status === "Generada") && (
                     <Button
                       onClick={handleValidateOrder}
                       disabled={validatingOrder}
@@ -1924,12 +1924,19 @@ export default function OrderDetailPage() {
                                 <span className="font-medium">
                                   {payment.method} ({originalPayment.currency})
                                 </span>
-                                <span className="font-medium">
-                                  {formatCurrency(
-                                    originalPayment.amount,
-                                    originalPayment.currency as Currency
-                                  )}
-                                </span>
+                                {originalPayment.currency === "Bs" ? (
+                                  <CurrencyDisplay
+                                    amountInBs={originalPayment.amount}
+                                    exchangeRates={localExchangeRates}
+                                  />
+                                ) : (
+                                  <span className="font-medium text-right">
+                                    {formatCurrency(
+                                      originalPayment.amount,
+                                      originalPayment.currency as Currency
+                                    )}
+                                  </span>
+                                )}
                               </div>
 
                               {/* Mostrar tasa de cambio del día del pago si existe y no es en Bs */}
@@ -1997,16 +2004,23 @@ export default function OrderDetailPage() {
                               <span className="font-medium">
                                 {payment.method} ({originalPayment.currency})
                               </span>
-                              <div className="text-right">
-                                <div className="font-medium">
-                                  {formattedPayment.original}
-                                </div>
-                                {formattedPayment.converted && (
-                                  <div className="text-xs text-muted-foreground">
-                                    {formattedPayment.converted}
+                              {originalPayment.currency === "Bs" ? (
+                                <CurrencyDisplay
+                                  amountInBs={originalPayment.amount}
+                                  exchangeRates={localExchangeRates}
+                                />
+                              ) : (
+                                <div className="text-right">
+                                  <div className="font-medium">
+                                    {formattedPayment.original}
                                   </div>
-                                )}
-                              </div>
+                                  {formattedPayment.converted && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {formattedPayment.converted}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                             {/* Mostrar tasa de cambio del día del pago si existe y no es en Bs */}

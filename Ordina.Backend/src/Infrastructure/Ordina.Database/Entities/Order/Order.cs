@@ -1,4 +1,4 @@
-﻿using MongoDB.Bson;
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Ordina.Database.Entities.Order;
@@ -114,4 +114,7 @@ public class Order
 
     [BsonElement("updatedAt")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    [BsonElement("type")]
+    public string Type { get; set; } = "Order"; // "Order", "Budget"
 }

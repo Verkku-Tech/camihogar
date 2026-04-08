@@ -11,5 +11,6 @@ public class ManufacturingReportRowDto
     public string Descripcion { get; set; } = string.Empty;
     public string ObservacionesVendedor { get; set; } = string.Empty;
     public string ObservacionesFabricante { get; set; } = string.Empty;
+    public string NotasRefabricacion { get; set; } = string.Empty;
 }
 
