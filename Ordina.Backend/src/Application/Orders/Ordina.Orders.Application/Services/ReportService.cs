@@ -725,6 +725,7 @@ public class ReportService : IReportService
                 MontoOriginal = row.MontoOriginal,
                 MonedaOriginal = row.MonedaOriginal,
                 MontoBs = row.MontoBs,
+                MontoUsd = row.MontoUsd,
                 Cuenta = row.Cuenta,
                 Referencia = row.Referencia,
                 OrderId = row.OrderId,
@@ -775,16 +776,17 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 5, "Monto");
                 sl.SetCellValue(1, 6, "Moneda");
                 sl.SetCellValue(1, 7, "Monto en Bs");
-                sl.SetCellValue(1, 8, "Cuenta");
-                sl.SetCellValue(1, 9, "Referencia/Remitente");
-                sl.SetCellValue(1, 10, "Conciliado");
+                sl.SetCellValue(1, 8, "Equiv. USD (tasa pedido)");
+                sl.SetCellValue(1, 9, "Cuenta");
+                sl.SetCellValue(1, 10, "Referencia/Remitente");
+                sl.SetCellValue(1, 11, "Conciliado");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 10; col++)
+                for (int col = 1; col <= 11; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -800,9 +802,11 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 5, (double)item.MontoOriginal);
                     sl.SetCellValue(row, 6, item.MonedaOriginal);
                     sl.SetCellValue(row, 7, (double)item.MontoBs);
-                    sl.SetCellValue(row, 8, item.Cuenta);
-                    sl.SetCellValue(row, 9, item.Referencia);
-                    sl.SetCellValue(row, 10, item.IsConciliated ? "Sí" : "No");
+                    if (item.MontoUsd.HasValue)
+                        sl.SetCellValue(row, 8, (double)item.MontoUsd.Value);
+                    sl.SetCellValue(row, 9, item.Cuenta);
+                    sl.SetCellValue(row, 10, item.Referencia);
+                    sl.SetCellValue(row, 11, item.IsConciliated ? "Sí" : "No");
                     row++;
                 }
 
@@ -814,9 +818,10 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(5, 15);  // Monto
                 sl.SetColumnWidth(6, 10);  // Moneda
                 sl.SetColumnWidth(7, 15);  // Monto en Bs
-                sl.SetColumnWidth(8, 30);  // Cuenta
-                sl.SetColumnWidth(9, 30);  // Referencia/Remitente
-                sl.SetColumnWidth(10, 12); // Conciliado
+                sl.SetColumnWidth(8, 18);  // Equiv. USD
+                sl.SetColumnWidth(9, 30);  // Cuenta
+                sl.SetColumnWidth(10, 30);  // Referencia/Remitente
+                sl.SetColumnWidth(11, 12); // Conciliado
 
                 // Guardar en el stream
                 sl.SaveAs(stream);
@@ -963,6 +968,7 @@ public class ReportService : IReportService
                     MontoOriginal = montoOriginal,
                     MonedaOriginal = monedaOriginal,
                     MontoBs = montoBs,
+                    MontoUsd = GetMontoUsdForBsPayment(order, monedaOriginal, montoBs),
                     Cuenta = cuenta,
                     Referencia = referencia,
                     OrderId = order.Id,
@@ -1005,6 +1011,7 @@ public class ReportService : IReportService
             MontoOriginal = montoOriginal,
             MonedaOriginal = monedaOriginal,
             MontoBs = montoBs,
+            MontoUsd = GetMontoUsdForBsPayment(order, monedaOriginal, montoBs),
             Cuenta = cuenta,
             Referencia = referencia,
             OrderId = order.Id,
@@ -1012,6 +1019,25 @@ public class ReportService : IReportService
             PaymentIndex = paymentIndex,
             IsConciliated = payment.PaymentDetails?.IsConciliated ?? false
         };
+    }
+
+    /// <summary>Equivalente USD para filas en Bs usando la tasa del pedido (sin fallar si no hay tasa).</summary>
+    private decimal? GetMontoUsdForBsPayment(Order order, string monedaOriginal, decimal montoBs)
+    {
+        if (!string.Equals(monedaOriginal?.Trim(), "Bs", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        try
+        {
+            var rate = GetUsdExchangeRate(order);
+            if (rate <= 0)
+                return null;
+            return Math.Round(montoBs / rate, 2, MidpointRounding.AwayFromZero);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private string GetPaymentReference(PaymentDetails? paymentDetails, string paymentMethod)
@@ -1467,6 +1493,7 @@ public class ReportService : IReportService
         public decimal MontoOriginal { get; set; }
         public string MonedaOriginal { get; set; } = string.Empty;
         public decimal MontoBs { get; set; }
+        public decimal? MontoUsd { get; set; }
         public string Cuenta { get; set; } = string.Empty;
         public string Referencia { get; set; } = string.Empty;
         public string OrderId { get; set; } = string.Empty;
