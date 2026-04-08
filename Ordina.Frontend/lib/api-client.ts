@@ -1101,6 +1101,13 @@ export class ApiClient {
     return this.request<any[]>("/api/ExchangeRates/active");
   }
 
+  /** Tasas activas e inactivas de los últimos N días (máx. 365 en backend). */
+  async getExchangeRateHistory(days: number = 30) {
+    return this.request<any[]>(
+      `/api/ExchangeRates/history?days=${encodeURIComponent(String(days))}`,
+    );
+  }
+
   async getLatestExchangeRate(toCurrency: string, fromCurrency: string = "Bs") {
     return this.request<any>(
       `/api/ExchangeRates/active/${toCurrency}?fromCurrency=${fromCurrency}`,

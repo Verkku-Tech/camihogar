@@ -21,6 +21,11 @@ namespace Ordina.Payments.Application.Services
             return await _repository.GetAllActiveAsync();
         }
 
+        public async Task<IEnumerable<ExchangeRate>> GetHistoryAsync(int days = 30)
+        {
+            return await _repository.GetHistoryAsync(days);
+        }
+
         public async Task<ExchangeRate?> GetLatestRateAsync(string fromCurrency, string toCurrency)
         {
             return await _repository.GetLatestRateAsync(fromCurrency, toCurrency);
