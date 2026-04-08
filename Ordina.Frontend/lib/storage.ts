@@ -1775,6 +1775,15 @@ export interface Vendor {
 
 // ===== ORDERS STORAGE (IndexedDB) =====
 
+/** Presupuestos del API (Type=Budget / PRE-*) no deben mezclarse en el store `orders` ni duplicarse en listados unificados. */
+function isBackendBudgetOrder(order: Pick<Order, "type" | "status" | "orderNumber">): boolean {
+  const t = (order.type || "").trim().toLowerCase();
+  if (t === "budget") return true;
+  const num = (order.orderNumber || "").toUpperCase();
+  if (num.startsWith("PRE-") && order.status === "Presupuesto") return true;
+  return false;
+}
+
 // Helper functions para mapear orders entre frontend y backend
 const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   id: dto.id,
@@ -1971,6 +1980,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   baseCurrency: dto.baseCurrency,
   dispatchDate: dto.dispatchDate,
   completedAt: dto.completedAt,
+  type: dto.type ?? (dto as unknown as { Type?: string }).Type ?? "Order",
 });
 
 export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">): CreateOrderDto => ({
@@ -2172,10 +2182,24 @@ export const getOrders = async (
         );
       }
 
-      const backendNumbers = new Set(allOrders.map((o) => o.orderNumber));
-      const localOnly = localOrders.filter((o) => !backendNumbers.has(o.orderNumber));
-
+      // Presupuestos: fuente de verdad en store `budgets` (getBudgets). No duplicar en `orders`.
       for (const order of allOrders) {
+        if (isBackendBudgetOrder(order)) {
+          try {
+            await db.remove("orders", order.id);
+          } catch {
+            /* no estaba en orders */
+          }
+        }
+      }
+
+      const ordersOnly = allOrders.filter((o) => !isBackendBudgetOrder(o));
+      const backendNumbers = new Set(ordersOnly.map((o) => o.orderNumber));
+      const localOnly = localOrders.filter(
+        (o) => !backendNumbers.has(o.orderNumber) && !isBackendBudgetOrder(o),
+      );
+
+      for (const order of ordersOnly) {
         try {
           await db.put("orders", order);
         } catch (err) {
@@ -2183,9 +2207,9 @@ export const getOrders = async (
         }
       }
 
-      const merged = [...allOrders, ...localOnly];
+      const merged = [...ordersOnly, ...localOnly];
       console.log(
-        `Órdenes: ${allOrders.length} del servidor + ${localOnly.length} solo locales = ${merged.length}`
+        `Órdenes (sin presupuestos en store orders): ${ordersOnly.length} del servidor + ${localOnly.length} solo locales = ${merged.length}`
       );
       return merged;
     } catch (error) {
@@ -2806,8 +2830,21 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       getBudgets(),
     ]);
 
+    const budgetIds = new Set(budgets.map((b) => b.id));
+    const budgetNumbers = new Set(
+      budgets.map((b) => b.budgetNumber).filter(Boolean),
+    );
+
+    // Pedidos reales: excluir presupuestos (evita duplicar con la lista de getBudgets)
+    const ordersForUnified = orders.filter(
+      (o) =>
+        !isBackendBudgetOrder(o) &&
+        !budgetIds.has(o.id) &&
+        !budgetNumbers.has(o.orderNumber),
+    );
+
     // Convertir pedidos a formato unificado
-    const unifiedOrders: UnifiedOrder[] = orders.map((order) => ({
+    const unifiedOrders: UnifiedOrder[] = ordersForUnified.map((order) => ({
       id: order.id,
       orderNumber: order.orderNumber,
       clientId: order.clientId,
@@ -3336,6 +3373,12 @@ export const addBudget = async (
         validForDays,
       });
 
+      try {
+        await db.put("budgets", newBudget);
+      } catch (e) {
+        console.warn("No se pudo cachear presupuesto en IndexedDB:", e);
+      }
+
       console.log("✅ Presupuesto guardado en backend:", newBudget.budgetNumber);
       syncedToBackend = true;
       return newBudget;
@@ -3409,9 +3452,40 @@ export const updateBudget = async (id: string, updates: Partial<Budget>): Promis
 
 export const deleteBudget = async (id: string): Promise<void> => {
   try {
-    await db.remove("budgets", id);
+    const existing = await getBudget(id);
+    const budgetNumber = existing?.budgetNumber;
+
+    if (isOnline()) {
+      try {
+        let backendId = id;
+        if (budgetNumber) {
+          const dto = await apiClient
+            .getOrderByOrderNumber(budgetNumber)
+            .catch(() => null);
+          if (dto?.id) backendId = dto.id;
+        }
+        await apiClient.deleteOrder(backendId);
+        console.log("✅ Presupuesto eliminado del backend:", budgetNumber ?? id);
+      } catch (error) {
+        console.warn(
+          "⚠️ Error eliminando presupuesto en backend (se limpia IndexedDB):",
+          error,
+        );
+      }
+    }
+
+    try {
+      await db.remove("budgets", id);
+    } catch (error) {
+      console.warn("⚠️ No estaba en store budgets:", error);
+    }
+    try {
+      await db.remove("orders", id);
+    } catch {
+      /* no duplicado en orders */
+    }
   } catch (error) {
-    console.error("Error deleting budget from IndexedDB:", error);
+    console.error("Error deleting budget:", error);
     throw error;
   }
 };
