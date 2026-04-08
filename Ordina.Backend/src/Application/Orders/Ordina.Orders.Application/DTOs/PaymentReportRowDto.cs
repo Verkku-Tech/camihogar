@@ -9,6 +9,8 @@ public class PaymentReportRowDto
     public decimal MontoOriginal { get; set; }
     public string MonedaOriginal { get; set; } = string.Empty;
     public decimal MontoBs { get; set; }
+    /// <summary>Equivalente en USD cuando el pago es en Bs (tasa del día del pedido).</summary>
+    public decimal? MontoUsd { get; set; }
     public string Cuenta { get; set; } = string.Empty;
     public string Referencia { get; set; } = string.Empty;
     public string OrderId { get; set; } = string.Empty;

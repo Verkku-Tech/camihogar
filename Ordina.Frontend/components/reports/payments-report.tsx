@@ -24,12 +24,30 @@ interface PaymentReportRow {
   montoOriginal: number
   monedaOriginal: string
   montoBs: number
+  /** Equivalente USD para pagos en Bs (tasa del día del pedido), desde API o cálculo local */
+  montoUsd?: number
   referencia: string
   cuenta: string
   orderId: string
   paymentIndex: number
   paymentType: "mixed" | "partial" | "main"
   isConciliated: boolean
+}
+
+/** USD equivalente para filas en Bs usando tasas guardadas en el pedido */
+function computeMontoUsdForBsPayment(
+  order: Order,
+  monedaOriginal: string,
+  montoBs: number,
+): number | undefined {
+  if (monedaOriginal !== "Bs") return undefined
+  const ex = order.exchangeRatesAtCreation as
+    | { USD?: { rate: number }; usd?: { rate: number } }
+    | undefined
+  if (!ex) return undefined
+  const rate = ex.USD?.rate ?? ex.usd?.rate
+  if (rate == null || rate <= 0) return undefined
+  return Math.round((montoBs / rate) * 100) / 100
 }
 
 const PAYMENT_METHODS = [
@@ -186,6 +204,14 @@ export function PaymentsReport() {
             montoOriginal: Number(row.montoOriginal ?? 0),
             monedaOriginal: String(row.monedaOriginal ?? ""),
             montoBs: Number(row.montoBs ?? 0),
+            montoUsd: (() => {
+              const raw =
+                row.montoUsd ??
+                (row as Record<string, unknown>).MontoUsd
+              if (raw == null || raw === "") return undefined
+              const n = Number(raw)
+              return Number.isFinite(n) ? n : undefined
+            })(),
             referencia: String(row.referencia ?? ""),
             cuenta: String(row.cuenta ?? ""),
             orderId,
@@ -300,6 +326,7 @@ export function PaymentsReport() {
               montoOriginal: montoOriginal,
               monedaOriginal: monedaOriginal,
               montoBs: montoBs,
+              montoUsd: computeMontoUsdForBsPayment(order, monedaOriginal, montoBs),
               referencia: referencia,
               cuenta: cuenta,
               orderId: order.id,
@@ -354,6 +381,7 @@ export function PaymentsReport() {
               montoOriginal: montoOriginal,
               monedaOriginal: monedaOriginal,
               montoBs: montoBs,
+              montoUsd: computeMontoUsdForBsPayment(order, monedaOriginal, montoBs),
               referencia: referencia,
               cuenta: cuenta,
               orderId: order.id,
@@ -420,6 +448,7 @@ export function PaymentsReport() {
             montoOriginal: montoOriginal,
             monedaOriginal: monedaOriginal,
             montoBs: montoBs,
+            montoUsd: computeMontoUsdForBsPayment(order, monedaOriginal, montoBs),
             referencia: referencia,
             cuenta: cuenta,
             orderId: order.id,
@@ -935,8 +964,22 @@ export function PaymentsReport() {
                       <TableCell className="font-medium">{row.pedido}</TableCell>
                       <TableCell>{row.cliente}</TableCell>
                       <TableCell>{row.metodoPago}</TableCell>
-                      <TableCell>
-                        {formatCurrency(row.montoOriginal, row.monedaOriginal)}
+                      <TableCell className="text-right align-top">
+                        {row.monedaOriginal === "Bs" &&
+                        row.montoUsd != null &&
+                        Number.isFinite(row.montoUsd) &&
+                        row.montoUsd > 0 ? (
+                          <div>
+                            <div className="font-medium">
+                              {formatCurrency(row.montoUsd, "USD")}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatCurrency(row.montoOriginal, "Bs")}
+                            </div>
+                          </div>
+                        ) : (
+                          formatCurrency(row.montoOriginal, row.monedaOriginal)
+                        )}
                       </TableCell>
                       <TableCell>
                         {formatCurrency(row.montoBs, "Bs")}
