@@ -2182,14 +2182,18 @@ export const getOrders = async (
         );
       }
 
-      // Presupuestos: fuente de verdad en store `budgets` (getBudgets). No duplicar en `orders`.
+      // Presupuestos: misma sincronización paginada que los pedidos → cache en `budgets` (lista estable al refrescar).
       for (const order of allOrders) {
-        if (isBackendBudgetOrder(order)) {
-          try {
-            await db.remove("orders", order.id);
-          } catch {
-            /* no estaba en orders */
-          }
+        if (!isBackendBudgetOrder(order)) continue;
+        try {
+          await db.remove("orders", order.id);
+        } catch {
+          /* no estaba en orders */
+        }
+        try {
+          await db.put("budgets", orderMappedToBudget(order));
+        } catch (err) {
+          console.warn(`Error guardando presupuesto ${order.orderNumber} en IndexedDB:`, err);
         }
       }
 
@@ -2825,10 +2829,9 @@ export interface UnifiedOrder {
 // Función para obtener pedidos y presupuestos unificados
 export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
   try {
-    const [orders, budgets] = await Promise.all([
-      getOrders(),
-      getBudgets(),
-    ]);
+    // Secuencial: getOrders sincroniza primero y escribe presupuestos en `budgets`; luego getBudgets refina con el API por estado.
+    const orders = await getOrders();
+    const budgets = await getBudgets();
 
     const budgetIds = new Set(budgets.map((b) => b.id));
     const budgetNumbers = new Set(
@@ -3286,18 +3289,17 @@ export const getBudgets = async (): Promise<Budget[]> => {
         const backendBudgets = (await apiClient.getOrdersByStatus("Presupuesto")).map((dto) =>
           orderMappedToBudget(orderFromBackendDto(dto)),
         );
-        // Hacemos merge con IndexedDB
+        // Server-first: el API por estado es la fuente de verdad cuando responde
         for (const budget of backendBudgets) {
-          const localItem = localBudgets.find((o) => o.id === budget.id);
-          const backendUpdated = budget.updatedAt ? new Date(budget.updatedAt) : new Date(0);
-          const localUpdated = localItem?.updatedAt ? new Date(localItem.updatedAt) : new Date(0);
-          if (!localItem || backendUpdated > localUpdated) {
-             await db.put("budgets", budget as any);
-          }
+          await db.put("budgets", budget as Budget);
         }
-        return await db.getAll<Budget>("budgets");
+        const merged = await db.getAll<Budget>("budgets");
+        console.log(`✅ Presupuestos sincronizados (API): ${backendBudgets.length} del servidor, ${merged.length} en IndexedDB`);
+        return merged;
       } catch (error) {
         console.warn("Error cargando presupuestos del backend:", error);
+        // Tras getOrders, IndexedDB ya puede tener PRE del listado paginado; no devolver snapshot viejo.
+        return await db.getAll<Budget>("budgets");
       }
     }
 
