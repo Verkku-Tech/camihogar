@@ -14,6 +14,7 @@ import { ProductEditDialog } from "@/components/orders/product-edit-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getActiveExchangeRates, convertProductPriceToBs, formatCurrency, type Currency } from "@/lib/currency-utils"
 import { useCurrency } from "@/contexts/currency-context"
+import { toast } from "sonner"
 
 interface ProductSelectionDialogProps {
   open: boolean
@@ -162,7 +163,14 @@ export function ProductSelectionDialog({
       productCurrency,
       exchangeRates
     )
-    
+
+    if (priceInBs === null) {
+      toast.error(
+        "No hay tasa de cambio activa para USD/EUR. Configura la tasa BCV antes de agregar este producto al pedido.",
+      )
+      return
+    }
+
     // Preparar producto y abrir modal de edición
     // IMPORTANTE: Guardamos el precio convertido a Bs para todos los cálculos
     const newProduct: OrderProduct = {
