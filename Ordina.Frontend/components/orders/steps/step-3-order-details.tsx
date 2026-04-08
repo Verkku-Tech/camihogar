@@ -24,6 +24,7 @@ import {
 import { Plus, Trash2 } from "lucide-react";
 import type { UseOrderFormReturn } from "../hooks/use-order-form";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
+import { toast } from "sonner";
 import { type ProductImage } from "@/lib/storage";
 import { ImageUploader } from "../ImageUploader";
 import {
@@ -164,20 +165,33 @@ export function Step3OrderDetails({
                             <Select
                               value={orderForm.deliveryServices.deliveryExpress.currency}
                               onValueChange={(value: Currency) => {
-                                orderForm.setDeliveryServices((prev) => ({
-                                  ...prev,
-                                  deliveryExpress: prev.deliveryExpress
-                                    ? {
+                                orderForm.setDeliveryServices((prev) => {
+                                  if (!prev.deliveryExpress) {
+                                    return {
+                                      ...prev,
+                                      deliveryExpress: { enabled: true, cost: 0, currency: value },
+                                    };
+                                  }
+                                  const converted = orderForm.convertCurrencyValue(
+                                    prev.deliveryExpress.cost || 0,
+                                    prev.deliveryExpress.currency,
+                                    value,
+                                  );
+                                  if (converted === null) {
+                                    toast.error(
+                                      "No hay tasa BCV para convertir el monto a esa moneda.",
+                                    );
+                                    return prev;
+                                  }
+                                  return {
+                                    ...prev,
+                                    deliveryExpress: {
                                       ...prev.deliveryExpress,
                                       currency: value,
-                                      cost: orderForm.convertCurrencyValue(
-                                        prev.deliveryExpress.cost || 0,
-                                        prev.deliveryExpress.currency,
-                                        value
-                                      ),
-                                    }
-                                    : { enabled: true, cost: 0, currency: value },
-                                }));
+                                      cost: converted,
+                                    },
+                                  };
+                                });
                               }}
                             >
                               <SelectTrigger className="w-24">
@@ -254,22 +268,37 @@ export function Step3OrderDetails({
                             <Select
                               value={orderForm.deliveryServices.servicioAcarreo.currency}
                               onValueChange={(value: Currency) => {
-                                orderForm.setDeliveryServices((prev) => ({
-                                  ...prev,
-                                  servicioAcarreo: prev.servicioAcarreo
-                                    ? {
+                                orderForm.setDeliveryServices((prev) => {
+                                  if (!prev.servicioAcarreo) {
+                                    return {
+                                      ...prev,
+                                      servicioAcarreo: { enabled: true, cost: undefined, currency: value },
+                                    };
+                                  }
+                                  let nextCost = prev.servicioAcarreo.cost;
+                                  if (prev.servicioAcarreo.cost != null) {
+                                    const converted = orderForm.convertCurrencyValue(
+                                      prev.servicioAcarreo.cost,
+                                      prev.servicioAcarreo.currency,
+                                      value,
+                                    );
+                                    if (converted === null) {
+                                      toast.error(
+                                        "No hay tasa BCV para convertir el monto a esa moneda.",
+                                      );
+                                      return prev;
+                                    }
+                                    nextCost = converted;
+                                  }
+                                  return {
+                                    ...prev,
+                                    servicioAcarreo: {
                                       ...prev.servicioAcarreo,
                                       currency: value,
-                                      cost: prev.servicioAcarreo.cost
-                                        ? orderForm.convertCurrencyValue(
-                                          prev.servicioAcarreo.cost,
-                                          prev.servicioAcarreo.currency,
-                                          value
-                                        )
-                                        : undefined,
-                                    }
-                                    : { enabled: true, cost: undefined, currency: value },
-                                }));
+                                      cost: nextCost,
+                                    },
+                                  };
+                                });
                               }}
                             >
                               <SelectTrigger className="w-24">
@@ -346,20 +375,33 @@ export function Step3OrderDetails({
                             <Select
                               value={orderForm.deliveryServices.servicioArmado.currency}
                               onValueChange={(value: Currency) => {
-                                orderForm.setDeliveryServices((prev) => ({
-                                  ...prev,
-                                  servicioArmado: prev.servicioArmado
-                                    ? {
+                                orderForm.setDeliveryServices((prev) => {
+                                  if (!prev.servicioArmado) {
+                                    return {
+                                      ...prev,
+                                      servicioArmado: { enabled: true, cost: 0, currency: value },
+                                    };
+                                  }
+                                  const converted = orderForm.convertCurrencyValue(
+                                    prev.servicioArmado.cost || 0,
+                                    prev.servicioArmado.currency,
+                                    value,
+                                  );
+                                  if (converted === null) {
+                                    toast.error(
+                                      "No hay tasa BCV para convertir el monto a esa moneda.",
+                                    );
+                                    return prev;
+                                  }
+                                  return {
+                                    ...prev,
+                                    servicioArmado: {
                                       ...prev.servicioArmado,
                                       currency: value,
-                                      cost: orderForm.convertCurrencyValue(
-                                        prev.servicioArmado.cost || 0,
-                                        prev.servicioArmado.currency,
-                                        value
-                                      ),
-                                    }
-                                    : { enabled: true, cost: 0, currency: value },
-                                }));
+                                      cost: converted,
+                                    },
+                                  };
+                                });
                               }}
                             >
                               <SelectTrigger className="w-24">
