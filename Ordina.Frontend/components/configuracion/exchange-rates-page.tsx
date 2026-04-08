@@ -26,16 +26,37 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getAll, add, update } from "@/lib/indexeddb";
-import { Plus, Trash2, DollarSign, AlertCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, DollarSign, AlertCircle, History } from "lucide-react";
 import { toast } from "sonner";
 import { ExchangeRate } from "@/lib/currency-utils";
 import { ApiClient } from "@/lib/api-client";
 import { useCurrency } from "@/contexts/currency-context";
 import { Switch } from "@/components/ui/switch";
+
+const HISTORY_DAYS = 30;
+
+/** Normaliza fila del API (camelCase o PascalCase) al tipo ExchangeRate */
+function normalizeExchangeRateRow(row: Record<string, unknown>): ExchangeRate {
+  const id = String(row.id ?? row.Id ?? "");
+  const effectiveRaw = (row.effectiveDate ?? row.EffectiveDate) as string;
+  const createdRaw = (row.createdAt ?? row.CreatedAt) as string;
+  return {
+    id,
+    fromCurrency: "Bs",
+    toCurrency: (row.toCurrency ?? row.ToCurrency ?? "USD") as "USD" | "EUR",
+    rate: Number(row.rate ?? row.Rate ?? 0),
+    effectiveDate: effectiveRaw || new Date().toISOString(),
+    isActive: Boolean(row.isActive ?? row.IsActive),
+    createdAt: createdRaw || new Date().toISOString(),
+    updatedAt: createdRaw || new Date().toISOString(),
+  };
+}
+
 export function ExchangeRatesPage() {
   const { preferredCurrency, setPreferredCurrency } = useCurrency();
   const [rates, setRates] = useState<ExchangeRate[]>([]);
+  const [rateHistory, setRateHistory] = useState<ExchangeRate[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     toCurrency: "USD" as "USD" | "EUR",
@@ -62,9 +83,18 @@ export function ExchangeRatesPage() {
   const loadRates = async () => {
     try {
       const client = new ApiClient();
-      // Obtener tasas activas desde el API
-      const activeRates = await client.getActiveExchangeRates();
+      const [activeRaw, historyRaw] = await Promise.all([
+        client.getActiveExchangeRates(),
+        client.getExchangeRateHistory(HISTORY_DAYS),
+      ]);
+      const activeRates = Array.isArray(activeRaw)
+        ? activeRaw.map((r) => normalizeExchangeRateRow(r as Record<string, unknown>))
+        : [];
+      const history = Array.isArray(historyRaw)
+        ? historyRaw.map((r) => normalizeExchangeRateRow(r as Record<string, unknown>))
+        : [];
       setRates(activeRates);
+      setRateHistory(history);
     } catch (error) {
       console.error("Error loading exchange rates:", error);
       toast.error("Error al cargar las tasas de cambio");
@@ -312,6 +342,64 @@ export function ExchangeRatesPage() {
             </p>
           </CardContent>
         )}
+      </Card>
+
+      {/* Historial reciente (activas e inactivas) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            Historial de tasas
+          </CardTitle>
+          <CardDescription>
+            Registros de los últimos {HISTORY_DAYS} días (incluye tasas reemplazadas al agregar una
+            nueva). La tasa vigente para pedidos cerrados sigue guardada en cada pedido.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {rateHistory.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No hay registros en el historial reciente.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Moneda</TableHead>
+                  <TableHead>Tasa (Bs)</TableHead>
+                  <TableHead>Fecha registro</TableHead>
+                  <TableHead>Estado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rateHistory.map((rate) => (
+                  <TableRow key={rate.id}>
+                    <TableCell className="font-medium">
+                      {rate.toCurrency === "USD" ? "💵 Dólares" : "💶 Euros"}
+                    </TableCell>
+                    <TableCell>{formatExchangeRate(rate.rate)} Bs</TableCell>
+                    <TableCell>
+                      {new Date(rate.createdAt).toLocaleString("es-VE", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </TableCell>
+                    <TableCell>
+                      {rate.isActive ? (
+                        <Badge className="bg-emerald-600 hover:bg-emerald-600">Activa</Badge>
+                      ) : (
+                        <Badge variant="secondary">Inactiva</Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
       </Card>
     </div>
   );

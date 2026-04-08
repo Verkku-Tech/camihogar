@@ -25,7 +25,10 @@ import { Search, Plus, Eye, Edit, Trash2, X } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { deleteOrder, deleteBudget, getUnifiedOrders, type UnifiedOrder } from "@/lib/storage"
-import { useCurrency } from "@/contexts/currency-context"
+import {
+  formatCurrencyWithUsdPrimaryFromOrder,
+  getActiveExchangeRates,
+} from "@/lib/currency-utils"
 import { useAuth } from "@/contexts/auth-context"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
@@ -66,7 +69,6 @@ const getStatusColor = (status: string) => {
 }
 
 export default function PedidosPage() {
-  const { formatWithPreference, preferredCurrency } = useCurrency()
   const { user, hasPermission } = useAuth()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -103,21 +105,27 @@ export default function PedidosPage() {
     loadOrders()
   }, [])
 
-  // Actualizar totales cuando cambien los pedidos o la moneda preferida
+  // Totales: USD (y Bs) con tasa del día del pedido; fallback a tasa activa solo si no hay tasa guardada
   useEffect(() => {
     const updateTotals = async () => {
+      if (orders.length === 0) {
+        setOrderTotals({})
+        return
+      }
       const totals: Record<string, string> = {}
+      const fallbackRates = await getActiveExchangeRates()
       for (const order of orders) {
-        // Los totales de pedidos se guardan siempre en Bs
-        const formatted = await formatWithPreference(order.total, "Bs")
+        const formatted = await formatCurrencyWithUsdPrimaryFromOrder(
+          order.total,
+          order,
+          fallbackRates,
+        )
         totals[order.id] = formatted
       }
       setOrderTotals(totals)
     }
-    if (orders.length > 0) {
-      updateTotals()
-    }
-  }, [orders, preferredCurrency, formatWithPreference])
+    void updateTotals()
+  }, [orders])
 
   // Función para refrescar después de crear un pedido
   const handleOrderCreated = async () => {
