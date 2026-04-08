@@ -10,6 +10,7 @@ namespace Ordina.Payments.Domain.Repositories
         Task<ExchangeRate?> GetByIdAsync(Guid id);
         Task<IEnumerable<ExchangeRate>> GetAllActiveAsync();
         Task<ExchangeRate?> GetLatestRateAsync(string fromCurrency, string toCurrency);
+        Task<IEnumerable<ExchangeRate>> GetHistoryAsync(int days = 30);
         Task AddAsync(ExchangeRate exchangeRate);
         Task UpdateAsync(ExchangeRate exchangeRate);
         Task DeactivatePreviousRatesAsync(string fromCurrency, string toCurrency);

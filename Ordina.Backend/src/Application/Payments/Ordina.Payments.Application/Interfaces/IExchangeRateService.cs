@@ -7,6 +7,7 @@ namespace Ordina.Payments.Application.Interfaces
     public interface IExchangeRateService
     {
         Task<IEnumerable<ExchangeRate>> GetActiveRatesAsync();
+        Task<IEnumerable<ExchangeRate>> GetHistoryAsync(int days = 30);
         Task<ExchangeRate> SetExchangeRateAsync(string fromCurrency, string toCurrency, decimal rate);
         Task<ExchangeRate?> GetLatestRateAsync(string fromCurrency, string toCurrency);
     }

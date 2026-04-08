@@ -25,6 +25,16 @@ namespace Ordina.Payments.Api.Controllers
             return Ok(rates);
         }
 
+        /// <summary>
+        /// Historial de tasas (activas e inactivas) en los últimos N días (por defecto 30, máximo 365).
+        /// </summary>
+        [HttpGet("history")]
+        public async Task<IActionResult> GetHistory([FromQuery] int days = 30)
+        {
+            var rates = await _exchangeRateService.GetHistoryAsync(days);
+            return Ok(rates);
+        }
+
         [HttpGet("active/{toCurrency}")]
         public async Task<IActionResult> GetActiveRate(string toCurrency, [FromQuery] string fromCurrency = "Bs")
         {
