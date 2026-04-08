@@ -111,11 +111,13 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
         originalCurrency,
         preferredCurrency
       );
+      if (convertedAmount === null) {
+        return `${formatCurrency(amount, originalCurrency)} (sin tasa BCV)`;
+      }
       return formatCurrency(convertedAmount, preferredCurrency);
     } catch (error) {
       console.error("Error converting currency:", error);
-      // Si falla la conversión, mostrar en moneda original
-      return formatCurrency(amount, originalCurrency);
+      return `${formatCurrency(amount, originalCurrency)} (sin tasa BCV)`;
     }
   };
 

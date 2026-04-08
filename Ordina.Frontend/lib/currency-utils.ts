@@ -124,13 +124,16 @@ export const convertToBs = (
   return amount * rate;
 };
 
-// Convertir entre dos monedas (pasando por Bs)
+/**
+ * Convierte entre monedas usando tasas Bs↔USD/EUR.
+ * @returns `null` si falta alguna tasa necesaria (no devolver el número sin convertir).
+ */
 export const convertCurrency = async (
   amount: number,
   fromCurrency: Currency,
   toCurrency: Currency,
   rates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
-): Promise<number> => {
+): Promise<number | null> => {
   if (fromCurrency === toCurrency) return amount;
 
   // Si no se proporcionan las tasas, obtenerlas
@@ -142,9 +145,9 @@ export const convertCurrency = async (
   let amountInBs = amount;
   if (fromCurrency !== "Bs") {
     const fromRate = rates[fromCurrency];
-    if (!fromRate || !fromRate.rate) {
+    if (!fromRate || !fromRate.rate || fromRate.rate <= 0) {
       console.warn(`No se encontró tasa de cambio para ${fromCurrency}`);
-      return amount;
+      return null;
     }
     amountInBs = convertToBs(amount, fromCurrency, fromRate.rate);
   }
@@ -153,9 +156,9 @@ export const convertCurrency = async (
   if (toCurrency === "Bs") return amountInBs;
 
   const toRate = rates[toCurrency];
-  if (!toRate || !toRate.rate) {
+  if (!toRate || !toRate.rate || toRate.rate <= 0) {
     console.warn(`No se encontró tasa de cambio para ${toCurrency}`);
-    return amountInBs;
+    return null;
   }
   return convertFromBs(amountInBs, toCurrency, toRate.rate);
 };
@@ -187,12 +190,15 @@ export const getCurrencySymbol = (currency: Currency): string => {
   return symbols[currency];
 };
 
-// Convertir precio de producto a Bs usando tasas de cambio
+/**
+ * Convierte precio de catálogo a Bs.
+ * @returns `null` si la moneda es USD/EUR y no hay tasa (evita guardar Bs falsos).
+ */
 export const convertProductPriceToBs = async (
   price: number,
   currency: Currency,
   rates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
-): Promise<number> => {
+): Promise<number | null> => {
   if (currency === "Bs") return price;
 
   // Si no se proporcionan las tasas, obtenerlas
@@ -203,8 +209,8 @@ export const convertProductPriceToBs = async (
   if (currency === "USD") {
     const rate = rates.USD?.rate;
     if (!rate || rate <= 0) {
-      console.warn("No se encontró tasa de cambio para USD, usando precio original");
-      return price;
+      console.warn("No se encontró tasa de cambio para USD");
+      return null;
     }
     return price * rate;
   }
@@ -212,8 +218,8 @@ export const convertProductPriceToBs = async (
   if (currency === "EUR") {
     const rate = rates.EUR?.rate;
     if (!rate || rate <= 0) {
-      console.warn("No se encontró tasa de cambio para EUR, usando precio original");
-      return price;
+      console.warn("No se encontró tasa de cambio para EUR");
+      return null;
     }
     return price * rate;
   }
@@ -221,12 +227,12 @@ export const convertProductPriceToBs = async (
   return price;
 };
 
-// Convertir ajuste de precio de atributo a Bs
+/** Igual criterio que convertProductPriceToBs: `null` si no se puede convertir. */
 export const convertAttributeAdjustmentToBs = async (
   adjustment: number,
   currency: Currency,
   rates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
-): Promise<number> => {
+): Promise<number | null> => {
   if (currency === "Bs" || !currency) return adjustment;
   return convertProductPriceToBs(adjustment, currency, rates);
 };

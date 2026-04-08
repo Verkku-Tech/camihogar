@@ -40,7 +40,6 @@ import {
 import {
   formatCurrency,
   getActiveExchangeRates,
-  convertProductPriceToBs,
 } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
 

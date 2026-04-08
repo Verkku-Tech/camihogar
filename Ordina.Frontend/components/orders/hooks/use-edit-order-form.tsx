@@ -22,7 +22,6 @@ import {
 } from "@/lib/storage";
 import {
   getActiveExchangeRates,
-  convertCurrency,
   formatCurrency,
   type ExchangeRate,
   type Currency,
@@ -190,7 +189,7 @@ export interface UseOrderFormReturn {
     value: number,
     fromCurrency: Currency,
     toCurrency: Currency
-  ) => number;
+  ) => number | null;
   getDefaultCurrencyFromSelection: () => Currency;
   getCurrencyOrder: () => Currency[];
   handleProductsSelect: (products: OrderProduct[]) => void;
@@ -507,27 +506,27 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
   }, [selectedCurrencies, preferredCurrency, exchangeRates]);
 
   const convertCurrencyValue = useCallback(
-    (value: number, fromCurrency: Currency, toCurrency: Currency): number => {
+    (value: number, fromCurrency: Currency, toCurrency: Currency): number | null => {
       if (fromCurrency === toCurrency) return value;
       if (fromCurrency === "Bs") {
         const rate =
           toCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
-        return rate && rate > 0 ? value / rate : value;
+        return rate && rate > 0 ? value / rate : null;
       }
       if (toCurrency === "Bs") {
         const rate =
           fromCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
-        return rate && rate > 0 ? value * rate : value;
+        return rate && rate > 0 ? value * rate : null;
       }
       // Entre USD y EUR
       const fromRate =
         fromCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
       const toRate =
         toCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
-      if (fromRate && toRate && fromRate > 0) {
+      if (fromRate && toRate && fromRate > 0 && toRate > 0) {
         return (value * fromRate) / toRate;
       }
-      return value;
+      return null;
     },
     [exchangeRates]
   );
