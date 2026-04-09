@@ -853,6 +853,10 @@ public class ReportService : IReportService
 
         foreach (var order in orders)
         {
+            // Presupuestos no forman parte del reporte de pagos de pedidos
+            if (string.Equals(order.Type, "Budget", StringComparison.OrdinalIgnoreCase))
+                continue;
+
             // Procesar pagos mixtos si existen
             if (order.MixedPayments != null && order.MixedPayments.Count > 0)
             {
