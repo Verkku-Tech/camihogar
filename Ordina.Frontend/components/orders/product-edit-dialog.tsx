@@ -33,7 +33,7 @@ import {
   calculateProductUnitPriceWithAttributes,
 } from "@/lib/storage";
 import { toast } from "sonner";
-import { getActiveExchangeRates, formatCurrency, convertProductPriceToBs, type Currency } from "@/lib/currency-utils";
+import { getActiveExchangeRates, formatCurrency, type Currency } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";

@@ -282,6 +282,8 @@ export function PaymentsReport() {
     if (endDateObj) endDateObj.setHours(23, 59, 59, 999)
 
     orders.forEach((order) => {
+        if (order.type?.toLowerCase() === "budget") return
+
         // Procesar pagos mixtos si existen
         if (order.mixedPayments && order.mixedPayments.length > 0) {
           order.mixedPayments.forEach((payment, index) => {
