@@ -31,6 +31,17 @@ import {
 } from "@/lib/storage";
 import { Currency } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
+import { useAuth } from "@/contexts/auth-context";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface NewOrderDialogProps {
   open: boolean;
@@ -78,7 +89,8 @@ export const DELIVERY_ZONES = [
 
 export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const { preferredCurrency } = useCurrency();
-  const orderForm = useOrderForm(open);
+  const { user } = useAuth();
+  const orderForm = useOrderForm(open, user?.id);
 
   // Estados locales para diálogos modales
   const [isClientLookupOpen, setIsClientLookupOpen] = useState(false);
@@ -244,19 +256,20 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   // Handler para crear presupuesto
   const handleCreateBudget = async () => {
     try {
-      if (
-        !orderForm.selectedClient ||
-        !orderForm.formData.vendor ||
-        orderForm.selectedProducts.length === 0
-      ) {
+      if (!orderForm.canCreateBudget) {
         toast.error("Por favor completa la información requerida");
+        return;
+      }
+
+      if (!orderForm.selectedClient) {
+        toast.error("Por favor selecciona un cliente");
         return;
       }
 
       const orderData = {
         clientId: orderForm.selectedClient.id,
         clientName: orderForm.selectedClient.name,
-        vendorId: orderForm.formData.vendor,
+        vendorId: orderForm.formData.vendor || "",
         vendorName:
           orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)?.name || "",
         referrerId: orderForm.formData.referrer || undefined,
@@ -311,6 +324,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       const budget = await addBudget(orderData);
       toast.success(`Presupuesto ${budget.budgetNumber} creado exitosamente`);
+      orderForm.clearDraftStorage();
       onOpenChange(false);
     } catch (error) {
       console.error("Error creating budget:", error);
@@ -321,6 +335,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   // Handler para submit del pedido
   const handleSubmit = async () => {
     try {
+      if (orderForm.isOnlineSellerReferrer) {
+        toast.error(
+          "En modo referidor solo puedes generar presupuestos. Un vendedor de tienda convertirá el presupuesto en pedido."
+        );
+        return;
+      }
       if (!orderForm.selectedClient) {
         toast.error("Por favor selecciona un cliente");
         return;
@@ -349,14 +369,18 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
-      // Solo validar pagos si NO es "Pago a la entrega"
-      if (orderForm.paymentCondition !== "pago_a_entrega" && orderForm.payments.length === 0) {
+      const noPaymentsRequired =
+        orderForm.paymentCondition === "pago_a_entrega" ||
+        orderForm.paymentCondition === "cashea";
+
+      // Cashea y pago a la entrega: no se exigen líneas de pago en tienda
+      if (!noPaymentsRequired && orderForm.payments.length === 0) {
         toast.error("Por favor agrega al menos un pago");
         return;
       }
 
       // Validar que cada pago tenga los campos requeridos completos
-      if (orderForm.paymentCondition !== "pago_a_entrega") {
+      if (!noPaymentsRequired) {
         for (let i = 0; i < orderForm.payments.length; i++) {
           const payment = orderForm.payments[i];
           const paymentLabel = `Pago ${i + 1}`;
@@ -398,17 +422,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               toast.error(`${paymentLabel} (Tarjeta de débito): Debe seleccionar el banco`);
               return;
             }
-            if (!payment.paymentDetails?.cardReference) {
-              toast.error(`${paymentLabel} (Tarjeta de débito): Debe ingresar el número de referencia`);
-              return;
-            }
           } else if (payment.method === "Tarjeta de Crédito") {
             if (!payment.paymentDetails?.bank) {
               toast.error(`${paymentLabel} (Tarjeta de Crédito): Debe seleccionar el banco`);
-              return;
-            }
-            if (!payment.paymentDetails?.cardReference) {
-              toast.error(`${paymentLabel} (Tarjeta de Crédito): Debe ingresar el número de referencia`);
               return;
             }
           } else if (payment.method === "Zelle") {
@@ -517,6 +533,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const handleConfirmOrder = async () => {
     try {
       if (!pendingOrderData || !orderForm.selectedClient) return;
+      if (orderForm.isOnlineSellerReferrer) {
+        toast.error("No puedes confirmar un pedido en modo referidor.");
+        return;
+      }
 
       const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
         clientId: orderForm.selectedClient.id,
@@ -543,7 +563,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         deliveryCost: orderForm.deliveryCost,
         total: orderForm.total,
         paymentType:
-          orderForm.paymentCondition === "pago_a_entrega"
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea"
             ? "directo"
             : orderForm.paymentCondition === "todo_pago"
             ? "directo"
@@ -573,17 +594,31 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         paymentMethod:
           orderForm.paymentCondition === "pago_a_entrega"
             ? "Pago a la entrega"
+            : orderForm.paymentCondition === "cashea"
+            ? "Cashea"
             : orderForm.payments.length > 1
             ? "Mixto"
             : orderForm.payments[0]?.method || "",
         paymentDetails:
-          orderForm.paymentCondition === "pago_a_entrega" || orderForm.payments.length === 0
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea" ||
+          orderForm.payments.length === 0
             ? undefined
             : orderForm.payments.length === 1
             ? orderForm.payments[0]?.paymentDetails
             : undefined,
-        partialPayments: orderForm.paymentCondition === "pago_a_entrega" ? undefined : orderForm.payments,
-        mixedPayments: orderForm.paymentCondition === "pago_a_entrega" ? undefined : (orderForm.payments.length > 1 ? orderForm.payments : undefined),
+        partialPayments:
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea"
+            ? undefined
+            : orderForm.payments,
+        mixedPayments:
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea"
+            ? undefined
+            : orderForm.payments.length > 1
+            ? orderForm.payments
+            : undefined,
         deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
         hasDelivery: orderForm.hasDelivery,
         deliveryServices: orderForm.hasDelivery
@@ -638,6 +673,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       onOpenChange(false);
       toast.success("Pedido creado exitosamente");
 
+      orderForm.clearDraftStorage();
       // Reset form
       orderForm.resetForm();
       setPendingOrderData(null);
@@ -685,10 +721,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             <Step3OrderDetails
               orderForm={orderForm}
               onSubmit={handleSubmit}
-              addPayment={addPayment}
+              addPayment={
+                orderForm.paymentCondition === "cashea" ? undefined : addPayment
+              }
               updatePayment={updatePayment}
               updatePaymentDetails={updatePaymentDetails}
-              removePayment={removePayment}
+              removePayment={
+                orderForm.paymentCondition === "cashea" ? undefined : removePayment
+              }
               getAccountsForPaymentMethod={getAccountsForPaymentMethod}
               saveAccountInfoToPayment={saveAccountInfoToPayment}
               updatePaymentImages={updatePaymentImages}
@@ -730,7 +770,16 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                   <ChevronRight className="w-4 h-4 ml-2" />
                 </Button>
               ) : (
-                <Button onClick={handleSubmit} className="w-full sm:w-auto">
+                <Button
+                  onClick={handleSubmit}
+                  className="w-full sm:w-auto"
+                  disabled={orderForm.isOnlineSellerReferrer}
+                  title={
+                    orderForm.isOnlineSellerReferrer
+                      ? "En modo referidor solo puedes crear presupuestos"
+                      : undefined
+                  }
+                >
                   Crear Pedido
                 </Button>
               )}
@@ -787,6 +836,26 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           orderData={pendingOrderData}
         />
       )}
+
+      {/* Después del Dialog principal para que el portal quede encima (mismo z-index) */}
+      <AlertDialog open={orderForm.needsDraftPrompt}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tienes un pedido en borrador</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Deseas continuar donde lo dejaste?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => orderForm.discardDraftAndStartFresh()}>
+              Nuevo pedido
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => orderForm.applyDraftAndContinue()}>
+              Continuar borrador
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

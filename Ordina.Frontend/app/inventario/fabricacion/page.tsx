@@ -989,7 +989,26 @@ export default function FabricacionPage() {
                     {Object.entries(groupedRows).map(([orderId, group]) => {
                       const isExpanded = expandedOrders.has(orderId)
                       const totalProducts = group.products.length
-                      
+
+                      const statusCount = {
+                        debe_fabricar: group.products.filter((r) => r.status === "debe_fabricar").length,
+                        fabricando: group.products.filter((r) => r.status === "fabricando").length,
+                        almacen: group.products.filter((r) => r.status === "almacen_no_fabricado").length,
+                      }
+                      const providers = [
+                        ...new Set(
+                          group.products
+                            .map((r) => r.product.manufacturingProviderName?.trim())
+                            .filter((name): name is string => Boolean(name)),
+                        ),
+                      ]
+                      const providerLabel =
+                        providers.length === 0
+                          ? null
+                          : providers.length === 1
+                            ? providers[0]
+                            : "Múltiples proveedores"
+
                       return (
                         <Collapsible
                           key={orderId}
@@ -1051,11 +1070,36 @@ export default function FabricacionPage() {
                                       </div>
                                     </TableCell>
                                         <TableCell colSpan={6}>
-                                          <div className="flex items-center justify-end gap-2">
+                                          <div className="flex items-center justify-end gap-2 flex-wrap">
+                                            <div className="flex items-center gap-2 flex-wrap justify-end">
+                                              {statusCount.debe_fabricar > 0 && (
+                                                <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300">
+                                                  <AlertCircle className="w-3 h-3 mr-1" />
+                                                  {statusCount.debe_fabricar} Debe Fabricar
+                                                </Badge>
+                                              )}
+                                              {statusCount.fabricando > 0 && (
+                                                <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
+                                                  <Clock className="w-3 h-3 mr-1" />
+                                                  {statusCount.fabricando} Fabricando
+                                                </Badge>
+                                              )}
+                                              {statusCount.almacen > 0 && (
+                                                <Badge className="bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                                                  <Package className="w-3 h-3 mr-1" />
+                                                  {statusCount.almacen} En almacén
+                                                </Badge>
+                                              )}
+                                              {providerLabel && (
+                                                <span className="text-xs text-muted-foreground">
+                                                  {providerLabel}
+                                                </span>
+                                              )}
+                                            </div>
                                             <Button
                                               variant="ghost"
                                               size="sm"
-                                              className="h-7 text-xs"
+                                              className="h-7 text-xs shrink-0"
                                               onClick={(e) => {
                                                 e.stopPropagation()
                                                 router.push(`/inventario/fabricacion/${group.orderNumber}`)
