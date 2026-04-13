@@ -1008,8 +1008,19 @@ export function OrderConfirmationDialog({
           </Card>
         );
 
-      case "products":
+      case "products": {
         const availableCurrenciesProducts = getAvailableCurrencies();
+        const paidInStoreProducts = orderData.payments.reduce(
+          (sum, p) => sum + (p.amount || 0),
+          0
+        );
+        const isCasheaConfirmation = orderData.paymentCondition === "cashea";
+        const displayedPaidConfirmation = isCasheaConfirmation
+          ? orderData.total
+          : paidInStoreProducts;
+        const displayedRemainingConfirmation = isCasheaConfirmation
+          ? 0
+          : orderData.total - paidInStoreProducts;
         return (
           <Card>
             <CardHeader>
@@ -1247,7 +1258,7 @@ export function OrderConfirmationDialog({
                             Total pagado:
                           </TableCell>
                           {renderCurrencyCell(
-                            orderData.payments.reduce((sum, p) => sum + (p.amount || 0), 0),
+                            displayedPaidConfirmation,
                             "font-semibold"
                           )}
                         </TableRow>
@@ -1260,14 +1271,16 @@ export function OrderConfirmationDialog({
                           {renderCurrencyCell(orderData.total)}
                         </TableRow>
 
-                        {/* Resta por pagar */}
+                        {/* Resta por pagar (Cashea: mostrar cubierto = mismo total / falta 0) */}
                         <TableRow className="font-semibold border-t">
                           <TableCell className="text-xs sm:text-sm">
-                            Falta:
+                            {isCasheaConfirmation ? "Saldo en tienda:" : "Falta:"}
                           </TableCell>
                           {renderCurrencyCell(
-                            orderData.total - orderData.payments.reduce((sum, p) => sum + (p.amount || 0), 0),
-                            "text-sm sm:text-base font-semibold"
+                            displayedRemainingConfirmation,
+                            displayedRemainingConfirmation < 0.01
+                              ? "text-sm sm:text-base font-semibold text-green-600"
+                              : "text-sm sm:text-base font-semibold"
                           )}
                         </TableRow>
                       </TableBody>
@@ -1278,6 +1291,7 @@ export function OrderConfirmationDialog({
             </CardContent>
           </Card>
         );
+      }
 
       // Casos eliminados: observations, delivery, payments, totals
       // Solo quedan: general y products
