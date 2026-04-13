@@ -11,19 +11,34 @@ import { toast } from "sonner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DELIVERY_ZONES } from "@/components/orders/new-order-dialog"
 
+/** Fila del reporte (API en camelCase). */
 interface DispatchReportRow {
-  fecha: string
   notaDespacho: string
   cliente: string
   telefono1: string
   telefono2: string
   cantidadTotal: number
   descripcion: string
-  zona: string
   direccion: string
-  observaciones: string
   estadoPago: string
   importeTotal: number
+  saldoPendiente: number
+}
+
+function normalizeDispatchRow(raw: Record<string, unknown>): DispatchReportRow {
+  const g = (k: string) => raw[k] ?? raw[k.charAt(0).toUpperCase() + k.slice(1)]
+  return {
+    notaDespacho: String(g("notaDespacho") ?? ""),
+    cliente: String(g("cliente") ?? ""),
+    telefono1: String(g("telefono1") ?? ""),
+    telefono2: String(g("telefono2") ?? ""),
+    cantidadTotal: Number(g("cantidadTotal") ?? 0),
+    descripcion: String(g("descripcion") ?? ""),
+    direccion: String(g("direccion") ?? ""),
+    estadoPago: String(g("estadoPago") ?? ""),
+    importeTotal: Number(g("importeTotal") ?? 0),
+    saldoPendiente: Number(g("saldoPendiente") ?? 0),
+  }
 }
 
 export function DispatchReport() {
@@ -71,7 +86,10 @@ export function DispatchReport() {
         }
 
         const data = await response.json()
-        setReportData(data)
+        const rows = Array.isArray(data)
+          ? (data as Record<string, unknown>[]).map(normalizeDispatchRow)
+          : []
+        setReportData(rows)
       } catch (error) {
         console.error("Error loading report from backend:", error)
         toast.error("Error al cargar el reporte de despacho")
@@ -144,21 +162,9 @@ export function DispatchReport() {
     }).format(amount)
   }
 
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString)
-      return date.toLocaleDateString("es-VE", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      })
-    } catch {
-      return dateString
-    }
-  }
-
   // Calcular totales
   const totalImporte = reportData.reduce((sum, row) => sum + row.importeTotal, 0)
+  const totalSaldoPendiente = reportData.reduce((sum, row) => sum + row.saldoPendiente, 0)
 
   return (
     <div className="space-y-6">
@@ -257,48 +263,47 @@ export function DispatchReport() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Nota de despacho</TableHead>
+                    <TableHead>Pedido</TableHead>
                     <TableHead>Cliente</TableHead>
-                    <TableHead>Telefono1</TableHead>
-                    <TableHead>Telefono2</TableHead>
+                    <TableHead>Teléfono 1</TableHead>
+                    <TableHead>Teléfono 2</TableHead>
+                    <TableHead>Dirección</TableHead>
                     <TableHead className="text-center">Cantidad</TableHead>
                     <TableHead>Descripción</TableHead>
-                    <TableHead>Zona</TableHead>
-                    <TableHead>Dirección</TableHead>
-                    <TableHead>Observaciones</TableHead>
-                    <TableHead>Estado de Pago</TableHead>
-                    <TableHead className="text-right">Importe Total</TableHead>
+                    <TableHead>Estado de pago</TableHead>
+                    <TableHead className="text-right">Importe total</TableHead>
+                    <TableHead className="text-right">Saldo pendiente (USD)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {reportData.map((row, index) => (
                     <TableRow key={index}>
-                      <TableCell className="whitespace-nowrap">
-                        {formatDate(row.fecha)}
-                      </TableCell>
-                      <TableCell className="font-medium">{row.notaDespacho}</TableCell>
+                      <TableCell className="font-medium whitespace-nowrap">{row.notaDespacho}</TableCell>
                       <TableCell className="max-w-[200px] truncate">{row.cliente}</TableCell>
                       <TableCell>{row.telefono1}</TableCell>
                       <TableCell>{row.telefono2}</TableCell>
+                      <TableCell className="max-w-[220px]">{row.direccion}</TableCell>
                       <TableCell className="text-center">{row.cantidadTotal}</TableCell>
-                      <TableCell className="max-w-[300px]">{row.descripcion}</TableCell>
-                      <TableCell>{row.zona}</TableCell>
-                      <TableCell className="max-w-[200px]">{row.direccion}</TableCell>
-                      <TableCell className="max-w-[200px]">{row.observaciones}</TableCell>
+                      <TableCell className="max-w-[320px]">{row.descripcion}</TableCell>
                       <TableCell>{row.estadoPago}</TableCell>
                       <TableCell className="text-right font-medium">
                         {formatCurrency(row.importeTotal)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(row.saldoPendiente)}
                       </TableCell>
                     </TableRow>
                   ))}
                   {reportData.length > 0 && (
                     <TableRow className="font-bold bg-muted/50">
-                      <TableCell colSpan={11} className="text-right">
-                        Total Importe:
+                      <TableCell colSpan={8} className="text-right">
+                        Totales
                       </TableCell>
                       <TableCell className="text-right">
                         {formatCurrency(totalImporte)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatCurrency(totalSaldoPendiente)}
                       </TableCell>
                     </TableRow>
                   )}

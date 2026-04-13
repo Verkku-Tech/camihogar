@@ -100,15 +100,17 @@ public class CommissionSettingsController : ControllerBase
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(dto.CategoryId))
+            if (string.IsNullOrWhiteSpace(dto.CategoryId) && string.IsNullOrWhiteSpace(dto.CategoryName))
             {
-                return BadRequest(new { message = "El ID de la categoría es requerido" });
+                return BadRequest(new { message = "Se requiere categoryId o categoryName" });
             }
 
             var commission = new ProductCommission
             {
-                CategoryId = dto.CategoryId,
-                CategoryName = dto.CategoryName,
+                CategoryId = string.IsNullOrWhiteSpace(dto.CategoryId)
+                    ? (dto.CategoryName ?? string.Empty).Trim()
+                    : dto.CategoryId.Trim(),
+                CategoryName = (dto.CategoryName ?? string.Empty).Trim(),
                 CommissionValue = dto.CommissionValue
             };
 
@@ -145,13 +147,15 @@ public class CommissionSettingsController : ControllerBase
 
             foreach (var dto in dtos)
             {
-                if (string.IsNullOrWhiteSpace(dto.CategoryId))
+                if (string.IsNullOrWhiteSpace(dto.CategoryId) && string.IsNullOrWhiteSpace(dto.CategoryName))
                     continue;
 
                 var commission = new ProductCommission
                 {
-                    CategoryId = dto.CategoryId,
-                    CategoryName = dto.CategoryName,
+                    CategoryId = string.IsNullOrWhiteSpace(dto.CategoryId)
+                        ? (dto.CategoryName ?? string.Empty).Trim()
+                        : dto.CategoryId.Trim(),
+                    CategoryName = (dto.CategoryName ?? string.Empty).Trim(),
                     CommissionValue = dto.CommissionValue
                 };
 

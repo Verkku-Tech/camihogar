@@ -710,7 +710,7 @@ export function Step3OrderDetails({
                         : (() => {
                           const subtotal = orderForm.subtotalAfterProductDiscounts;
                           const taxAmount = subtotal * 0.16;
-                          const deliveryCost = orderForm.calculateDeliveryCost();
+                          const deliveryCost = orderForm.deliveryCost;
                           const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
                           return totalBeforeGeneralDiscount;
                         })()
@@ -722,7 +722,7 @@ export function Step3OrderDetails({
                           ? (() => {
                             const subtotal = orderForm.subtotalAfterProductDiscounts;
                             const taxAmount = subtotal * 0.16;
-                            const deliveryCost = orderForm.calculateDeliveryCost();
+                            const deliveryCost = orderForm.deliveryCost;
                             const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
                             return totalBeforeGeneralDiscount > 0
                               ? Math.round(
@@ -1694,6 +1694,15 @@ export function Step3OrderDetails({
                                       </div>
                                     )}
 
+                                    {paymentCurrency !== "Bs" &&
+                                      !payment.paymentDetails?.useCustomRate && (
+                                        <p className="text-xs text-muted-foreground">
+                                          El monto se convierte a Bs automáticamente usando la tasa
+                                          del día. Si la tasa del banco difiere, activa &quot;Tasa
+                                          manual&quot; arriba.
+                                        </p>
+                                      )}
+
                                     <div className="grid gap-3 sm:grid-cols-2">
                                       {/* Monto en Divisa */}
                                       <div className="space-y-2">
@@ -1868,7 +1877,7 @@ export function Step3OrderDetails({
                               })()}
                             </div>
                             {/* Campo de cuenta para métodos bancarios y digitales */}
-                            {["Banesco Panamá", "Mercantil Panamá", "Binance", "Paypal", "Zelle"].includes(payment.method) && (
+                            {["Banesco Panamá", "Mercantil Panamá", "Binance", "Paypal"].includes(payment.method) && (
                               <div className="space-y-2">
                                 <Label
                                   htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-account-${payment.id}`}

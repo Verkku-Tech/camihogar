@@ -4,8 +4,7 @@ using MongoDB.Bson.Serialization.Attributes;
 namespace Ordina.Database.Entities.Commission;
 
 /// <summary>
-/// Representa la comisión configurada para una categoría/familia de productos.
-/// Las comisiones se pagan en múltiplos de 2.5 (2.5, 5, 7.5, etc.)
+/// Comisión por categoría/familia: USD fijos por unidad vendida (0 = sin comisión).
 /// </summary>
 public class ProductCommission
 {
@@ -21,7 +20,7 @@ public class ProductCommission
 
     [BsonElement("commissionValue")]
     [BsonRepresentation(BsonType.Decimal128)]
-    public decimal CommissionValue { get; set; } // 2.5, 5, 7.5, etc.
+    public decimal CommissionValue { get; set; }
 
     [BsonElement("createdAt")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

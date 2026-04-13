@@ -698,6 +698,7 @@ public class OrderService : IOrderService
             Bank = paymentDetails.Bank,
             Email = paymentDetails.Email,
             Wallet = paymentDetails.Wallet,
+            Envia = paymentDetails.Envia,
             IsConciliated = paymentDetails.IsConciliated
         };
     }
@@ -724,6 +725,7 @@ public class OrderService : IOrderService
             Bank = dto.Bank,
             Email = dto.Email,
             Wallet = dto.Wallet,
+            Envia = dto.Envia,
             IsConciliated = dto.IsConciliated
         };
     }

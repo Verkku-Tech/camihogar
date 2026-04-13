@@ -4785,7 +4785,8 @@ export interface ProductCommission {
   id: string;
   categoryId: string;
   categoryName: string;
-  commissionValue: number; // 2.5, 5, 7.5, etc.
+  /** USD fijos por unidad vendida en esa familia/categoría (0 = sin comisión). */
+  commissionValue: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -4894,7 +4895,8 @@ export const seedDefaultSaleTypeRules = async (): Promise<SaleTypeCommissionRule
 };
 
 // ===== COMMISSION CALCULATION FUNCTIONS =====
-// Alineado con ReportService.CalculateProductCommission (backend) + fallback legacy (IndexedDB commissions).
+// Alineado con ReportService.CalculateProductCommission (backend): USD por unidad × cantidad;
+// distribución por tipo de venta = % de esa comisión de familia. Fallback legacy si comisión familia = 0.
 
 export type CommissionCalculationContext = {
   productCommissions: ProductCommission[];
@@ -4903,10 +4905,33 @@ export type CommissionCalculationContext = {
   legacyCommissions: Commission[];
 };
 
-const determineSaleTypeForCommission = (order: Order): string => {
+/** Código de tipo de venta usado para reglas de distribución (prioriza saleType, luego deliveryType). */
+export const getOrderSaleTypeCodeForCommission = (order: Order): string => {
   if (order.saleType) return order.saleType;
   if (order.deliveryType) return order.deliveryType;
   return "entrega";
+};
+
+const SALE_TYPE_CODE_LABELS: Record<string, string> = {
+  delivery_express: "Delivery express",
+  encargo: "Encargo",
+  encargo_entrega: "Encargo con entrega",
+  entrega: "Entrega",
+  retiro_almacen: "Retiro por almacén",
+  retiro_tienda: "Retiro por tienda",
+  sistema_apartado: "Sistema apartado",
+  entrega_programada: "Entrega programada",
+};
+
+/** Etiqueta legible del tipo de venta (misma clave que reparte comisión). */
+export const getCommissionSaleTypeLabelForOrder = (
+  order: Order,
+  rules: SaleTypeCommissionRule[]
+): string => {
+  const code = getOrderSaleTypeCodeForCommission(order);
+  const rule = rules.find((r) => r.saleType.toLowerCase() === code.toLowerCase());
+  if (rule?.saleTypeLabel?.trim()) return rule.saleTypeLabel.trim();
+  return SALE_TYPE_CODE_LABELS[code] ?? code;
 };
 
 const findCategoryCommissionRate = (
@@ -4915,11 +4940,12 @@ const findCategoryCommissionRate = (
 ): number => {
   const cat = product.category?.trim() ?? "";
   if (!cat) return 0;
+  const catLower = cat.toLowerCase();
   const found = productCommissions.find(
     (c) =>
-      (c.categoryName &&
-        c.categoryName.toLowerCase() === cat.toLowerCase()) ||
-      c.categoryId === cat
+      (c.categoryName && c.categoryName.trim().toLowerCase() === catLower) ||
+      c.categoryId === cat ||
+      c.categoryId?.trim().toLowerCase() === catLower
   );
   return found?.commissionValue ?? 0;
 };
@@ -4966,7 +4992,8 @@ export const computeProductCommissionSplit = (
   const isSharedSale = hasReferrer && !isExclusiveVendor;
 
   const baseRate = findCategoryCommissionRate(product, ctx.productCommissions);
-  const productTotal = product.total;
+  const qty = Math.max(product.quantity || 1, 1);
+  const familyCommission = baseRate > 0 ? baseRate * qty : 0;
 
   if (baseRate <= 0) {
     const vendorFull = legacyCommissionForSeller(
@@ -5003,18 +5030,18 @@ export const computeProductCommissionSplit = (
   }
 
   if (isSharedSale) {
-    const saleType = determineSaleTypeForCommission(order);
+    const saleType = getOrderSaleTypeCodeForCommission(order);
     const rule = ctx.saleTypeRules.find(
       (r) => r.saleType.toLowerCase() === saleType.toLowerCase()
     );
     if (rule) {
       return {
-        vendorCommission: productTotal * (rule.vendorRate / 100),
-        referrerCommission: productTotal * (rule.referrerRate / 100),
+        vendorCommission: familyCommission * (rule.vendorRate / 100),
+        referrerCommission: familyCommission * (rule.referrerRate / 100),
         isShared: true,
       };
     }
-    const half = (productTotal * (baseRate / 100)) / 2;
+    const half = familyCommission / 2;
     return {
       vendorCommission: half,
       referrerCommission: half,
@@ -5023,7 +5050,7 @@ export const computeProductCommissionSplit = (
   }
 
   return {
-    vendorCommission: productTotal * (baseRate / 100),
+    vendorCommission: familyCommission,
     referrerCommission: 0,
     isShared: false,
   };
@@ -5107,16 +5134,22 @@ export const calculateOrderCommissions = async (
     for (const product of order.products) {
       const split = computeProductCommissionSplit(order, product, ctx);
 
-      results.push({
-        sellerId: order.vendorId,
-        sellerName: order.vendorName,
-        productId: product.id,
-        productName: product.name,
-        commission: split.vendorCommission,
-        isShared: split.isShared,
-      });
+      if (split.vendorCommission === 0 && split.referrerCommission === 0) {
+        continue;
+      }
 
-      if (split.isShared && order.referrerId) {
+      if (split.vendorCommission !== 0) {
+        results.push({
+          sellerId: order.vendorId,
+          sellerName: order.vendorName,
+          productId: product.id,
+          productName: product.name,
+          commission: split.vendorCommission,
+          isShared: split.isShared,
+        });
+      }
+
+      if (split.isShared && order.referrerId && split.referrerCommission !== 0) {
         results.push({
           sellerId: order.referrerId,
           sellerName: order.referrerName || "",
