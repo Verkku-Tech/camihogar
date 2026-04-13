@@ -9,7 +9,8 @@ public class CommissionReportRowDto
     public string Pedido { get; set; } = string.Empty; // Número de pedido
     public string Descripcion { get; set; } = string.Empty;
     public int CantidadArticulos { get; set; }
-    public string TipoCompra { get; set; } = string.Empty;
+    /// <summary>Tipo de venta (saleType/deliveryType) que determina la regla de distribución de comisión.</summary>
+    public string TipoVenta { get; set; } = string.Empty;
     
     // Comisión del vendedor principal
     public decimal Comision { get; set; }

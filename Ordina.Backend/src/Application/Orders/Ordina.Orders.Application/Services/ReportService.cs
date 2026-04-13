@@ -1128,7 +1128,7 @@ public class ReportService : IReportService
                 Pedido = row.Pedido,
                 Descripcion = row.Descripcion,
                 CantidadArticulos = row.CantidadArticulos,
-                TipoCompra = row.TipoCompra,
+                TipoVenta = row.TipoVenta,
                 Comision = row.Comision,
                 VendedorSecundario = row.VendedorSecundario,
                 ComisionSecundaria = row.ComisionSecundaria,
@@ -1173,7 +1173,7 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 3, "Vendedor");
                 sl.SetCellValue(1, 4, "Pedido");
                 sl.SetCellValue(1, 5, "Cant. Artículos");
-                sl.SetCellValue(1, 6, "Tipo de Compra");
+                sl.SetCellValue(1, 6, "Tipo de venta");
                 sl.SetCellValue(1, 7, "Comisión Vendedor");
                 sl.SetCellValue(1, 8, "Total Comisión + Sueldo");
                 sl.SetCellValue(1, 9, "Comisión Postventa");
@@ -1197,7 +1197,7 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 3, item.Vendedor);
                     sl.SetCellValue(row, 4, item.Pedido);
                     sl.SetCellValue(row, 5, item.CantidadArticulos);
-                    sl.SetCellValue(row, 6, item.TipoCompra);
+                    sl.SetCellValue(row, 6, item.TipoVenta);
                     sl.SetCellValue(row, 7, (double)item.Comision);
                     sl.SetCellValue(row, 8, (double)item.TotalComisionMasSueldo);
                     sl.SetCellValue(row, 9, item.ComisionSecundaria.HasValue ? (double)item.ComisionSecundaria.Value : 0);
@@ -1210,7 +1210,7 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(3, 30);  // Vendedor
                 sl.SetColumnWidth(4, 15);  // Pedido
                 sl.SetColumnWidth(5, 15);  // Cant. Artículos
-                sl.SetColumnWidth(6, 20);  // Tipo de Compra
+                sl.SetColumnWidth(6, 28);  // Tipo de venta
                 sl.SetColumnWidth(7, 18);  // Comisión Vendedor
                 sl.SetColumnWidth(8, 22);  // Total Comisión + Sueldo
                 sl.SetColumnWidth(9, 18);  // Comisión Postventa
@@ -1259,7 +1259,7 @@ public class ReportService : IReportService
                 Pedido = row.Pedido,
                 Descripcion = row.Descripcion,
                 CantidadArticulos = row.CantidadArticulos,
-                TipoCompra = row.TipoCompra,
+                TipoVenta = row.TipoVenta,
                 Comision = row.Comision,
                 VendedorSecundario = row.VendedorSecundario,
                 ComisionSecundaria = row.ComisionSecundaria,
@@ -1307,6 +1307,7 @@ public class ReportService : IReportService
             var mainVendor = users.FirstOrDefault(u => u.Id == order.VendorId);
             var isExclusiveVendor = mainVendor?.ExclusiveCommission ?? false;
             var vendorBaseSalary = mainVendor?.BaseSalary ?? 0m;
+            var tipoVentaLabel = GetCommissionSaleTypeLabel(order, saleTypeRules);
 
             // Procesar cada producto del pedido (una fila por producto)
             foreach (var product in order.Products)
@@ -1331,7 +1332,7 @@ public class ReportService : IReportService
                         Pedido = order.OrderNumber,
                         Descripcion = await FormatProductDescriptionAsync(product),
                         CantidadArticulos = product.Quantity,
-                        TipoCompra = GetPurchaseType(order),
+                        TipoVenta = tipoVentaLabel,
                         Comision = vendorCommission,
                         VendedorSecundario = order.ReferrerName,
                         ComisionSecundaria = referrerCommission,
@@ -1354,7 +1355,7 @@ public class ReportService : IReportService
                         Pedido = order.OrderNumber,
                         Descripcion = await FormatProductDescriptionAsync(product),
                         CantidadArticulos = product.Quantity,
-                        TipoCompra = GetPurchaseType(order),
+                        TipoVenta = tipoVentaLabel,
                         Comision = vendorCommission,
                         SueldoBase = vendorBaseSalary,
                         TasaComisionBase = baseRate,
@@ -1443,34 +1444,27 @@ public class ReportService : IReportService
         return "entrega"; // Default
     }
 
-    private string GetPurchaseType(Order order)
+    /// <summary>Etiqueta del tipo de venta que determina la regla de distribución (saleType → deliveryType).</summary>
+    private string GetCommissionSaleTypeLabel(Order order, IEnumerable<SaleTypeCommissionRule> rules)
     {
-        // Mapear deliveryType a tipo de compra
-        if (!string.IsNullOrWhiteSpace(order.DeliveryType))
-        {
-            return order.DeliveryType switch
-            {
-                "entrega_programada" => "Entrega",
-                "delivery_express" => "Delivery express",
-                "retiro_tienda" => "Retiro por tienda",
-                "retiro_almacen" => "Retiro por almacén",
-                _ => order.DeliveryType
-            };
-        }
+        var code = DetermineSaleType(order);
+        var rule = rules.FirstOrDefault(r =>
+            r.SaleType.Equals(code, StringComparison.OrdinalIgnoreCase));
+        if (rule != null && !string.IsNullOrWhiteSpace(rule.SaleTypeLabel))
+            return rule.SaleTypeLabel.Trim();
 
-        // Fallback a saleType
-        if (!string.IsNullOrWhiteSpace(order.SaleType))
+        return code switch
         {
-            return order.SaleType switch
-            {
-                "encargo" => "Encargo",
-                "entrega" => "Entrega",
-                "sistema_apartado" => "Sistema Apartado",
-                _ => order.SaleType
-            };
-        }
-
-        return "-";
+            "delivery_express" => "Delivery express",
+            "encargo" => "Encargo",
+            "encargo_entrega" => "Encargo con entrega",
+            "entrega" => "Entrega",
+            "retiro_almacen" => "Retiro por almacén",
+            "retiro_tienda" => "Retiro por tienda",
+            "sistema_apartado" => "Sistema apartado",
+            "entrega_programada" => "Entrega programada",
+            _ => code
+        };
     }
 
     private (DateTime start, DateTime end) AdjustDateRangeForTeam(DateTime startDate, DateTime endDate, string? team)
@@ -1915,7 +1909,7 @@ public class ReportService : IReportService
         public string Pedido { get; set; } = string.Empty;
         public string Descripcion { get; set; } = string.Empty;
         public int CantidadArticulos { get; set; }
-        public string TipoCompra { get; set; } = string.Empty;
+        public string TipoVenta { get; set; } = string.Empty;
         public decimal Comision { get; set; }
         public string? VendedorSecundario { get; set; }
         public decimal? ComisionSecundaria { get; set; }

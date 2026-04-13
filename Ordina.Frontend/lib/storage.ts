@@ -4905,10 +4905,33 @@ export type CommissionCalculationContext = {
   legacyCommissions: Commission[];
 };
 
-const determineSaleTypeForCommission = (order: Order): string => {
+/** Código de tipo de venta usado para reglas de distribución (prioriza saleType, luego deliveryType). */
+export const getOrderSaleTypeCodeForCommission = (order: Order): string => {
   if (order.saleType) return order.saleType;
   if (order.deliveryType) return order.deliveryType;
   return "entrega";
+};
+
+const SALE_TYPE_CODE_LABELS: Record<string, string> = {
+  delivery_express: "Delivery express",
+  encargo: "Encargo",
+  encargo_entrega: "Encargo con entrega",
+  entrega: "Entrega",
+  retiro_almacen: "Retiro por almacén",
+  retiro_tienda: "Retiro por tienda",
+  sistema_apartado: "Sistema apartado",
+  entrega_programada: "Entrega programada",
+};
+
+/** Etiqueta legible del tipo de venta (misma clave que reparte comisión). */
+export const getCommissionSaleTypeLabelForOrder = (
+  order: Order,
+  rules: SaleTypeCommissionRule[]
+): string => {
+  const code = getOrderSaleTypeCodeForCommission(order);
+  const rule = rules.find((r) => r.saleType.toLowerCase() === code.toLowerCase());
+  if (rule?.saleTypeLabel?.trim()) return rule.saleTypeLabel.trim();
+  return SALE_TYPE_CODE_LABELS[code] ?? code;
 };
 
 const findCategoryCommissionRate = (
@@ -5007,7 +5030,7 @@ export const computeProductCommissionSplit = (
   }
 
   if (isSharedSale) {
-    const saleType = determineSaleTypeForCommission(order);
+    const saleType = getOrderSaleTypeCodeForCommission(order);
     const rule = ctx.saleTypeRules.find(
       (r) => r.saleType.toLowerCase() === saleType.toLowerCase()
     );
