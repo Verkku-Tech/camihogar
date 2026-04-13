@@ -148,9 +148,13 @@ const deriveExchangeRatesFromPayments = (
     }
   }
 
-  // Pagos parciales
-  if (order.partialPayments && order.partialPayments.length > 0) {
-    for (const p of order.partialPayments) {
+  // Pagos parciales o mixtos (mismo origen de tasas)
+  const paymentsForRates =
+    order.partialPayments && order.partialPayments.length > 0
+      ? order.partialPayments
+      : (order.mixedPayments ?? []);
+  if (paymentsForRates.length > 0) {
+    for (const p of paymentsForRates) {
       if (
         p.paymentDetails?.cashCurrency &&
         p.paymentDetails.exchangeRate
@@ -500,14 +504,20 @@ export default function OrderDetailPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [validatingOrder, setValidatingOrder] = useState<boolean>(false);
 
+  /** Un solo arreglo activo: varios pagos van en mixedPayments y partialPayments queda vacío. */
+  const activePayments = useMemo((): PartialPayment[] => {
+    if (!order) return [];
+    if (order.partialPayments && order.partialPayments.length > 0) {
+      return order.partialPayments;
+    }
+    return order.mixedPayments ?? [];
+  }, [order]);
+
   const pendingBalanceAmountInBs = useMemo(() => {
     if (!order) return 0;
-    const paid = (order.partialPayments ?? []).reduce(
-      (sum, p) => sum + (p.amount || 0),
-      0
-    );
+    const paid = activePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
     return order.total - paid;
-  }, [order]);
+  }, [order, activePayments]);
 
   const hasMeaningfulPendingBalance =
     order != null &&
@@ -815,11 +825,7 @@ export default function OrderDetailPage() {
   // Formatear pagos cuando cambia la moneda seleccionada
   useEffect(() => {
     const formatPayments = async () => {
-      if (
-        !order ||
-        !order.partialPayments ||
-        order.partialPayments.length === 0
-      ) {
+      if (!order || activePayments.length === 0) {
         setFormattedPayments([]);
         setFormattedTotalPaid("");
         // Si no hay pagos, el saldo pendiente es el total del pedido (excepto Cashea: no aplica en tienda)
@@ -847,7 +853,7 @@ export default function OrderDetailPage() {
       }
 
       const paymentsFormatted = await Promise.all(
-        order.partialPayments.map(async (payment) => {
+        activePayments.map(async (payment) => {
           const originalPayment = getOriginalPaymentAmount(
             payment,
             localExchangeRates
@@ -878,7 +884,7 @@ export default function OrderDetailPage() {
       );
 
       // Calcular total pagado
-      const totalPaidInBs = order.partialPayments.reduce(
+      const totalPaidInBs = activePayments.reduce(
         (sum, p) => sum + (p.amount || 0),
         0
       );
@@ -918,7 +924,13 @@ export default function OrderDetailPage() {
     };
 
     formatPayments();
-  }, [order, selectedCurrency, formatWithSelectedCurrency, localExchangeRates]);
+  }, [
+    order,
+    activePayments,
+    selectedCurrency,
+    formatWithSelectedCurrency,
+    localExchangeRates,
+  ]);
 
   // Formatear precios, descuentos, totales y calcular desglose detallado de productos
   useEffect(() => {
@@ -1244,8 +1256,8 @@ export default function OrderDetailPage() {
                           </p>
                         ) : (
                           <>
-                            {order.partialPayments && order.partialPayments.length > 0 && (() => {
-                              const totalPaid = order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                            {activePayments.length > 0 && (() => {
+                              const totalPaid = activePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
                               const pending = order.total - totalPaid;
                               if (pending > 0) {
                                 return (
@@ -1257,7 +1269,7 @@ export default function OrderDetailPage() {
                               }
                               return null;
                             })()}
-                            {(!order.partialPayments || order.partialPayments.length === 0) && (
+                            {activePayments.length === 0 && (
                               <p className="text-sm text-red-600 dark:text-red-400">
                                 <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
                                 <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline font-medium" />
@@ -1893,7 +1905,7 @@ export default function OrderDetailPage() {
               </Card>
 
               {/* Pagos */}
-              {order.partialPayments && order.partialPayments.length > 0 && (
+              {activePayments.length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -1943,7 +1955,7 @@ export default function OrderDetailPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {order.partialPayments.map((payment, idx) => {
+                      {activePayments.map((payment, idx) => {
                         const formattedPayment = formattedPayments[idx];
                         if (!formattedPayment) {
                           const originalPayment = getOriginalPaymentAmount(
@@ -2111,7 +2123,7 @@ export default function OrderDetailPage() {
                       <div className="flex justify-between font-semibold">
                         <span>Total Pagado:</span>
                         <CurrencyDisplay
-                          amountInBs={order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)}
+                          amountInBs={activePayments.reduce((sum, p) => sum + (p.amount || 0), 0)}
                           exchangeRates={localExchangeRates}
                         />
                       </div>
@@ -2161,7 +2173,7 @@ export default function OrderDetailPage() {
               )}
 
               {/* Mostrar saldo pendiente cuando NO hay pagos */}
-              {(!order.partialPayments || order.partialPayments.length === 0) &&
+              {activePayments.length === 0 &&
                 formattedPendingBalance &&
                 hasMeaningfulPendingBalance && (
                   <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30">

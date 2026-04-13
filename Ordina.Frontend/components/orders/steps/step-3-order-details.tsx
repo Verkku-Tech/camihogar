@@ -1694,6 +1694,15 @@ export function Step3OrderDetails({
                                       </div>
                                     )}
 
+                                    {paymentCurrency !== "Bs" &&
+                                      !payment.paymentDetails?.useCustomRate && (
+                                        <p className="text-xs text-muted-foreground">
+                                          El monto se convierte a Bs automáticamente usando la tasa
+                                          del día. Si la tasa del banco difiere, activa &quot;Tasa
+                                          manual&quot; arriba.
+                                        </p>
+                                      )}
+
                                     <div className="grid gap-3 sm:grid-cols-2">
                                       {/* Monto en Divisa */}
                                       <div className="space-y-2">
