@@ -50,13 +50,24 @@ public class ProductCommissionRepository : IProductCommissionRepository
 
     public async Task<ProductCommission> UpsertByCategoryAsync(ProductCommission commission)
     {
-        var existing = await GetByCategoryIdAsync(commission.CategoryId);
+        ProductCommission? existing = null;
+        if (!string.IsNullOrWhiteSpace(commission.CategoryId))
+            existing = await GetByCategoryIdAsync(commission.CategoryId);
+        if (existing == null && !string.IsNullOrWhiteSpace(commission.CategoryName))
+            existing = await GetByCategoryNameAsync(commission.CategoryName);
+
         if (existing != null)
         {
             commission.Id = existing.Id;
             commission.CreatedAt = existing.CreatedAt;
+            if (string.IsNullOrWhiteSpace(commission.CategoryId))
+                commission.CategoryId = existing.CategoryId;
             return await UpdateAsync(commission);
         }
+
+        if (string.IsNullOrWhiteSpace(commission.CategoryId) && !string.IsNullOrWhiteSpace(commission.CategoryName))
+            commission.CategoryId = commission.CategoryName.Trim();
+
         return await CreateAsync(commission);
     }
 
