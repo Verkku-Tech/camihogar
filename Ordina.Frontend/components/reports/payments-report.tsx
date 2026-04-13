@@ -965,7 +965,14 @@ export function PaymentsReport() {
                       <TableCell>{row.fecha}</TableCell>
                       <TableCell className="font-medium">{row.pedido}</TableCell>
                       <TableCell>{row.cliente}</TableCell>
-                      <TableCell>{row.metodoPago}</TableCell>
+                      <TableCell>
+                        {row.metodoPago}
+                        {row.monedaOriginal && row.monedaOriginal !== "Bs" && (
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            ({row.monedaOriginal})
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right align-top">
                         {row.monedaOriginal === "Bs" &&
                         row.montoUsd != null &&
@@ -984,7 +991,12 @@ export function PaymentsReport() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {formatCurrency(row.montoBs, "Bs")}
+                        {row.monedaOriginal !== "Bs" &&
+                        row.metodoPago === "Efectivo" ? (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        ) : (
+                          formatCurrency(row.montoBs, "Bs")
+                        )}
                       </TableCell>
                       <TableCell>
                         <span className="text-sm">{row.cuenta}</span>

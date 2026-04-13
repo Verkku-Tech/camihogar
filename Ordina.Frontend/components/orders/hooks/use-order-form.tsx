@@ -724,7 +724,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
   const remainingAmount =
     paymentCondition === "cashea" ? 0 : total - totalPaidInBs;
   const isPaymentsValid =
-    paymentCondition === "cashea" || Math.abs(remainingAmount) < 0.01;
+    paymentCondition === "cashea" || Math.abs(remainingAmount) < 0.10;
 
   // Formatear precios
   useEffect(() => {
