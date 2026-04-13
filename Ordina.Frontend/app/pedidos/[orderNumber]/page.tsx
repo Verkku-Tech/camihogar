@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { ProtectedRoute } from "@/components/auth/protected-route";
@@ -454,6 +454,9 @@ function getStatusColor(status: string) {
   }
 }
 
+/** Saldo residual por redondeo; alinear con validación de pagos del formulario (~0,01 Bs). */
+const PENDING_BALANCE_EPSILON_BS = 0.01;
+
 export default function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -496,6 +499,20 @@ export default function OrderDetailPage() {
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [client, setClient] = useState<Client | null>(null);
   const [validatingOrder, setValidatingOrder] = useState<boolean>(false);
+
+  const pendingBalanceAmountInBs = useMemo(() => {
+    if (!order) return 0;
+    const paid = (order.partialPayments ?? []).reduce(
+      (sum, p) => sum + (p.amount || 0),
+      0
+    );
+    return order.total - paid;
+  }, [order]);
+
+  const hasMeaningfulPendingBalance =
+    order != null &&
+    order.paymentCondition !== "cashea" &&
+    pendingBalanceAmountInBs > PENDING_BALANCE_EPSILON_BS;
 
   const handleValidateOrder = async () => {
     if (!canValidateOrders) {
@@ -809,7 +826,7 @@ export default function OrderDetailPage() {
         if (order) {
           if (order.paymentCondition === "cashea") {
             setFormattedPendingBalance("");
-          } else {
+          } else if (order.total > PENDING_BALANCE_EPSILON_BS) {
             const totalInBs = order.total;
             if (selectedCurrency && selectedCurrency !== "Bs") {
               const pendingFormatted = await formatWithSelectedCurrency(
@@ -820,6 +837,8 @@ export default function OrderDetailPage() {
             } else {
               setFormattedPendingBalance(formatCurrency(totalInBs, "Bs"));
             }
+          } else {
+            setFormattedPendingBalance("");
           }
         } else {
           setFormattedPendingBalance("");
@@ -879,7 +898,7 @@ export default function OrderDetailPage() {
 
       if (order.paymentCondition === "cashea") {
         setFormattedPendingBalance("");
-      } else if (pendingBalanceInBs > 0) {
+      } else if (pendingBalanceInBs > PENDING_BALANCE_EPSILON_BS) {
         // Hay saldo pendiente
         if (selectedCurrency && selectedCurrency !== "Bs") {
           const pendingFormatted = await formatWithSelectedCurrency(
@@ -2099,7 +2118,7 @@ export default function OrderDetailPage() {
 
                       {/* Mostrar saldo pendiente si existe (en USD cuando hay tasa, para ver cuánto debe) */}
                       {formattedPendingBalance &&
-                        order.paymentCondition !== "cashea" && (
+                        hasMeaningfulPendingBalance && (
                         <>
                           <Separator />
                           <div className="space-y-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3">
@@ -2112,7 +2131,7 @@ export default function OrderDetailPage() {
                               </div>
                               <div className="text-right">
                                 <CurrencyDisplay
-                                  amountInBs={order.total - order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0)}
+                                  amountInBs={pendingBalanceAmountInBs}
                                   exchangeRates={localExchangeRates}
                                   className="font-bold text-lg text-red-700 dark:text-red-300"
                                 />
@@ -2144,7 +2163,7 @@ export default function OrderDetailPage() {
               {/* Mostrar saldo pendiente cuando NO hay pagos */}
               {(!order.partialPayments || order.partialPayments.length === 0) &&
                 formattedPendingBalance &&
-                order.paymentCondition !== "cashea" && (
+                hasMeaningfulPendingBalance && (
                   <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">

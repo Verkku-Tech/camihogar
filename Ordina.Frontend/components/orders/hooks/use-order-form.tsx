@@ -696,7 +696,12 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
 
   const subtotal = subtotalAfterProductDiscounts;
   const taxAmount = taxEnabled ? subtotal * 0.16 : 0; // Impuesto condicional (16% o 0%)
-  const deliveryCost = calculateDeliveryCost();
+  /** Paridad con edición: en creación no hay `deliveryCost` persistido fuera de servicios (fallback 0). */
+  const DELIVERY_TOTAL_EPSILON = 1e-6;
+  const deliveryCost = useMemo(() => {
+    const fromServices = calculateDeliveryCost();
+    return fromServices > DELIVERY_TOTAL_EPSILON ? fromServices : 0;
+  }, [calculateDeliveryCost]);
   const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
   const generalDiscountAmount = Math.min(
     Math.max(generalDiscount, 0),

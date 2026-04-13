@@ -556,6 +556,14 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     return total;
   }, [deliveryServices]);
 
+  /** Evita duplicar envío si coexisten servicios y `order.deliveryCost` por datos inconsistentes. */
+  const DELIVERY_TOTAL_EPSILON = 1e-6;
+  const deliveryCost = useMemo(() => {
+    const fromServices = calculateDeliveryCost();
+    if (fromServices > DELIVERY_TOTAL_EPSILON) return fromServices;
+    return initialOrder?.deliveryCost ?? 0;
+  }, [calculateDeliveryCost, initialOrder?.deliveryCost]);
+
   const getProductBaseTotal = useCallback(
     (product: OrderProduct): number => {
       const markup = productMarkups[product.id] || 0;
@@ -619,7 +627,6 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
 
   const subtotal = subtotalAfterProductDiscounts;
   const taxAmount = taxEnabled ? subtotal * 0.16 : 0; // Impuesto condicional (16% o 0%)
-  const deliveryCost = calculateDeliveryCost();
   const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
   const generalDiscountAmount = Math.min(
     Math.max(generalDiscount, 0),
