@@ -40,6 +40,9 @@ public class CreateOrderDto
     
     /// <summary>Obligatorio para pedidos (<see cref="Type"/> Order). Opcional para presupuestos (Budget).</summary>
     public string? PaymentMethod { get; set; }
+
+    /// <summary>Condición de pago en tienda (ej. cashea, pago_parcial).</summary>
+    public string? PaymentCondition { get; set; }
     
     public PaymentDetailsDto? PaymentDetails { get; set; }
     public List<PartialPaymentDto>? PartialPayments { get; set; }

@@ -1785,6 +1785,16 @@ function isBackendBudgetOrder(order: Pick<Order, "type" | "status" | "orderNumbe
 }
 
 // Helper functions para mapear orders entre frontend y backend
+/** Si el API no envía paymentCondition pero el método es Cashea (pedidos legacy), se trata como cashea. */
+function paymentConditionFromOrderDto(
+  dto: OrderResponseDto
+): Order["paymentCondition"] | undefined {
+  const raw = dto.paymentCondition?.trim();
+  if (raw) return raw as Order["paymentCondition"];
+  if (dto.paymentMethod?.trim().toLowerCase() === "cashea") return "cashea";
+  return undefined;
+}
+
 const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   id: dto.id,
   orderNumber:
@@ -1866,6 +1876,7 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   generalDiscountAmount: dto.generalDiscountAmount,
   paymentType: dto.paymentType as "directo" | "apartado" | "mixto",
   paymentMethod: dto.paymentMethod,
+  paymentCondition: paymentConditionFromOrderDto(dto),
   paymentDetails: dto.paymentDetails ? {
     pagomovilReference: dto.paymentDetails.pagomovilReference,
     pagomovilBank: dto.paymentDetails.pagomovilBank,
@@ -2041,6 +2052,7 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   generalDiscountAmount: order.generalDiscountAmount,
   paymentType: order.paymentType,
   paymentMethod: order.paymentMethod,
+  paymentCondition: order.paymentCondition,
   paymentDetails: order.paymentDetails ? {
     pagomovilReference: order.paymentDetails.pagomovilReference,
     pagomovilBank: order.paymentDetails.pagomovilBank,
@@ -2463,6 +2475,7 @@ export const updateOrder = async (
             generalDiscountAmount: updatedOrder.generalDiscountAmount !== existingOrder.generalDiscountAmount ? updatedOrder.generalDiscountAmount : undefined,
             paymentType: updatedOrder.paymentType !== existingOrder.paymentType ? updatedOrder.paymentType : undefined,
             paymentMethod: updatedOrder.paymentMethod !== existingOrder.paymentMethod ? updatedOrder.paymentMethod : undefined,
+            paymentCondition: updatedOrder.paymentCondition !== existingOrder.paymentCondition ? updatedOrder.paymentCondition : undefined,
             partialPayments: updatedOrder.partialPayments !== existingOrder.partialPayments ? updatedOrder.partialPayments?.map((p) => ({
               id: p.id,
               amount: p.amount,
