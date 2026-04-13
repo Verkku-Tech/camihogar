@@ -428,10 +428,6 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               return;
             }
           } else if (payment.method === "Zelle") {
-            if (!payment.paymentDetails?.accountId) {
-              toast.error(`${paymentLabel} (Zelle): Debe seleccionar la cuenta receptora`);
-              return;
-            }
             if (!payment.paymentDetails?.envia) {
               toast.error(`${paymentLabel} (Zelle): Debe ingresar quién envía`);
               return;

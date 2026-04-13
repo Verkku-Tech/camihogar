@@ -1524,38 +1524,31 @@ public class ReportService : IReportService
                 startDate,
                 endDate);
 
-            // Ordenar por zona y luego por fecha
-            reportData = reportData
-                .OrderBy(r => string.IsNullOrWhiteSpace(r.Zona) ? "ZZZ" : r.Zona)
-                .ThenBy(r => r.Fecha)
-                .ThenBy(r => r.NotaDespacho)
-                .ToList();
+            // Orden ya aplicado en GetFilteredDispatchDataAsync (zona, fecha, nota)
 
             // Generar Excel con SpreadsheetLight
             var stream = new MemoryStream();
             
             using (var sl = new SLDocument())
             {
-                // Headers en la fila 1
-                sl.SetCellValue(1, 1, "Fecha");
-                sl.SetCellValue(1, 2, "Nota de despacho");
-                sl.SetCellValue(1, 3, "Cliente");
-                sl.SetCellValue(1, 4, "Telefono1");
-                sl.SetCellValue(1, 5, "Telefono2");
+                // Headers en la fila 1 (vista transportistas)
+                sl.SetCellValue(1, 1, "Pedido");
+                sl.SetCellValue(1, 2, "Cliente");
+                sl.SetCellValue(1, 3, "Telefono1");
+                sl.SetCellValue(1, 4, "Telefono2");
+                sl.SetCellValue(1, 5, "Direccion");
                 sl.SetCellValue(1, 6, "Cantidad");
                 sl.SetCellValue(1, 7, "Descripcion");
-                sl.SetCellValue(1, 8, "Zona");
-                sl.SetCellValue(1, 9, "Direccion");
-                sl.SetCellValue(1, 10, "Observaciones");
-                sl.SetCellValue(1, 11, "Estado de Pago");
-                sl.SetCellValue(1, 12, "Importe Total");
+                sl.SetCellValue(1, 8, "Estado de Pago");
+                sl.SetCellValue(1, 9, "Importe Total");
+                sl.SetCellValue(1, 10, "Saldo Pendiente por Cobrar (USD)");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 12; col++)
+                for (int col = 1; col <= 10; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -1564,34 +1557,30 @@ public class ReportService : IReportService
                 int row = 2;
                 foreach (var item in reportData)
                 {
-                    sl.SetCellValue(row, 1, item.Fecha);
-                    sl.SetCellValue(row, 2, item.NotaDespacho);
-                    sl.SetCellValue(row, 3, item.Cliente);
-                    sl.SetCellValue(row, 4, item.Telefono1);
-                    sl.SetCellValue(row, 5, item.Telefono2);
+                    sl.SetCellValue(row, 1, item.NotaDespacho);
+                    sl.SetCellValue(row, 2, item.Cliente);
+                    sl.SetCellValue(row, 3, item.Telefono1);
+                    sl.SetCellValue(row, 4, item.Telefono2);
+                    sl.SetCellValue(row, 5, item.Direccion);
                     sl.SetCellValue(row, 6, item.CantidadTotal);
                     sl.SetCellValue(row, 7, item.Descripcion);
-                    sl.SetCellValue(row, 8, item.Zona);
-                    sl.SetCellValue(row, 9, item.Direccion);
-                    sl.SetCellValue(row, 10, item.Observaciones);
-                    sl.SetCellValue(row, 11, item.EstadoPago);
-                    sl.SetCellValue(row, 12, item.ImporteTotal);
+                    sl.SetCellValue(row, 8, item.EstadoPago);
+                    sl.SetCellValue(row, 9, item.ImporteTotal);
+                    sl.SetCellValue(row, 10, item.SaldoPendiente);
                     row++;
                 }
 
                 // Ajustar ancho de columnas
-                sl.SetColumnWidth(1, 12);  // Fecha
-                sl.SetColumnWidth(2, 18);  // Nota de despacho
-                sl.SetColumnWidth(3, 25);  // Cliente
-                sl.SetColumnWidth(4, 15);  // Telefono1
-                sl.SetColumnWidth(5, 15);  // Telefono2
+                sl.SetColumnWidth(1, 16);  // Pedido
+                sl.SetColumnWidth(2, 25);  // Cliente
+                sl.SetColumnWidth(3, 15);  // Telefono1
+                sl.SetColumnWidth(4, 15);  // Telefono2
+                sl.SetColumnWidth(5, 40);  // Direccion
                 sl.SetColumnWidth(6, 10);  // Cantidad
                 sl.SetColumnWidth(7, 60);  // Descripcion
-                sl.SetColumnWidth(8, 20);  // Zona
-                sl.SetColumnWidth(9, 40);  // Direccion
-                sl.SetColumnWidth(10, 40); // Observaciones
-                sl.SetColumnWidth(11, 15); // Estado de Pago
-                sl.SetColumnWidth(12, 15); // Importe Total
+                sl.SetColumnWidth(8, 22);  // Estado de Pago
+                sl.SetColumnWidth(9, 15);  // Importe Total
+                sl.SetColumnWidth(10, 28); // Saldo Pendiente
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
@@ -1621,27 +1610,18 @@ public class ReportService : IReportService
                 startDate,
                 endDate);
 
-            // Ordenar por zona y luego por fecha
-            reportData = reportData
-                .OrderBy(r => string.IsNullOrWhiteSpace(r.Zona) ? "ZZZ" : r.Zona)
-                .ThenBy(r => r.Fecha)
-                .ThenBy(r => r.NotaDespacho)
-                .ToList();
-
             return reportData.Select(row => new DispatchReportRowDto
             {
-                Fecha = row.Fecha,
                 NotaDespacho = row.NotaDespacho,
                 Cliente = row.Cliente,
                 Telefono1 = row.Telefono1,
                 Telefono2 = row.Telefono2,
                 CantidadTotal = row.CantidadTotal,
                 Descripcion = row.Descripcion,
-                Zona = row.Zona,
                 Direccion = row.Direccion,
-                Observaciones = row.Observaciones,
                 EstadoPago = row.EstadoPago,
-                ImporteTotal = row.ImporteTotal
+                ImporteTotal = row.ImporteTotal,
+                SaldoPendiente = row.SaldoPendiente
             }).ToList();
         }
         catch (Exception ex)
@@ -1658,29 +1638,32 @@ public class ReportService : IReportService
     {
         var orders = await _orderRepository.GetAllAsync();
         var clients = await _clientRepository.GetAllAsync();
+
+        var matchingOrders = orders
+            .Where(order =>
+            {
+                if (order.Status != "Completado" && order.Status != "Completada" && order.Status != "En Ruta")
+                    return false;
+                if (!string.IsNullOrWhiteSpace(deliveryZone) &&
+                    order.DeliveryZone != deliveryZone)
+                    return false;
+                if (startDate.HasValue && order.CreatedAt < startDate.Value)
+                    return false;
+                if (endDate.HasValue && order.CreatedAt > endDate.Value.AddDays(1).AddSeconds(-1))
+                    return false;
+                return true;
+            })
+            .OrderBy(o => string.IsNullOrWhiteSpace(o.DeliveryZone) ? "ZZZ" : o.DeliveryZone)
+            .ThenBy(o => o.CreatedAt)
+            .ThenBy(o => o.OrderNumber)
+            .ToList();
+
         var reportData = new List<DispatchReportRow>();
 
-        foreach (var order in orders)
+        foreach (var order in matchingOrders)
         {
-            // Pedidos completados o con despacho en ruta (al menos un ítem en camino)
-            if (order.Status != "Completado" && order.Status != "Completada" && order.Status != "En Ruta")
-                continue;
-
-            // Filtrar por zona (FILTRO PRINCIPAL)
-            if (!string.IsNullOrWhiteSpace(deliveryZone) && 
-                order.DeliveryZone != deliveryZone)
-                continue;
-
-            // Filtrar por fecha (opcional)
-            if (startDate.HasValue && order.CreatedAt < startDate.Value)
-                continue;
-            if (endDate.HasValue && order.CreatedAt > endDate.Value.AddDays(1).AddSeconds(-1))
-                continue;
-
-            // Obtener datos del cliente
             var client = clients.FirstOrDefault(c => c.Id == order.ClientId);
-            
-            // Agrupar productos: concatenar descripciones
+
             var productDescriptions = new List<string>();
             if (order.Products != null && order.Products.Count > 0)
             {
@@ -1689,85 +1672,60 @@ public class ReportService : IReportService
                     try
                     {
                         var productDesc = await FormatProductDescriptionAsync(product);
-                        productDescriptions.Add($"{product.Quantity}x {productDesc}");
+                        productDescriptions.Add(productDesc);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Error al formatear descripción del producto {ProductName} en pedido {OrderNumber}", 
+                        _logger.LogWarning(ex, "Error al formatear descripción del producto {ProductName} en pedido {OrderNumber}",
                             product?.Name ?? "desconocido", order.OrderNumber);
-                        productDescriptions.Add($"{product?.Quantity ?? 0}x {product?.Name ?? "Producto desconocido"}");
+                        productDescriptions.Add(product?.Name ?? "Producto desconocido");
                     }
                 }
             }
-            var descripcionCompleta = productDescriptions.Count > 0 
-                ? string.Join(" | ", productDescriptions) 
+
+            var descripcionCompleta = productDescriptions.Count > 0
+                ? string.Join(" | ", productDescriptions)
                 : "Sin productos";
-            
-            // Calcular cantidad total
+
             var cantidadTotal = order.Products?.Sum(p => p.Quantity) ?? 0;
 
-            // Obtener tasa de cambio USD (usar la del pedido guardada al crear)
             decimal usdRate;
             decimal importeTotalUsd;
             string estadoPago;
-            
+            decimal saldoPendiente;
+
             try
             {
                 usdRate = GetUsdExchangeRate(order);
-                
-                // Convertir total a USD
                 importeTotalUsd = order.Total / usdRate;
-
-                // Determinar estado de pago (en USD)
                 estadoPago = DeterminePaymentStatusInUsd(order, usdRate);
+                var totalPagadoBs = CalculateTotalPaid(order);
+                var totalPagadoUsd = totalPagadoBs / usdRate;
+                saldoPendiente = Math.Max(0m, importeTotalUsd - totalPagadoUsd);
             }
             catch (InvalidOperationException ex)
             {
-                // Si no hay tasa de cambio, omitir este pedido del reporte
-                _logger.LogWarning("Omitiendo pedido {OrderNumber} del reporte de despacho: {Error}", 
+                _logger.LogWarning("Omitiendo pedido {OrderNumber} del reporte de despacho: {Error}",
                     order.OrderNumber, ex.Message);
-                continue; // Saltar este pedido y continuar con el siguiente
+                continue;
             }
-
-            // Mapear zona
-            var zonaDisplay = MapDeliveryZone(order.DeliveryZone);
 
             reportData.Add(new DispatchReportRow
             {
-                Fecha = order.CreatedAt.ToString("yyyy-MM-dd"),
                 NotaDespacho = order.OrderNumber,
                 Cliente = order.ClientName,
                 Telefono1 = client?.Telefono ?? "",
                 Telefono2 = client?.Telefono2 ?? "",
                 CantidadTotal = cantidadTotal,
                 Descripcion = descripcionCompleta,
-                Zona = zonaDisplay,
                 Direccion = order.DeliveryAddress ?? "",
-                Observaciones = order.Observations ?? "",
                 EstadoPago = estadoPago,
-                ImporteTotal = importeTotalUsd
+                ImporteTotal = importeTotalUsd,
+                SaldoPendiente = saldoPendiente
             });
         }
 
         return reportData;
-    }
-
-    private string MapDeliveryZone(string? zone)
-    {
-        if (string.IsNullOrWhiteSpace(zone))
-            return "-";
-
-        return zone switch
-        {
-            "caracas" => "Caracas",
-            "g_g" => "G&G",
-            "san_antonio_los_teques" => "San Antonio Los Teques",
-            "caucagua_higuerote" => "Caucagua/Higuerote",
-            "la_guaira" => "La Guaira",
-            "charallave_cua" => "Charallave/Cua",
-            "interior_pais" => "Interior País",
-            _ => zone
-        };
     }
 
     private string DeterminePaymentStatus(Order order)
@@ -1975,18 +1933,16 @@ public class ReportService : IReportService
 
     private class DispatchReportRow
     {
-        public string Fecha { get; set; } = string.Empty;
         public string NotaDespacho { get; set; } = string.Empty;
         public string Cliente { get; set; } = string.Empty;
         public string Telefono1 { get; set; } = string.Empty;
         public string Telefono2 { get; set; } = string.Empty;
         public int CantidadTotal { get; set; }
         public string Descripcion { get; set; } = string.Empty;
-        public string Zona { get; set; } = string.Empty;
         public string Direccion { get; set; } = string.Empty;
-        public string Observaciones { get; set; } = string.Empty;
         public string EstadoPago { get; set; } = string.Empty;
         public decimal ImporteTotal { get; set; }
+        public decimal SaldoPendiente { get; set; }
     }
 }
 

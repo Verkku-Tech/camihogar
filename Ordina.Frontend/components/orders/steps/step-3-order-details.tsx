@@ -710,7 +710,7 @@ export function Step3OrderDetails({
                         : (() => {
                           const subtotal = orderForm.subtotalAfterProductDiscounts;
                           const taxAmount = subtotal * 0.16;
-                          const deliveryCost = orderForm.calculateDeliveryCost();
+                          const deliveryCost = orderForm.deliveryCost;
                           const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
                           return totalBeforeGeneralDiscount;
                         })()
@@ -722,7 +722,7 @@ export function Step3OrderDetails({
                           ? (() => {
                             const subtotal = orderForm.subtotalAfterProductDiscounts;
                             const taxAmount = subtotal * 0.16;
-                            const deliveryCost = orderForm.calculateDeliveryCost();
+                            const deliveryCost = orderForm.deliveryCost;
                             const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
                             return totalBeforeGeneralDiscount > 0
                               ? Math.round(
@@ -1868,7 +1868,7 @@ export function Step3OrderDetails({
                               })()}
                             </div>
                             {/* Campo de cuenta para métodos bancarios y digitales */}
-                            {["Banesco Panamá", "Mercantil Panamá", "Binance", "Paypal", "Zelle"].includes(payment.method) && (
+                            {["Banesco Panamá", "Mercantil Panamá", "Binance", "Paypal"].includes(payment.method) && (
                               <div className="space-y-2">
                                 <Label
                                   htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-account-${payment.id}`}
