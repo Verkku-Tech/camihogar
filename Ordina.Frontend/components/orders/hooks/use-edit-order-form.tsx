@@ -181,6 +181,7 @@ export interface UseOrderFormReturn {
   canGoToNextStep: boolean;
   canCreateBudget: boolean;
   canAddProduct: boolean;
+  step1SellerReady: boolean;
   handleNext: () => void;
   handleBack: () => void;
   resetForm: () => void;
@@ -210,6 +211,16 @@ export interface UseOrderFormReturn {
   // Mock data (compatibilidad)
   mockVendors: Vendor[];
   mockReferrers: Vendor[];
+
+  needsDraftPrompt: boolean;
+  applyDraftAndContinue: () => void;
+  discardDraftAndStartFresh: () => void;
+  clearDraftStorage: () => void;
+  onlineSellerMode: "vendor" | "referrer" | null;
+  setOnlineSellerMode: React.Dispatch<
+    React.SetStateAction<"vendor" | "referrer" | null>
+  >;
+  isOnlineSellerReferrer: boolean;
 }
 
 export function useEditOrderForm(open: boolean, initialOrder: Order | null = null): UseOrderFormReturn {
@@ -628,8 +639,10 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     calculateTotal();
   }, [payments]);
 
-  const remainingAmount = total - totalPaidInBs;
-  const isPaymentsValid = Math.abs(remainingAmount) < 0.01;
+  const remainingAmount =
+    paymentCondition === "cashea" ? 0 : total - totalPaidInBs;
+  const isPaymentsValid =
+    paymentCondition === "cashea" || Math.abs(remainingAmount) < 0.01;
 
   // Formatear precios
   useEffect(() => {
@@ -812,11 +825,13 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     []
   );
 
+  const step1SellerReady = !!(formData.vendor || formData.referrer);
+
   const handleNext = useCallback(() => {
     if (currentStep < 3) {
       if (currentStep === 1) {
-        if (!formData.vendor) {
-          toast.error("Por favor selecciona un vendedor");
+        if (!step1SellerReady) {
+          toast.error("Por favor selecciona un vendedor o un referidor");
           return;
         }
         if (!selectedClient) {
@@ -836,7 +851,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         }
       }, 0);
     }
-  }, [currentStep, formData.vendor, selectedClient, selectedProducts]);
+  }, [currentStep, step1SellerReady, selectedClient, selectedProducts]);
 
   const handleBack = useCallback(() => {
     if (currentStep > 1) {
@@ -888,16 +903,16 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
   // Validaciones
   const canGoToNextStep: boolean =
     currentStep === 1
-      ? !!(formData.vendor && selectedClient && selectedProducts.length > 0)
+      ? !!(step1SellerReady && selectedClient && selectedProducts.length > 0)
       : currentStep === 2
         ? selectedProducts.length > 0
         : true;
 
   const canCreateBudget: boolean =
     currentStep === 1 &&
-    !!(formData.vendor && selectedClient && selectedProducts.length > 0);
+    !!(step1SellerReady && selectedClient && selectedProducts.length > 0);
 
-  const canAddProduct: boolean = !!(formData.vendor && selectedClient);
+  const canAddProduct: boolean = !!(step1SellerReady && selectedClient);
 
   // Render helpers
   const renderCurrencyCell = useCallback(
@@ -1033,6 +1048,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     canGoToNextStep,
     canCreateBudget,
     canAddProduct,
+    step1SellerReady,
     handleNext,
     handleBack,
     resetForm,
@@ -1050,6 +1066,13 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     renderCurrencyCellNegative,
     mockVendors: vendors,
     mockReferrers: referrers,
+    needsDraftPrompt: false,
+    applyDraftAndContinue: () => {},
+    discardDraftAndStartFresh: () => {},
+    clearDraftStorage: () => {},
+    onlineSellerMode: null,
+    setOnlineSellerMode: () => {},
+    isOnlineSellerReferrer: false,
   };
 }
 

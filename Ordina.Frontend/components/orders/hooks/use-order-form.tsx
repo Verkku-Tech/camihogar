@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useCurrency } from "@/contexts/currency-context";
+import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
 import {
   getVendors,
@@ -180,6 +181,8 @@ export interface UseOrderFormReturn {
   canGoToNextStep: boolean;
   canCreateBudget: boolean;
   canAddProduct: boolean;
+  /** Paso 1: vendedor asignado o modo referidor Online con referidor */
+  step1SellerReady: boolean;
   handleNext: () => void;
   handleBack: () => void;
   resetForm: () => void;
@@ -209,11 +212,34 @@ export interface UseOrderFormReturn {
   // Mock data (compatibilidad)
   mockVendors: Vendor[];
   mockReferrers: Vendor[];
+
+  /** Borrador (localStorage, un borrador por usuario) */
+  needsDraftPrompt: boolean;
+  applyDraftAndContinue: () => void;
+  discardDraftAndStartFresh: () => void;
+  clearDraftStorage: () => void;
+
+  /** Vendedor Online: modo vendedor vs referidor */
+  onlineSellerMode: "vendor" | "referrer" | null;
+  setOnlineSellerMode: React.Dispatch<
+    React.SetStateAction<"vendor" | "referrer" | null>
+  >;
+  isOnlineSellerReferrer: boolean;
 }
 
-export function useOrderForm(open: boolean): UseOrderFormReturn {
+const ORDER_DRAFT_VERSION = 1;
+
+type DraftResolution = "idle" | "pending" | "none" | "loaded";
+
+export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn {
   const { preferredCurrency, formatWithPreference } = useCurrency();
+  const { user } = useAuth();
+  const draftOwnerId = userId ?? user?.id;
   const [currentStep, setCurrentStep] = useState(1);
+  const [draftResolution, setDraftResolution] = useState<DraftResolution>("idle");
+  const [onlineSellerMode, setOnlineSellerMode] = useState<
+    "vendor" | "referrer" | null
+  >(null);
 
   // Estados del formulario
   const [selectedClient, setSelectedClient] = useState<{
@@ -389,6 +415,151 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
     loadData();
   }, [open, preferredCurrency]);
 
+  // Borrador: al abrir/cerrar el diálogo, decidir si hay que preguntar por recuperación
+  useEffect(() => {
+    if (!open) {
+      setDraftResolution("idle");
+      return;
+    }
+    if (!draftOwnerId) {
+      setDraftResolution("none");
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(`order_draft_${draftOwnerId}`);
+      setDraftResolution(raw ? "pending" : "none");
+    } catch {
+      setDraftResolution("none");
+    }
+  }, [open, draftOwnerId]);
+
+  // Vendedor Online: modo por defecto al abrir (no pisar mientras se decide el borrador)
+  useEffect(() => {
+    if (!open) {
+      setOnlineSellerMode(null);
+      return;
+    }
+    if (draftResolution === "pending") return;
+    if (user?.role === "Online Seller") {
+      setOnlineSellerMode((prev) => prev ?? "vendor");
+    } else {
+      setOnlineSellerMode(null);
+    }
+  }, [open, user?.role, draftResolution]);
+
+  // Vendedor de tienda: asignar automáticamente el vendedor = usuario logueado
+  useEffect(() => {
+    if (!open || user?.role !== "Store Seller" || !user.id) return;
+    if (draftResolution === "pending") return;
+    const exists = vendors.some((v) => v.id === user.id);
+    if (exists) {
+      setFormData((prev) =>
+        prev.vendor === user.id ? prev : { ...prev, vendor: user.id }
+      );
+    }
+  }, [open, user?.id, user?.role, vendors]);
+
+  // Vendedor Online: sincronizar vendedor/referidor según modo
+  useEffect(() => {
+    if (!open || user?.role !== "Online Seller" || !user.id) return;
+    if (draftResolution === "pending") return;
+    if (onlineSellerMode === "vendor") {
+      setFormData((prev) => ({
+        ...prev,
+        vendor: user.id,
+        referrer: "",
+      }));
+    } else if (onlineSellerMode === "referrer") {
+      setFormData((prev) => ({
+        ...prev,
+        vendor: "",
+        referrer: user.id,
+      }));
+    }
+  }, [open, user?.id, user?.role, onlineSellerMode]);
+
+  const getDraftStorageKey = useCallback(() => {
+    if (!draftOwnerId) return null;
+    return `order_draft_${draftOwnerId}`;
+  }, [draftOwnerId]);
+
+  const clearDraftStorage = useCallback(() => {
+    const key = getDraftStorageKey();
+    if (!key) return;
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  }, [getDraftStorageKey]);
+
+  const applyDraftAndContinue = useCallback(() => {
+    const key = getDraftStorageKey();
+    if (!key) {
+      setDraftResolution("none");
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        setDraftResolution("none");
+        return;
+      }
+      const d = JSON.parse(raw) as Record<string, unknown>;
+      if (!d || typeof d !== "object" || d.v !== ORDER_DRAFT_VERSION) {
+        setDraftResolution("none");
+        return;
+      }
+      if (typeof d.currentStep === "number") setCurrentStep(d.currentStep);
+      if (d.selectedClient !== undefined)
+        setSelectedClient(
+          d.selectedClient as {
+            id: string;
+            name: string;
+            address?: string;
+            telefono?: string;
+            telefono2?: string;
+            email?: string;
+            rutId?: string;
+          } | null
+        );
+      if (Array.isArray(d.selectedProducts)) setSelectedProducts(d.selectedProducts as OrderProduct[]);
+      if (d.formData && typeof d.formData === "object")
+        setFormData((prev) => ({ ...prev, ...(d.formData as OrderFormData) }));
+      if (typeof d.paymentCondition === "string") setPaymentCondition(d.paymentCondition as typeof paymentCondition);
+      if (typeof d.saleType === "string") setSaleType(d.saleType as typeof saleType);
+      if (typeof d.deliveryType === "string") setDeliveryType(d.deliveryType as typeof deliveryType);
+      if (typeof d.deliveryZone === "string") setDeliveryZone(d.deliveryZone);
+      if (typeof d.hasDelivery === "boolean") setHasDelivery(d.hasDelivery);
+      if (d.deliveryServices && typeof d.deliveryServices === "object")
+        setDeliveryServices(d.deliveryServices as DeliveryServices);
+      if (Array.isArray(d.payments)) setPayments(d.payments as PartialPayment[]);
+      if (typeof d.generalDiscount === "number") setGeneralDiscount(d.generalDiscount);
+      if (d.generalDiscountType === "monto" || d.generalDiscountType === "porcentaje")
+        setGeneralDiscountType(d.generalDiscountType);
+      if (typeof d.taxEnabled === "boolean") setTaxEnabled(d.taxEnabled);
+      if (typeof d.generalDiscountCurrency === "string")
+        setGeneralDiscountCurrency(d.generalDiscountCurrency as Currency);
+      if (typeof d.generalObservations === "string") setGeneralObservations(d.generalObservations);
+      if (typeof d.createSupplierOrder === "boolean") setCreateSupplierOrder(d.createSupplierOrder);
+      if (d.productMarkups && typeof d.productMarkups === "object")
+        setProductMarkups(d.productMarkups as Record<string, number>);
+      if (d.productDiscountTypes && typeof d.productDiscountTypes === "object")
+        setProductDiscountTypes(d.productDiscountTypes as Record<string, "monto" | "porcentaje">);
+      if (d.productDiscountCurrencies && typeof d.productDiscountCurrencies === "object")
+        setProductDiscountCurrencies(d.productDiscountCurrencies as Record<string, Currency>);
+      if (typeof d.deliveryCurrency === "string") setDeliveryCurrency(d.deliveryCurrency as Currency);
+      if (Array.isArray(d.selectedCurrencies)) setSelectedCurrencies(d.selectedCurrencies as Currency[]);
+      if (d.onlineSellerMode === "vendor" || d.onlineSellerMode === "referrer" || d.onlineSellerMode === null)
+        setOnlineSellerMode(d.onlineSellerMode as "vendor" | "referrer" | null);
+      setDraftResolution("loaded");
+    } catch (e) {
+      console.error("Error loading order draft:", e);
+      clearDraftStorage();
+      setDraftResolution("none");
+    }
+  }, [clearDraftStorage, getDraftStorageKey]);
+
   // Funciones helper
   const getCurrencyOrder = useCallback((): Currency[] => {
     if (preferredCurrency === "Bs") {
@@ -545,8 +716,10 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
     calculateTotal();
   }, [payments]);
 
-  const remainingAmount = total - totalPaidInBs;
-  const isPaymentsValid = Math.abs(remainingAmount) < 0.01;
+  const remainingAmount =
+    paymentCondition === "cashea" ? 0 : total - totalPaidInBs;
+  const isPaymentsValid =
+    paymentCondition === "cashea" || Math.abs(remainingAmount) < 0.01;
 
   // Formatear precios
   useEffect(() => {
@@ -729,11 +902,19 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
     []
   );
 
+  const step1SellerReady = useMemo(() => {
+    if (formData.vendor) return true;
+    if (onlineSellerMode === "referrer" && formData.referrer) return true;
+    return false;
+  }, [formData.vendor, formData.referrer, onlineSellerMode]);
+
   const handleNext = useCallback(() => {
     if (currentStep < 3) {
       if (currentStep === 1) {
-        if (!formData.vendor) {
-          toast.error("Por favor selecciona un vendedor");
+        if (!step1SellerReady) {
+          toast.error(
+            "Por favor selecciona un vendedor o, si eres referidor, activa el modo referidor"
+          );
           return;
         }
         if (!selectedClient) {
@@ -753,7 +934,7 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
         }
       }, 0);
     }
-  }, [currentStep, formData.vendor, selectedClient, selectedProducts]);
+  }, [currentStep, step1SellerReady, selectedClient, selectedProducts]);
 
   const handleBack = useCallback(() => {
     if (currentStep > 1) {
@@ -800,21 +981,98 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
     setProductMarkups({});
     setProductDiscountTypes({});
     setProductDiscountCurrencies({});
-  }, [preferredCurrency]);
+    setOnlineSellerMode(user?.role === "Online Seller" ? "vendor" : null);
+  }, [preferredCurrency, user?.role]);
+
+  const discardDraftAndStartFresh = useCallback(() => {
+    clearDraftStorage();
+    resetForm();
+    setDraftResolution("none");
+  }, [clearDraftStorage, resetForm]);
 
   // Validaciones
   const canGoToNextStep: boolean =
     currentStep === 1
-      ? !!(formData.vendor && selectedClient && selectedProducts.length > 0)
+      ? !!(step1SellerReady && selectedClient && selectedProducts.length > 0)
       : currentStep === 2
       ? selectedProducts.length > 0
       : true;
 
   const canCreateBudget: boolean =
     currentStep === 1 &&
-    !!(formData.vendor && selectedClient && selectedProducts.length > 0);
+    !!(step1SellerReady && selectedClient && selectedProducts.length > 0);
 
-  const canAddProduct: boolean = !!(formData.vendor && selectedClient);
+  const canAddProduct: boolean = !!(step1SellerReady && selectedClient);
+
+  // Guardar borrador (debounce) mientras el diálogo está abierto y ya se resolvió el prompt
+  useEffect(() => {
+    if (!open || !draftOwnerId) return;
+    if (draftResolution === "pending" || draftResolution === "idle") return;
+
+    const key = `order_draft_${draftOwnerId}`;
+    const t = setTimeout(() => {
+      try {
+        const payload = {
+          v: ORDER_DRAFT_VERSION,
+          savedAt: Date.now(),
+          currentStep,
+          selectedClient,
+          selectedProducts,
+          formData,
+          paymentCondition,
+          saleType,
+          deliveryType,
+          deliveryZone,
+          hasDelivery,
+          deliveryServices,
+          payments,
+          generalDiscount,
+          generalDiscountType,
+          taxEnabled,
+          generalDiscountCurrency,
+          generalObservations,
+          createSupplierOrder,
+          productMarkups,
+          productDiscountTypes,
+          productDiscountCurrencies,
+          deliveryCurrency,
+          selectedCurrencies,
+          onlineSellerMode,
+        };
+        localStorage.setItem(key, JSON.stringify(payload));
+      } catch (e) {
+        console.warn("No se pudo guardar borrador de pedido", e);
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [
+    open,
+    draftOwnerId,
+    draftResolution,
+    currentStep,
+    selectedClient,
+    selectedProducts,
+    formData,
+    paymentCondition,
+    saleType,
+    deliveryType,
+    deliveryZone,
+    hasDelivery,
+    deliveryServices,
+    payments,
+    generalDiscount,
+    generalDiscountType,
+    taxEnabled,
+    generalDiscountCurrency,
+    generalObservations,
+    createSupplierOrder,
+    productMarkups,
+    productDiscountTypes,
+    productDiscountCurrencies,
+    deliveryCurrency,
+    selectedCurrencies,
+    onlineSellerMode,
+  ]);
 
   // Render helpers
   const renderCurrencyCell = useCallback(
@@ -950,6 +1208,7 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
     canGoToNextStep,
     canCreateBudget,
     canAddProduct,
+    step1SellerReady,
     handleNext,
     handleBack,
     resetForm,
@@ -967,6 +1226,13 @@ export function useOrderForm(open: boolean): UseOrderFormReturn {
     renderCurrencyCellNegative,
     mockVendors: vendors,
     mockReferrers: referrers,
+    needsDraftPrompt: draftResolution === "pending",
+    applyDraftAndContinue,
+    discardDraftAndStartFresh,
+    clearDraftStorage,
+    onlineSellerMode,
+    setOnlineSellerMode,
+    isOnlineSellerReferrer: onlineSellerMode === "referrer",
   };
 }
 

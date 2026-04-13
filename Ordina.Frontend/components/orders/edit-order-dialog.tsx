@@ -273,6 +273,12 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
   // Guardar solo pagos (modo vendedor): actualiza únicamente los campos de pago del pedido
   const handleSavePaymentsOnly = async () => {
     if (!order) return;
+    if (order.paymentCondition === "cashea") {
+      toast.error(
+        "Los pagos de pedidos Cashea se gestionan directamente en la plataforma Cashea."
+      );
+      return;
+    }
     try {
       const paymentCondition = order.paymentCondition ?? "pago_parcial";
       if (paymentCondition !== "pago_a_entrega" && orderForm.payments.length === 0) {
@@ -418,14 +424,17 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
         return;
       }
 
-      // Solo validar pagos si NO es "Pago a la entrega"
-      if (orderForm.paymentCondition !== "pago_a_entrega" && orderForm.payments.length === 0) {
+      const noPaymentsRequired =
+        orderForm.paymentCondition === "pago_a_entrega" ||
+        orderForm.paymentCondition === "cashea";
+
+      if (!noPaymentsRequired && orderForm.payments.length === 0) {
         toast.error("Por favor agrega al menos un pago");
         return;
       }
 
       // Validar que cada pago tenga los campos requeridos completos
-      if (orderForm.paymentCondition !== "pago_a_entrega") {
+      if (!noPaymentsRequired) {
         for (let i = 0; i < orderForm.payments.length; i++) {
           const payment = orderForm.payments[i];
           const paymentLabel = `Pago ${i + 1}`;
@@ -467,17 +476,9 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
               toast.error(`${paymentLabel} (Tarjeta de débito): Debe seleccionar el banco`);
               return;
             }
-            if (!payment.paymentDetails?.cardReference) {
-              toast.error(`${paymentLabel} (Tarjeta de débito): Debe ingresar el número de referencia`);
-              return;
-            }
           } else if (payment.method === "Tarjeta de Crédito") {
             if (!payment.paymentDetails?.bank) {
               toast.error(`${paymentLabel} (Tarjeta de Crédito): Debe seleccionar el banco`);
-              return;
-            }
-            if (!payment.paymentDetails?.cardReference) {
-              toast.error(`${paymentLabel} (Tarjeta de Crédito): Debe ingresar el número de referencia`);
               return;
             }
           } else if (payment.method === "Zelle") {
@@ -612,7 +613,8 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
         deliveryCost: orderForm.deliveryCost,
         total: orderForm.total,
         paymentType:
-          orderForm.paymentCondition === "pago_a_entrega"
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea"
             ? "directo"
             : orderForm.paymentCondition === "todo_pago"
               ? "directo"
@@ -642,17 +644,31 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
         paymentMethod:
           orderForm.paymentCondition === "pago_a_entrega"
             ? "Pago a la entrega"
-            : orderForm.payments.length > 1
-              ? "Mixto"
-              : orderForm.payments[0]?.method || "",
+            : orderForm.paymentCondition === "cashea"
+              ? "Cashea"
+              : orderForm.payments.length > 1
+                ? "Mixto"
+                : orderForm.payments[0]?.method || "",
         paymentDetails:
-          orderForm.paymentCondition === "pago_a_entrega" || orderForm.payments.length === 0
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea" ||
+          orderForm.payments.length === 0
             ? undefined
             : orderForm.payments.length === 1
               ? orderForm.payments[0]?.paymentDetails
               : undefined,
-        partialPayments: orderForm.paymentCondition === "pago_a_entrega" ? undefined : orderForm.payments,
-        mixedPayments: orderForm.paymentCondition === "pago_a_entrega" ? undefined : (orderForm.payments.length > 1 ? orderForm.payments : undefined),
+        partialPayments:
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea"
+            ? undefined
+            : orderForm.payments,
+        mixedPayments:
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea"
+            ? undefined
+            : orderForm.payments.length > 1
+              ? orderForm.payments
+              : undefined,
         deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
         hasDelivery: orderForm.hasDelivery,
         deliveryServices: orderForm.hasDelivery
@@ -758,10 +774,14 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
             <Step3OrderDetails
               orderForm={orderForm}
               onSubmit={isPaymentsOnly ? handleSavePaymentsOnly : handleSubmit}
-              addPayment={addPayment}
+              addPayment={
+                orderForm.paymentCondition === "cashea" ? undefined : addPayment
+              }
               updatePayment={updatePayment}
               updatePaymentDetails={updatePaymentDetails}
-              removePayment={removePayment}
+              removePayment={
+                orderForm.paymentCondition === "cashea" ? undefined : removePayment
+              }
               getAccountsForPaymentMethod={getAccountsForPaymentMethod}
               saveAccountInfoToPayment={saveAccountInfoToPayment}
               updatePaymentImages={updatePaymentImages}
@@ -815,10 +835,21 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
           )}
 
           {isPaymentsOnly && (
-            <div className="flex justify-end pt-4 border-t">
-              <Button onClick={handleSavePaymentsOnly} className="w-full sm:w-auto">
-                Guardar pagos
-              </Button>
+            <div className="flex flex-col gap-3 pt-4 border-t">
+              {order?.paymentCondition === "cashea" && (
+                <p className="text-sm text-muted-foreground">
+                  Este pedido está financiado por Cashea. Los pagos no son editables en tienda.
+                </p>
+              )}
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleSavePaymentsOnly}
+                  className="w-full sm:w-auto"
+                  disabled={order?.paymentCondition === "cashea"}
+                >
+                  Guardar pagos
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

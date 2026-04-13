@@ -797,17 +797,21 @@ export default function OrderDetailPage() {
       ) {
         setFormattedPayments([]);
         setFormattedTotalPaid("");
-        // Si no hay pagos, el saldo pendiente es el total del pedido
+        // Si no hay pagos, el saldo pendiente es el total del pedido (excepto Cashea: no aplica en tienda)
         if (order) {
-          const totalInBs = order.total;
-          if (selectedCurrency && selectedCurrency !== "Bs") {
-            const pendingFormatted = await formatWithSelectedCurrency(
-              totalInBs,
-              "Bs"
-            );
-            setFormattedPendingBalance(pendingFormatted);
+          if (order.paymentCondition === "cashea") {
+            setFormattedPendingBalance("");
           } else {
-            setFormattedPendingBalance(formatCurrency(totalInBs, "Bs"));
+            const totalInBs = order.total;
+            if (selectedCurrency && selectedCurrency !== "Bs") {
+              const pendingFormatted = await formatWithSelectedCurrency(
+                totalInBs,
+                "Bs"
+              );
+              setFormattedPendingBalance(pendingFormatted);
+            } else {
+              setFormattedPendingBalance(formatCurrency(totalInBs, "Bs"));
+            }
           }
         } else {
           setFormattedPendingBalance("");
@@ -865,7 +869,9 @@ export default function OrderDetailPage() {
       const totalOrderInBs = order.total;
       const pendingBalanceInBs = totalOrderInBs - totalPaidInBs;
 
-      if (pendingBalanceInBs > 0) {
+      if (order.paymentCondition === "cashea") {
+        setFormattedPendingBalance("");
+      } else if (pendingBalanceInBs > 0) {
         // Hay saldo pendiente
         if (selectedCurrency && selectedCurrency !== "Bs") {
           const pendingFormatted = await formatWithSelectedCurrency(
@@ -1205,24 +1211,32 @@ export default function OrderDetailPage() {
                         <p className="text-sm"><span className="text-muted-foreground">Total:</span>{" "}
                           <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline" />
                         </p>
-                        {order.partialPayments && order.partialPayments.length > 0 && (() => {
-                          const totalPaid = order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-                          const pending = order.total - totalPaid;
-                          if (pending > 0) {
-                            return (
+                        {order.paymentCondition === "cashea" ? (
+                          <p className="text-sm text-blue-700 dark:text-blue-300">
+                            Financiación Cashea: el cobro de cuotas no se gestiona en tienda.
+                          </p>
+                        ) : (
+                          <>
+                            {order.partialPayments && order.partialPayments.length > 0 && (() => {
+                              const totalPaid = order.partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                              const pending = order.total - totalPaid;
+                              if (pending > 0) {
+                                return (
+                                  <p className="text-sm text-red-600 dark:text-red-400">
+                                    <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
+                                    <CurrencyDisplay amountInBs={pending} exchangeRates={localExchangeRates} inline className="inline font-medium" />
+                                  </p>
+                                );
+                              }
+                              return null;
+                            })()}
+                            {(!order.partialPayments || order.partialPayments.length === 0) && (
                               <p className="text-sm text-red-600 dark:text-red-400">
                                 <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
-                                <CurrencyDisplay amountInBs={pending} exchangeRates={localExchangeRates} inline className="inline font-medium" />
+                                <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline font-medium" />
                               </p>
-                            );
-                          }
-                          return null;
-                        })()}
-                        {(!order.partialPayments || order.partialPayments.length === 0) && (
-                          <p className="text-sm text-red-600 dark:text-red-400">
-                            <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
-                            <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline font-medium" />
-                          </p>
+                            )}
+                          </>
                         )}
                         {order.deliveryAddress && (
                           <p className="text-sm"><span className="text-muted-foreground">Dirección:</span> {order.deliveryAddress}</p>
@@ -2075,7 +2089,8 @@ export default function OrderDetailPage() {
                       </div>
 
                       {/* Mostrar saldo pendiente si existe (en USD cuando hay tasa, para ver cuánto debe) */}
-                      {formattedPendingBalance && (
+                      {formattedPendingBalance &&
+                        order.paymentCondition !== "cashea" && (
                         <>
                           <Separator />
                           <div className="space-y-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3">
@@ -2107,9 +2122,20 @@ export default function OrderDetailPage() {
                 </Card>
               )}
 
+              {order.paymentCondition === "cashea" && (
+                <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30">
+                  <CardContent className="p-4">
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      Financiación Cashea — el cobro de cuotas se gestiona directamente en la plataforma Cashea, no en tienda.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Mostrar saldo pendiente cuando NO hay pagos */}
               {(!order.partialPayments || order.partialPayments.length === 0) &&
-                formattedPendingBalance && (
+                formattedPendingBalance &&
+                order.paymentCondition !== "cashea" && (
                   <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">
