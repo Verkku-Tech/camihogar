@@ -1316,6 +1316,9 @@ public class ReportService : IReportService
                 // Calcular comisiones usando el nuevo sistema
                 var (vendorCommission, referrerCommission, baseRate, appliedVendorRate, appliedReferrerRate) = 
                     CalculateProductCommission(product, order, productCommissions, saleTypeRules, users, isExclusiveVendor);
+
+                if (vendorCommission == 0m && referrerCommission == 0m)
+                    continue;
                 
                 if (isSharedSale && !isExclusiveVendor)
                 {
@@ -1367,10 +1370,8 @@ public class ReportService : IReportService
     }
 
     /// <summary>
-    /// Calcula la comisión de un producto según el nuevo sistema:
-    /// 1. Obtiene la comisión base de la categoría/familia del producto
-    /// 2. Si es venta compartida, aplica las reglas de distribución por tipo de venta
-    /// 3. Si el vendedor es exclusivo, no se comparte la comisión
+    /// Comisión por línea: USD por unidad (commissionValue) × cantidad.
+    /// Venta compartida: vendorRate/referrerRate son % de esa comisión de familia, no del total del producto.
     /// </summary>
     private (decimal vendorCommission, decimal referrerCommission, decimal baseRate, decimal appliedVendorRate, decimal appliedReferrerRate) 
         CalculateProductCommission(
@@ -1390,45 +1391,40 @@ public class ReportService : IReportService
         
         if (baseCommissionRate == 0)
         {
-            _logger.LogWarning("No se encontró comisión configurada para la categoría '{Category}' del producto '{Product}'", 
-                product.Category, product.Name);
             return (0m, 0m, 0m, 0m, 0m);
         }
 
-        // 2. Calcular monto base del producto
-        var productTotal = product.Total;
+        var qty = Math.Max(product.Quantity, 1);
+        var familyCommission = baseCommissionRate * qty;
         
-        // 3. Verificar si es venta compartida
+        // Verificar si es venta compartida
         var isSharedSale = !string.IsNullOrWhiteSpace(order.ReferrerId);
 
         if (isSharedSale && !isExclusiveVendor)
         {
-            // VENTA COMPARTIDA: Aplicar distribución según tipo de venta
+            // VENTA COMPARTIDA: reparto como % de la comisión de familia (USD × unidad)
             var saleType = DetermineSaleType(order);
             var rule = saleTypeRules.FirstOrDefault(r => 
                 r.SaleType.Equals(saleType, StringComparison.OrdinalIgnoreCase));
             
             if (rule != null)
             {
-                // La comisión se calcula aplicando el porcentaje de la regla al total del producto
-                var vendorCommission = productTotal * (rule.VendorRate / 100);
-                var referrerCommission = productTotal * (rule.ReferrerRate / 100);
+                var vendorCommission = familyCommission * (rule.VendorRate / 100);
+                var referrerCommission = familyCommission * (rule.ReferrerRate / 100);
                 
                 return (vendorCommission, referrerCommission, baseCommissionRate, rule.VendorRate, rule.ReferrerRate);
             }
             else
             {
-                // Sin regla definida para este tipo de venta, usar comisión base dividida 50/50
                 _logger.LogWarning("No se encontró regla de distribución para el tipo de venta '{SaleType}'. Dividiendo 50/50.", saleType);
-                var halfCommission = productTotal * (baseCommissionRate / 100) / 2;
-                return (halfCommission, halfCommission, baseCommissionRate, baseCommissionRate / 2, baseCommissionRate / 2);
+                var halfCommission = familyCommission / 2;
+                return (halfCommission, halfCommission, baseCommissionRate, 50m, 50m);
             }
         }
         else
         {
-            // VENTA NORMAL o VENDEDOR EXCLUSIVO: Comisión completa
-            var fullCommission = productTotal * (baseCommissionRate / 100);
-            return (fullCommission, 0m, baseCommissionRate, baseCommissionRate, 0m);
+            // VENTA NORMAL o VENDEDOR EXCLUSIVO: comisión familia completa al vendedor de tienda
+            return (familyCommission, 0m, baseCommissionRate, 100m, 0m);
         }
     }
 

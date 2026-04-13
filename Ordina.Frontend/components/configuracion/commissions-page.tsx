@@ -20,16 +20,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Percent, Save, RefreshCcw, Users, ShoppingBag, ArrowLeftRight } from "lucide-react";
+import { DollarSign, Save, RefreshCcw, Users, ShoppingBag, ArrowLeftRight } from "lucide-react";
 import { toast } from "sonner";
 import {
   getCategories,
@@ -45,9 +38,6 @@ import {
   type User,
 } from "@/lib/storage";
 import { apiClient } from "@/lib/api-client";
-
-// Valores de comisión disponibles (múltiplos de 2.5)
-const COMMISSION_VALUES = [0, 2.5, 5, 7.5, 10, 12.5, 15];
 
 export function CommissionsPage() {
   // Estados para comisiones por categoría
@@ -95,7 +85,9 @@ export function CommissionsPage() {
       const commissionValues: Record<string, number> = {};
       loadedCategories.forEach((category) => {
         const existingCommission = loadedProductCommissions.find(
-          (pc) => pc.categoryId === category.backendId || pc.categoryName === category.name
+          (pc) =>
+            (category.backendId && pc.categoryId === category.backendId) ||
+            pc.categoryName?.trim().toLowerCase() === category.name.trim().toLowerCase()
         );
         commissionValues[category.name] = existingCommission?.commissionValue || 0;
       });
@@ -139,11 +131,16 @@ export function CommissionsPage() {
   const handleSaveProductCommissions = async () => {
     setIsSaving(true);
     try {
-      const commissionsToSave = categories.map((category) => ({
-        categoryId: category.backendId || category.id.toString(),
-        categoryName: category.name,
-        commissionValue: categoryCommissionValues[category.name] || 0,
-      }));
+      const commissionsToSave = categories.map((category) => {
+        const fromBackend = (category.backendId || "").trim();
+        const fromId = String(category.id ?? "").trim();
+        const categoryId = fromBackend || fromId || category.name.trim();
+        return {
+          categoryId,
+          categoryName: category.name,
+          commissionValue: Math.max(0, categoryCommissionValues[category.name] ?? 0),
+        };
+      });
 
       await batchUpsertProductCommissions(commissionsToSave);
       toast.success("Comisiones por categoría guardadas exitosamente");
@@ -274,11 +271,11 @@ export function CommissionsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Percent className="w-5 h-5" />
+                <DollarSign className="w-5 h-5" />
                 Comisiones por Familia de Producto
               </CardTitle>
               <CardDescription>
-                Configura la comisión base para cada categoría de productos (en múltiplos de 2.5%)
+                Monto en dólares (USD) por unidad vendida de cada familia. 0 = sin comisión (no aparece en el reporte).
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -294,7 +291,7 @@ export function CommissionsPage() {
                       <TableRow>
                         <TableHead>Categoría/Familia</TableHead>
                         <TableHead>Productos</TableHead>
-                        <TableHead className="w-48">Comisión Base (%)</TableHead>
+                        <TableHead className="w-48">Comisión (USD / unidad)</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -305,23 +302,30 @@ export function CommissionsPage() {
                             <Badge variant="secondary">{category.products} productos</Badge>
                           </TableCell>
                           <TableCell>
-                            <Select
-                              value={(categoryCommissionValues[category.name] || 0).toString()}
-                              onValueChange={(value) =>
-                                handleCategoryCommissionChange(category.name, parseFloat(value))
+                            <Input
+                              type="number"
+                              min={0}
+                              step={0.5}
+                              className="w-32"
+                              value={
+                                categoryCommissionValues[category.name] === 0
+                                  ? ""
+                                  : categoryCommissionValues[category.name] ?? ""
                               }
-                            >
-                              <SelectTrigger className="w-36">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {COMMISSION_VALUES.map((value) => (
-                                  <SelectItem key={value} value={value.toString()}>
-                                    {value === 0 ? "Sin comisión" : `${value}%`}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === "") {
+                                  handleCategoryCommissionChange(category.name, 0);
+                                  return;
+                                }
+                                const n = Number.parseFloat(v);
+                                handleCategoryCommissionChange(
+                                  category.name,
+                                  Number.isFinite(n) ? n : 0
+                                );
+                              }}
+                              placeholder="0"
+                            />
                           </TableCell>
                         </TableRow>
                       ))}
@@ -348,7 +352,7 @@ export function CommissionsPage() {
                 Distribución de Comisiones por Tipo de Venta
               </CardTitle>
               <CardDescription>
-                Define cómo se reparte la comisión entre Vendedor de Tienda y Postventa/Referido en ventas compartidas
+                En ventas compartidas (con referido), cada porcentaje se aplica sobre la comisión en USD de la familia del producto (no sobre el precio del pedido). La suma suele ser 100%.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -367,8 +371,8 @@ export function CommissionsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Tipo de Venta</TableHead>
-                        <TableHead className="text-center">Vendedor Tienda (%)</TableHead>
-                        <TableHead className="text-center">Postventa/Referido (%)</TableHead>
+                        <TableHead className="text-center">Vendedor tienda (% de comisión familia)</TableHead>
+                        <TableHead className="text-center">Postventa/Referido (% de comisión familia)</TableHead>
                         <TableHead className="text-center">Total</TableHead>
                       </TableRow>
                     </TableHeader>

@@ -85,6 +85,7 @@ export function CommissionsReport() {
           const commissions = await calculateOrderCommissions(order)
 
           for (const comm of commissions) {
+            if (!comm.commission || comm.commission === 0) continue
             const product = order.products.find((p) => p.id === comm.productId)
             if (!product) continue
 
@@ -215,6 +216,7 @@ export function CommissionsReport() {
       for (const order of filteredOrders) {
         const commissions = await calculateOrderCommissions(order)
         for (const comm of commissions) {
+          if (!comm.commission || comm.commission === 0) continue
           const product = order.products.find((p) => p.id === comm.productId)
           if (!product) continue
 
@@ -290,11 +292,12 @@ export function CommissionsReport() {
     }
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("es-VE", {
+  const formatCommissionUsd = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "VES",
+      currency: "USD",
       minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount)
   }
 
@@ -440,7 +443,7 @@ export function CommissionsReport() {
                       <TableHead>Descripción</TableHead>
                       <TableHead className="text-center">Cant. Artículos</TableHead>
                       <TableHead>Tipo de compra</TableHead>
-                      <TableHead className="text-right">Comisión</TableHead>
+                      <TableHead className="text-right">Comisión (USD)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -455,7 +458,7 @@ export function CommissionsReport() {
                         <TableCell className="text-center">{row.cantidadArticulos}</TableCell>
                         <TableCell>{row.tipoCompra}</TableCell>
                         <TableCell className="text-right font-medium">
-                          {formatCurrency(row.comision)}
+                          {formatCommissionUsd(row.comision)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -465,7 +468,7 @@ export function CommissionsReport() {
                           Total Comisiones:
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatCurrency(totalComision)}
+                          {formatCommissionUsd(totalComision)}
                         </TableCell>
                       </TableRow>
                     )}
