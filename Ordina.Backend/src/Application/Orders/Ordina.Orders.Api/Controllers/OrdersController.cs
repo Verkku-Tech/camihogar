@@ -44,6 +44,15 @@ public class OrdersController : ControllerBase
         return user.Claims.Any(c => c.Type == "permissions" && c.Value == permission);
     }
 
+    /// <summary>Solo Super Administrator o Administrator pueden validar ítems de pedido.</summary>
+    private static bool IsAdministratorOrSuperAdministrator(ClaimsPrincipal user)
+    {
+        var role = user.FindFirstValue(ClaimTypes.Role);
+        if (string.IsNullOrWhiteSpace(role)) return false;
+        return string.Equals(role, "Super Administrator", StringComparison.Ordinal)
+            || string.Equals(role, "Administrator", StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Obtiene pedidos con paginación y filtro de sincronización incremental
     /// </summary>
@@ -345,6 +354,9 @@ public class OrdersController : ControllerBase
     {
         try
         {
+            if (!IsAdministratorOrSuperAdministrator(User))
+                return Forbid();
+
             var (userId, userName) = GetActor(User);
             var order = await _orderService.ValidateOrderItemAsync(id, itemId, userId, userName);
             return Ok(order);

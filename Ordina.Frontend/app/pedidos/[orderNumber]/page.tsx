@@ -52,6 +52,7 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { ImageGallery } from "@/components/orders/image-gallery";
+import { useAuth } from "@/contexts/auth-context";
 
 // Función helper para obtener el monto original del pago en su moneda
 const getOriginalPaymentAmount = (
@@ -457,6 +458,9 @@ export default function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
   const orderNumber = params.orderNumber as string;
+  const { user } = useAuth();
+  const canValidateOrders =
+    user?.role === "Super Administrator" || user?.role === "Administrator";
   const { formatWithPreference, preferredCurrency } = useCurrency();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -494,6 +498,10 @@ export default function OrderDetailPage() {
   const [validatingOrder, setValidatingOrder] = useState<boolean>(false);
 
   const handleValidateOrder = async () => {
+    if (!canValidateOrders) {
+      toast.error("Solo administradores pueden validar pedidos.");
+      return;
+    }
     if (!order || !order.products) return;
     
     // Obtener productos que no están validados
@@ -1250,7 +1258,8 @@ export default function OrderDetailPage() {
                   </HoverCard>
                 </div>
                 <div className="flex items-center gap-3">
-                  {(order.status === "Generado" || order.status === "Generada") && (
+                  {(order.status === "Generado" || order.status === "Generada") &&
+                    canValidateOrders && (
                     <Button
                       onClick={handleValidateOrder}
                       disabled={validatingOrder}
