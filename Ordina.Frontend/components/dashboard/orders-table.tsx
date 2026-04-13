@@ -11,6 +11,7 @@ import { formatCurrency, formatCurrencyWithUsdPrimaryFromOrder, getActiveExchang
 import { apiClient } from "@/lib/api-client"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
 
 interface OrdersTableProps {
   limit?: number
@@ -59,6 +60,9 @@ function filterAndSortGeneratedOrders(allOrders: Order[], limit: number) {
 
 export function OrdersTable({ limit = 10 }: OrdersTableProps) {
   const router = useRouter()
+  const { user } = useAuth()
+  const canValidateOrders =
+    user?.role === "Super Administrator" || user?.role === "Administrator"
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
@@ -123,6 +127,10 @@ export function OrdersTable({ limit = 10 }: OrdersTableProps) {
 
   const handleValidate = async (order: Order, e: React.MouseEvent) => {
     e.stopPropagation()
+    if (!canValidateOrders) {
+      toast.error("Solo administradores pueden validar pedidos.")
+      return
+    }
     const productsToValidate = order.products.filter(
       (p) => !p.logisticStatus || p.logisticStatus === "Generado"
     )
@@ -232,7 +240,7 @@ export function OrdersTable({ limit = 10 }: OrdersTableProps) {
                     <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
                   </TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    {isGenerated(order) ? (
+                    {isGenerated(order) && canValidateOrders ? (
                       <Button
                         size="sm"
                         className="bg-indigo-600 hover:bg-indigo-700 text-white"
@@ -245,7 +253,16 @@ export function OrdersTable({ limit = 10 }: OrdersTableProps) {
                         Validar
                       </Button>
                     ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
+                      <span
+                        className="text-xs text-muted-foreground"
+                        title={
+                          isGenerated(order) && !canValidateOrders
+                            ? "Solo administradores pueden validar pedidos"
+                            : undefined
+                        }
+                      >
+                        —
+                      </span>
                     )}
                   </TableCell>
                 </TableRow>
