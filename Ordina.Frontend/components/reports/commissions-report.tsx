@@ -13,9 +13,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   getOrders,
   calculateOrderCommissions,
-  getPurchaseType,
   getCategories,
   getProducts,
+  getSaleTypeCommissionRules,
+  getCommissionSaleTypeLabelForOrder,
   type Order,
   type Category,
   type Product,
@@ -27,7 +28,7 @@ interface CommissionReportRow {
   vendedor: string
   descripcion: string
   cantidadArticulos: number
-  tipoCompra: string
+  tipoVenta: string
   comision: number
   vendedorSecundario?: string
   comisionSecundaria?: number
@@ -63,9 +64,12 @@ export function CommissionsReport() {
 
       try {
         // 1. Cargar pedidos desde IndexedDB (fuente de verdad)
-        const orders = await getOrders()
-        const categories = await getCategories()
-        const products = await getProducts()
+        const [orders, categories, products, saleTypeRules] = await Promise.all([
+          getOrders(),
+          getCategories(),
+          getProducts(),
+          getSaleTypeCommissionRules(),
+        ])
 
         // 2. Filtrar pedidos por fecha
         const startDateObj = new Date(startDate)
@@ -81,6 +85,7 @@ export function CommissionsReport() {
         const reportRows: CommissionReportRow[] = []
 
         for (const order of filteredOrders) {
+          const tipoVenta = getCommissionSaleTypeLabelForOrder(order, saleTypeRules)
           // Calcular comisiones del pedido
           const commissions = await calculateOrderCommissions(order)
 
@@ -102,7 +107,7 @@ export function CommissionsReport() {
               vendedor: comm.sellerName,
               descripcion: productDesc,
               cantidadArticulos: product.quantity,
-              tipoCompra: getPurchaseType(order),
+              tipoVenta,
               comision: comm.commission,
               vendedorSecundario: comm.isShared
                 ? comm.sellerId === order.vendorId
@@ -198,9 +203,12 @@ export function CommissionsReport() {
 
     try {
       // Calcular datos desde IndexedDB (frontend-first)
-      const orders = await getOrders()
-      const categories = await getCategories()
-      const products = await getProducts()
+      const [orders, categories, products, saleTypeRules] = await Promise.all([
+        getOrders(),
+        getCategories(),
+        getProducts(),
+        getSaleTypeCommissionRules(),
+      ])
 
       const startDateObj = new Date(startDate)
       const endDateObj = new Date(endDate)
@@ -214,6 +222,7 @@ export function CommissionsReport() {
       // Calcular comisiones
       const commissionData: any[] = []
       for (const order of filteredOrders) {
+        const tipoVenta = getCommissionSaleTypeLabelForOrder(order, saleTypeRules)
         const commissions = await calculateOrderCommissions(order)
         for (const comm of commissions) {
           if (!comm.commission || comm.commission === 0) continue
@@ -232,7 +241,7 @@ export function CommissionsReport() {
             vendedor: comm.sellerName,
             descripcion: productDesc,
             cantidadArticulos: product.quantity,
-            tipoCompra: getPurchaseType(order),
+            tipoVenta,
             comision: comm.commission,
             vendedorSecundario: comm.isShared
               ? comm.sellerId === order.vendorId
@@ -442,7 +451,7 @@ export function CommissionsReport() {
                       <TableHead>Vendedor</TableHead>
                       <TableHead>Descripción</TableHead>
                       <TableHead className="text-center">Cant. Artículos</TableHead>
-                      <TableHead>Tipo de compra</TableHead>
+                      <TableHead>Tipo de venta</TableHead>
                       <TableHead className="text-right">Comisión (USD)</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -456,7 +465,7 @@ export function CommissionsReport() {
                         <TableCell className="max-w-[200px] truncate">{row.vendedor}</TableCell>
                         <TableCell className="max-w-[300px]">{row.descripcion}</TableCell>
                         <TableCell className="text-center">{row.cantidadArticulos}</TableCell>
-                        <TableCell>{row.tipoCompra}</TableCell>
+                        <TableCell>{row.tipoVenta}</TableCell>
                         <TableCell className="text-right font-medium">
                           {formatCommissionUsd(row.comision)}
                         </TableCell>
