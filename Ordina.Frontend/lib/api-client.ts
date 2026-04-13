@@ -1918,6 +1918,7 @@ export interface OrderResponseDto {
   generalDiscountAmount?: number;
   paymentType: string;
   paymentMethod: string;
+  paymentCondition?: string;
   paymentDetails?: PaymentDetailsDto;
   partialPayments?: PartialPaymentDto[];
   mixedPayments?: PartialPaymentDto[];
@@ -2028,6 +2029,7 @@ export interface CreateOrderDto {
   generalDiscountAmount?: number;
   paymentType: string;
   paymentMethod: string;
+  paymentCondition?: string;
   paymentDetails?: PaymentDetailsDto;
   partialPayments?: PartialPaymentDto[];
   mixedPayments?: PartialPaymentDto[];
@@ -2083,6 +2085,7 @@ export interface UpdateOrderDto {
   generalDiscountAmount?: number;
   paymentType?: string;
   paymentMethod?: string;
+  paymentCondition?: string;
   paymentDetails?: PaymentDetailsDto;
   partialPayments?: PartialPaymentDto[];
   mixedPayments?: PartialPaymentDto[];
