@@ -192,6 +192,7 @@ public class OrderService : IOrderService
                 GeneralDiscountAmount = createDto.GeneralDiscountAmount,
                 PaymentType = paymentType,
                 PaymentMethod = paymentMethod,
+                PaymentCondition = createDto.PaymentCondition,
                 PaymentDetails = createDto.PaymentDetails != null ? MapPaymentDetailsFromDto(createDto.PaymentDetails) : null,
                 PartialPayments = createDto.PartialPayments?.Select(MapPartialPaymentFromDto).ToList(),
                 MixedPayments = createDto.MixedPayments?.Select(MapPartialPaymentFromDto).ToList(),
@@ -273,6 +274,8 @@ public class OrderService : IOrderService
                 existingOrder.PaymentType = updateDto.PaymentType;
             if (!string.IsNullOrEmpty(updateDto.PaymentMethod))
                 existingOrder.PaymentMethod = updateDto.PaymentMethod;
+            if (updateDto.PaymentCondition != null)
+                existingOrder.PaymentCondition = updateDto.PaymentCondition;
             if (updateDto.PaymentDetails != null)
                 existingOrder.PaymentDetails = MapPaymentDetailsFromDto(updateDto.PaymentDetails);
             if (updateDto.PartialPayments != null)
@@ -503,6 +506,7 @@ public class OrderService : IOrderService
             GeneralDiscountAmount = order.GeneralDiscountAmount,
             PaymentType = order.PaymentType,
             PaymentMethod = order.PaymentMethod,
+            PaymentCondition = order.PaymentCondition,
             PaymentDetails = order.PaymentDetails != null ? MapPaymentDetailsToDto(order.PaymentDetails) : null,
             PartialPayments = order.PartialPayments?.Select(MapPartialPaymentToDto).ToList(),
             MixedPayments = order.MixedPayments?.Select(MapPartialPaymentToDto).ToList(),

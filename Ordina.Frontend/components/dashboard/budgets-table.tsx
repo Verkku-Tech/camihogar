@@ -104,6 +104,7 @@ export function BudgetsTable() {
                 <TableRow>
                   <TableHead className="font-medium text-muted-foreground">Presupuesto</TableHead>
                   <TableHead className="font-medium text-muted-foreground">Cliente</TableHead>
+                  <TableHead className="font-medium text-muted-foreground">Referidor</TableHead>
                   <TableHead className="font-medium text-muted-foreground">Total</TableHead>
                   <TableHead className="font-medium text-muted-foreground">Fecha Creación</TableHead>
                   <TableHead className="font-medium text-muted-foreground">Válido Hasta</TableHead>
@@ -113,6 +114,7 @@ export function BudgetsTable() {
               <TableBody>
                 {[1, 2, 3, 4, 5].map((index) => (
                   <TableRow key={index}>
+                    <TableCell className="h-12 animate-pulse bg-muted" />
                     <TableCell className="h-12 animate-pulse bg-muted" />
                     <TableCell className="h-12 animate-pulse bg-muted" />
                     <TableCell className="h-12 animate-pulse bg-muted" />
@@ -154,6 +156,7 @@ export function BudgetsTable() {
               <TableRow>
                 <TableHead className="font-medium text-muted-foreground">Presupuesto</TableHead>
                 <TableHead className="font-medium text-muted-foreground">Cliente</TableHead>
+                <TableHead className="font-medium text-muted-foreground">Referidor</TableHead>
                 <TableHead className="font-medium text-muted-foreground">Total</TableHead>
                 <TableHead className="font-medium text-muted-foreground">Fecha Creación</TableHead>
                 <TableHead className="font-medium text-muted-foreground">Válido Hasta</TableHead>
@@ -173,6 +176,9 @@ export function BudgetsTable() {
                   >
                     <TableCell className="font-medium text-green-600">{budget.budgetNumber}</TableCell>
                     <TableCell className="font-medium">{budget.clientName}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {budget.referrerName?.trim() ? budget.referrerName : "—"}
+                    </TableCell>
                     <TableCell className="font-medium">
                       {formattedAmounts[budget.id] || formatCurrency(budget.total, budget.baseCurrency || "Bs")}
                     </TableCell>

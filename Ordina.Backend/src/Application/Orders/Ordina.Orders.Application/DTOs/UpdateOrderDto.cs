@@ -18,6 +18,7 @@ public class UpdateOrderDto
     public decimal? GeneralDiscountAmount { get; set; }
     public string? PaymentType { get; set; }
     public string? PaymentMethod { get; set; }
+    public string? PaymentCondition { get; set; }
     public PaymentDetailsDto? PaymentDetails { get; set; }
     public List<PartialPaymentDto>? PartialPayments { get; set; }
     public List<PartialPaymentDto>? MixedPayments { get; set; }

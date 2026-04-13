@@ -79,6 +79,8 @@ export function Step3OrderDetails({
   paymentsOnly = false,
   allowRemovePayment = true,
 }: Step3OrderDetailsProps) {
+  const readOnlyPayments = orderForm.paymentCondition === "cashea";
+
   return (
     <div className="space-y-5 sm:space-y-6">
       <Card>
@@ -506,7 +508,7 @@ export function Step3OrderDetails({
                         orderForm.deliveryServices.deliveryExpress.cost > 0 && (
                           <TableRow>
                             <TableCell className="text-xs sm:text-sm font-medium">
-                              DELIVERY EXPRESS:
+                              Delivery Express:
                             </TableCell>
                             <TableCell className="text-right text-xs sm:text-sm">
                               {(() => {
@@ -532,7 +534,7 @@ export function Step3OrderDetails({
                         orderForm.deliveryServices.servicioAcarreo.cost > 0 && (
                           <TableRow>
                             <TableCell className="text-xs sm:text-sm font-medium">
-                              SERVICIO DE ACARREO:
+                              Servicio de Acarreo:
                             </TableCell>
                             <TableCell className="text-right text-xs sm:text-sm">
                               {(() => {
@@ -557,7 +559,7 @@ export function Step3OrderDetails({
                         orderForm.deliveryServices.servicioArmado.cost > 0 && (
                           <TableRow>
                             <TableCell className="text-xs sm:text-sm font-medium">
-                              SERVICIO DE ARMADO:
+                              Servicio de Armado:
                             </TableCell>
                             <TableCell className="text-right text-xs sm:text-sm">
                               {(() => {
@@ -926,22 +928,30 @@ export function Step3OrderDetails({
                   <Label className="text-sm sm:text-base">
                     Pagos
                   </Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addPayment}
-                    className="w-full sm:w-auto"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Agregar Pago
-                  </Button>
+                  {addPayment && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addPayment}
+                      className="w-full sm:w-auto"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Agregar Pago
+                    </Button>
+                  )}
                 </div>
+                {orderForm.paymentCondition === "cashea" && (
+                  <p className="text-sm text-muted-foreground">
+                    Financiación Cashea: no se registran pagos en tienda; el cobro de cuotas es con Cashea.
+                  </p>
+                )}
 
                 {orderForm.payments.map((payment) => (
-                  <div
+                  <fieldset
                     key={payment.id}
-                    className="space-y-3 sm:space-y-4 p-3 sm:p-4 border rounded-lg"
+                    disabled={readOnlyPayments}
+                    className="space-y-3 sm:space-y-4 p-3 sm:p-4 border rounded-lg min-w-0 border-border"
                   >
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:items-end">
                       {/* Método primero */}
@@ -1050,12 +1060,12 @@ export function Step3OrderDetails({
                           className="w-full"
                         />
                       </div>
-                      {allowRemovePayment && (
+                      {allowRemovePayment && removePayment && (
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => removePayment?.(payment.id)}
+                          onClick={() => removePayment(payment.id)}
                           className="w-full sm:w-auto self-end sm:self-auto"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -1377,23 +1387,6 @@ export function Step3OrderDetails({
                               </SelectContent>
                             </Select>
                           </div>
-                          {/* N° de Referencia */}
-                          <div className="space-y-2">
-                            <Label
-                              htmlFor={`tdd-reference-${payment.id}`}
-                              className="text-xs"
-                            >
-                              N° de Referencia
-                            </Label>
-                            <Input
-                              id={`tdd-reference-${payment.id}`}
-                              value={payment.paymentDetails?.cardReference || ""}
-                              onChange={(e) =>
-                                updatePaymentDetails?.(payment.id, "cardReference", e.target.value)
-                              }
-                              placeholder="Ingrese el número de referencia"
-                            />
-                          </div>
                         </div>
 
                         {/* Comprobante - Imágenes */}
@@ -1483,23 +1476,6 @@ export function Step3OrderDetails({
                                   ))}
                               </SelectContent>
                             </Select>
-                          </div>
-                          {/* N° de Referencia */}
-                          <div className="space-y-2">
-                            <Label
-                              htmlFor={`tdc-reference-${payment.id}`}
-                              className="text-xs"
-                            >
-                              N° de Referencia
-                            </Label>
-                            <Input
-                              id={`tdc-reference-${payment.id}`}
-                              value={payment.paymentDetails?.cardReference || ""}
-                              onChange={(e) =>
-                                updatePaymentDetails?.(payment.id, "cardReference", e.target.value)
-                              }
-                              placeholder="Ingrese el número de referencia"
-                            />
                           </div>
                         </div>
 
@@ -2335,7 +2311,7 @@ export function Step3OrderDetails({
                         </div>
                       </div>
                     )}
-                  </div>
+                  </fieldset>
                 ))}
 
                 {/* Tabla de resumen de pagos - Similar a la tabla de orderForm.totales */}

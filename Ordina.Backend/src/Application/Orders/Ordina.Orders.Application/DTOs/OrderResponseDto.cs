@@ -20,6 +20,7 @@ public class OrderResponseDto
     public decimal? GeneralDiscountAmount { get; set; }
     public string PaymentType { get; set; } = string.Empty;
     public string PaymentMethod { get; set; } = string.Empty;
+    public string? PaymentCondition { get; set; }
     public PaymentDetailsDto? PaymentDetails { get; set; }
     public List<PartialPaymentDto>? PartialPayments { get; set; }
     public List<PartialPaymentDto>? MixedPayments { get; set; }

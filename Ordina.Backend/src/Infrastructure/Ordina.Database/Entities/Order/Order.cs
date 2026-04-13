@@ -67,6 +67,9 @@ public class Order
     [BsonElement("paymentMethod")]
     public string PaymentMethod { get; set; } = string.Empty;
 
+    [BsonElement("paymentCondition")]
+    public string? PaymentCondition { get; set; }
+
     [BsonElement("paymentDetails")]
     public PaymentDetails? PaymentDetails { get; set; }
 

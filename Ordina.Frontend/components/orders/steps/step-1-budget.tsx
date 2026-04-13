@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useCurrency } from "@/contexts/currency-context";
+import { useAuth } from "@/contexts/auth-context";
 
 interface Step1BudgetProps {
   orderForm: UseOrderFormReturn;
@@ -40,6 +41,16 @@ export function Step1Budget({
   onRemoveProduct,
 }: Step1BudgetProps) {
   const { preferredCurrency } = useCurrency();
+  const { user } = useAuth();
+  const isStoreSeller = user?.role === "Store Seller";
+  const isOnlineSeller = user?.role === "Online Seller";
+
+  const vendorDisplayName =
+    orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)?.name ?? "";
+  const referrerDisplayName =
+    orderForm.mockReferrers.find((r) => r.id === orderForm.formData.referrer)?.name ??
+    user?.name ??
+    "";
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -48,52 +59,95 @@ export function Step1Budget({
           <CardTitle className="text-base sm:text-lg">Presupuesto</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5 p-4 sm:p-6">
-          {/* Vendor Selection */}
-          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="vendor">Vendedor</Label>
-              <Select
-                value={orderForm.formData.vendor}
-                onValueChange={(value) =>
-                  orderForm.setFormData((prev) => ({ ...prev, vendor: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar vendedor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {orderForm.mockVendors
-                    .filter((vendor) => vendor.id && vendor.id.trim() !== "")
-                    .map((vendor) => (
-                      <SelectItem key={vendor.id} value={vendor.id}>
-                        {vendor.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Vendedor / Referidor (según rol) */}
+          <div className="space-y-3">
+            {isOnlineSeller && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant={
+                    orderForm.onlineSellerMode === "vendor" ? "default" : "outline"
+                  }
+                  size="sm"
+                  onClick={() => orderForm.setOnlineSellerMode("vendor")}
+                >
+                  Actúo como Vendedor
+                </Button>
+                <Button
+                  type="button"
+                  variant={
+                    orderForm.onlineSellerMode === "referrer" ? "default" : "outline"
+                  }
+                  size="sm"
+                  onClick={() => orderForm.setOnlineSellerMode("referrer")}
+                >
+                  Actúo como Referidor
+                </Button>
+              </div>
+            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="referrer">Referidor</Label>
-              <Select
-                value={orderForm.formData.referrer}
-                onValueChange={(value) =>
-                  orderForm.setFormData((prev) => ({ ...prev, referrer: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar referidor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {orderForm.mockReferrers
-                    .filter((referrer) => referrer.id && referrer.id.trim() !== "")
-                    .map((referrer) => (
-                      <SelectItem key={referrer.id} value={referrer.id}>
-                        {referrer.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="vendor">Vendedor</Label>
+                {isStoreSeller ||
+                (isOnlineSeller && orderForm.onlineSellerMode !== "referrer") ? (
+                  <Input readOnly id="vendor" value={vendorDisplayName} />
+                ) : isOnlineSeller && orderForm.onlineSellerMode === "referrer" ? (
+                  <Input
+                    readOnly
+                    id="vendor"
+                    value=""
+                    placeholder="Asignado en tienda al aprobar"
+                  />
+                ) : (
+                  <Select
+                    value={orderForm.formData.vendor}
+                    onValueChange={(value) =>
+                      orderForm.setFormData((prev) => ({ ...prev, vendor: value }))
+                    }
+                  >
+                    <SelectTrigger id="vendor">
+                      <SelectValue placeholder="Seleccionar vendedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {orderForm.mockVendors
+                        .filter((vendor) => vendor.id && vendor.id.trim() !== "")
+                        .map((vendor) => (
+                          <SelectItem key={vendor.id} value={vendor.id}>
+                            {vendor.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="referrer">Referidor</Label>
+                {isOnlineSeller && orderForm.onlineSellerMode === "referrer" ? (
+                  <Input readOnly id="referrer" value={referrerDisplayName} />
+                ) : (
+                  <Select
+                    value={orderForm.formData.referrer}
+                    onValueChange={(value) =>
+                      orderForm.setFormData((prev) => ({ ...prev, referrer: value }))
+                    }
+                  >
+                    <SelectTrigger id="referrer">
+                      <SelectValue placeholder="Seleccionar referidor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {orderForm.mockReferrers
+                        .filter((referrer) => referrer.id && referrer.id.trim() !== "")
+                        .map((referrer) => (
+                          <SelectItem key={referrer.id} value={referrer.id}>
+                            {referrer.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </div>
           </div>
 
@@ -121,12 +175,10 @@ export function Step1Budget({
                 onClick={onProductSelection}
                 disabled={!orderForm.canAddProduct}
                 title={
-                  !orderForm.formData.vendor && !orderForm.selectedClient
-                    ? "Selecciona un vendedor y un cliente para agregar productos"
-                    : !orderForm.formData.vendor
-                    ? "Selecciona un vendedor para agregar productos"
-                    : !orderForm.selectedClient
+                  !orderForm.selectedClient
                     ? "Selecciona un cliente para agregar productos"
+                    : !orderForm.step1SellerReady
+                    ? "Selecciona vendedor o activa modo referidor (Online) para agregar productos"
                     : ""
                 }
               >
@@ -136,11 +188,11 @@ export function Step1Budget({
             </div>
             {!orderForm.canAddProduct && (
               <p className="text-xs text-muted-foreground">
-                {!orderForm.formData.vendor && !orderForm.selectedClient
-                  ? "⚠️ Debes seleccionar un vendedor y un cliente para agregar productos"
-                  : !orderForm.formData.vendor
-                  ? "⚠️ Debes seleccionar un vendedor para agregar productos"
-                  : "⚠️ Debes seleccionar un cliente para agregar productos"}
+                {!orderForm.selectedClient
+                  ? "⚠️ Debes seleccionar un cliente para agregar productos"
+                  : !orderForm.step1SellerReady
+                  ? "⚠️ Debes indicar vendedor o modo referidor antes de agregar productos"
+                  : ""}
               </p>
             )}
 
