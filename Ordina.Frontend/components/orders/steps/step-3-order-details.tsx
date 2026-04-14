@@ -35,6 +35,8 @@ import {
   paymentMethods,
   digitalPaymentMethods,
   bsOnlyPaymentMethods,
+  paymentMethodUsesOnlyOfficialBsRate,
+  efectivoCashExcludesManualBs,
 } from "../constants";
 
 /** `<input type="date" />` solo acepta yyyy-MM-dd; el API suele devolver ISO completo. */
@@ -86,7 +88,7 @@ export function Step3OrderDetails({
       <Card>
         <CardHeader className="p-4 sm:p-6 pb-4 sm:pb-6">
           <CardTitle className="text-base sm:text-lg">
-            {paymentsOnly ? "Pagos del pedido" : "Realizar Pedido"}
+            {paymentsOnly ? "Pagos del pedido" : "Servicios Adicionales"}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5 sm:space-y-6 p-4 sm:p-6">
@@ -1015,6 +1017,30 @@ export function Step3OrderDetails({
                                   orderForm.exchangeRates[currentCurrency].rate
                                 );
                               }
+                              if (efectivoCashExcludesManualBs(currentCurrency)) {
+                                updatePaymentDetails?.(
+                                  payment.id,
+                                  "useCustomRate",
+                                  false
+                                );
+                                const received =
+                                  payment.paymentDetails?.cashReceived || 0;
+                                if (received > 0) {
+                                  const rate =
+                                    orderForm.exchangeRates[currentCurrency]?.rate ||
+                                    1;
+                                  updatePaymentDetails?.(
+                                    payment.id,
+                                    "exchangeRate",
+                                    rate
+                                  );
+                                  updatePayment?.(
+                                    payment.id,
+                                    "amount",
+                                    received * rate
+                                  );
+                                }
+                              }
                             } else {
                               // Si se cambia a un método diferente a Efectivo y había cashReceived, limpiarlo
                               updatePaymentDetails?.(
@@ -1026,6 +1052,13 @@ export function Step3OrderDetails({
                                 payment.id,
                                 "cashCurrency",
                                 "Bs"
+                              );
+                            }
+                            if (paymentMethodUsesOnlyOfficialBsRate(value)) {
+                              updatePaymentDetails?.(
+                                payment.id,
+                                "useCustomRate",
+                                false
                               );
                             }
                           }}
@@ -1649,9 +1682,15 @@ export function Step3OrderDetails({
                                     orderForm.getDefaultCurrencyFromSelection();
                                 }
 
+                                const hideManualBs =
+                                  paymentMethodUsesOnlyOfficialBsRate(
+                                    payment.method
+                                  );
+
                                 return (
                                   <>
-                                    {paymentCurrency !== "Bs" && (
+                                    {paymentCurrency !== "Bs" &&
+                                      !hideManualBs && (
                                       <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-md border">
                                         <Checkbox
                                           id={`custom-rate-${payment.id}`}
@@ -1695,6 +1734,7 @@ export function Step3OrderDetails({
                                     )}
 
                                     {paymentCurrency !== "Bs" &&
+                                      !hideManualBs &&
                                       !payment.paymentDetails?.useCustomRate && (
                                         <p className="text-xs text-muted-foreground">
                                           El monto se convierte a Bs automáticamente usando la tasa
@@ -1761,7 +1801,11 @@ export function Step3OrderDetails({
                                             // El usuario actualizará los Bs en el otro input.
                                             // Pero si está escribiendo dólares, por conveniencia le sugerimos los bs
                                             // usando la tasa oficial actual si los bs estaban en 0.
-                                            if (payment.paymentDetails?.useCustomRate) {
+                                            if (
+                                              payment.paymentDetails
+                                                ?.useCustomRate &&
+                                              !hideManualBs
+                                            ) {
                                               if (payment.amount === 0) {
                                                 const rate =
                                                   paymentCurrency === "USD"
@@ -1832,7 +1876,8 @@ export function Step3OrderDetails({
 
                                       {/* Monto en Bolívares Equivalente */}
                                       {payment.paymentDetails?.useCustomRate &&
-                                        paymentCurrency !== "Bs" && (
+                                        paymentCurrency !== "Bs" &&
+                                        !hideManualBs && (
                                           <div className="space-y-2">
                                             <Label
                                               htmlFor={`custom-bs-amount-${payment.id}`}
@@ -2043,6 +2088,14 @@ export function Step3OrderDetails({
                                     amountInBs
                                   );
                                 }
+
+                                if (efectivoCashExcludesManualBs(value)) {
+                                  updatePaymentDetails?.(
+                                    payment.id,
+                                    "useCustomRate",
+                                    false
+                                  );
+                                }
                               }}
                             >
                               <SelectTrigger>
@@ -2088,37 +2141,6 @@ export function Step3OrderDetails({
                                   received
                                 );
 
-                                // Si tiene tasa manual, calculamos la implícita
-                                if (payment.paymentDetails?.useCustomRate) {
-                                  if (payment.amount > 0 && received > 0) {
-                                    updatePaymentDetails?.(
-                                      payment.id,
-                                      "exchangeRate",
-                                      Number((payment.amount / received).toFixed(4))
-                                    );
-                                  } else {
-                                    // Si no hay amount, usamos la oficial por defecto temporalmente
-                                    const currency = payment.paymentDetails?.cashCurrency || "Bs";
-                                    const rate =
-                                      currency !== "Bs"
-                                        ? orderForm.exchangeRates[currency]?.rate || 1
-                                        : 1;
-                                    updatePayment?.(
-                                      payment.id,
-                                      "amount",
-                                      currency === "Bs" ? received : received * rate
-                                    );
-                                    if (currency !== "Bs") {
-                                      updatePaymentDetails?.(
-                                        payment.id,
-                                        "exchangeRate",
-                                        rate
-                                      );
-                                    }
-                                  }
-                                  return;
-                                }
-
                                 // Calcular y actualizar el amount en Bs automáticamente
                                 const currency =
                                   payment.paymentDetails
@@ -2156,7 +2178,10 @@ export function Step3OrderDetails({
 
                           {/* Equivalente en Bs Manual para Efectivo */}
                           {payment.paymentDetails?.useCustomRate &&
-                            payment.paymentDetails.cashCurrency !== "Bs" && (
+                            payment.paymentDetails.cashCurrency !== "Bs" &&
+                            !efectivoCashExcludesManualBs(
+                              payment.paymentDetails.cashCurrency
+                            ) && (
                               <div className="space-y-2">
                                 <Label
                                   htmlFor={`cash-custom-bs-${payment.id}`}
@@ -2189,7 +2214,11 @@ export function Step3OrderDetails({
                             )}
 
                           {/* Tasa Manual Switch */}
-                          {payment.paymentDetails?.cashCurrency && payment.paymentDetails.cashCurrency !== "Bs" && (
+                          {payment.paymentDetails?.cashCurrency &&
+                            payment.paymentDetails.cashCurrency !== "Bs" &&
+                            !efectivoCashExcludesManualBs(
+                              payment.paymentDetails.cashCurrency
+                            ) && (
                             <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-md border col-span-full">
                               <Checkbox
                                 id={`cash-custom-rate-${payment.id}`}
