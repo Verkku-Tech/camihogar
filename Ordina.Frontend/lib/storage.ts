@@ -2550,6 +2550,10 @@ export const updateOrder = async (
             })) : undefined,
             deliveryAddress: updatedOrder.deliveryAddress !== existingOrder.deliveryAddress ? updatedOrder.deliveryAddress : undefined,
             hasDelivery: updatedOrder.hasDelivery !== existingOrder.hasDelivery ? updatedOrder.hasDelivery : undefined,
+            deliveryServices:
+              JSON.stringify(updatedOrder.deliveryServices) !== JSON.stringify(existingOrder.deliveryServices)
+                ? updatedOrder.deliveryServices
+                : undefined,
             status: updatedOrder.status !== existingOrder.status ? updatedOrder.status : undefined,
             observations: updatedOrder.observations !== existingOrder.observations ? updatedOrder.observations : undefined,
           };
@@ -2704,6 +2708,7 @@ export const updateOrder = async (
             } : undefined,
           })),
           status: updatedOrder.status,
+          deliveryServices: updatedOrder.deliveryServices,
         };
         await syncManager.addToQueue({
           type: "update",
