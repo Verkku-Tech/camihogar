@@ -729,7 +729,7 @@ export default function BudgetDetailPage() {
                     </div>
                     {budget.deliveryCost > 0 && (
                       <div className="flex justify-between">
-                        <span>Delivery:</span>
+                        <span>Servicios Adicionales:</span>
                         {formattedTotals.deliveryCost ? (
                           <FormattedCurrencyDisplay formatted={formattedTotals.deliveryCost} />
                         ) : (
