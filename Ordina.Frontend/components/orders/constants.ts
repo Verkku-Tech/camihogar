@@ -101,6 +101,28 @@ export const digitalPaymentMethods = [
   "Zelle",
 ];
 
+/** Solo estos métodos ocultan “tasa manual / equivalente exacto en Bs” (no confundir con digitalPaymentMethods: AirTM/Facebank siguen con tasa manual). */
+export const paymentMethodsNoManualBsConversion = [
+  "Banesco Panamá",
+  "Binance",
+  "Mercantil Panamá",
+  "Paypal",
+  "Zelle",
+] as const;
+
+export function paymentMethodUsesOnlyOfficialBsRate(method: string): boolean {
+  return (paymentMethodsNoManualBsConversion as readonly string[]).includes(
+    method
+  );
+}
+
+/** Efectivo en USD/EUR: no se ofrece conversión manual a Bs. */
+export function efectivoCashExcludesManualBs(
+  cash: "Bs" | "USD" | "EUR" | undefined
+): cash is "USD" | "EUR" {
+  return cash === "USD" || cash === "EUR";
+}
+
 // Métodos de pago que solo operan en Bolívares (Bs)
 export const bsOnlyPaymentMethods = [
   "Pago Móvil",
