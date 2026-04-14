@@ -2156,6 +2156,7 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   saleType: order.saleType,
   deliveryType: order.deliveryType,
   deliveryZone: order.deliveryZone,
+  deliveryServices: order.deliveryServices,
   exchangeRatesAtCreation: order.exchangeRatesAtCreation,
 });
 
