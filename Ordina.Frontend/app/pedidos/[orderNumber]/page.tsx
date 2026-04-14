@@ -1877,13 +1877,7 @@ export default function OrderDetailPage() {
                     </div>
                     {order.deliveryCost > 0 && (
                       <div className="flex justify-between">
-                        <span>
-                          {order.deliveryServices?.deliveryExpress?.enabled ||
-                          order.deliveryServices?.servicioAcarreo?.enabled ||
-                          order.deliveryServices?.servicioArmado?.enabled
-                            ? "Servicios Adicionales:"
-                            : "Delivery:"}
-                        </span>
+                        <span>Servicios Adicionales:</span>
                         {formattedTotals.deliveryCost ? (
                           <FormattedCurrencyDisplay formatted={formattedTotals.deliveryCost} />
                         ) : (
