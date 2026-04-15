@@ -242,8 +242,13 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
 
   const removePayment = (id: string) => {
     if (!hasPermission("orders.delete")) return;
+    const payment = orderForm.payments.find((p) => p.id === id);
+    if (payment?.paymentDetails?.isConciliated) {
+      toast.error("No se puede eliminar un pago ya conciliado.");
+      return;
+    }
     orderForm.setPayments((paymentsList) =>
-      paymentsList.filter((payment) => payment.id !== id)
+      paymentsList.filter((p) => p.id !== id)
     );
   };
 

@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -1107,7 +1108,9 @@ export function Step3OrderDetails({
                           className="w-full"
                         />
                       </div>
-                      {allowRemovePayment && removePayment && (
+                      {allowRemovePayment &&
+                        removePayment &&
+                        !payment.paymentDetails?.isConciliated && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -1120,6 +1123,14 @@ export function Step3OrderDetails({
                             Eliminar
                           </span>
                         </Button>
+                      )}
+                      {payment.paymentDetails?.isConciliated && (
+                        <Badge
+                          variant="secondary"
+                          className="self-end text-[10px] shrink-0"
+                        >
+                          Conciliado
+                        </Badge>
                       )}
                     </div>
 
