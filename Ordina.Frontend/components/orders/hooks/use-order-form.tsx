@@ -457,7 +457,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         prev.vendor === user.id ? prev : { ...prev, vendor: user.id }
       );
     }
-  }, [open, user?.id, user?.role, vendors]);
+  }, [open, user?.id, user?.role, vendors, draftResolution]);
 
   // Vendedor Online: sincronizar vendedor/referidor según modo
   useEffect(() => {
@@ -476,7 +476,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         referrer: user.id,
       }));
     }
-  }, [open, user?.id, user?.role, onlineSellerMode]);
+  }, [open, user?.id, user?.role, onlineSellerMode, draftResolution]);
 
   const getDraftStorageKey = useCallback(() => {
     if (!draftOwnerId) return null;
@@ -948,11 +948,18 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
   }, [currentStep]);
 
   const resetForm = useCallback(() => {
+    const storeSellerVendorId =
+      user?.role === "Store Seller" &&
+      user.id &&
+      vendors.some((v) => v.id === user.id)
+        ? user.id
+        : "";
+
     setCurrentStep(1);
     setSelectedClient(null);
     setSelectedProducts([]);
     setFormData({
-      vendor: "",
+      vendor: storeSellerVendorId,
       referrer: "",
       paymentMethod: "",
       deliveryAddress: "",
@@ -987,7 +994,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     setProductDiscountTypes({});
     setProductDiscountCurrencies({});
     setOnlineSellerMode(user?.role === "Online Seller" ? "vendor" : null);
-  }, [preferredCurrency, user?.role]);
+  }, [preferredCurrency, user?.role, user?.id, vendors]);
 
   const discardDraftAndStartFresh = useCallback(() => {
     clearDraftStorage();
