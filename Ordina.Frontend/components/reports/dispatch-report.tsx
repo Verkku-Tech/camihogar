@@ -273,6 +273,7 @@ export function DispatchReport() {
                     <TableHead>Estado de pago</TableHead>
                     <TableHead className="text-right">Importe total</TableHead>
                     <TableHead className="text-right">Saldo pendiente (USD)</TableHead>
+                    <TableHead className="min-w-[120px]">Firma</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -292,6 +293,7 @@ export function DispatchReport() {
                       <TableCell className="text-right font-medium">
                         {formatCurrency(row.saldoPendiente)}
                       </TableCell>
+                      <TableCell className="min-w-[120px] min-h-[2.5rem] align-bottom border-b border-dashed border-muted-foreground/30" />
                     </TableRow>
                   ))}
                   {reportData.length > 0 && (
@@ -305,6 +307,7 @@ export function DispatchReport() {
                       <TableCell className="text-right">
                         {formatCurrency(totalSaldoPendiente)}
                       </TableCell>
+                      <TableCell />
                     </TableRow>
                   )}
                 </TableBody>

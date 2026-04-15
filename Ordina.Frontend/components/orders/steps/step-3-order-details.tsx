@@ -699,86 +699,100 @@ export function Step3OrderDetails({
                       </SelectContent>
                     </Select>
                   )}
-                  <Input
-                    id="generalDiscount"
-                    type="number"
-                    min="0"
-                    step={
-                      orderForm.generalDiscountType === "porcentaje" ? "1" : "0.01"
-                    }
-                    max={
-                      orderForm.generalDiscountType === "porcentaje"
-                        ? 100
-                        : (() => {
-                          const subtotal = orderForm.subtotalAfterProductDiscounts;
-                          const taxAmount = subtotal * 0.16;
-                          const deliveryCost = orderForm.deliveryCost;
-                          const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
-                          return totalBeforeGeneralDiscount;
-                        })()
-                    }
-                    value={
-                      orderForm.generalDiscount === 0
-                        ? ""
-                        : orderForm.generalDiscountType === "porcentaje"
-                          ? (() => {
-                            const subtotal = orderForm.subtotalAfterProductDiscounts;
-                            const taxAmount = subtotal * 0.16;
-                            const deliveryCost = orderForm.deliveryCost;
-                            const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
-                            return totalBeforeGeneralDiscount > 0
-                              ? Math.round(
-                                (orderForm.generalDiscount /
-                                  totalBeforeGeneralDiscount) *
-                                100 *
-                                100
-                              ) / 100 // Redondear a 2 decimales máximo
-                              : 0;
-                          })()
-                          : (() => {
-                            // Mostrar en la moneda seleccionada (similar a delivery)
-                            if (orderForm.generalDiscountCurrency === "Bs") {
-                              return orderForm.generalDiscount;
-                            }
-                            const rate =
-                              orderForm.generalDiscountCurrency === "USD"
-                                ? orderForm.exchangeRates.USD?.rate
-                                : orderForm.exchangeRates.EUR?.rate;
-                            if (rate && rate > 0) {
-                              return (
-                                Math.round((orderForm.generalDiscount / rate) * 100) /
-                                100
-                              );
-                            }
-                            return orderForm.generalDiscount;
-                          })()
-                    }
-                    onChange={(e) => {
-                      const inputValue =
-                        Number.parseFloat(e.target.value) || 0;
-                      if (orderForm.generalDiscountType === "monto") {
-                        // Convertir a Bs según la moneda seleccionada (similar a delivery)
-                        let valueInBs = inputValue;
-                        if (orderForm.generalDiscountCurrency !== "Bs") {
-                          const rate =
-                            orderForm.generalDiscountCurrency === "USD"
-                              ? orderForm.exchangeRates.USD?.rate
-                              : orderForm.exchangeRates.EUR?.rate;
-                          if (rate && rate > 0) {
-                            valueInBs = inputValue * rate;
-                          }
+                  <div className="flex flex-col gap-1 w-full sm:w-auto">
+                    <div className="flex items-center gap-1 w-full sm:w-48">
+                      <Input
+                        id="generalDiscount"
+                        type="number"
+                        min="0"
+                        step={
+                          orderForm.generalDiscountType === "porcentaje" ? "1" : "0.01"
                         }
-                        orderForm.setGeneralDiscount(valueInBs);
-                      } else {
-                        orderForm.handleGeneralDiscountChange(inputValue);
-                      }
-                    }}
-                    placeholder={
-                      orderForm.generalDiscountType === "porcentaje" ? "0%" : "0.00"
-                    }
-                    disabled={orderForm.selectedProducts.length === 0}
-                    className="w-full sm:w-48"
-                  />
+                        max={
+                          orderForm.generalDiscountType === "porcentaje"
+                            ? 100
+                            : (() => {
+                              const subtotal = orderForm.subtotalAfterProductDiscounts;
+                              const taxAmount = subtotal * 0.16;
+                              const deliveryCost = orderForm.deliveryCost;
+                              const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
+                              return totalBeforeGeneralDiscount;
+                            })()
+                        }
+                        value={
+                          orderForm.generalDiscount === 0
+                            ? ""
+                            : orderForm.generalDiscountType === "porcentaje"
+                              ? (() => {
+                                const subtotal = orderForm.subtotalAfterProductDiscounts;
+                                const taxAmount = subtotal * 0.16;
+                                const deliveryCost = orderForm.deliveryCost;
+                                const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
+                                return totalBeforeGeneralDiscount > 0
+                                  ? Math.round(
+                                    (orderForm.generalDiscount /
+                                      totalBeforeGeneralDiscount) *
+                                    100 *
+                                    100
+                                  ) / 100 // Redondear a 2 decimales máximo
+                                  : 0;
+                              })()
+                              : (() => {
+                                // Mostrar en la moneda seleccionada (similar a delivery)
+                                if (orderForm.generalDiscountCurrency === "Bs") {
+                                  return orderForm.generalDiscount;
+                                }
+                                const rate =
+                                  orderForm.generalDiscountCurrency === "USD"
+                                    ? orderForm.exchangeRates.USD?.rate
+                                    : orderForm.exchangeRates.EUR?.rate;
+                                if (rate && rate > 0) {
+                                  return (
+                                    Math.round((orderForm.generalDiscount / rate) * 100) /
+                                    100
+                                  );
+                                }
+                                return orderForm.generalDiscount;
+                              })()
+                        }
+                        onChange={(e) => {
+                          const inputValue =
+                            Number.parseFloat(e.target.value) || 0;
+                          if (orderForm.generalDiscountType === "monto") {
+                            // Convertir a Bs según la moneda seleccionada (similar a delivery)
+                            let valueInBs = inputValue;
+                            if (orderForm.generalDiscountCurrency !== "Bs") {
+                              const rate =
+                                orderForm.generalDiscountCurrency === "USD"
+                                  ? orderForm.exchangeRates.USD?.rate
+                                  : orderForm.exchangeRates.EUR?.rate;
+                              if (rate && rate > 0) {
+                                valueInBs = inputValue * rate;
+                              }
+                            }
+                            orderForm.setGeneralDiscount(valueInBs);
+                          } else {
+                            orderForm.handleGeneralDiscountChange(inputValue);
+                          }
+                        }}
+                        placeholder={
+                          orderForm.generalDiscountType === "porcentaje" ? "0%" : "0.00"
+                        }
+                        disabled={orderForm.selectedProducts.length === 0}
+                        className="flex-1 min-w-0 w-full sm:w-48"
+                      />
+                      {orderForm.generalDiscountType === "porcentaje" && (
+                        <span className="text-sm text-muted-foreground shrink-0">%</span>
+                      )}
+                    </div>
+                    {orderForm.generalDiscountType === "porcentaje" &&
+                      orderForm.generalDiscount > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Equivalente: −
+                          {formatCurrency(orderForm.generalDiscount, "Bs")}
+                        </p>
+                      )}
+                  </div>
                 </div>
                 <p className="text-xs sm:text-sm text-muted-foreground">
                   Este descuento se aplica al orderForm.total final (después de impuestos y gastos de entrega).
