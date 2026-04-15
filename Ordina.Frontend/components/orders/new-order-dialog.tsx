@@ -239,8 +239,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   };
 
   const removePayment = (id: string) => {
+    const payment = orderForm.payments.find((p) => p.id === id);
+    if (payment?.paymentDetails?.isConciliated) {
+      toast.error("No se puede eliminar un pago ya conciliado.");
+      return;
+    }
     orderForm.setPayments((paymentsList) =>
-      paymentsList.filter((payment) => payment.id !== id)
+      paymentsList.filter((p) => p.id !== id)
     );
   };
 
