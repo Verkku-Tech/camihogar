@@ -29,7 +29,6 @@ import {
   type ProductImage,
   type Account,
 } from "@/lib/storage";
-import { normalizePaymentsForSave } from "@/lib/normalize-payments-for-save";
 import { Currency } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
@@ -540,14 +539,6 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
-      const skipPaymentArrays =
-        orderForm.paymentCondition === "pago_a_entrega" ||
-        orderForm.paymentCondition === "cashea";
-      const paymentsNorm = skipPaymentArrays
-        ? []
-        : normalizePaymentsForSave(orderForm.payments);
-      const multi = paymentsNorm.length > 1;
-
       const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
         clientId: orderForm.selectedClient.id,
         clientName: orderForm.selectedClient.name,
@@ -606,20 +597,29 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             ? "Pago a la entrega"
             : orderForm.paymentCondition === "cashea"
             ? "Cashea"
-            : paymentsNorm.length > 1
+            : orderForm.payments.length > 1
             ? "Mixto"
-            : paymentsNorm[0]?.method || "",
+            : orderForm.payments[0]?.method || "",
         paymentDetails:
           orderForm.paymentCondition === "pago_a_entrega" ||
           orderForm.paymentCondition === "cashea" ||
-          paymentsNorm.length === 0
+          orderForm.payments.length === 0
             ? undefined
-            : paymentsNorm.length === 1
-            ? paymentsNorm[0]?.paymentDetails
+            : orderForm.payments.length === 1
+            ? orderForm.payments[0]?.paymentDetails
             : undefined,
-        // Un solo arreglo activo: evita duplicados en reporte de pagos
-        partialPayments: skipPaymentArrays ? undefined : multi ? [] : paymentsNorm,
-        mixedPayments: skipPaymentArrays ? undefined : multi ? paymentsNorm : [],
+        partialPayments:
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea"
+            ? undefined
+            : orderForm.payments,
+        mixedPayments:
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea"
+            ? undefined
+            : orderForm.payments.length > 1
+            ? orderForm.payments
+            : undefined,
         deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
         hasDelivery: orderForm.hasDelivery,
         deliveryServices: orderForm.hasDelivery
