@@ -1532,13 +1532,14 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 8, "Estado de Pago");
                 sl.SetCellValue(1, 9, "Importe Total");
                 sl.SetCellValue(1, 10, "Saldo Pendiente por Cobrar (USD)");
+                sl.SetCellValue(1, 11, "Firma");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 10; col++)
+                for (int col = 1; col <= 11; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -1557,6 +1558,7 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 8, item.EstadoPago);
                     sl.SetCellValue(row, 9, item.ImporteTotal);
                     sl.SetCellValue(row, 10, item.SaldoPendiente);
+                    sl.SetCellValue(row, 11, " ");
                     row++;
                 }
 
@@ -1571,6 +1573,7 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(8, 22);  // Estado de Pago
                 sl.SetColumnWidth(9, 15);  // Importe Total
                 sl.SetColumnWidth(10, 28); // Saldo Pendiente
+                sl.SetColumnWidth(11, 22); // Firma (espacio para firmar)
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
