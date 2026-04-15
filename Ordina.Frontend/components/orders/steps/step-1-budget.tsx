@@ -339,85 +339,100 @@ export function Step1Budget({
                                   </SelectContent>
                                 </Select>
                               )}
-                              <Input
-                                type="number"
-                                min="0"
-                                step={
-                                  orderForm.productDiscountTypes[product.id] ===
-                                  "porcentaje"
-                                    ? "1"
-                                    : "0.01"
-                                }
-                                max={(() => {
-                                  const discountType =
-                                    orderForm.productDiscountTypes[product.id] || "monto";
-                                  if (discountType === "porcentaje") {
-                                    return 100;
+                              <div className="flex items-center gap-1 flex-1 min-w-[100px]">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step={
+                                    orderForm.productDiscountTypes[product.id] ===
+                                    "porcentaje"
+                                      ? "1"
+                                      : "0.01"
                                   }
-
-                                  // Para monto, considerar el maxDiscount de la categoría
-                                  const category = orderForm.categories.find(
-                                    (cat) => cat.name === product.category
-                                  );
-                                  if (category && category.maxDiscount > 0) {
-                                    // Convertir maxDiscount a Bs si está en otra moneda
-                                    let maxDiscountInBs = category.maxDiscount;
-                                    if (
-                                      category.maxDiscountCurrency &&
-                                      category.maxDiscountCurrency !== "Bs"
-                                    ) {
-                                      const rate =
-                                        category.maxDiscountCurrency === "USD"
-                                          ? orderForm.exchangeRates.USD?.rate
-                                          : orderForm.exchangeRates.EUR?.rate;
-                                      if (rate && rate > 0) {
-                                        maxDiscountInBs = category.maxDiscount * rate;
-                                      }
+                                  max={(() => {
+                                    const discountType =
+                                      orderForm.productDiscountTypes[product.id] || "monto";
+                                    if (discountType === "porcentaje") {
+                                      return 100;
                                     }
-                                    return Math.min(baseTotal, maxDiscountInBs);
-                                  }
-                                  return baseTotal;
-                                })()}
-                                value={(() => {
-                                  const discountType =
-                                    orderForm.productDiscountTypes[product.id] || "monto";
-                                  if (discount === 0) return "";
-                                  if (discountType === "porcentaje") {
-                                    const percentage =
-                                      baseTotal > 0 ? (discount / baseTotal) * 100 : 0;
-                                    return Math.round(percentage * 100) / 100;
-                                  }
-                                  // Para monto, convertir a la moneda seleccionada
-                                  const discountCurrency =
-                                    orderForm.productDiscountCurrencies[product.id] ||
-                                    preferredCurrency;
-                                  if (discountCurrency === "Bs") {
+
+                                    // Para monto, considerar el maxDiscount de la categoría
+                                    const category = orderForm.categories.find(
+                                      (cat) => cat.name === product.category
+                                    );
+                                    if (category && category.maxDiscount > 0) {
+                                      // Convertir maxDiscount a Bs si está en otra moneda
+                                      let maxDiscountInBs = category.maxDiscount;
+                                      if (
+                                        category.maxDiscountCurrency &&
+                                        category.maxDiscountCurrency !== "Bs"
+                                      ) {
+                                        const rate =
+                                          category.maxDiscountCurrency === "USD"
+                                            ? orderForm.exchangeRates.USD?.rate
+                                            : orderForm.exchangeRates.EUR?.rate;
+                                        if (rate && rate > 0) {
+                                          maxDiscountInBs = category.maxDiscount * rate;
+                                        }
+                                      }
+                                      return Math.min(baseTotal, maxDiscountInBs);
+                                    }
+                                    return baseTotal;
+                                  })()}
+                                  value={(() => {
+                                    const discountType =
+                                      orderForm.productDiscountTypes[product.id] || "monto";
+                                    if (discount === 0) return "";
+                                    if (discountType === "porcentaje") {
+                                      const percentage =
+                                        baseTotal > 0 ? (discount / baseTotal) * 100 : 0;
+                                      return Math.round(percentage * 100) / 100;
+                                    }
+                                    // Para monto, convertir a la moneda seleccionada
+                                    const discountCurrency =
+                                      orderForm.productDiscountCurrencies[product.id] ||
+                                      preferredCurrency;
+                                    if (discountCurrency === "Bs") {
+                                      return discount;
+                                    }
+                                    const rate =
+                                      discountCurrency === "USD"
+                                        ? orderForm.exchangeRates.USD?.rate
+                                        : orderForm.exchangeRates.EUR?.rate;
+                                    if (rate && rate > 0) {
+                                      return discount / rate;
+                                    }
                                     return discount;
+                                  })()}
+                                  onChange={(e) =>
+                                    orderForm.handleProductDiscountChange(
+                                      product.id,
+                                      Number.parseFloat(e.target.value) || 0
+                                    )
                                   }
-                                  const rate =
-                                    discountCurrency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    return discount / rate;
+                                  className="flex-1 min-w-0 text-sm"
+                                  placeholder={
+                                    orderForm.productDiscountTypes[product.id] ===
+                                    "porcentaje"
+                                      ? "0%"
+                                      : "0.00"
                                   }
-                                  return discount;
-                                })()}
-                                onChange={(e) =>
-                                  orderForm.handleProductDiscountChange(
-                                    product.id,
-                                    Number.parseFloat(e.target.value) || 0
-                                  )
-                                }
-                                className="flex-1 min-w-[100px] text-sm"
-                                placeholder={
-                                  orderForm.productDiscountTypes[product.id] ===
-                                  "porcentaje"
-                                    ? "0%"
-                                    : "0.00"
-                                }
-                              />
+                                />
+                                {(orderForm.productDiscountTypes[product.id] ||
+                                  "monto") === "porcentaje" && (
+                                  <span className="text-sm text-muted-foreground shrink-0">
+                                    %
+                                  </span>
+                                )}
+                              </div>
                             </div>
+                            {(orderForm.productDiscountTypes[product.id] || "monto") ===
+                              "porcentaje" &&
+                              discount > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                  Equivalente: −{formatCurrency(discount, "Bs")}
+                                </p>
+                              )}
                           </div>
 
                           <div className="flex gap-2 pt-2 border-t">
@@ -486,7 +501,8 @@ export function Step1Budget({
                                   formatCurrency(baseTotal, "Bs")}
                               </TableCell>
                               <TableCell className="w-[24%]">
-                                <div className="flex gap-1.5 items-center">
+                                <div className="flex flex-col gap-1 min-w-0">
+                                <div className="flex gap-1.5 items-center flex-wrap">
                                   <Select
                                     value={
                                       orderForm.productDiscountTypes[product.id] || "monto"
@@ -577,86 +593,102 @@ export function Step1Budget({
                                       </SelectContent>
                                     </Select>
                                   )}
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step={
-                                      orderForm.productDiscountTypes[product.id] ===
-                                      "porcentaje"
-                                        ? "1"
-                                        : "0.01"
-                                    }
-                                    max={(() => {
-                                      const discountType =
-                                        orderForm.productDiscountTypes[product.id] || "monto";
-                                      if (discountType === "porcentaje") {
-                                        return 100;
+                                  <div className="flex items-center gap-1 flex-1 min-w-[80px]">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step={
+                                        orderForm.productDiscountTypes[product.id] ===
+                                        "porcentaje"
+                                          ? "1"
+                                          : "0.01"
                                       }
-
-                                      // Para monto, considerar el maxDiscount de la categoría
-                                      const category = orderForm.categories.find(
-                                        (cat) => cat.name === product.category
-                                      );
-                                      if (category && category.maxDiscount > 0) {
-                                        // Convertir maxDiscount a Bs si está en otra moneda
-                                        let maxDiscountInBs = category.maxDiscount;
-                                        if (
-                                          category.maxDiscountCurrency &&
-                                          category.maxDiscountCurrency !== "Bs"
-                                        ) {
-                                          const rate =
-                                            category.maxDiscountCurrency === "USD"
-                                              ? orderForm.exchangeRates.USD?.rate
-                                              : orderForm.exchangeRates.EUR?.rate;
-                                          if (rate && rate > 0) {
-                                            maxDiscountInBs = category.maxDiscount * rate;
-                                          }
+                                      max={(() => {
+                                        const discountType =
+                                          orderForm.productDiscountTypes[product.id] || "monto";
+                                        if (discountType === "porcentaje") {
+                                          return 100;
                                         }
-                                        return Math.min(baseTotal, maxDiscountInBs);
-                                      }
-                                      return baseTotal;
-                                    })()}
-                                    value={(() => {
-                                      const discountType =
-                                        orderForm.productDiscountTypes[product.id] || "monto";
-                                      if (discount === 0) return "";
-                                      if (discountType === "porcentaje") {
-                                        const percentage =
-                                          baseTotal > 0
-                                            ? (discount / baseTotal) * 100
-                                            : 0;
-                                        return Math.round(percentage * 100) / 100;
-                                      }
-                                      // Para monto, convertir a la moneda seleccionada
-                                      const discountCurrency =
-                                        orderForm.productDiscountCurrencies[product.id] ||
-                                        preferredCurrency;
-                                      if (discountCurrency === "Bs") {
+
+                                        // Para monto, considerar el maxDiscount de la categoría
+                                        const category = orderForm.categories.find(
+                                          (cat) => cat.name === product.category
+                                        );
+                                        if (category && category.maxDiscount > 0) {
+                                          // Convertir maxDiscount a Bs si está en otra moneda
+                                          let maxDiscountInBs = category.maxDiscount;
+                                          if (
+                                            category.maxDiscountCurrency &&
+                                            category.maxDiscountCurrency !== "Bs"
+                                          ) {
+                                            const rate =
+                                              category.maxDiscountCurrency === "USD"
+                                                ? orderForm.exchangeRates.USD?.rate
+                                                : orderForm.exchangeRates.EUR?.rate;
+                                            if (rate && rate > 0) {
+                                              maxDiscountInBs = category.maxDiscount * rate;
+                                            }
+                                          }
+                                          return Math.min(baseTotal, maxDiscountInBs);
+                                        }
+                                        return baseTotal;
+                                      })()}
+                                      value={(() => {
+                                        const discountType =
+                                          orderForm.productDiscountTypes[product.id] || "monto";
+                                        if (discount === 0) return "";
+                                        if (discountType === "porcentaje") {
+                                          const percentage =
+                                            baseTotal > 0
+                                              ? (discount / baseTotal) * 100
+                                              : 0;
+                                          return Math.round(percentage * 100) / 100;
+                                        }
+                                        // Para monto, convertir a la moneda seleccionada
+                                        const discountCurrency =
+                                          orderForm.productDiscountCurrencies[product.id] ||
+                                          preferredCurrency;
+                                        if (discountCurrency === "Bs") {
+                                          return discount;
+                                        }
+                                        const rate =
+                                          discountCurrency === "USD"
+                                            ? orderForm.exchangeRates.USD?.rate
+                                            : orderForm.exchangeRates.EUR?.rate;
+                                        if (rate && rate > 0) {
+                                          return discount / rate;
+                                        }
                                         return discount;
+                                      })()}
+                                      onChange={(e) =>
+                                        orderForm.handleProductDiscountChange(
+                                          product.id,
+                                          Number.parseFloat(e.target.value) || 0
+                                        )
                                       }
-                                      const rate =
-                                        discountCurrency === "USD"
-                                          ? orderForm.exchangeRates.USD?.rate
-                                          : orderForm.exchangeRates.EUR?.rate;
-                                      if (rate && rate > 0) {
-                                        return discount / rate;
+                                      className="flex-1 min-w-0 h-7 text-sm"
+                                      placeholder={
+                                        orderForm.productDiscountTypes[product.id] ===
+                                        "porcentaje"
+                                          ? "0%"
+                                          : "0.00"
                                       }
-                                      return discount;
-                                    })()}
-                                    onChange={(e) =>
-                                      orderForm.handleProductDiscountChange(
-                                        product.id,
-                                        Number.parseFloat(e.target.value) || 0
-                                      )
-                                    }
-                                    className="flex-1 min-w-[80px] h-7 text-sm"
-                                    placeholder={
-                                      orderForm.productDiscountTypes[product.id] ===
-                                      "porcentaje"
-                                        ? "0%"
-                                        : "0.00"
-                                    }
-                                  />
+                                    />
+                                    {(orderForm.productDiscountTypes[product.id] ||
+                                      "monto") === "porcentaje" && (
+                                      <span className="text-sm text-muted-foreground shrink-0">
+                                        %
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                {(orderForm.productDiscountTypes[product.id] || "monto") ===
+                                  "porcentaje" &&
+                                  discount > 0 && (
+                                    <p className="text-xs text-muted-foreground leading-tight">
+                                      Equivalente: −{formatCurrency(discount, "Bs")}
+                                    </p>
+                                  )}
                                 </div>
                               </TableCell>
                               <TableCell className="w-[10%] font-semibold text-right text-sm">
