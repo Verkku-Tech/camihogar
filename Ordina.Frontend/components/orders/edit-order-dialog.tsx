@@ -30,6 +30,7 @@ import {
   type ProductImage,
   type Account,
 } from "@/lib/storage";
+import { normalizePaymentsForSave } from "@/lib/normalize-payments-for-save";
 import { Currency } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
@@ -250,29 +251,6 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
     orderForm.setPayments((paymentsList) =>
       paymentsList.filter((p) => p.id !== id)
     );
-  };
-
-  // Normaliza abonos para el backend: evita duplicar filas en reporte (partial + mixed) y rellena monto original en Bs si falta
-  const normalizePaymentsForSave = (payments: PartialPayment[]): PartialPayment[] => {
-    return payments.map((p) => {
-      const base = { ...(p.paymentDetails || {}) } as NonNullable<PartialPayment["paymentDetails"]>;
-      if (
-        p.amount > 0 &&
-        base.originalAmount === undefined &&
-        base.cashReceived === undefined
-      ) {
-        base.originalAmount = p.amount;
-        base.originalCurrency = (p.currency as "Bs" | "USD" | "EUR" | undefined) || "Bs";
-      }
-      const hasDetail = Object.keys(base).some((k) => {
-        const v = base[k as keyof typeof base];
-        return v !== undefined && v !== null && v !== "";
-      });
-      return {
-        ...p,
-        paymentDetails: hasDetail ? base : undefined,
-      };
-    });
   };
 
   // Guardar solo pagos (modo vendedor): actualiza únicamente los campos de pago del pedido
@@ -589,6 +567,14 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
     try {
       if (!pendingOrderData || !orderForm.selectedClient || !order) return;
 
+      const skipPaymentArrays =
+        orderForm.paymentCondition === "pago_a_entrega" ||
+        orderForm.paymentCondition === "cashea";
+      const paymentsNorm = skipPaymentArrays
+        ? []
+        : normalizePaymentsForSave(orderForm.payments);
+      const multi = paymentsNorm.length > 1;
+
       const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
         clientId: orderForm.selectedClient.id,
         clientName: orderForm.selectedClient.name,
@@ -647,29 +633,20 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
             ? "Pago a la entrega"
             : orderForm.paymentCondition === "cashea"
               ? "Cashea"
-              : orderForm.payments.length > 1
+              : paymentsNorm.length > 1
                 ? "Mixto"
-                : orderForm.payments[0]?.method || "",
+                : paymentsNorm[0]?.method || "",
         paymentDetails:
           orderForm.paymentCondition === "pago_a_entrega" ||
           orderForm.paymentCondition === "cashea" ||
-          orderForm.payments.length === 0
+          paymentsNorm.length === 0
             ? undefined
-            : orderForm.payments.length === 1
-              ? orderForm.payments[0]?.paymentDetails
+            : paymentsNorm.length === 1
+              ? paymentsNorm[0]?.paymentDetails
               : undefined,
-        partialPayments:
-          orderForm.paymentCondition === "pago_a_entrega" ||
-          orderForm.paymentCondition === "cashea"
-            ? undefined
-            : orderForm.payments,
-        mixedPayments:
-          orderForm.paymentCondition === "pago_a_entrega" ||
-          orderForm.paymentCondition === "cashea"
-            ? undefined
-            : orderForm.payments.length > 1
-              ? orderForm.payments
-              : undefined,
+        // Un solo arreglo activo (igual que handleSavePaymentsOnly): evita duplicados en reporte de pagos
+        partialPayments: skipPaymentArrays ? undefined : multi ? [] : paymentsNorm,
+        mixedPayments: skipPaymentArrays ? undefined : multi ? paymentsNorm : [],
         deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
         hasDelivery: orderForm.hasDelivery,
         deliveryServices: orderForm.hasDelivery
