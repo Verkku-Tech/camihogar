@@ -3,31 +3,72 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Search } from "lucide-react"
-import { getOrders, type Order } from "@/lib/storage"
+import { getOrders, getClients, type Order, type Client } from "@/lib/storage"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
+function digitsOnly(s: string): string {
+  return s.replace(/\D/g, "")
+}
+
+/** Incluye orden, nombre, teléfonos, CI y variantes solo dígitos para cmdk. */
+function buildOrderSearchValue(order: Order, client?: Client): string {
+  const parts: string[] = [order.orderNumber, order.clientName]
+  if (client) {
+    if (client.telefono) {
+      parts.push(client.telefono)
+      const d = digitsOnly(client.telefono)
+      if (d) parts.push(d)
+    }
+    if (client.telefono2) {
+      parts.push(client.telefono2)
+      const d = digitsOnly(client.telefono2)
+      if (d) parts.push(d)
+    }
+    if (client.rutId) {
+      parts.push(client.rutId)
+      const d = digitsOnly(client.rutId)
+      if (d) parts.push(d)
+    }
+  }
+  return parts.filter((p) => p && String(p).trim().length > 0).join(" ")
+}
+
+function clientContactLine(client?: Client): string | null {
+  if (!client) return null
+  const bits: string[] = []
+  if (client.telefono?.trim()) bits.push(client.telefono.trim())
+  if (client.rutId?.trim()) bits.push(`CI ${client.rutId.trim()}`)
+  return bits.length > 0 ? bits.join(" · ") : null
+}
+
 export function OrderSearchCombobox() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
+  const [clientById, setClientById] = useState<Map<string, Client>>(new Map())
   const [searchValue, setSearchValue] = useState("")
 
   useEffect(() => {
-    // Cargar los pedidos al inicializar para el autocompletado
-    const loadOrders = async () => {
+    const load = async () => {
       try {
-        const data = await getOrders()
-        // Limitar a los 100 más recientes para no sobrecargar el dom
-        const sorted = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        const [orderData, clientList] = await Promise.all([getOrders(), getClients()])
+        const sorted = orderData.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )
         setOrders(sorted.slice(0, 100))
+        const map = new Map<string, Client>()
+        for (const c of clientList) {
+          map.set(c.id, c)
+        }
+        setClientById(map)
       } catch (error) {
-        console.error("Error loading orders for search:", error)
+        console.error("Error loading orders/clients for search:", error)
       }
     }
-    loadOrders()
+    void load()
   }, [])
 
   const handleSelect = (orderNumber: string) => {
@@ -44,41 +85,49 @@ export function OrderSearchCombobox() {
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className="w-64 justify-start text-muted-foreground font-normal relative h-10 px-3 pl-10"
+            className="h-10 w-64 justify-start gap-2 px-3 font-normal text-muted-foreground"
           >
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            {searchValue ? searchValue : "Buscar orden"}
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-left">
+              {searchValue ? searchValue : "Buscar orden"}
+            </span>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-80 p-0" align="start">
           <Command>
-            <CommandInput 
-              placeholder="Buscar orden" 
+            <CommandInput
+              placeholder="Buscar orden"
               value={searchValue}
               onValueChange={setSearchValue}
             />
             <CommandList>
               <CommandEmpty>No se encontraron resultados.</CommandEmpty>
               <CommandGroup>
-                {orders.map((order) => (
-                  <CommandItem
-                    key={order.id}
-                    value={`${order.orderNumber} ${order.clientName}`}
-                    onSelect={() => handleSelect(order.orderNumber)}
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium text-sm flex items-center gap-2">
-                        {order.orderNumber}
-                        <Badge variant="outline" className="text-[10px] h-4 leading-none py-0">
-                          {order.type === "Budget" ? "Presupuesto" : "Pedido"}
-                        </Badge>
-                      </span>
-                      <span className="text-xs text-muted-foreground truncate w-[250px]">
-                        {order.clientName}
-                      </span>
-                    </div>
-                  </CommandItem>
-                ))}
+                {orders.map((order) => {
+                  const client = clientById.get(order.clientId)
+                  const searchItemValue = buildOrderSearchValue(order, client)
+                  const contact = clientContactLine(client)
+                  return (
+                    <CommandItem
+                      key={order.id}
+                      value={searchItemValue}
+                      onSelect={() => handleSelect(order.orderNumber)}
+                    >
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <span className="flex items-center gap-2 text-sm font-medium">
+                          {order.orderNumber}
+                          <Badge variant="outline" className="h-4 py-0 text-[10px] leading-none">
+                            {order.type === "Budget" ? "Presupuesto" : "Pedido"}
+                          </Badge>
+                        </span>
+                        <span className="w-[250px] truncate text-xs text-muted-foreground">
+                          {order.clientName}
+                          {contact ? ` · ${contact}` : ""}
+                        </span>
+                      </div>
+                    </CommandItem>
+                  )
+                })}
               </CommandGroup>
             </CommandList>
           </Command>
