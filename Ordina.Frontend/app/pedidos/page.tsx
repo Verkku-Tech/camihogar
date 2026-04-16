@@ -72,11 +72,11 @@ export default function PedidosPage() {
   const { user, hasPermission } = useAuth()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [clientSearch, setClientSearch] = useState("")
   const [filters, setFilters] = useState({
     vendor: "all",
     status: "all",
     paymentMethod: "all",
-    client: "all",
   })
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
   const [isEditOrderOpen, setIsEditOrderOpen] = useState(false)
@@ -142,7 +142,6 @@ export default function PedidosPage() {
 
   // Obtener valores únicos para los filtros
   const uniqueVendors = Array.from(new Set(orders.map((o) => o.vendorName))).sort()
-  const uniqueClients = Array.from(new Set(orders.map((o) => o.clientName))).sort()
 
   // Usar lista fija de estados y métodos de pago
   const uniqueStatuses = ORDER_STATUSES.map(s => s.value)
@@ -161,7 +160,9 @@ export default function PedidosPage() {
     const matchesStatus = filters.status === "all" || order.status === filters.status
     const matchesPaymentMethod =
       filters.paymentMethod === "all" || order.paymentMethod === filters.paymentMethod
-    const matchesClient = filters.client === "all" || order.clientName === filters.client
+    const matchesClient =
+      clientSearch === "" ||
+      order.clientName.toLowerCase().includes(clientSearch.toLowerCase())
 
     return matchesSearch && matchesVendor && matchesStatus && matchesPaymentMethod && matchesClient
   })
@@ -289,24 +290,16 @@ export default function PedidosPage() {
 
               {/* Filtros por columna */}
               <div className="flex flex-wrap gap-2 items-center">
-                <Select
-                  value={filters.client}
-                  onValueChange={(value) =>
-                    setFilters((prev) => ({ ...prev, client: value }))
-                  }
-                >
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Todos los clientes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los clientes</SelectItem>
-                    {uniqueClients.map((client) => (
-                      <SelectItem key={client} value={client}>
-                        {client}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="relative w-[200px] min-w-[160px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none" />
+                  <Input
+                    placeholder="Filtrar por cliente..."
+                    value={clientSearch}
+                    onChange={(e) => setClientSearch(e.target.value)}
+                    className="pl-10"
+                    aria-label="Filtrar por nombre de cliente"
+                  />
+                </div>
 
                 <Select
                   value={filters.vendor}
@@ -365,13 +358,17 @@ export default function PedidosPage() {
                   </SelectContent>
                 </Select>
 
-                {(filters.client !== "all" || filters.vendor !== "all" || filters.status !== "all" || filters.paymentMethod !== "all") && (
+                {(clientSearch !== "" ||
+                  filters.vendor !== "all" ||
+                  filters.status !== "all" ||
+                  filters.paymentMethod !== "all") && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setFilters({ client: "all", vendor: "all", status: "all", paymentMethod: "all" })
-                    }
+                    onClick={() => {
+                      setFilters({ vendor: "all", status: "all", paymentMethod: "all" })
+                      setClientSearch("")
+                    }}
                     className="gap-2"
                   >
                     <X className="w-4 h-4" />

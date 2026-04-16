@@ -20,12 +20,13 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Search, Edit, Power, PowerOff, Filter, ChevronLeft, ChevronRight, RefreshCw, Upload, Download } from "lucide-react"
+import { Plus, Search, Edit, Power, PowerOff, Filter, ChevronLeft, ChevronRight, RefreshCw, Upload, Download, History } from "lucide-react"
 import { toast } from "sonner"
 import { apiClient, type ClientResponseDto, type CreateClientDto } from "@/lib/api-client"
 import { useAuth } from "@/contexts/auth-context"
 import { ImportClientsDialog } from "@/components/clients/import-clients-dialog"
 import { DownloadClientFormatDialog } from "@/components/clients/download-format-dialog"
+import { ClientOrdersHistoryDialog } from "@/components/clients/client-orders-dialog"
 
 const tipoClienteOptions = [
   { value: "particular", label: "Particular" },
@@ -50,6 +51,7 @@ export function ClientsPage() {
   const [showDownloadDialog, setShowDownloadDialog] = useState(false)
   const [selectedClient, setSelectedClient] = useState<ClientResponseDto | null>(null)
   const [deactivateClient, setDeactivateClient] = useState<ClientResponseDto | null>(null)
+  const [historialClient, setHistorialClient] = useState<ClientResponseDto | null>(null)
   const { user } = useAuth()
 
   const canImport = user?.role === "Super Administrator" || user?.role === "Administrator"
@@ -478,6 +480,14 @@ export function ClientsPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setHistorialClient(client)}
+                              title="Ver historial de pedidos"
+                            >
+                              <History className="w-4 h-4" />
+                            </Button>
                             <Button variant="ghost" size="sm" onClick={() => openEditDialog(client)}>
                               <Edit className="w-4 h-4" />
                             </Button>
@@ -699,6 +709,14 @@ export function ClientsPage() {
           setPage(1)
           loadClients()
         }}
+      />
+
+      <ClientOrdersHistoryDialog
+        open={!!historialClient}
+        onOpenChange={(open) => {
+          if (!open) setHistorialClient(null)
+        }}
+        client={historialClient}
       />
     </div>
   )
