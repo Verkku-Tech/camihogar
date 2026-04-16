@@ -349,7 +349,7 @@ export function PaymentsReport() {
             if (startDateObj && paymentDate < startDateObj) return
             if (endDateObj && paymentDate > endDateObj) return
 
-            if (selectedPaymentMethod !== "Todos" && payment.method !== selectedPaymentMethod) {
+            if (backendPm !== "Todos" && payment.method !== backendPm) {
               return
             }
 
