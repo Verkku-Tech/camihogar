@@ -24,7 +24,15 @@ import {
 import { Search, Plus, Eye, Edit, Trash2, X } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { deleteOrder, deleteBudget, getUnifiedOrders, type UnifiedOrder } from "@/lib/storage"
+import {
+  deleteOrder,
+  deleteBudget,
+  getUnifiedOrders,
+  getClients,
+  type UnifiedOrder,
+  type Client,
+} from "@/lib/storage"
+import { buildClientFilterHaystack, digitsOnly } from "@/lib/order-client-search"
 import {
   formatCurrencyWithUsdPrimaryFromOrder,
   getActiveExchangeRates,
@@ -72,11 +80,11 @@ export default function PedidosPage() {
   const { user, hasPermission } = useAuth()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [clientSearch, setClientSearch] = useState("")
   const [filters, setFilters] = useState({
     vendor: "all",
     status: "all",
     paymentMethod: "all",
-    client: "all",
   })
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
   const [isEditOrderOpen, setIsEditOrderOpen] = useState(false)
@@ -88,6 +96,23 @@ export default function PedidosPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
   const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [clientById, setClientById] = useState<Map<string, Client>>(new Map())
+
+  useEffect(() => {
+    const loadClients = async () => {
+      try {
+        const list = await getClients()
+        const map = new Map<string, Client>()
+        for (const c of list) {
+          map.set(c.id, c)
+        }
+        setClientById(map)
+      } catch (e) {
+        console.error("Error cargando clientes para filtro:", e)
+      }
+    }
+    void loadClients()
+  }, [])
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -142,7 +167,6 @@ export default function PedidosPage() {
 
   // Obtener valores únicos para los filtros
   const uniqueVendors = Array.from(new Set(orders.map((o) => o.vendorName))).sort()
-  const uniqueClients = Array.from(new Set(orders.map((o) => o.clientName))).sort()
 
   // Usar lista fija de estados y métodos de pago
   const uniqueStatuses = ORDER_STATUSES.map(s => s.value)
@@ -161,7 +185,16 @@ export default function PedidosPage() {
     const matchesStatus = filters.status === "all" || order.status === filters.status
     const matchesPaymentMethod =
       filters.paymentMethod === "all" || order.paymentMethod === filters.paymentMethod
-    const matchesClient = filters.client === "all" || order.clientName === filters.client
+    const q = clientSearch.trim().toLowerCase()
+    const haystack = buildClientFilterHaystack(
+      order.clientName,
+      clientById.get(order.clientId),
+    ).toLowerCase()
+    const matchesClient =
+      q === "" ||
+      haystack.includes(q) ||
+      (digitsOnly(clientSearch) !== "" &&
+        digitsOnly(haystack).includes(digitsOnly(clientSearch)))
 
     return matchesSearch && matchesVendor && matchesStatus && matchesPaymentMethod && matchesClient
   })
@@ -289,24 +322,16 @@ export default function PedidosPage() {
 
               {/* Filtros por columna */}
               <div className="flex flex-wrap gap-2 items-center">
-                <Select
-                  value={filters.client}
-                  onValueChange={(value) =>
-                    setFilters((prev) => ({ ...prev, client: value }))
-                  }
-                >
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Todos los clientes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los clientes</SelectItem>
-                    {uniqueClients.map((client) => (
-                      <SelectItem key={client} value={client}>
-                        {client}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="relative w-[200px] min-w-[160px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none" />
+                  <Input
+                    placeholder="Cliente: nombre, teléfono, CI, apodo..."
+                    value={clientSearch}
+                    onChange={(e) => setClientSearch(e.target.value)}
+                    className="pl-10"
+                    aria-label="Filtrar por cliente: nombre, teléfono, CI o apodo"
+                  />
+                </div>
 
                 <Select
                   value={filters.vendor}
@@ -365,13 +390,17 @@ export default function PedidosPage() {
                   </SelectContent>
                 </Select>
 
-                {(filters.client !== "all" || filters.vendor !== "all" || filters.status !== "all" || filters.paymentMethod !== "all") && (
+                {(clientSearch !== "" ||
+                  filters.vendor !== "all" ||
+                  filters.status !== "all" ||
+                  filters.paymentMethod !== "all") && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setFilters({ client: "all", vendor: "all", status: "all", paymentMethod: "all" })
-                    }
+                    onClick={() => {
+                      setFilters({ vendor: "all", status: "all", paymentMethod: "all" })
+                      setClientSearch("")
+                    }}
                     className="gap-2"
                   >
                     <X className="w-4 h-4" />

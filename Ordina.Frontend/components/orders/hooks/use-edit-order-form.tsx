@@ -26,6 +26,7 @@ import {
   type ExchangeRate,
   type Currency,
 } from "@/lib/currency-utils";
+import { getActivePaymentsList } from "@/lib/order-payments";
 
 export interface OrderFormData {
   vendor: string;
@@ -447,14 +448,8 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         });
       }
 
-      // 6. Pagos parciales
-      if (initialOrder.partialPayments && initialOrder.partialPayments.length > 0) {
-        setPayments(initialOrder.partialPayments);
-      } else if (initialOrder.mixedPayments && initialOrder.mixedPayments.length > 0) {
-        setPayments(initialOrder.mixedPayments);
-      } else {
-        setPayments([]);
-      }
+      // 6. Abonos (misma regla que detalle: partial si tiene ítems, si no mixed)
+      setPayments(getActivePaymentsList(initialOrder));
 
       // 7. Descuentos y observaciones
       if (initialOrder.generalDiscountAmount && initialOrder.generalDiscountAmount > 0) {

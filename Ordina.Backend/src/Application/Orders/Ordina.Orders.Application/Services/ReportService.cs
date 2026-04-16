@@ -857,44 +857,13 @@ public class ReportService : IReportService
             if (string.Equals(order.Type, "Budget", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Procesar pagos mixtos si existen
-            if (order.MixedPayments != null && order.MixedPayments.Count > 0)
+            // Un solo origen de abonos (misma regla que el detalle del pedido): partial si existe, si no mixed
+            var (activePayments, activePaymentType) = GetActivePaymentsForReport(order);
+            if (activePayments.Count > 0)
             {
-                for (int i = 0; i < order.MixedPayments.Count; i++)
+                for (int i = 0; i < activePayments.Count; i++)
                 {
-                    var payment = order.MixedPayments[i];
-                    
-                    // Filtrar por rango de fechas del pago
-                    if (startDate.HasValue && payment.Date < startDate.Value) continue;
-                    if (endDate.HasValue && payment.Date > endDate.Value.AddDays(1).AddSeconds(-1)) continue;
-
-                    // Filtrar por método de pago
-                    if (!string.IsNullOrWhiteSpace(paymentMethod) && payment.Method != paymentMethod)
-                    {
-                        continue;
-                    }
-
-                    // Filtrar por cuenta - solo si se especifica accountId y el pago tiene accountId que coincida
-                    if (!string.IsNullOrWhiteSpace(accountId))
-                    {
-                        var paymentAccountId = payment.PaymentDetails?.AccountId;
-                        if (string.IsNullOrWhiteSpace(paymentAccountId) || paymentAccountId != accountId)
-                        {
-                            continue;
-                        }
-                    }
-
-                    var row = CreatePaymentReportRow(order, payment, payment.Date, "mixed", i);
-                    reportData.Add(row);
-                }
-            }
-
-            // Procesar pagos parciales si existen
-            if (order.PartialPayments != null && order.PartialPayments.Count > 0)
-            {
-                for (int i = 0; i < order.PartialPayments.Count; i++)
-                {
-                    var payment = order.PartialPayments[i];
+                    var payment = activePayments[i];
 
                     // Filtrar por rango de fechas del pago
                     if (startDate.HasValue && payment.Date < startDate.Value) continue;
@@ -916,15 +885,12 @@ public class ReportService : IReportService
                         }
                     }
 
-                    var row = CreatePaymentReportRow(order, payment, payment.Date, "partial", i);
+                    var row = CreatePaymentReportRow(order, payment, payment.Date, activePaymentType, i);
                     reportData.Add(row);
                 }
             }
-
-            // Si no hay pagos parciales ni mixtos, usar el pago principal (filtrado por la fecha de la orden)
-            if ((order.PartialPayments == null || order.PartialPayments.Count == 0) &&
-                (order.MixedPayments == null || order.MixedPayments.Count == 0) &&
-                !string.IsNullOrWhiteSpace(order.PaymentMethod))
+            // Si no hay abonos en listas activas, usar el pago principal (filtrado por la fecha de la orden)
+            else if (!string.IsNullOrWhiteSpace(order.PaymentMethod))
             {
                 // Filtrar por rango de fechas de la orden
                 if (startDate.HasValue && order.CreatedAt < startDate.Value) continue;
@@ -984,6 +950,19 @@ public class ReportService : IReportService
         }
 
         return reportData;
+    }
+
+    /// <summary>
+    /// Misma regla que el detalle del pedido (frontend): si hay partialPayments, solo esos; si no, mixedPayments.
+    /// Evita duplicar filas cuando ambas listas contienen los mismos abonos.
+    /// </summary>
+    private static (List<PartialPayment> Payments, string PaymentType) GetActivePaymentsForReport(Order order)
+    {
+        if (order.PartialPayments != null && order.PartialPayments.Count > 0)
+            return (order.PartialPayments, "partial");
+        if (order.MixedPayments != null && order.MixedPayments.Count > 0)
+            return (order.MixedPayments, "mixed");
+        return (new List<PartialPayment>(), string.Empty);
     }
 
     private PaymentReportRow CreatePaymentReportRow(Order order, PartialPayment payment, DateTime paymentDate, string paymentType, int paymentIndex)
@@ -1797,31 +1776,17 @@ public class ReportService : IReportService
             return order.PaymentDetails.ExchangeRate.Value;
         }
 
-        // PRIORIDAD 3: Buscar en pagos parciales
-        if (order.PartialPayments != null && order.PartialPayments.Count > 0)
+        // PRIORIDAD 3: Buscar en abonos (lista activa: partial si existe, si no mixed)
+        var (activeForRate, _) = GetActivePaymentsForReport(order);
+        if (activeForRate.Count > 0)
         {
-            var rate = order.PartialPayments
-                .FirstOrDefault(p => p.PaymentDetails?.ExchangeRate.HasValue == true && 
+            var rate = activeForRate
+                .FirstOrDefault(p => p.PaymentDetails?.ExchangeRate.HasValue == true &&
                                     p.PaymentDetails.ExchangeRate > 0)
                 ?.PaymentDetails?.ExchangeRate;
             if (rate.HasValue)
             {
-                _logger.LogInformation("Usando tasa USD de un pago parcial del pedido {OrderNumber}: {Rate}", 
-                    order.OrderNumber, rate.Value);
-                return rate.Value;
-            }
-        }
-
-        // PRIORIDAD 4: Buscar en pagos mixtos
-        if (order.MixedPayments != null && order.MixedPayments.Count > 0)
-        {
-            var rate = order.MixedPayments
-                .FirstOrDefault(p => p.PaymentDetails?.ExchangeRate.HasValue == true && 
-                                    p.PaymentDetails.ExchangeRate > 0)
-                ?.PaymentDetails?.ExchangeRate;
-            if (rate.HasValue)
-            {
-                _logger.LogInformation("Usando tasa USD de un pago mixto del pedido {OrderNumber}: {Rate}", 
+                _logger.LogInformation("Usando tasa USD de un abono del pedido {OrderNumber}: {Rate}",
                     order.OrderNumber, rate.Value);
                 return rate.Value;
             }
@@ -1836,68 +1801,43 @@ public class ReportService : IReportService
     {
         decimal totalPagado = 0;
 
-        // Sumar pagos mixtos
-        if (order.MixedPayments != null && order.MixedPayments.Count > 0)
+        var (activePayments, _) = GetActivePaymentsForReport(order);
+        if (activePayments.Count > 0)
         {
-            foreach (var payment in order.MixedPayments)
+            foreach (var payment in activePayments)
             {
-                var monto = payment.PaymentDetails?.OriginalAmount ?? 
-                           payment.PaymentDetails?.CashReceived ?? 
+                var monto = payment.PaymentDetails?.OriginalAmount ??
+                           payment.PaymentDetails?.CashReceived ??
                            payment.Amount;
-                var moneda = payment.PaymentDetails?.OriginalCurrency ?? 
-                            payment.PaymentDetails?.CashCurrency ?? 
+                var moneda = payment.PaymentDetails?.OriginalCurrency ??
+                            payment.PaymentDetails?.CashCurrency ??
                             "Bs";
-                
-                // Convertir a Bs si es necesario
+
                 if (moneda != "Bs")
                 {
                     monto = monto * (payment.PaymentDetails?.ExchangeRate ?? 1);
                 }
-                
+
                 totalPagado += monto;
             }
+
+            return totalPagado;
         }
 
-        // Sumar pagos parciales
-        if (order.PartialPayments != null && order.PartialPayments.Count > 0)
+        if (!string.IsNullOrWhiteSpace(order.PaymentMethod))
         {
-            foreach (var payment in order.PartialPayments)
-            {
-                var monto = payment.PaymentDetails?.OriginalAmount ?? 
-                           payment.PaymentDetails?.CashReceived ?? 
-                           payment.Amount;
-                var moneda = payment.PaymentDetails?.OriginalCurrency ?? 
-                            payment.PaymentDetails?.CashCurrency ?? 
-                            "Bs";
-                
-                // Convertir a Bs si es necesario
-                if (moneda != "Bs")
-                {
-                    monto = monto * (payment.PaymentDetails?.ExchangeRate ?? 1);
-                }
-                
-                totalPagado += monto;
-            }
-        }
-
-        // Si no hay pagos parciales ni mixtos, verificar pago principal
-        if ((order.MixedPayments == null || order.MixedPayments.Count == 0) &&
-            (order.PartialPayments == null || order.PartialPayments.Count == 0) &&
-            !string.IsNullOrWhiteSpace(order.PaymentMethod))
-        {
-            var monto = order.PaymentDetails?.OriginalAmount ?? 
-                       order.PaymentDetails?.CashReceived ?? 
+            var monto = order.PaymentDetails?.OriginalAmount ??
+                       order.PaymentDetails?.CashReceived ??
                        order.Total;
-            var moneda = order.PaymentDetails?.OriginalCurrency ?? 
-                        order.PaymentDetails?.CashCurrency ?? 
+            var moneda = order.PaymentDetails?.OriginalCurrency ??
+                        order.PaymentDetails?.CashCurrency ??
                         "Bs";
-            
-            // Convertir a Bs si es necesario
+
             if (moneda != "Bs")
             {
                 monto = monto * (order.PaymentDetails?.ExchangeRate ?? 1);
             }
-            
+
             totalPagado += monto;
         }
 

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Download, Wifi, WifiOff, Loader2 } from "lucide-react"
 import { getOrders, getAccounts, type Order, type PartialPayment, type Account } from "@/lib/storage"
+import { getActivePaymentsForReport } from "@/lib/order-payments"
 import { toast } from "sonner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { apiClient } from "@/lib/api-client"
@@ -56,6 +57,9 @@ const PAYMENT_METHODS = [
   "Banesco Panamá",
   "Binance",
   "Efectivo",
+  "Efectivo Bs",
+  "Efectivo USD",
+  "Efectivo EUR",
   "Facebank",
   "Mercantil Panamá",
   "Pago Móvil",
@@ -65,6 +69,27 @@ const PAYMENT_METHODS = [
   "Transferencia",
   "Zelle",
 ] as const
+
+/** Filtros virtuales: solo afectan moneda en frontend; el API recibe `Efectivo`. */
+function effectiveCashCurrencyFilter(
+  selected: string,
+): "Bs" | "USD" | "EUR" | null {
+  if (selected === "Efectivo Bs") return "Bs"
+  if (selected === "Efectivo USD") return "USD"
+  if (selected === "Efectivo EUR") return "EUR"
+  return null
+}
+
+function backendPaymentMethodForFilter(selected: string): string {
+  if (
+    selected === "Efectivo Bs" ||
+    selected === "Efectivo USD" ||
+    selected === "Efectivo EUR"
+  ) {
+    return "Efectivo"
+  }
+  return selected
+}
 
 export function PaymentsReport() {
   const { hasPermission } = useAuth()
@@ -82,9 +107,32 @@ export function PaymentsReport() {
   const [conciliatingBulk, setConciliatingBulk] = useState(false)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(() => new Set())
 
+  const effectiveCurrencyFilter = effectiveCashCurrencyFilter(selectedPaymentMethod)
+
+  const filteredReportData = useMemo(() => {
+    if (!effectiveCurrencyFilter) return reportData
+    return reportData.filter((r) => r.monedaOriginal === effectiveCurrencyFilter)
+  }, [reportData, effectiveCurrencyFilter])
+
+  const reportTotals = useMemo(() => {
+    const rows = filteredReportData
+    return {
+      montoBs: rows.reduce((s, r) => s + r.montoBs, 0),
+      montoUsd: rows
+        .filter((r) => r.monedaOriginal === "USD")
+        .reduce((s, r) => s + r.montoOriginal, 0),
+      montoEur: rows
+        .filter((r) => r.monedaOriginal === "EUR")
+        .reduce((s, r) => s + r.montoOriginal, 0),
+      montoBsOriginal: rows
+        .filter((r) => r.monedaOriginal === "Bs")
+        .reduce((s, r) => s + r.montoOriginal, 0),
+    }
+  }, [filteredReportData])
+
   const selectableRows = useMemo(
-    () => reportData.filter((r) => r.orderId),
-    [reportData],
+    () => filteredReportData.filter((r) => r.orderId),
+    [filteredReportData],
   )
   const allSelectableSelected =
     selectableRows.length > 0 &&
@@ -169,8 +217,9 @@ export function PaymentsReport() {
         const params = new URLSearchParams()
         if (startDate) params.append("startDate", startDate)
         if (endDate) params.append("endDate", endDate)
-        if (selectedPaymentMethod !== "Todos") {
-          params.append("paymentMethod", selectedPaymentMethod)
+        const backendPm = backendPaymentMethodForFilter(selectedPaymentMethod)
+        if (backendPm !== "Todos") {
+          params.append("paymentMethod", backendPm)
         }
         if (selectedAccount !== "Todos") {
           params.append("accountId", selectedAccount)
@@ -274,7 +323,7 @@ export function PaymentsReport() {
 
   // Función para generar datos localmente (fallback offline)
   const generateLocalReportData = () => {
-    let filteredOrders = orders
+    const backendPm = backendPaymentMethodForFilter(selectedPaymentMethod)
 
     const rows: PaymentReportRow[] = []
     const startDateObj = startDate ? new Date(startDate) : null
@@ -294,7 +343,7 @@ export function PaymentsReport() {
             if (endDateObj && paymentDate > endDateObj) return
 
             // Filtrar por método de pago
-            if (selectedPaymentMethod !== "Todos" && payment.method !== selectedPaymentMethod) {
+            if (backendPm !== "Todos" && payment.method !== backendPm) {
               return
             }
 
@@ -343,17 +392,15 @@ export function PaymentsReport() {
         if (order.partialPayments && order.partialPayments.length > 0) {
           order.partialPayments.forEach((payment, index) => {
             const paymentDate = new Date(payment.date)
-            
-            // Filtrar por rango de fechas del pago
+
             if (startDateObj && paymentDate < startDateObj) return
             if (endDateObj && paymentDate > endDateObj) return
 
             // Filtrar por método de pago
-            if (selectedPaymentMethod !== "Todos" && payment.method !== selectedPaymentMethod) {
+            if (backendPm !== "Todos" && payment.method !== backendPm) {
               return
             }
 
-            // Filtrar por cuenta - solo si se especifica cuenta y el pago tiene accountId que coincida
             if (selectedAccount !== "Todos") {
               const paymentAccountId = payment.paymentDetails?.accountId
               if (!paymentAccountId || paymentAccountId !== selectedAccount) {
@@ -363,19 +410,18 @@ export function PaymentsReport() {
 
             const referencia = getPaymentReference(payment, order)
             const cuenta = getAccountDisplay(payment)
-            
-            // Usar la función helper para obtener el monto original
+
             const originalPayment = getOriginalPaymentAmount(payment)
             const montoOriginal = originalPayment.amount
             const monedaOriginal = originalPayment.currency
-            
-            // Calcular monto en Bs: si la moneda original no es Bs, convertir usando exchangeRate
-            const montoBs = monedaOriginal === "Bs" 
-              ? montoOriginal 
-              : montoOriginal * (payment.paymentDetails?.exchangeRate || 1)
+
+            const montoBs =
+              monedaOriginal === "Bs"
+                ? montoOriginal
+                : montoOriginal * (payment.paymentDetails?.exchangeRate || 1)
 
             rows.push({
-              id: `${order.id}-partial-${index}`,
+              id: `${order.id}-${activePaymentType}-${index}`,
               fecha: formatDate(payment.date),
               pedido: order.orderNumber,
               cliente: order.clientName,
@@ -388,18 +434,11 @@ export function PaymentsReport() {
               cuenta: cuenta,
               orderId: order.id,
               paymentIndex: index,
-              paymentType: "partial",
+              paymentType: activePaymentType,
               isConciliated: Boolean(payment.paymentDetails?.isConciliated),
             })
           })
-        }
-
-        // Si no hay pagos parciales ni mixtos, usar el pago principal
-        if (
-          (!order.partialPayments || order.partialPayments.length === 0) &&
-          (!order.mixedPayments || order.mixedPayments.length === 0) &&
-          order.paymentMethod
-        ) {
+        } else if (order.paymentMethod) {
           const orderDate = new Date(order.createdAt)
           
           // Filtrar por rango de fechas de la orden (para el pago principal)
@@ -407,7 +446,7 @@ export function PaymentsReport() {
           if (endDateObj && orderDate > endDateObj) return
 
           // Filtrar por método de pago
-          if (selectedPaymentMethod !== "Todos" && order.paymentMethod !== selectedPaymentMethod) {
+          if (backendPm !== "Todos" && order.paymentMethod !== backendPm) {
             return
           }
 
@@ -461,10 +500,16 @@ export function PaymentsReport() {
         }
       })
 
-      // Ordenar por fecha (más reciente primero)
-      rows.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+      const currF = effectiveCashCurrencyFilter(selectedPaymentMethod)
+      let finalRows = rows
+      if (currF) {
+        finalRows = rows.filter((r) => r.monedaOriginal === currF)
+      }
 
-      setReportData(rows)
+      // Ordenar por fecha (más reciente primero)
+      finalRows.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+
+      setReportData(finalRows)
     }
 
   const getPaymentReference = (payment: PartialPayment, order: Order): string => {
@@ -631,7 +676,7 @@ export function PaymentsReport() {
 
   const handleBulkSetConciliated = async (targetConciliated: boolean) => {
     if (!isOnline || conciliatingBulk || conciliatingId !== null) return
-    const selected = reportData.filter(
+    const selected = filteredReportData.filter(
       (r) => selectedRowIds.has(r.id) && r.orderId,
     )
     const toUpdate = targetConciliated
@@ -699,8 +744,9 @@ export function PaymentsReport() {
       const params = new URLSearchParams()
       if (startDate) params.append("startDate", startDate)
       if (endDate) params.append("endDate", endDate)
-      if (selectedPaymentMethod !== "Todos") {
-        params.append("paymentMethod", selectedPaymentMethod)
+      const excelBackendPm = backendPaymentMethodForFilter(selectedPaymentMethod)
+      if (excelBackendPm !== "Todos") {
+        params.append("paymentMethod", excelBackendPm)
       }
       if (selectedAccount !== "Todos") {
         params.append("accountId", selectedAccount)
@@ -849,10 +895,10 @@ export function PaymentsReport() {
           <div>
             <CardTitle>Vista Previa del Reporte</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              Total de registros: {reportData.length}
+              Total de registros: {filteredReportData.length}
             </p>
           </div>
-          {canConciliate && reportData.length > 0 && (
+          {canConciliate && filteredReportData.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               {selectedCount > 0 && (
                 <span className="text-sm text-muted-foreground">
@@ -938,7 +984,7 @@ export function PaymentsReport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {reportData.length === 0 ? (
+                {filteredReportData.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={canConciliate ? 11 : 10}
@@ -948,7 +994,8 @@ export function PaymentsReport() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  reportData.map((row) => (
+                  <>
+                  {filteredReportData.map((row) => (
                     <TableRow key={row.id}>
                       {canConciliate && (
                         <TableCell className="w-10 pr-2">
@@ -1037,7 +1084,36 @@ export function PaymentsReport() {
                         )}
                       </TableCell>
                     </TableRow>
-                  ))
+                  ))}
+                  <TableRow className="border-t-2 bg-muted/50 font-semibold">
+                    {canConciliate && <TableCell aria-hidden />}
+                    <TableCell colSpan={4}>Totales</TableCell>
+                    <TableCell className="text-right align-top">
+                      <div className="space-y-0.5 text-xs">
+                        {reportTotals.montoBsOriginal > 0 && (
+                          <div>{formatCurrency(reportTotals.montoBsOriginal, "Bs")}</div>
+                        )}
+                        {reportTotals.montoUsd > 0 && (
+                          <div>{formatCurrency(reportTotals.montoUsd, "USD")}</div>
+                        )}
+                        {reportTotals.montoEur > 0 && (
+                          <div>{formatCurrency(reportTotals.montoEur, "EUR")}</div>
+                        )}
+                        {reportTotals.montoBsOriginal === 0 &&
+                          reportTotals.montoUsd === 0 &&
+                          reportTotals.montoEur === 0 && (
+                          <span className="text-muted-foreground font-normal">—</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(reportTotals.montoBs, "Bs")}
+                    </TableCell>
+                    <TableCell colSpan={4} className="text-muted-foreground text-xs font-normal">
+                      Suma de la vista filtrada (conciliación con caja / POS / extractos)
+                    </TableCell>
+                  </TableRow>
+                  </>
                 )}
               </TableBody>
             </Table>
