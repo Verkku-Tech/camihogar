@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Download, Wifi, WifiOff, Loader2 } from "lucide-react"
 import { getOrders, getAccounts, type Order, type PartialPayment, type Account } from "@/lib/storage"
+import { getActivePaymentsForReport } from "@/lib/order-payments"
 import { toast } from "sonner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { apiClient } from "@/lib/api-client"
@@ -332,21 +333,20 @@ export function PaymentsReport() {
     orders.forEach((order) => {
         if (order.type?.toLowerCase() === "budget") return
 
-        // Procesar pagos mixtos si existen
-        if (order.mixedPayments && order.mixedPayments.length > 0) {
-          order.mixedPayments.forEach((payment, index) => {
+        const { payments: activePayments, paymentType: activePaymentType } =
+          getActivePaymentsForReport(order)
+
+        if (activePayments.length > 0) {
+          activePayments.forEach((payment, index) => {
             const paymentDate = new Date(payment.date)
-            
-            // Filtrar por rango de fechas del pago
+
             if (startDateObj && paymentDate < startDateObj) return
             if (endDateObj && paymentDate > endDateObj) return
 
-            // Filtrar por método de pago
-            if (backendPm !== "Todos" && payment.method !== backendPm) {
+            if (selectedPaymentMethod !== "Todos" && payment.method !== selectedPaymentMethod) {
               return
             }
 
-            // Filtrar por cuenta - solo si se especifica cuenta y el pago tiene accountId que coincida
             if (selectedAccount !== "Todos") {
               const paymentAccountId = payment.paymentDetails?.accountId
               if (!paymentAccountId || paymentAccountId !== selectedAccount) {
@@ -356,19 +356,18 @@ export function PaymentsReport() {
 
             const referencia = getPaymentReference(payment, order)
             const cuenta = getAccountDisplay(payment)
-            
-            // Usar la función helper para obtener el monto original
+
             const originalPayment = getOriginalPaymentAmount(payment)
             const montoOriginal = originalPayment.amount
             const monedaOriginal = originalPayment.currency
-            
-            // Calcular monto en Bs: si la moneda original no es Bs, convertir usando exchangeRate
-            const montoBs = monedaOriginal === "Bs" 
-              ? montoOriginal 
-              : montoOriginal * (payment.paymentDetails?.exchangeRate || 1)
+
+            const montoBs =
+              monedaOriginal === "Bs"
+                ? montoOriginal
+                : montoOriginal * (payment.paymentDetails?.exchangeRate || 1)
 
             rows.push({
-              id: `${order.id}-mixed-${index}`,
+              id: `${order.id}-${activePaymentType}-${index}`,
               fecha: formatDate(payment.date),
               pedido: order.orderNumber,
               cliente: order.clientName,
@@ -381,73 +380,11 @@ export function PaymentsReport() {
               cuenta: cuenta,
               orderId: order.id,
               paymentIndex: index,
-              paymentType: "mixed",
+              paymentType: activePaymentType,
               isConciliated: Boolean(payment.paymentDetails?.isConciliated),
             })
           })
-        }
-
-        // Procesar pagos parciales si existen
-        if (order.partialPayments && order.partialPayments.length > 0) {
-          order.partialPayments.forEach((payment, index) => {
-            const paymentDate = new Date(payment.date)
-            
-            // Filtrar por rango de fechas del pago
-            if (startDateObj && paymentDate < startDateObj) return
-            if (endDateObj && paymentDate > endDateObj) return
-
-            // Filtrar por método de pago
-            if (backendPm !== "Todos" && payment.method !== backendPm) {
-              return
-            }
-
-            // Filtrar por cuenta - solo si se especifica cuenta y el pago tiene accountId que coincida
-            if (selectedAccount !== "Todos") {
-              const paymentAccountId = payment.paymentDetails?.accountId
-              if (!paymentAccountId || paymentAccountId !== selectedAccount) {
-                return
-              }
-            }
-
-            const referencia = getPaymentReference(payment, order)
-            const cuenta = getAccountDisplay(payment)
-            
-            // Usar la función helper para obtener el monto original
-            const originalPayment = getOriginalPaymentAmount(payment)
-            const montoOriginal = originalPayment.amount
-            const monedaOriginal = originalPayment.currency
-            
-            // Calcular monto en Bs: si la moneda original no es Bs, convertir usando exchangeRate
-            const montoBs = monedaOriginal === "Bs" 
-              ? montoOriginal 
-              : montoOriginal * (payment.paymentDetails?.exchangeRate || 1)
-
-            rows.push({
-              id: `${order.id}-partial-${index}`,
-              fecha: formatDate(payment.date),
-              pedido: order.orderNumber,
-              cliente: order.clientName,
-              metodoPago: payment.method,
-              montoOriginal: montoOriginal,
-              monedaOriginal: monedaOriginal,
-              montoBs: montoBs,
-              montoUsd: computeMontoUsdForBsPayment(order, monedaOriginal, montoBs),
-              referencia: referencia,
-              cuenta: cuenta,
-              orderId: order.id,
-              paymentIndex: index,
-              paymentType: "partial",
-              isConciliated: Boolean(payment.paymentDetails?.isConciliated),
-            })
-          })
-        }
-
-        // Si no hay pagos parciales ni mixtos, usar el pago principal
-        if (
-          (!order.partialPayments || order.partialPayments.length === 0) &&
-          (!order.mixedPayments || order.mixedPayments.length === 0) &&
-          order.paymentMethod
-        ) {
+        } else if (order.paymentMethod) {
           const orderDate = new Date(order.createdAt)
           
           // Filtrar por rango de fechas de la orden (para el pago principal)

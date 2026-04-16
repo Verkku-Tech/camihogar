@@ -30,6 +30,7 @@ import {
   type Account,
 } from "@/lib/storage";
 import { Currency } from "@/lib/currency-utils";
+import { normalizePaymentsForSave } from "@/lib/order-payments";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -539,6 +540,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
+      const paymentsNorm = normalizePaymentsForSave(orderForm.payments);
+      const multi = paymentsNorm.length > 1;
+
       const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
         clientId: orderForm.selectedClient.id,
         clientName: orderForm.selectedClient.name,
@@ -597,28 +601,30 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             ? "Pago a la entrega"
             : orderForm.paymentCondition === "cashea"
             ? "Cashea"
-            : orderForm.payments.length > 1
+            : multi
             ? "Mixto"
-            : orderForm.payments[0]?.method || "",
+            : paymentsNorm[0]?.method || "",
         paymentDetails:
           orderForm.paymentCondition === "pago_a_entrega" ||
           orderForm.paymentCondition === "cashea" ||
           orderForm.payments.length === 0
             ? undefined
-            : orderForm.payments.length === 1
-            ? orderForm.payments[0]?.paymentDetails
+            : !multi
+            ? paymentsNorm[0]?.paymentDetails
             : undefined,
         partialPayments:
           orderForm.paymentCondition === "pago_a_entrega" ||
           orderForm.paymentCondition === "cashea"
             ? undefined
-            : orderForm.payments,
+            : multi
+            ? []
+            : paymentsNorm,
         mixedPayments:
           orderForm.paymentCondition === "pago_a_entrega" ||
           orderForm.paymentCondition === "cashea"
             ? undefined
-            : orderForm.payments.length > 1
-            ? orderForm.payments
+            : multi
+            ? paymentsNorm
             : undefined,
         deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
         hasDelivery: orderForm.hasDelivery,
