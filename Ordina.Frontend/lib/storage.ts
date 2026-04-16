@@ -2843,6 +2843,8 @@ export interface UnifiedOrder {
   dispatchDate?: string; // Fecha de despacho
   completedAt?: string; // Fecha de completado
   partialPayments?: PartialPayment[]; // Para mostrar saldo pendiente / debe en USD en listados
+  /** Abonos cuando el pedido guarda varios pagos solo en mixed (partial vacío); necesario para editar desde lista. */
+  mixedPayments?: PartialPayment[];
 }
 
 // Función para obtener pedidos y presupuestos unificados
@@ -2900,6 +2902,7 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       dispatchDate: order.dispatchDate,
       completedAt: order.completedAt,
       partialPayments: order.partialPayments,
+      mixedPayments: order.mixedPayments,
     }));
 
     // Convertir presupuestos a formato unificado
