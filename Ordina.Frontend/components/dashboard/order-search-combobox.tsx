@@ -4,37 +4,11 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Search } from "lucide-react"
 import { getOrders, getClients, type Order, type Client } from "@/lib/storage"
+import { buildOrderSearchValue } from "@/lib/order-client-search"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-
-function digitsOnly(s: string): string {
-  return s.replace(/\D/g, "")
-}
-
-/** Incluye orden, nombre, teléfonos, CI y variantes solo dígitos para cmdk. */
-function buildOrderSearchValue(order: Order, client?: Client): string {
-  const parts: string[] = [order.orderNumber, order.clientName]
-  if (client) {
-    if (client.telefono) {
-      parts.push(client.telefono)
-      const d = digitsOnly(client.telefono)
-      if (d) parts.push(d)
-    }
-    if (client.telefono2) {
-      parts.push(client.telefono2)
-      const d = digitsOnly(client.telefono2)
-      if (d) parts.push(d)
-    }
-    if (client.rutId) {
-      parts.push(client.rutId)
-      const d = digitsOnly(client.rutId)
-      if (d) parts.push(d)
-    }
-  }
-  return parts.filter((p) => p && String(p).trim().length > 0).join(" ")
-}
 
 function clientContactLine(client?: Client): string | null {
   if (!client) return null

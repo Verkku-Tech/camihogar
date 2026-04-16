@@ -24,7 +24,15 @@ import {
 import { Search, Plus, Eye, Edit, Trash2, X } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { deleteOrder, deleteBudget, getUnifiedOrders, type UnifiedOrder } from "@/lib/storage"
+import {
+  deleteOrder,
+  deleteBudget,
+  getUnifiedOrders,
+  getClients,
+  type UnifiedOrder,
+  type Client,
+} from "@/lib/storage"
+import { buildClientFilterHaystack, digitsOnly } from "@/lib/order-client-search"
 import {
   formatCurrencyWithUsdPrimaryFromOrder,
   getActiveExchangeRates,
@@ -88,6 +96,23 @@ export default function PedidosPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
   const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [clientById, setClientById] = useState<Map<string, Client>>(new Map())
+
+  useEffect(() => {
+    const loadClients = async () => {
+      try {
+        const list = await getClients()
+        const map = new Map<string, Client>()
+        for (const c of list) {
+          map.set(c.id, c)
+        }
+        setClientById(map)
+      } catch (e) {
+        console.error("Error cargando clientes para filtro:", e)
+      }
+    }
+    void loadClients()
+  }, [])
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -160,9 +185,16 @@ export default function PedidosPage() {
     const matchesStatus = filters.status === "all" || order.status === filters.status
     const matchesPaymentMethod =
       filters.paymentMethod === "all" || order.paymentMethod === filters.paymentMethod
+    const q = clientSearch.trim().toLowerCase()
+    const haystack = buildClientFilterHaystack(
+      order.clientName,
+      clientById.get(order.clientId),
+    ).toLowerCase()
     const matchesClient =
-      clientSearch === "" ||
-      order.clientName.toLowerCase().includes(clientSearch.toLowerCase())
+      q === "" ||
+      haystack.includes(q) ||
+      (digitsOnly(clientSearch) !== "" &&
+        digitsOnly(haystack).includes(digitsOnly(clientSearch)))
 
     return matchesSearch && matchesVendor && matchesStatus && matchesPaymentMethod && matchesClient
   })
@@ -293,11 +325,11 @@ export default function PedidosPage() {
                 <div className="relative w-[200px] min-w-[160px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none" />
                   <Input
-                    placeholder="Filtrar por cliente..."
+                    placeholder="Cliente: nombre, teléfono, CI, apodo..."
                     value={clientSearch}
                     onChange={(e) => setClientSearch(e.target.value)}
                     className="pl-10"
-                    aria-label="Filtrar por nombre de cliente"
+                    aria-label="Filtrar por cliente: nombre, teléfono, CI o apodo"
                   />
                 </div>
 
