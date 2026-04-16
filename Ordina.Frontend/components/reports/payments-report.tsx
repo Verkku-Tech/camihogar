@@ -333,70 +333,16 @@ export function PaymentsReport() {
     orders.forEach((order) => {
         if (order.type?.toLowerCase() === "budget") return
 
-        // Procesar pagos mixtos si existen
-        if (order.mixedPayments && order.mixedPayments.length > 0) {
-          order.mixedPayments.forEach((payment, index) => {
-            const paymentDate = new Date(payment.date)
-            
-            // Filtrar por rango de fechas del pago
-            if (startDateObj && paymentDate < startDateObj) return
-            if (endDateObj && paymentDate > endDateObj) return
+        const { payments: activePayments, paymentType: activePaymentType } =
+          getActivePaymentsForReport(order)
 
-            // Filtrar por método de pago
-            if (backendPm !== "Todos" && payment.method !== backendPm) {
-              return
-            }
-
-            // Filtrar por cuenta - solo si se especifica cuenta y el pago tiene accountId que coincida
-            if (selectedAccount !== "Todos") {
-              const paymentAccountId = payment.paymentDetails?.accountId
-              if (!paymentAccountId || paymentAccountId !== selectedAccount) {
-                return
-              }
-            }
-
-            const referencia = getPaymentReference(payment, order)
-            const cuenta = getAccountDisplay(payment)
-            
-            // Usar la función helper para obtener el monto original
-            const originalPayment = getOriginalPaymentAmount(payment)
-            const montoOriginal = originalPayment.amount
-            const monedaOriginal = originalPayment.currency
-            
-            // Calcular monto en Bs: si la moneda original no es Bs, convertir usando exchangeRate
-            const montoBs = monedaOriginal === "Bs" 
-              ? montoOriginal 
-              : montoOriginal * (payment.paymentDetails?.exchangeRate || 1)
-
-            rows.push({
-              id: `${order.id}-mixed-${index}`,
-              fecha: formatDate(payment.date),
-              pedido: order.orderNumber,
-              cliente: order.clientName,
-              metodoPago: payment.method,
-              montoOriginal: montoOriginal,
-              monedaOriginal: monedaOriginal,
-              montoBs: montoBs,
-              montoUsd: computeMontoUsdForBsPayment(order, monedaOriginal, montoBs),
-              referencia: referencia,
-              cuenta: cuenta,
-              orderId: order.id,
-              paymentIndex: index,
-              paymentType: "mixed",
-              isConciliated: Boolean(payment.paymentDetails?.isConciliated),
-            })
-          })
-        }
-
-        // Procesar pagos parciales si existen
-        if (order.partialPayments && order.partialPayments.length > 0) {
-          order.partialPayments.forEach((payment, index) => {
+        if (activePayments.length > 0) {
+          activePayments.forEach((payment, index) => {
             const paymentDate = new Date(payment.date)
 
             if (startDateObj && paymentDate < startDateObj) return
             if (endDateObj && paymentDate > endDateObj) return
 
-            // Filtrar por método de pago
             if (backendPm !== "Todos" && payment.method !== backendPm) {
               return
             }
