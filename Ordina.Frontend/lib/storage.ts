@@ -1597,6 +1597,8 @@ export interface PartialPayment {
     cardReference?: string; // Número de referencia del pago con tarjeta
     /** Conciliación contable (reporte / offline) */
     isConciliated?: boolean;
+    /** Segunda línea sintética en pedidos Cashea: saldo cubierto vía financiación (no es un cobro en caja). */
+    casheaFinancedPortion?: boolean;
   };
 }
 
