@@ -26,6 +26,7 @@ import {
   type ExchangeRate,
   type Currency,
 } from "@/lib/currency-utils";
+import { PAYMENT_BALANCE_EPSILON_BS } from "@/lib/order-payments";
 
 export interface OrderFormData {
   vendor: string;
@@ -721,10 +722,13 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     calculateTotal();
   }, [payments]);
 
-  const remainingAmount =
-    paymentCondition === "cashea" ? 0 : total - totalPaidInBs;
+  const remainingAmount = total - totalPaidInBs;
   const isPaymentsValid =
-    paymentCondition === "cashea" || Math.abs(remainingAmount) < 0.10;
+    paymentCondition === "cashea"
+      ? payments.length === 1 &&
+        (payments[0].amount || 0) > 0 &&
+        (payments[0].amount || 0) <= total + PAYMENT_BALANCE_EPSILON_BS
+      : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
 
   // Formatear precios
   useEffect(() => {

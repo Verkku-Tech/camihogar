@@ -270,7 +270,12 @@ export function PaymentsReport() {
           }
         })
 
-        setReportData(mappedData)
+        const mappedFiltered = mappedData.filter((row) => {
+          const o = orders.find((ord) => ord.id === row.orderId)
+          if (!o) return true
+          return o.status !== "Generado" && o.status !== "Generada"
+        })
+        setReportData(mappedFiltered)
       } catch (error) {
         console.error("Error loading report from backend:", error)
         // Fallback a datos locales
@@ -332,6 +337,7 @@ export function PaymentsReport() {
 
     orders.forEach((order) => {
         if (order.type?.toLowerCase() === "budget") return
+        if (order.status === "Generado" || order.status === "Generada") return
 
         const { payments: activePayments, paymentType: activePaymentType } =
           getActivePaymentsForReport(order)

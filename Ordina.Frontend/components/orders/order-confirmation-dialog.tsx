@@ -1015,12 +1015,11 @@ export function OrderConfirmationDialog({
           0
         );
         const isCasheaConfirmation = orderData.paymentCondition === "cashea";
-        const displayedPaidConfirmation = isCasheaConfirmation
-          ? orderData.total
-          : paidInStoreProducts;
-        const displayedRemainingConfirmation = isCasheaConfirmation
-          ? 0
-          : orderData.total - paidInStoreProducts;
+        const displayedPaidConfirmation = paidInStoreProducts;
+        const displayedRemainingConfirmation = Math.max(
+          0,
+          orderData.total - paidInStoreProducts,
+        );
         return (
           <Card>
             <CardHeader>
@@ -1255,7 +1254,9 @@ export function OrderConfirmationDialog({
                         {/* Total pagado */}
                         <TableRow>
                           <TableCell className="text-xs sm:text-sm">
-                            Total pagado:
+                            {isCasheaConfirmation
+                              ? "Pago inicial en tienda:"
+                              : "Total pagado:"}
                           </TableCell>
                           {renderCurrencyCell(
                             displayedPaidConfirmation,
@@ -1271,10 +1272,11 @@ export function OrderConfirmationDialog({
                           {renderCurrencyCell(orderData.total)}
                         </TableRow>
 
-                        {/* Resta por pagar (Cashea: mostrar cubierto = mismo total / falta 0) */}
                         <TableRow className="font-semibold border-t">
                           <TableCell className="text-xs sm:text-sm">
-                            {isCasheaConfirmation ? "Saldo en tienda:" : "Falta:"}
+                            {isCasheaConfirmation
+                              ? "Resto vía Cashea (se registrará al confirmar):"
+                              : "Falta:"}
                           </TableCell>
                           {renderCurrencyCell(
                             displayedRemainingConfirmation,

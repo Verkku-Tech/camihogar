@@ -31,7 +31,11 @@ import {
   type Account,
 } from "@/lib/storage";
 import { Currency } from "@/lib/currency-utils";
-import { normalizePaymentsForSave } from "@/lib/order-payments";
+import {
+  normalizePaymentsForSave,
+  buildCasheaPaymentsForSave,
+  PAYMENT_BALANCE_EPSILON_BS,
+} from "@/lib/order-payments";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
 
@@ -256,24 +260,98 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
   // Guardar solo pagos (modo vendedor): actualiza únicamente los campos de pago del pedido
   const handleSavePaymentsOnly = async () => {
     if (!order) return;
-    if (order.paymentCondition === "cashea") {
-      toast.error(
-        "Los pagos de pedidos Cashea se gestionan directamente en la plataforma Cashea."
-      );
-      return;
-    }
     try {
       const paymentCondition = order.paymentCondition ?? "pago_parcial";
-      if (paymentCondition !== "pago_a_entrega" && orderForm.payments.length === 0) {
+      if (paymentCondition === "pago_a_entrega") {
+        toast.error("Este pedido es pago a la entrega; no se registran abonos aquí.");
+        return;
+      }
+      if (paymentCondition === "cashea") {
+        if (orderForm.payments.length !== 1) {
+          toast.error("Cashea: registre exactamente un pago inicial en tienda.");
+          return;
+        }
+      } else if (orderForm.payments.length === 0) {
         toast.error("Debe agregar al menos un pago");
         return;
       }
-      const paymentsNorm = normalizePaymentsForSave(orderForm.payments);
+
+      for (let i = 0; i < orderForm.payments.length; i++) {
+        const payment = orderForm.payments[i];
+        const paymentLabel = `Pago ${i + 1}`;
+        if (!payment.method) {
+          toast.error(`${paymentLabel}: Debe seleccionar un método de pago`);
+          return;
+        }
+        if (!payment.amount || payment.amount <= 0) {
+          toast.error(`${paymentLabel}: Debe ingresar un monto mayor a 0`);
+          return;
+        }
+        if (!payment.date) {
+          toast.error(`${paymentLabel}: Debe seleccionar una fecha de pago`);
+          return;
+        }
+        if (payment.method === "Pago Móvil") {
+          if (!payment.paymentDetails?.pagomovilReference) {
+            toast.error(`${paymentLabel} (Pago Móvil): Debe ingresar el número de referencia`);
+            return;
+          }
+          if (!payment.paymentDetails?.accountId) {
+            toast.error(`${paymentLabel} (Pago Móvil): Debe seleccionar el banco receptor`);
+            return;
+          }
+        } else if (payment.method === "Transferencia") {
+          if (!payment.paymentDetails?.transferenciaReference) {
+            toast.error(`${paymentLabel} (Transferencia): Debe ingresar el número de referencia`);
+            return;
+          }
+          if (!payment.paymentDetails?.accountId) {
+            toast.error(`${paymentLabel} (Transferencia): Debe seleccionar el banco receptor`);
+            return;
+          }
+        } else if (payment.method === "Tarjeta de débito") {
+          if (!payment.paymentDetails?.bank) {
+            toast.error(`${paymentLabel} (Tarjeta de débito): Debe seleccionar el banco`);
+            return;
+          }
+        } else if (payment.method === "Tarjeta de Crédito") {
+          if (!payment.paymentDetails?.bank) {
+            toast.error(`${paymentLabel} (Tarjeta de Crédito): Debe seleccionar el banco`);
+            return;
+          }
+        } else if (payment.method === "Zelle") {
+          if (!payment.paymentDetails?.envia) {
+            toast.error(`${paymentLabel} (Zelle): Debe ingresar quién envía`);
+            return;
+          }
+        } else if (["AirTM", "Binance", "Banesco Panamá", "Mercantil Panamá"].includes(payment.method)) {
+          if (!payment.paymentDetails?.accountId) {
+            toast.error(`${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`);
+            return;
+          }
+        }
+      }
+      if (paymentCondition === "cashea") {
+        const p = orderForm.payments[0];
+        if ((p.amount || 0) > orderForm.total + PAYMENT_BALANCE_EPSILON_BS) {
+          toast.error("El monto del pago inicial no puede superar el total del pedido.");
+          return;
+        }
+      }
+
+      let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
+      if (paymentCondition === "cashea") {
+        paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, orderForm.total);
+      }
       const multi = paymentsNorm.length > 1;
       await updateOrder(order.id, {
-        // Un solo arreglo activo: varios pagos → solo mixedPayments (evita duplicados en reporte de pagos)
         partialPayments: multi ? [] : paymentsNorm,
-        paymentMethod: multi ? "Mixto" : paymentsNorm[0]?.method ?? order.paymentMethod ?? "",
+        paymentMethod:
+          paymentCondition === "cashea"
+            ? "Cashea"
+            : multi
+              ? "Mixto"
+              : paymentsNorm[0]?.method ?? order.paymentMethod ?? "",
         paymentDetails: !multi ? paymentsNorm[0]?.paymentDetails : undefined,
         mixedPayments: multi ? paymentsNorm : [],
       });
@@ -407,17 +485,19 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
         return;
       }
 
-      const noPaymentsRequired =
-        orderForm.paymentCondition === "pago_a_entrega" ||
-        orderForm.paymentCondition === "cashea";
-
-      if (!noPaymentsRequired && orderForm.payments.length === 0) {
+      if (orderForm.paymentCondition === "pago_a_entrega") {
+        // Sin líneas de pago en tienda
+      } else if (orderForm.paymentCondition === "cashea") {
+        if (orderForm.payments.length !== 1) {
+          toast.error("Cashea: registre exactamente un pago inicial en tienda.");
+          return;
+        }
+      } else if (orderForm.payments.length === 0) {
         toast.error("Por favor agrega al menos un pago");
         return;
       }
 
-      // Validar que cada pago tenga los campos requeridos completos
-      if (!noPaymentsRequired) {
+      if (orderForm.paymentCondition !== "pago_a_entrega") {
         for (let i = 0; i < orderForm.payments.length; i++) {
           const payment = orderForm.payments[i];
           const paymentLabel = `Pago ${i + 1}`;
@@ -435,7 +515,6 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
             return;
           }
 
-          // Validaciones específicas por método de pago
           if (payment.method === "Pago Móvil") {
             if (!payment.paymentDetails?.pagomovilReference) {
               toast.error(`${paymentLabel} (Pago Móvil): Debe ingresar el número de referencia`);
@@ -469,11 +548,18 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
               toast.error(`${paymentLabel} (Zelle): Debe ingresar quién envía`);
               return;
             }
-          } else if (["AirTM", "Binance", "Paypal", "Banesco Panamá", "Mercantil Panamá"].includes(payment.method)) {
+          } else if (["AirTM", "Binance", "Banesco Panamá", "Mercantil Panamá"].includes(payment.method)) {
             if (!payment.paymentDetails?.accountId) {
               toast.error(`${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`);
               return;
             }
+          }
+        }
+        if (orderForm.paymentCondition === "cashea") {
+          const p = orderForm.payments[0];
+          if ((p.amount || 0) > orderForm.total + PAYMENT_BALANCE_EPSILON_BS) {
+            toast.error("El monto del pago inicial no puede superar el total del pedido.");
+            return;
           }
         }
       }
@@ -567,7 +653,10 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
     try {
       if (!pendingOrderData || !orderForm.selectedClient || !order) return;
 
-      const paymentsNorm = normalizePaymentsForSave(orderForm.payments);
+      let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
+      if (orderForm.paymentCondition === "cashea") {
+        paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, orderForm.total);
+      }
       const multi = paymentsNorm.length > 1;
 
       const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
@@ -633,22 +722,19 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
                 : paymentsNorm[0]?.method || "",
         paymentDetails:
           orderForm.paymentCondition === "pago_a_entrega" ||
-          orderForm.paymentCondition === "cashea" ||
           orderForm.payments.length === 0
             ? undefined
             : !multi
               ? paymentsNorm[0]?.paymentDetails
               : undefined,
         partialPayments:
-          orderForm.paymentCondition === "pago_a_entrega" ||
-          orderForm.paymentCondition === "cashea"
+          orderForm.paymentCondition === "pago_a_entrega"
             ? undefined
             : multi
               ? []
               : paymentsNorm,
         mixedPayments:
-          orderForm.paymentCondition === "pago_a_entrega" ||
-          orderForm.paymentCondition === "cashea"
+          orderForm.paymentCondition === "pago_a_entrega"
             ? undefined
             : multi
               ? paymentsNorm
@@ -759,13 +845,13 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
               orderForm={orderForm}
               onSubmit={isPaymentsOnly ? handleSavePaymentsOnly : handleSubmit}
               addPayment={
-                orderForm.paymentCondition === "cashea" ? undefined : addPayment
+                orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1
+                  ? undefined
+                  : addPayment
               }
               updatePayment={updatePayment}
               updatePaymentDetails={updatePaymentDetails}
-              removePayment={
-                orderForm.paymentCondition === "cashea" ? undefined : removePayment
-              }
+              removePayment={removePayment}
               getAccountsForPaymentMethod={getAccountsForPaymentMethod}
               saveAccountInfoToPayment={saveAccountInfoToPayment}
               updatePaymentImages={updatePaymentImages}
@@ -822,15 +908,12 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
             <div className="flex flex-col gap-3 pt-4 border-t">
               {order?.paymentCondition === "cashea" && (
                 <p className="text-sm text-muted-foreground">
-                  Este pedido está financiado por Cashea. Los pagos no son editables en tienda.
+                  Cashea: edite el pago inicial en tienda. Al guardar, el saldo restante se
+                  registrará como financiación Cashea.
                 </p>
               )}
               <div className="flex justify-end">
-                <Button
-                  onClick={handleSavePaymentsOnly}
-                  className="w-full sm:w-auto"
-                  disabled={order?.paymentCondition === "cashea"}
-                >
+                <Button onClick={handleSavePaymentsOnly} className="w-full sm:w-auto">
                   Guardar pagos
                 </Button>
               </div>

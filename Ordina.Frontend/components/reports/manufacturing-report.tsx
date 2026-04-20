@@ -180,6 +180,9 @@ export function ManufacturingReport() {
         if (activeTab === "debe_fabricar") {
           // Filtrar pedidos que tienen productos "Por fabricar"
           const ordersWithPendingManufacturing = loadedOrders.filter(order => {
+            if (order.status === "Generado" || order.status === "Generada") {
+              return false
+            }
             return order.products.some(product => {
               // Solo productos que deben mandarse a fabricar
               if (product.locationStatus !== "FABRICACION") {
@@ -371,6 +374,9 @@ export function ManufacturingReport() {
     const result: Array<{ order: Order; product: OrderProduct; orderDate: string }> = []
 
     orders.forEach(order => {
+      if (order.status === "Generado" || order.status === "Generada") {
+        return
+      }
       // Filtrar por número de pedido si se especifica
       if (orderNumber && order.orderNumber !== orderNumber) {
         return

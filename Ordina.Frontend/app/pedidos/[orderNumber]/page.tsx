@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { ProtectedRoute } from "@/components/auth/protected-route";
@@ -44,6 +45,10 @@ import { useCurrency } from "@/contexts/currency-context";
 import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
 import { apiClient } from "@/lib/api-client";
+import {
+  sumPaymentsInStoreBs,
+  CASHEA_FINANCED_METHOD_LABEL,
+} from "@/lib/order-payments";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
@@ -53,6 +58,14 @@ import {
 } from "@/components/ui/hover-card";
 import { ImageGallery } from "@/components/orders/image-gallery";
 import { useAuth } from "@/contexts/auth-context";
+
+const OrderPdfDownloadButton = dynamic(
+  () =>
+    import("@/components/orders/order-pdf-download").then(
+      (m) => m.OrderPdfDownloadButton
+    ),
+  { ssr: false }
+);
 
 // Función helper para obtener el monto original del pago en su moneda
 const getOriginalPaymentAmount = (
@@ -521,8 +534,23 @@ export default function OrderDetailPage() {
 
   const hasMeaningfulPendingBalance =
     order != null &&
-    order.paymentCondition !== "cashea" &&
     pendingBalanceAmountInBs > PENDING_BALANCE_EPSILON_BS;
+
+  const casheaPaidInStoreBs = useMemo(() => {
+    if (!order || order.paymentCondition !== "cashea") return 0;
+    return sumPaymentsInStoreBs(activePayments);
+  }, [order, activePayments]);
+
+  const casheaHasFinancedLine = useMemo(
+    () =>
+      order?.paymentCondition === "cashea" &&
+      activePayments.some(
+        (p) =>
+          p.paymentDetails?.casheaFinancedPortion ||
+          p.method === CASHEA_FINANCED_METHOD_LABEL,
+      ),
+    [order, activePayments],
+  );
 
   const handleValidateOrder = async () => {
     if (!canValidateOrders) {
@@ -828,11 +856,9 @@ export default function OrderDetailPage() {
       if (!order || activePayments.length === 0) {
         setFormattedPayments([]);
         setFormattedTotalPaid("");
-        // Si no hay pagos, el saldo pendiente es el total del pedido (excepto Cashea: no aplica en tienda)
+        // Si no hay pagos, el saldo pendiente es el total del pedido
         if (order) {
-          if (order.paymentCondition === "cashea") {
-            setFormattedPendingBalance("");
-          } else if (order.total > PENDING_BALANCE_EPSILON_BS) {
+          if (order.total > PENDING_BALANCE_EPSILON_BS) {
             const totalInBs = order.total;
             if (selectedCurrency && selectedCurrency !== "Bs") {
               const pendingFormatted = await formatWithSelectedCurrency(
@@ -902,9 +928,7 @@ export default function OrderDetailPage() {
       const totalOrderInBs = order.total;
       const pendingBalanceInBs = totalOrderInBs - totalPaidInBs;
 
-      if (order.paymentCondition === "cashea") {
-        setFormattedPendingBalance("");
-      } else if (pendingBalanceInBs > PENDING_BALANCE_EPSILON_BS) {
+      if (pendingBalanceInBs > PENDING_BALANCE_EPSILON_BS) {
         // Hay saldo pendiente
         if (selectedCurrency && selectedCurrency !== "Bs") {
           const pendingFormatted = await formatWithSelectedCurrency(
@@ -1228,6 +1252,13 @@ export default function OrderDetailPage() {
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     Volver
                   </Button>
+                  {order.status !== "Generado" &&
+                    order.status !== "Generada" && (
+                      <OrderPdfDownloadButton
+                        order={order}
+                        client={client}
+                      />
+                    )}
                   <HoverCard openDelay={300} closeDelay={100}>
                     <HoverCardTrigger asChild>
                       <div className="cursor-help border-b border-dashed border-transparent hover:border-muted-foreground/40 pb-0.5 transition-colors">
@@ -1250,33 +1281,32 @@ export default function OrderDetailPage() {
                         <p className="text-sm"><span className="text-muted-foreground">Total:</span>{" "}
                           <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline" />
                         </p>
-                        {order.paymentCondition === "cashea" ? (
-                          <p className="text-sm text-blue-700 dark:text-blue-300">
-                            Financiación Cashea: el cobro de cuotas no se gestiona en tienda.
-                          </p>
-                        ) : (
-                          <>
-                            {activePayments.length > 0 && (() => {
-                              const totalPaid = activePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-                              const pending = order.total - totalPaid;
-                              if (pending > 0) {
-                                return (
-                                  <p className="text-sm text-red-600 dark:text-red-400">
-                                    <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
-                                    <CurrencyDisplay amountInBs={pending} exchangeRates={localExchangeRates} inline className="inline font-medium" />
-                                  </p>
-                                );
-                              }
-                              return null;
-                            })()}
-                            {activePayments.length === 0 && (
-                              <p className="text-sm text-red-600 dark:text-red-400">
-                                <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
-                                <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline font-medium" />
-                              </p>
-                            )}
-                          </>
-                        )}
+                        <>
+                          {activePayments.length > 0 && (() => {
+                            const totalPaid = activePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+                            const pending = order.total - totalPaid;
+                            if (pending > PENDING_BALANCE_EPSILON_BS) {
+                              return (
+                                <p className="text-sm text-red-600 dark:text-red-400">
+                                  <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
+                                  <CurrencyDisplay amountInBs={pending} exchangeRates={localExchangeRates} inline className="inline font-medium" />
+                                </p>
+                              );
+                            }
+                            return null;
+                          })()}
+                          {activePayments.length === 0 && order.total > PENDING_BALANCE_EPSILON_BS && (
+                            <p className="text-sm text-red-600 dark:text-red-400">
+                              <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
+                              <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline font-medium" />
+                            </p>
+                          )}
+                          {order.paymentCondition === "cashea" && casheaHasFinancedLine && (
+                            <p className="text-sm text-blue-700 dark:text-blue-300">
+                              Incluye línea de financiación Cashea por el saldo no cobrado en tienda.
+                            </p>
+                          )}
+                        </>
                         {order.deliveryAddress && (
                           <p className="text-sm"><span className="text-muted-foreground">Dirección:</span> {order.deliveryAddress}</p>
                         )}
@@ -2120,10 +2150,26 @@ export default function OrderDetailPage() {
                         );
                       })}
                       <Separator />
+                      {order.paymentCondition === "cashea" && casheaHasFinancedLine && (
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                          <span>Pago inicial en tienda:</span>
+                          <CurrencyDisplay
+                            amountInBs={casheaPaidInStoreBs}
+                            exchangeRates={localExchangeRates}
+                          />
+                        </div>
+                      )}
                       <div className="flex justify-between font-semibold">
-                        <span>Total Pagado:</span>
+                        <span>
+                          {order.paymentCondition === "cashea" && casheaHasFinancedLine
+                            ? "Total cubierto (inicial + financiación Cashea):"
+                            : "Total Pagado:"}
+                        </span>
                         <CurrencyDisplay
-                          amountInBs={activePayments.reduce((sum, p) => sum + (p.amount || 0), 0)}
+                          amountInBs={activePayments.reduce(
+                            (sum, p) => sum + (p.amount || 0),
+                            0,
+                          )}
                           exchangeRates={localExchangeRates}
                         />
                       </div>
@@ -2166,7 +2212,9 @@ export default function OrderDetailPage() {
                 <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30">
                   <CardContent className="p-4">
                     <p className="text-sm text-blue-800 dark:text-blue-200">
-                      Financiación Cashea — el cobro de cuotas se gestiona directamente en la plataforma Cashea, no en tienda.
+                      {casheaHasFinancedLine
+                        ? "Cashea: el pago inicial se registró en tienda; el resto del total figura como financiación Cashea. El seguimiento de cuotas lo gestiona la plataforma Cashea."
+                        : "Cashea: registre el pago inicial en tienda; al guardar, el saldo restante quedará como financiación Cashea en el pedido."}
                     </p>
                   </CardContent>
                 </Card>

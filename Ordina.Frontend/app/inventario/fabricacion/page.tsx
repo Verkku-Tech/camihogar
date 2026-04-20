@@ -94,6 +94,7 @@ export default function FabricacionPage() {
   const uniqueProviders = useMemo(() => {
     const providers = new Set<string>()
     orders.forEach(order => {
+      if (order.status === "Generado" || order.status === "Generada") return
       order.products.forEach(p => {
         if (p.locationStatus !== "FABRICACION") return
         const name = p.manufacturingProviderName?.trim()
@@ -108,6 +109,7 @@ export default function FabricacionPage() {
     const rows: ProductRow[] = []
 
     orders.forEach(order => {
+      if (order.status === "Generado" || order.status === "Generada") return
       order.products.forEach(product => {
         // SOLO procesar productos que deben mandarse a fabricar
         if (product.locationStatus !== "FABRICACION") {

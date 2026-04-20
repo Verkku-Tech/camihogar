@@ -30,7 +30,11 @@ import {
   type Account,
 } from "@/lib/storage";
 import { Currency } from "@/lib/currency-utils";
-import { normalizePaymentsForSave } from "@/lib/order-payments";
+import {
+  normalizePaymentsForSave,
+  buildCasheaPaymentsForSave,
+  PAYMENT_BALANCE_EPSILON_BS,
+} from "@/lib/order-payments";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -375,18 +379,19 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
-      const noPaymentsRequired =
-        orderForm.paymentCondition === "pago_a_entrega" ||
-        orderForm.paymentCondition === "cashea";
-
-      // Cashea y pago a la entrega: no se exigen líneas de pago en tienda
-      if (!noPaymentsRequired && orderForm.payments.length === 0) {
+      if (orderForm.paymentCondition === "pago_a_entrega") {
+        // Sin líneas de pago en tienda
+      } else if (orderForm.paymentCondition === "cashea") {
+        if (orderForm.payments.length !== 1) {
+          toast.error("Cashea: registre exactamente un pago inicial en tienda.");
+          return;
+        }
+      } else if (orderForm.payments.length === 0) {
         toast.error("Por favor agrega al menos un pago");
         return;
       }
 
-      // Validar que cada pago tenga los campos requeridos completos
-      if (!noPaymentsRequired) {
+      if (orderForm.paymentCondition !== "pago_a_entrega") {
         for (let i = 0; i < orderForm.payments.length; i++) {
           const payment = orderForm.payments[i];
           const paymentLabel = `Pago ${i + 1}`;
@@ -404,7 +409,6 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             return;
           }
 
-          // Validaciones específicas por método de pago
           if (payment.method === "Pago Móvil") {
             if (!payment.paymentDetails?.pagomovilReference) {
               toast.error(`${paymentLabel} (Pago Móvil): Debe ingresar el número de referencia`);
@@ -438,11 +442,18 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               toast.error(`${paymentLabel} (Zelle): Debe ingresar quién envía`);
               return;
             }
-          } else if (["AirTM", "Binance", "Paypal", "Banesco Panamá", "Mercantil Panamá"].includes(payment.method)) {
+          } else if (["AirTM", "Binance", "Banesco Panamá", "Mercantil Panamá"].includes(payment.method)) {
             if (!payment.paymentDetails?.accountId) {
               toast.error(`${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`);
               return;
             }
+          }
+        }
+        if (orderForm.paymentCondition === "cashea") {
+          const p = orderForm.payments[0];
+          if ((p.amount || 0) > orderForm.total + PAYMENT_BALANCE_EPSILON_BS) {
+            toast.error("El monto del pago inicial no puede superar el total del pedido.");
+            return;
           }
         }
       }
@@ -540,7 +551,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         return;
       }
 
-      const paymentsNorm = normalizePaymentsForSave(orderForm.payments);
+      let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
+      if (orderForm.paymentCondition === "cashea") {
+        paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, orderForm.total);
+      }
       const multi = paymentsNorm.length > 1;
 
       const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
@@ -606,22 +620,19 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             : paymentsNorm[0]?.method || "",
         paymentDetails:
           orderForm.paymentCondition === "pago_a_entrega" ||
-          orderForm.paymentCondition === "cashea" ||
           orderForm.payments.length === 0
             ? undefined
             : !multi
             ? paymentsNorm[0]?.paymentDetails
             : undefined,
         partialPayments:
-          orderForm.paymentCondition === "pago_a_entrega" ||
-          orderForm.paymentCondition === "cashea"
+          orderForm.paymentCondition === "pago_a_entrega"
             ? undefined
             : multi
             ? []
             : paymentsNorm,
         mixedPayments:
-          orderForm.paymentCondition === "pago_a_entrega" ||
-          orderForm.paymentCondition === "cashea"
+          orderForm.paymentCondition === "pago_a_entrega"
             ? undefined
             : multi
             ? paymentsNorm
@@ -729,13 +740,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               orderForm={orderForm}
               onSubmit={handleSubmit}
               addPayment={
-                orderForm.paymentCondition === "cashea" ? undefined : addPayment
+                orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1
+                  ? undefined
+                  : addPayment
               }
               updatePayment={updatePayment}
               updatePaymentDetails={updatePaymentDetails}
-              removePayment={
-                orderForm.paymentCondition === "cashea" ? undefined : removePayment
-              }
+              removePayment={removePayment}
               getAccountsForPaymentMethod={getAccountsForPaymentMethod}
               saveAccountInfoToPayment={saveAccountInfoToPayment}
               updatePaymentImages={updatePaymentImages}
