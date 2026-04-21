@@ -38,6 +38,7 @@ import {
 } from "@/lib/order-payments";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
+import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
 
 interface EditOrderDialogProps {
   open: boolean;
@@ -324,7 +325,11 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
             toast.error(`${paymentLabel} (Zelle): Debe ingresar quién envía`);
             return;
           }
-        } else if (["AirTM", "Binance", "Banesco Panamá", "Mercantil Panamá"].includes(payment.method)) {
+        } else if (
+          (paymentMethodsRequiringReceivingAccount as readonly string[]).includes(
+            payment.method,
+          )
+        ) {
           if (!payment.paymentDetails?.accountId) {
             toast.error(`${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`);
             return;
@@ -548,7 +553,11 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
               toast.error(`${paymentLabel} (Zelle): Debe ingresar quién envía`);
               return;
             }
-          } else if (["AirTM", "Binance", "Banesco Panamá", "Mercantil Panamá"].includes(payment.method)) {
+          } else if (
+            (paymentMethodsRequiringReceivingAccount as readonly string[]).includes(
+              payment.method,
+            )
+          ) {
             if (!payment.paymentDetails?.accountId) {
               toast.error(`${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`);
               return;

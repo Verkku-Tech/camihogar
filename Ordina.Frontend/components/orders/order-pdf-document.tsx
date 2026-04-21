@@ -7,6 +7,12 @@ import {
 } from "@react-pdf/renderer";
 import type { Order, Client, PartialPayment } from "@/lib/storage";
 import { getActivePaymentsList } from "@/lib/order-payments";
+import {
+  formatCurrency,
+  normalizeExchangeRatesAtCreation,
+  type Currency,
+} from "@/lib/currency-utils";
+import { bsOnlyPaymentMethods } from "@/components/orders/constants";
 
 /** Ajuste en UI o variables de entorno según tienda; valores por defecto para encabezado del PDF. */
 export const DEFAULT_ORDER_PDF_COMPANY = {
@@ -102,6 +108,100 @@ function formatBs(n: number): string {
   );
 }
 
+/** Un pago cuenta como “en bolívares” si el abono es en Bs (caja, PM, transferencia, efectivo Bs, etc.). */
+function paymentIsDenominatedInBolivares(p: PartialPayment): boolean {
+  if (p.paymentDetails?.casheaFinancedPortion) return true;
+  if ((bsOnlyPaymentMethods as readonly string[]).includes(p.method)) return true;
+  if (p.method === "Efectivo") {
+    const c = p.paymentDetails?.cashCurrency;
+    if (c === "USD" || c === "EUR") return false;
+    return true;
+  }
+  const oc = p.paymentDetails?.originalCurrency ?? p.currency;
+  if (oc === "USD" || oc === "EUR") return false;
+  if (oc === "Bs") return true;
+  return (p.currency ?? "Bs") === "Bs";
+}
+
+function orderHasAnyBolivaresPayment(order: Order): boolean {
+  const list = getActivePaymentsList(order);
+  if (list.length === 0) return false;
+  return list.some(paymentIsDenominatedInBolivares);
+}
+
+function getUsdRateFromOrder(order: Order): number | undefined {
+  const n = normalizeExchangeRatesAtCreation(
+    order.exchangeRatesAtCreation as Parameters<
+      typeof normalizeExchangeRatesAtCreation
+    >[0],
+  );
+  const r = n?.USD?.rate;
+  return r != null && r > 0 ? r : undefined;
+}
+
+/** Monto original en la moneda del pago (alineado con la vista del pedido). */
+function getOriginalPaymentAmountForPdf(
+  payment: PartialPayment,
+  order: Order,
+): { amount: number; currency: Currency } {
+  const usdRate = getUsdRateFromOrder(order);
+  const eurN = normalizeExchangeRatesAtCreation(
+    order.exchangeRatesAtCreation as Parameters<
+      typeof normalizeExchangeRatesAtCreation
+    >[0],
+  );
+  const eurRate = eurN?.EUR?.rate;
+
+  if (payment.method === "Efectivo" && payment.paymentDetails?.cashReceived) {
+    const c = (payment.paymentDetails.cashCurrency ||
+      payment.currency ||
+      "Bs") as Currency;
+    return {
+      amount: payment.paymentDetails.cashReceived,
+      currency: c === "EUR" || c === "USD" || c === "Bs" ? c : "Bs",
+    };
+  }
+  if (payment.paymentDetails?.originalAmount !== undefined) {
+    const c = (payment.paymentDetails.originalCurrency ||
+      payment.currency ||
+      "Bs") as Currency;
+    return {
+      amount: payment.paymentDetails.originalAmount,
+      currency: c === "EUR" || c === "USD" || c === "Bs" ? c : "Bs",
+    };
+  }
+  const paymentCurrency = (payment.currency || "Bs") as Currency;
+  if (paymentCurrency === "Bs") {
+    return { amount: payment.amount, currency: "Bs" };
+  }
+  const rate =
+    payment.paymentDetails?.exchangeRate ??
+    (paymentCurrency === "USD"
+      ? usdRate
+      : paymentCurrency === "EUR"
+        ? eurRate
+        : undefined);
+  if (rate && rate > 0) {
+    return {
+      amount: payment.amount / rate,
+      currency: paymentCurrency,
+    };
+  }
+  return { amount: payment.amount, currency: "Bs" };
+}
+
+function formatAmountForPdf(
+  amountBs: number,
+  preferBs: boolean,
+  usdRate: number | undefined,
+): string {
+  if (preferBs) return formatBs(amountBs);
+  if (usdRate && usdRate > 0) {
+    return formatCurrency(amountBs / usdRate, "USD");
+  }
+  return formatBs(amountBs);
+}
+
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleString("es-VE", {
@@ -157,6 +257,8 @@ export function OrderPdfDocument({
   const co = { ...DEFAULT_ORDER_PDF_COMPANY, ...company };
   const products = order.products ?? [];
   const payments = getActivePaymentsList(order);
+  const preferBs = orderHasAnyBolivaresPayment(order);
+  const usdRate = getUsdRateFromOrder(order);
 
   const addressForDelivery =
     order.deliveryAddress?.trim() ||
@@ -225,11 +327,20 @@ export function OrderPdfDocument({
         <Text style={styles.value}>{addressForDelivery}</Text>
 
         <Text style={styles.sectionTitle}>Productos</Text>
+        {!preferBs && usdRate ? (
+          <Text style={[styles.muted, { marginBottom: 4 }]}>
+            Precios y totales en USD (tasa Bs/USD del pedido).
+          </Text>
+        ) : null}
         <View style={styles.tableHeader}>
           <Text style={[styles.th, styles.colDesc]}>Descripción</Text>
           <Text style={[styles.th, styles.colQty]}>Cant.</Text>
-          <Text style={[styles.th, styles.colUnit]}>P. unit.</Text>
-          <Text style={[styles.th, styles.colTot]}>Subtotal</Text>
+          <Text style={[styles.th, styles.colUnit]}>
+            {preferBs ? "P. unit. (Bs)" : "P. unit. (USD)"}
+          </Text>
+          <Text style={[styles.th, styles.colTot]}>
+            {preferBs ? "Subtotal (Bs)" : "Subtotal (USD)"}
+          </Text>
         </View>
         {products.map((p) => {
           const extra = [
@@ -250,9 +361,11 @@ export function OrderPdfDocument({
               </View>
               <Text style={[styles.td, styles.colQty]}>{p.quantity}</Text>
               <Text style={[styles.td, styles.colUnit]}>
-                {formatBs(p.price)}
+                {formatAmountForPdf(p.price, preferBs, usdRate)}
               </Text>
-              <Text style={[styles.td, styles.colTot]}>{formatBs(p.total)}</Text>
+              <Text style={[styles.td, styles.colTot]}>
+                {formatAmountForPdf(p.total, preferBs, usdRate)}
+              </Text>
             </View>
           );
         })}
@@ -260,19 +373,25 @@ export function OrderPdfDocument({
         <View style={styles.totalsBox}>
           <View style={styles.totalRow}>
             <Text>Subtotal</Text>
-            <Text>{formatBs(order.subtotal)}</Text>
+            <Text>
+              {formatAmountForPdf(order.subtotal, preferBs, usdRate)}
+            </Text>
           </View>
           <View style={styles.totalRow}>
             <Text>IVA / impuestos</Text>
-            <Text>{formatBs(order.taxAmount ?? 0)}</Text>
+            <Text>
+              {formatAmountForPdf(order.taxAmount ?? 0, preferBs, usdRate)}
+            </Text>
           </View>
           <View style={styles.totalRow}>
             <Text>Delivery / envío</Text>
-            <Text>{formatBs(order.deliveryCost ?? 0)}</Text>
+            <Text>
+              {formatAmountForPdf(order.deliveryCost ?? 0, preferBs, usdRate)}
+            </Text>
           </View>
           <View style={styles.totalGrand}>
             <Text>Total</Text>
-            <Text>{formatBs(order.total)}</Text>
+            <Text>{formatAmountForPdf(order.total, preferBs, usdRate)}</Text>
           </View>
         </View>
 
@@ -287,7 +406,7 @@ export function OrderPdfDocument({
           <Text style={[styles.th, { flex: 1.2 }]}>Método</Text>
           <Text style={[styles.th, { flex: 2.2 }]}>Detalle</Text>
           <Text style={[styles.th, { flex: 0.9, textAlign: "right" }]}>
-            Monto (Bs)
+            {preferBs ? "Monto (Bs)" : "Importe"}
           </Text>
         </View>
         {payments.length === 0 ? (
@@ -295,27 +414,33 @@ export function OrderPdfDocument({
             Sin pagos registrados en el pedido.
           </Text>
         ) : (
-          payments.map((p) => (
-            <View
-              key={p.id}
-              style={[styles.tableRow, { alignItems: "flex-start" }]}
-              wrap={false}
-            >
-              <Text style={[styles.td, { flex: 1.1 }]}>
-                {formatDate(p.date)}
-              </Text>
-              <Text style={[styles.td, { flex: 1.2 }]}>{p.method}</Text>
-              <Text style={[styles.td, { flex: 2.2 }]}>
-                {paymentSummaryLine(p)}
-                {p.paymentDetails?.casheaFinancedPortion
-                  ? " (financiación Cashea)"
-                  : ""}
-              </Text>
-              <Text style={[styles.td, { flex: 0.9, textAlign: "right" }]}>
-                {formatBs(p.amount)}
-              </Text>
-            </View>
-          ))
+          payments.map((p) => {
+            const orig = getOriginalPaymentAmountForPdf(p, order);
+            const amountText = preferBs
+              ? formatBs(p.amount)
+              : formatCurrency(orig.amount, orig.currency);
+            return (
+              <View
+                key={p.id}
+                style={[styles.tableRow, { alignItems: "flex-start" }]}
+                wrap={false}
+              >
+                <Text style={[styles.td, { flex: 1.1 }]}>
+                  {formatDate(p.date)}
+                </Text>
+                <Text style={[styles.td, { flex: 1.2 }]}>{p.method}</Text>
+                <Text style={[styles.td, { flex: 2.2 }]}>
+                  {paymentSummaryLine(p)}
+                  {p.paymentDetails?.casheaFinancedPortion
+                    ? " (financiación Cashea)"
+                    : ""}
+                </Text>
+                <Text style={[styles.td, { flex: 0.9, textAlign: "right" }]}>
+                  {amountText}
+                </Text>
+              </View>
+            );
+          })
         )}
 
         {order.observations ? (
