@@ -25,7 +25,12 @@ public class SaleTypeCommissionRule
 
     [BsonElement("referrerRate")]
     [BsonRepresentation(BsonType.Decimal128)]
-    public decimal ReferrerRate { get; set; } // 0, 1, 1.5, etc. (porcentaje que gana el referido/postventa)
+    public decimal ReferrerRate { get; set; } // 0, 1, 1.5, etc. (porcentaje que gana el referido online)
+
+    /// <summary>Porcentaje de la comisión de familia para post venta (ENCARGO y SA).</summary>
+    [BsonElement("postventaRate")]
+    [BsonRepresentation(BsonType.Decimal128)]
+    public decimal PostventaRate { get; set; }
 
     [BsonElement("createdAt")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

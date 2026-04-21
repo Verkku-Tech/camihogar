@@ -15,9 +15,13 @@ public class CommissionReportRowDto
     // Comisión del vendedor principal
     public decimal Comision { get; set; }
     
-    // Datos del vendedor secundario (referido/postventa) - Solo para ventas compartidas
+    // Datos del vendedor secundario (referido) - Solo para ventas compartidas
     public string? VendedorSecundario { get; set; }
     public decimal? ComisionSecundaria { get; set; }
+
+    /// <summary>Usuario o etiqueta de post venta (ENCARGO / SA).</summary>
+    public string? VendedorPostventa { get; set; }
+    public decimal? ComisionPostventa { get; set; }
     
     // Sueldo y totales
     public decimal SueldoBase { get; set; } // Sueldo fijo del vendedor
@@ -27,6 +31,7 @@ public class CommissionReportRowDto
     public decimal TasaComisionBase { get; set; } // 2.5, 5, 7.5 (de la categoría)
     public decimal TasaAplicadaVendedor { get; set; } // Tasa después de distribución
     public decimal? TasaAplicadaReferido { get; set; } // Tasa del referido si aplica
+    public decimal? TasaAplicadaPostventa { get; set; }
     
     // Flags informativos
     public bool EsVentaCompartida { get; set; }

@@ -1611,6 +1611,9 @@ export interface Order {
   vendorName: string;
   referrerId?: string;
   referrerName?: string;
+  /** Usuario de post venta (comisión en ENCARGO / SA). */
+  postventaId?: string;
+  postventaName?: string;
   products: OrderProduct[]; // Ahora usa la interfaz exportada
   subtotal: number;
   taxAmount: number;
@@ -1809,6 +1812,8 @@ const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   vendorName: dto.vendorName,
   referrerId: dto.referrerId,
   referrerName: dto.referrerName,
+  postventaId: dto.postventaId,
+  postventaName: dto.postventaName,
   products: dto.products.map((p) => ({
     id: p.id,
     name: p.name,
@@ -2003,6 +2008,8 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   vendorName: order.vendorName,
   referrerId: order.referrerId,
   referrerName: order.referrerName,
+  postventaId: order.postventaId,
+  postventaName: order.postventaName,
   products: order.products.map((p) => ({
     id: p.id,
     name: p.name,
@@ -2815,6 +2822,8 @@ export interface UnifiedOrder {
   vendorName: string;
   referrerId?: string;
   referrerName?: string;
+  postventaId?: string;
+  postventaName?: string;
   products: OrderProduct[];
   subtotal: number;
   taxAmount: number;
@@ -2879,6 +2888,8 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       vendorName: order.vendorName,
       referrerId: order.referrerId,
       referrerName: order.referrerName,
+      postventaId: order.postventaId,
+      postventaName: order.postventaName,
       products: order.products,
       subtotal: order.subtotal,
       taxAmount: order.taxAmount,
@@ -4851,7 +4862,9 @@ export interface SaleTypeCommissionRule {
   saleType: string;
   saleTypeLabel: string;
   vendorRate: number; // Porcentaje que gana el vendedor de tienda
-  referrerRate: number; // Porcentaje que gana el referido/postventa
+  referrerRate: number; // Porcentaje que gana el referido online
+  /** % de la comisión de familia para post venta (ENCARGO / SA). */
+  postventaRate?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -4896,9 +4909,11 @@ export const deleteSaleTypeCommissionRule = async (saleType: string): Promise<vo
   }
 };
 
-export const seedDefaultSaleTypeRules = async (): Promise<SaleTypeCommissionRule[]> => {
+export const seedDefaultSaleTypeRules = async (
+  force = false,
+): Promise<SaleTypeCommissionRule[]> => {
   try {
-    return await apiClient.seedDefaultSaleTypeRules();
+    return await apiClient.seedDefaultSaleTypeRules(force);
   } catch (error) {
     console.error("Error seeding default sale type rules:", error);
     throw error;
@@ -4987,6 +5002,7 @@ const legacyCommissionForSeller = (
 export type ProductCommissionSplit = {
   vendorCommission: number;
   referrerCommission: number;
+  postventaCommission: number;
   /** True cuando hay reparto vendedor/referido en el reporte (dos filas con comisiones compartidas). */
   isShared: boolean;
 };
@@ -5017,6 +5033,7 @@ export const computeProductCommissionSplit = (
       return {
         vendorCommission: vendorFull,
         referrerCommission: 0,
+        postventaCommission: 0,
         isShared: false,
       };
     }
@@ -5024,6 +5041,7 @@ export const computeProductCommissionSplit = (
       return {
         vendorCommission: vendorFull,
         referrerCommission: 0,
+        postventaCommission: 0,
         isShared: false,
       };
     }
@@ -5036,6 +5054,7 @@ export const computeProductCommissionSplit = (
     return {
       vendorCommission: vendorFull / 2,
       referrerCommission: referrerFull / 2,
+      postventaCommission: 0,
       isShared: true,
     };
   }
@@ -5046,9 +5065,11 @@ export const computeProductCommissionSplit = (
       (r) => r.saleType.toLowerCase() === saleType.toLowerCase()
     );
     if (rule) {
+      const pv = rule.postventaRate ?? 0;
       return {
         vendorCommission: familyCommission * (rule.vendorRate / 100),
         referrerCommission: familyCommission * (rule.referrerRate / 100),
+        postventaCommission: familyCommission * (pv / 100),
         isShared: true,
       };
     }
@@ -5056,6 +5077,7 @@ export const computeProductCommissionSplit = (
     return {
       vendorCommission: half,
       referrerCommission: half,
+      postventaCommission: 0,
       isShared: true,
     };
   }
@@ -5063,6 +5085,7 @@ export const computeProductCommissionSplit = (
   return {
     vendorCommission: familyCommission,
     referrerCommission: 0,
+    postventaCommission: 0,
     isShared: false,
   };
 };
@@ -5095,6 +5118,8 @@ export const calculateProductCommission = async (
     if (order.referrerId && sellerId === order.referrerId) {
       return split.referrerCommission;
     }
+    const pvId = order.postventaId?.trim();
+    if (pvId && sellerId === pvId) return split.postventaCommission;
     return 0;
   } catch (error) {
     console.error("Error calculating product commission:", error);
@@ -5106,26 +5131,20 @@ export const calculateProductCommission = async (
  * Calcula todas las comisiones de un pedido
  * Retorna un array con las comisiones por producto y vendedor
  */
+export type OrderCommissionLine = {
+  sellerId: string;
+  sellerName: string;
+  productId: string;
+  productName: string;
+  commission: number;
+  isShared: boolean;
+  payoutRole: "vendor" | "referrer" | "postventa";
+};
+
 export const calculateOrderCommissions = async (
   order: Order
-): Promise<
-  Array<{
-    sellerId: string;
-    sellerName: string;
-    productId: string;
-    productName: string;
-    commission: number;
-    isShared: boolean;
-  }>
-> => {
-  const results: Array<{
-    sellerId: string;
-    sellerName: string;
-    productId: string;
-    productName: string;
-    commission: number;
-    isShared: boolean;
-  }> = [];
+): Promise<OrderCommissionLine[]> => {
+  const results: OrderCommissionLine[] = [];
 
   try {
     const [productCommissions, saleTypeRules, users, legacyCommissions] =
@@ -5145,7 +5164,11 @@ export const calculateOrderCommissions = async (
     for (const product of order.products) {
       const split = computeProductCommissionSplit(order, product, ctx);
 
-      if (split.vendorCommission === 0 && split.referrerCommission === 0) {
+      if (
+        split.vendorCommission === 0 &&
+        split.referrerCommission === 0 &&
+        split.postventaCommission === 0
+      ) {
         continue;
       }
 
@@ -5157,6 +5180,20 @@ export const calculateOrderCommissions = async (
           productName: product.name,
           commission: split.vendorCommission,
           isShared: split.isShared,
+          payoutRole: "vendor",
+        });
+      }
+
+      if (split.isShared && split.postventaCommission !== 0) {
+        const pid = order.postventaId?.trim();
+        results.push({
+          sellerId: pid || "__postventa__",
+          sellerName: (order.postventaName?.trim() || "Post venta"),
+          productId: product.id,
+          productName: product.name,
+          commission: split.postventaCommission,
+          isShared: true,
+          payoutRole: "postventa",
         });
       }
 
@@ -5168,6 +5205,7 @@ export const calculateOrderCommissions = async (
           productName: product.name,
           commission: split.referrerCommission,
           isShared: true,
+          payoutRole: "referrer",
         });
       }
     }

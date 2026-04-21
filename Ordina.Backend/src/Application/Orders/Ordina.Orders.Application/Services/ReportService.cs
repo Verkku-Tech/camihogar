@@ -1111,10 +1111,13 @@ public class ReportService : IReportService
                 Comision = row.Comision,
                 VendedorSecundario = row.VendedorSecundario,
                 ComisionSecundaria = row.ComisionSecundaria,
+                VendedorPostventa = row.VendedorPostventa,
+                ComisionPostventa = row.ComisionPostventa,
                 SueldoBase = row.SueldoBase,
                 TasaComisionBase = row.TasaComisionBase,
                 TasaAplicadaVendedor = row.TasaAplicadaVendedor,
                 TasaAplicadaReferido = row.TasaAplicadaReferido,
+                TasaAplicadaPostventa = row.TasaAplicadaPostventa,
                 EsVentaCompartida = row.EsVentaCompartida,
                 EsVendedorExclusivo = row.EsVendedorExclusivo
             }).ToList();
@@ -1155,14 +1158,15 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 6, "Tipo de venta");
                 sl.SetCellValue(1, 7, "Comisión Vendedor");
                 sl.SetCellValue(1, 8, "Total Comisión + Sueldo");
-                sl.SetCellValue(1, 9, "Comisión Postventa");
+                sl.SetCellValue(1, 9, "Comisión Post venta");
+                sl.SetCellValue(1, 10, "Comisión Referido");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 9; col++)
+                for (int col = 1; col <= 10; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -1179,7 +1183,8 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 6, item.TipoVenta);
                     sl.SetCellValue(row, 7, (double)item.Comision);
                     sl.SetCellValue(row, 8, (double)item.TotalComisionMasSueldo);
-                    sl.SetCellValue(row, 9, item.ComisionSecundaria.HasValue ? (double)item.ComisionSecundaria.Value : 0);
+                    sl.SetCellValue(row, 9, item.ComisionPostventa.HasValue ? (double)item.ComisionPostventa.Value : 0);
+                    sl.SetCellValue(row, 10, item.ComisionSecundaria.HasValue ? (double)item.ComisionSecundaria.Value : 0);
                     row++;
                 }
 
@@ -1192,7 +1197,8 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(6, 28);  // Tipo de venta
                 sl.SetColumnWidth(7, 18);  // Comisión Vendedor
                 sl.SetColumnWidth(8, 22);  // Total Comisión + Sueldo
-                sl.SetColumnWidth(9, 18);  // Comisión Postventa
+                sl.SetColumnWidth(9, 18);  // Post venta
+                sl.SetColumnWidth(10, 18); // Referido
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
@@ -1242,10 +1248,13 @@ public class ReportService : IReportService
                 Comision = row.Comision,
                 VendedorSecundario = row.VendedorSecundario,
                 ComisionSecundaria = row.ComisionSecundaria,
+                VendedorPostventa = row.VendedorPostventa,
+                ComisionPostventa = row.ComisionPostventa,
                 SueldoBase = row.SueldoBase,
                 TasaComisionBase = row.TasaComisionBase,
                 TasaAplicadaVendedor = row.TasaAplicadaVendedor,
                 TasaAplicadaReferido = row.TasaAplicadaReferido,
+                TasaAplicadaPostventa = row.TasaAplicadaPostventa,
                 EsVentaCompartida = row.EsVentaCompartida,
                 EsVendedorExclusivo = row.EsVendedorExclusivo
             }).ToList();
@@ -1294,14 +1303,17 @@ public class ReportService : IReportService
                 var isSharedSale = !string.IsNullOrWhiteSpace(order.ReferrerId);
                 
                 // Calcular comisiones usando el nuevo sistema
-                var (vendorCommission, referrerCommission, baseRate, appliedVendorRate, appliedReferrerRate) = 
+                var (vendorCommission, referrerCommission, postventaCommission, baseRate, appliedVendorRate, appliedReferrerRate, appliedPostventaRate) = 
                     CalculateProductCommission(product, order, productCommissions, saleTypeRules, users, isExclusiveVendor);
 
-                if (vendorCommission == 0m && referrerCommission == 0m)
+                if (vendorCommission == 0m && referrerCommission == 0m && postventaCommission == 0m)
                     continue;
                 
                 if (isSharedSale && !isExclusiveVendor)
                 {
+                    var postventaLabel = string.IsNullOrWhiteSpace(order.PostventaName)
+                        ? "Post venta"
+                        : order.PostventaName.Trim();
                     // VENTA COMPARTIDA: Comisión según reglas de tipo de venta
                     reportData.Add(new CommissionReportRow
                     {
@@ -1315,10 +1327,13 @@ public class ReportService : IReportService
                         Comision = vendorCommission,
                         VendedorSecundario = order.ReferrerName,
                         ComisionSecundaria = referrerCommission,
+                        VendedorPostventa = postventaCommission > 0m ? postventaLabel : null,
+                        ComisionPostventa = postventaCommission > 0m ? postventaCommission : null,
                         SueldoBase = vendorBaseSalary,
                         TasaComisionBase = baseRate,
                         TasaAplicadaVendedor = appliedVendorRate,
                         TasaAplicadaReferido = appliedReferrerRate,
+                        TasaAplicadaPostventa = appliedPostventaRate,
                         EsVentaCompartida = true,
                         EsVendedorExclusivo = isExclusiveVendor
                     });
@@ -1353,7 +1368,7 @@ public class ReportService : IReportService
     /// Comisión por línea: USD por unidad (commissionValue) × cantidad.
     /// Venta compartida: vendorRate/referrerRate son % de esa comisión de familia, no del total del producto.
     /// </summary>
-    private (decimal vendorCommission, decimal referrerCommission, decimal baseRate, decimal appliedVendorRate, decimal appliedReferrerRate) 
+    private (decimal vendorCommission, decimal referrerCommission, decimal postventaCommission, decimal baseRate, decimal appliedVendorRate, decimal appliedReferrerRate, decimal appliedPostventaRate) 
         CalculateProductCommission(
             OrderProduct product,
             Order order,
@@ -1371,7 +1386,7 @@ public class ReportService : IReportService
         
         if (baseCommissionRate == 0)
         {
-            return (0m, 0m, 0m, 0m, 0m);
+            return (0m, 0m, 0m, 0m, 0m, 0m, 0m);
         }
 
         var qty = Math.Max(product.Quantity, 1);
@@ -1391,20 +1406,21 @@ public class ReportService : IReportService
             {
                 var vendorCommission = familyCommission * (rule.VendorRate / 100);
                 var referrerCommission = familyCommission * (rule.ReferrerRate / 100);
+                var postventaCommission = familyCommission * (rule.PostventaRate / 100);
                 
-                return (vendorCommission, referrerCommission, baseCommissionRate, rule.VendorRate, rule.ReferrerRate);
+                return (vendorCommission, referrerCommission, postventaCommission, baseCommissionRate, rule.VendorRate, rule.ReferrerRate, rule.PostventaRate);
             }
             else
             {
                 _logger.LogWarning("No se encontró regla de distribución para el tipo de venta '{SaleType}'. Dividiendo 50/50.", saleType);
                 var halfCommission = familyCommission / 2;
-                return (halfCommission, halfCommission, baseCommissionRate, 50m, 50m);
+                return (halfCommission, halfCommission, 0m, baseCommissionRate, 50m, 50m, 0m);
             }
         }
         else
         {
             // VENTA NORMAL o VENDEDOR EXCLUSIVO: comisión familia completa al vendedor de tienda
-            return (familyCommission, 0m, baseCommissionRate, 100m, 0m);
+            return (familyCommission, 0m, 0m, baseCommissionRate, 100m, 0m, 0m);
         }
     }
 
@@ -1856,10 +1872,13 @@ public class ReportService : IReportService
         public decimal Comision { get; set; }
         public string? VendedorSecundario { get; set; }
         public decimal? ComisionSecundaria { get; set; }
+        public string? VendedorPostventa { get; set; }
+        public decimal? ComisionPostventa { get; set; }
         public decimal SueldoBase { get; set; }
         public decimal TasaComisionBase { get; set; }
         public decimal TasaAplicadaVendedor { get; set; }
         public decimal? TasaAplicadaReferido { get; set; }
+        public decimal? TasaAplicadaPostventa { get; set; }
         public bool EsVentaCompartida { get; set; }
         public bool EsVendedorExclusivo { get; set; }
     }

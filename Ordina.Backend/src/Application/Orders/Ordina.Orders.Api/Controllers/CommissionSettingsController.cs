@@ -225,6 +225,7 @@ public class CommissionSettingsController : ControllerBase
                 SaleTypeLabel = r.SaleTypeLabel,
                 VendorRate = r.VendorRate,
                 ReferrerRate = r.ReferrerRate,
+                PostventaRate = r.PostventaRate,
                 CreatedAt = r.CreatedAt,
                 UpdatedAt = r.UpdatedAt
             });
@@ -260,6 +261,7 @@ public class CommissionSettingsController : ControllerBase
                 SaleTypeLabel = rule.SaleTypeLabel,
                 VendorRate = rule.VendorRate,
                 ReferrerRate = rule.ReferrerRate,
+                PostventaRate = rule.PostventaRate,
                 CreatedAt = rule.CreatedAt,
                 UpdatedAt = rule.UpdatedAt
             });
@@ -291,7 +293,8 @@ public class CommissionSettingsController : ControllerBase
                 SaleType = dto.SaleType,
                 SaleTypeLabel = dto.SaleTypeLabel,
                 VendorRate = dto.VendorRate,
-                ReferrerRate = dto.ReferrerRate
+                ReferrerRate = dto.ReferrerRate,
+                PostventaRate = dto.PostventaRate
             };
 
             var result = await _saleTypeCommissionRuleRepository.UpsertBySaleTypeAsync(rule);
@@ -303,6 +306,7 @@ public class CommissionSettingsController : ControllerBase
                 SaleTypeLabel = result.SaleTypeLabel,
                 VendorRate = result.VendorRate,
                 ReferrerRate = result.ReferrerRate,
+                PostventaRate = result.PostventaRate,
                 CreatedAt = result.CreatedAt,
                 UpdatedAt = result.UpdatedAt
             });
@@ -335,7 +339,8 @@ public class CommissionSettingsController : ControllerBase
                     SaleType = dto.SaleType,
                     SaleTypeLabel = dto.SaleTypeLabel,
                     VendorRate = dto.VendorRate,
-                    ReferrerRate = dto.ReferrerRate
+                    ReferrerRate = dto.ReferrerRate,
+                    PostventaRate = dto.PostventaRate
                 };
 
                 var result = await _saleTypeCommissionRuleRepository.UpsertBySaleTypeAsync(rule);
@@ -346,6 +351,7 @@ public class CommissionSettingsController : ControllerBase
                     SaleTypeLabel = result.SaleTypeLabel,
                     VendorRate = result.VendorRate,
                     ReferrerRate = result.ReferrerRate,
+                    PostventaRate = result.PostventaRate,
                     CreatedAt = result.CreatedAt,
                     UpdatedAt = result.UpdatedAt
                 });
@@ -389,11 +395,11 @@ public class CommissionSettingsController : ControllerBase
     /// </summary>
     [HttpPost("SaleTypeRules/SeedDefaults")]
     [ProducesResponseType(typeof(IEnumerable<SaleTypeCommissionRuleDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IEnumerable<SaleTypeCommissionRuleDto>>> SeedDefaultRules()
+    public async Task<ActionResult<IEnumerable<SaleTypeCommissionRuleDto>>> SeedDefaultRules([FromQuery] bool force = false)
     {
         try
         {
-            await _saleTypeCommissionRuleRepository.SeedDefaultRulesAsync();
+            await _saleTypeCommissionRuleRepository.SeedDefaultRulesAsync(force);
             var rules = await _saleTypeCommissionRuleRepository.GetAllAsync();
             
             var dtos = rules.Select(r => new SaleTypeCommissionRuleDto
@@ -403,6 +409,7 @@ public class CommissionSettingsController : ControllerBase
                 SaleTypeLabel = r.SaleTypeLabel,
                 VendorRate = r.VendorRate,
                 ReferrerRate = r.ReferrerRate,
+                PostventaRate = r.PostventaRate,
                 CreatedAt = r.CreatedAt,
                 UpdatedAt = r.UpdatedAt
             });

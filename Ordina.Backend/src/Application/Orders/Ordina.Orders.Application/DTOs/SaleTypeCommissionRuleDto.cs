@@ -7,6 +7,7 @@ public class SaleTypeCommissionRuleDto
     public string SaleTypeLabel { get; set; } = string.Empty;
     public decimal VendorRate { get; set; }
     public decimal ReferrerRate { get; set; }
+    public decimal PostventaRate { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
@@ -17,6 +18,7 @@ public class CreateSaleTypeCommissionRuleDto
     public string SaleTypeLabel { get; set; } = string.Empty;
     public decimal VendorRate { get; set; }
     public decimal ReferrerRate { get; set; }
+    public decimal PostventaRate { get; set; }
 }
 
 public class UpdateSaleTypeCommissionRuleDto
@@ -24,4 +26,5 @@ public class UpdateSaleTypeCommissionRuleDto
     public string? SaleTypeLabel { get; set; }
     public decimal VendorRate { get; set; }
     public decimal ReferrerRate { get; set; }
+    public decimal PostventaRate { get; set; }
 }

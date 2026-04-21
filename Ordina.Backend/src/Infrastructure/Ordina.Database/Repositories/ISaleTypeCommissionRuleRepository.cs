@@ -13,5 +13,6 @@ public interface ISaleTypeCommissionRuleRepository
     Task<bool> DeleteAsync(string id);
     Task<bool> DeleteBySaleTypeAsync(string saleType);
     Task<bool> ExistsAsync(string id);
-    Task SeedDefaultRulesAsync(); // Para inicializar las reglas por defecto
+    /// <param name="forceReset">Si es true, elimina todas las reglas existentes antes de sembrar los valores por defecto.</param>
+    Task SeedDefaultRulesAsync(bool forceReset = false);
 }

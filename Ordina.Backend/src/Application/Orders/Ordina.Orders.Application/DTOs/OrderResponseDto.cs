@@ -10,6 +10,8 @@ public class OrderResponseDto
     public string VendorName { get; set; } = string.Empty;
     public string? ReferrerId { get; set; }
     public string? ReferrerName { get; set; }
+    public string? PostventaId { get; set; }
+    public string? PostventaName { get; set; }
     public List<OrderProductDto> Products { get; set; } = new();
     public decimal Subtotal { get; set; }
     public decimal TaxAmount { get; set; }
