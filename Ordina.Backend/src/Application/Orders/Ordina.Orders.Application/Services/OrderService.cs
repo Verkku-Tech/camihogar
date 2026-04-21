@@ -182,6 +182,8 @@ public class OrderService : IOrderService
                 VendorName = createDto.VendorName,
                 ReferrerId = createDto.ReferrerId,
                 ReferrerName = createDto.ReferrerName,
+                PostventaId = createDto.PostventaId,
+                PostventaName = createDto.PostventaName,
                 Products = createDto.Products.Select(MapProductFromDto).ToList(),
                 Subtotal = createDto.Subtotal,
                 TaxAmount = createDto.TaxAmount,
@@ -254,6 +256,10 @@ public class OrderService : IOrderService
                 existingOrder.ReferrerId = updateDto.ReferrerId;
             if (updateDto.ReferrerName != null)
                 existingOrder.ReferrerName = updateDto.ReferrerName;
+            if (updateDto.PostventaId != null)
+                existingOrder.PostventaId = updateDto.PostventaId;
+            if (updateDto.PostventaName != null)
+                existingOrder.PostventaName = updateDto.PostventaName;
             if (updateDto.Products != null)
                 existingOrder.Products = updateDto.Products.Select(MapProductFromDto).ToList();
             if (updateDto.Subtotal.HasValue)
@@ -496,6 +502,8 @@ public class OrderService : IOrderService
             VendorName = order.VendorName,
             ReferrerId = order.ReferrerId,
             ReferrerName = order.ReferrerName,
+            PostventaId = order.PostventaId,
+            PostventaName = order.PostventaName,
             Products = order.Products.Select(MapProductToDto).ToList(),
             Subtotal = order.Subtotal,
             TaxAmount = order.TaxAmount,

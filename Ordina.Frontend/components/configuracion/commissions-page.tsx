@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -22,15 +21,13 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { DollarSign, Save, RefreshCcw, Users, ShoppingBag, ArrowLeftRight } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { DollarSign, Save, RefreshCcw, Users, ShoppingBag, ArrowLeftRight, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
   getCategories,
   type Category,
-  getProductCommissions,
   batchUpsertProductCommissions,
-  type ProductCommission,
-  getSaleTypeCommissionRules,
   batchUpsertSaleTypeCommissionRules,
   seedDefaultSaleTypeRules,
   type SaleTypeCommissionRule,
@@ -39,23 +36,21 @@ import {
 } from "@/lib/storage";
 import { apiClient } from "@/lib/api-client";
 
+type EditedRule = { vendorRate: number; referrerRate: number; postventaRate: number };
+
 export function CommissionsPage() {
-  // Estados para comisiones por categoría
   const [categories, setCategories] = useState<Category[]>([]);
-  const [productCommissions, setProductCommissions] = useState<ProductCommission[]>([]);
   const [categoryCommissionValues, setCategoryCommissionValues] = useState<Record<string, number>>({});
-  
-  // Estados para reglas de tipo de venta
+
   const [saleTypeRules, setSaleTypeRules] = useState<SaleTypeCommissionRule[]>([]);
-  const [editedRules, setEditedRules] = useState<Record<string, { vendorRate: number; referrerRate: number }>>({});
-  
-  // Estados para usuarios con comisión exclusiva
+  const [editedRules, setEditedRules] = useState<Record<string, EditedRule>>({});
+
   const [users, setUsers] = useState<User[]>([]);
   const [exclusiveUsers, setExclusiveUsers] = useState<Set<string>>(new Set());
-  
-  // Estados de carga
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [settingsApiError, setSettingsApiError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -63,25 +58,37 @@ export function CommissionsPage() {
 
   const loadData = async () => {
     setIsLoading(true);
+    setSettingsApiError(null);
+    const errors: string[] = [];
+
     try {
-      const [
-        loadedCategories,
-        loadedProductCommissions,
-        loadedRules,
-        loadedUsers,
-      ] = await Promise.all([
-        getCategories(),
-        getProductCommissions(),
-        getSaleTypeCommissionRules(),
-        getUsers(),
-      ]);
+      const loadedCategories = await getCategories();
+      let loadedProductCommissions: Awaited<ReturnType<typeof apiClient.getProductCommissions>> = [];
+      try {
+        loadedProductCommissions = await apiClient.getProductCommissions();
+      } catch (e) {
+        console.error(e);
+        errors.push("No se pudieron cargar las comisiones por familia desde el servidor.");
+      }
+
+      let loadedRules: SaleTypeCommissionRule[] = [];
+      try {
+        loadedRules = await apiClient.getSaleTypeCommissionRules();
+      } catch (e) {
+        console.error(e);
+        errors.push("No se pudieron cargar las reglas de distribución desde el servidor.");
+      }
+
+      const loadedUsers = await getUsers();
 
       setCategories(loadedCategories);
-      setProductCommissions(loadedProductCommissions);
       setSaleTypeRules(loadedRules);
       setUsers(loadedUsers.filter((u) => u.status === "active"));
 
-      // Inicializar valores de comisión por categoría
+      if (errors.length) {
+        setSettingsApiError(errors.join(" "));
+      }
+
       const commissionValues: Record<string, number> = {};
       loadedCategories.forEach((category) => {
         const existingCommission = loadedProductCommissions.find(
@@ -93,17 +100,16 @@ export function CommissionsPage() {
       });
       setCategoryCommissionValues(commissionValues);
 
-      // Inicializar reglas editadas
-      const rulesMap: Record<string, { vendorRate: number; referrerRate: number }> = {};
+      const rulesMap: Record<string, EditedRule> = {};
       loadedRules.forEach((rule) => {
         rulesMap[rule.saleType] = {
           vendorRate: rule.vendorRate,
           referrerRate: rule.referrerRate,
+          postventaRate: rule.postventaRate ?? 0,
         };
       });
       setEditedRules(rulesMap);
 
-      // Inicializar usuarios con comisión exclusiva
       const exclusiveSet = new Set<string>();
       loadedUsers.forEach((user) => {
         if (user.exclusiveCommission) {
@@ -118,8 +124,6 @@ export function CommissionsPage() {
       setIsLoading(false);
     }
   };
-
-  // ===== HANDLERS PARA COMISIONES POR CATEGORÍA =====
 
   const handleCategoryCommissionChange = (categoryName: string, value: number) => {
     setCategoryCommissionValues((prev) => ({
@@ -144,7 +148,7 @@ export function CommissionsPage() {
 
       await batchUpsertProductCommissions(commissionsToSave);
       toast.success("Comisiones por categoría guardadas exitosamente");
-      await loadData(); // Recargar datos
+      await loadData();
     } catch (error) {
       console.error("Error saving product commissions:", error);
       toast.error("Error al guardar las comisiones");
@@ -153,17 +157,17 @@ export function CommissionsPage() {
     }
   };
 
-  // ===== HANDLERS PARA REGLAS DE TIPO DE VENTA =====
-
   const handleRuleChange = (
     saleType: string,
-    field: "vendorRate" | "referrerRate",
+    field: keyof EditedRule,
     value: number
   ) => {
     setEditedRules((prev) => ({
       ...prev,
       [saleType]: {
-        ...prev[saleType],
+        vendorRate: prev[saleType]?.vendorRate ?? 0,
+        referrerRate: prev[saleType]?.referrerRate ?? 0,
+        postventaRate: prev[saleType]?.postventaRate ?? 0,
         [field]: value,
       },
     }));
@@ -177,6 +181,7 @@ export function CommissionsPage() {
         saleTypeLabel: rule.saleTypeLabel,
         vendorRate: editedRules[rule.saleType]?.vendorRate ?? rule.vendorRate,
         referrerRate: editedRules[rule.saleType]?.referrerRate ?? rule.referrerRate,
+        postventaRate: editedRules[rule.saleType]?.postventaRate ?? rule.postventaRate ?? 0,
       }));
 
       await batchUpsertSaleTypeCommissionRules(rulesToSave);
@@ -190,11 +195,15 @@ export function CommissionsPage() {
     }
   };
 
-  const handleSeedDefaultRules = async () => {
+  const handleSeedDefaultRules = async (force: boolean) => {
     setIsSaving(true);
     try {
-      await seedDefaultSaleTypeRules();
-      toast.success("Reglas por defecto cargadas exitosamente");
+      await seedDefaultSaleTypeRules(force);
+      toast.success(
+        force
+          ? "Reglas restauradas a valores por defecto"
+          : "Reglas por defecto cargadas (solo si no había reglas previas)"
+      );
       await loadData();
     } catch (error) {
       console.error("Error seeding default rules:", error);
@@ -204,14 +213,22 @@ export function CommissionsPage() {
     }
   };
 
-  // ===== HANDLERS PARA VENDEDORES EXCLUSIVOS =====
+  const handleRestoreDefaultsClick = () => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "¿Sobrescribir todas las reglas de distribución con los valores por defecto? Esta acción no se puede deshacer."
+      )
+    ) {
+      return;
+    }
+    void handleSeedDefaultRules(true);
+  };
 
   const handleExclusiveToggle = async (userId: string, exclusive: boolean) => {
     try {
-      // Actualizar usuario en el backend
       await apiClient.updateUser(userId, { exclusiveCommission: exclusive });
-      
-      // Actualizar estado local
+
       setExclusiveUsers((prev) => {
         const newSet = new Set(prev);
         if (exclusive) {
@@ -221,7 +238,7 @@ export function CommissionsPage() {
         }
         return newSet;
       });
-      
+
       toast.success(`Comisión exclusiva ${exclusive ? "activada" : "desactivada"}`);
     } catch (error) {
       console.error("Error updating user exclusive status:", error);
@@ -242,13 +259,19 @@ export function CommissionsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Configuración de Comisiones</h1>
         <p className="text-muted-foreground">
           Gestiona las comisiones por familia de productos y reglas de distribución
         </p>
       </div>
+
+      {settingsApiError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{settingsApiError}</AlertDescription>
+        </Alert>
+      )}
 
       <Tabs defaultValue="categories" className="space-y-4">
         <TabsList className="flex h-auto w-full justify-start overflow-x-auto sm:overflow-visible sm:grid sm:grid-cols-3">
@@ -266,7 +289,6 @@ export function CommissionsPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* TAB 1: Comisiones por Categoría/Familia */}
         <TabsContent value="categories">
           <Card>
             <CardHeader>
@@ -343,7 +365,6 @@ export function CommissionsPage() {
           </Card>
         </TabsContent>
 
-        {/* TAB 2: Distribución por Tipo de Venta */}
         <TabsContent value="distribution">
           <Card>
             <CardHeader>
@@ -352,7 +373,9 @@ export function CommissionsPage() {
                 Distribución de Comisiones por Tipo de Venta
               </CardTitle>
               <CardDescription>
-                En ventas compartidas (con referido), cada porcentaje se aplica sobre la comisión en USD de la familia del producto (no sobre el precio del pedido). La suma suele ser 100%.
+                Cada porcentaje se aplica sobre la comisión en USD de la familia del producto (no sobre el precio del
+                pedido). ENCARGO y Sistema de Apartado incluyen reparto a post venta. Use &quot;Restaurar&quot; solo si
+                desea reemplazar todas las reglas por los valores estándar.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -360,7 +383,7 @@ export function CommissionsPage() {
                 <div className="text-center py-8">
                   <ArrowLeftRight className="w-12 h-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
                   <p className="text-muted-foreground mb-4">No hay reglas configuradas</p>
-                  <Button onClick={handleSeedDefaultRules} disabled={isSaving}>
+                  <Button onClick={() => void handleSeedDefaultRules(false)} disabled={isSaving}>
                     <RefreshCcw className="w-4 h-4 mr-2" />
                     Cargar Reglas por Defecto
                   </Button>
@@ -371,17 +394,20 @@ export function CommissionsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Tipo de Venta</TableHead>
-                        <TableHead className="text-center">Vendedor tienda (% de comisión familia)</TableHead>
-                        <TableHead className="text-center">Postventa/Referido (% de comisión familia)</TableHead>
-                        <TableHead className="text-center">Total</TableHead>
+                        <TableHead className="text-center">Vendedor tienda (% comisión familia)</TableHead>
+                        <TableHead className="text-center">Post venta (% comisión familia)</TableHead>
+                        <TableHead className="text-center">Referido online (% comisión familia)</TableHead>
+                        <TableHead className="text-center">Suma %</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {saleTypeRules.map((rule) => {
                         const vendorRate = editedRules[rule.saleType]?.vendorRate ?? rule.vendorRate;
                         const referrerRate = editedRules[rule.saleType]?.referrerRate ?? rule.referrerRate;
-                        const total = vendorRate + referrerRate;
-                        
+                        const postventaRate =
+                          editedRules[rule.saleType]?.postventaRate ?? rule.postventaRate ?? 0;
+                        const total = vendorRate + referrerRate + postventaRate;
+
                         return (
                           <TableRow key={rule.saleType}>
                             <TableCell className="font-medium">{rule.saleTypeLabel}</TableCell>
@@ -390,11 +416,15 @@ export function CommissionsPage() {
                                 type="number"
                                 step="0.5"
                                 min="0"
-                                max="10"
+                                max="100"
                                 className="w-20 mx-auto text-center"
                                 value={vendorRate}
                                 onChange={(e) =>
-                                  handleRuleChange(rule.saleType, "vendorRate", parseFloat(e.target.value) || 0)
+                                  handleRuleChange(
+                                    rule.saleType,
+                                    "vendorRate",
+                                    parseFloat(e.target.value) || 0
+                                  )
                                 }
                               />
                             </TableCell>
@@ -403,18 +433,37 @@ export function CommissionsPage() {
                                 type="number"
                                 step="0.5"
                                 min="0"
-                                max="10"
+                                max="100"
                                 className="w-20 mx-auto text-center"
-                                value={referrerRate}
+                                value={postventaRate}
                                 onChange={(e) =>
-                                  handleRuleChange(rule.saleType, "referrerRate", parseFloat(e.target.value) || 0)
+                                  handleRuleChange(
+                                    rule.saleType,
+                                    "postventaRate",
+                                    parseFloat(e.target.value) || 0
+                                  )
                                 }
                               />
                             </TableCell>
                             <TableCell className="text-center">
-                              <Badge variant={total > 0 ? "default" : "secondary"}>
-                                {total}%
-                              </Badge>
+                              <Input
+                                type="number"
+                                step="0.5"
+                                min="0"
+                                max="100"
+                                className="w-20 mx-auto text-center"
+                                value={referrerRate}
+                                onChange={(e) =>
+                                  handleRuleChange(
+                                    rule.saleType,
+                                    "referrerRate",
+                                    parseFloat(e.target.value) || 0
+                                  )
+                                }
+                              />
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant={total > 0 ? "default" : "secondary"}>{total}%</Badge>
                             </TableCell>
                           </TableRow>
                         );
@@ -422,7 +471,7 @@ export function CommissionsPage() {
                     </TableBody>
                   </Table>
                   <div className="flex justify-between mt-4">
-                    <Button variant="outline" onClick={handleSeedDefaultRules} disabled={isSaving}>
+                    <Button variant="outline" onClick={handleRestoreDefaultsClick} disabled={isSaving}>
                       <RefreshCcw className="w-4 h-4 mr-2" />
                       Restaurar Valores por Defecto
                     </Button>
@@ -437,7 +486,6 @@ export function CommissionsPage() {
           </Card>
         </TabsContent>
 
-        {/* TAB 3: Vendedores Exclusivos */}
         <TabsContent value="exclusive">
           <Card>
             <CardHeader>
@@ -488,9 +536,8 @@ export function CommissionsPage() {
               )}
               <div className="mt-4 p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">
-                  <strong>Nota:</strong> Los vendedores con comisión exclusiva recibirán el 100% de la comisión 
-                  de sus ventas, incluso cuando haya un referido asociado. La comisión no se dividirá 
-                  con el referido/postventa.
+                  <strong>Nota:</strong> Los vendedores con comisión exclusiva recibirán el 100% de la comisión de sus
+                  ventas, incluso cuando haya un referido asociado. La comisión no se dividirá con el referido/postventa.
                 </p>
               </div>
             </CardContent>

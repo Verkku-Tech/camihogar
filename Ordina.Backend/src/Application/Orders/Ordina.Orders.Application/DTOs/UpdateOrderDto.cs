@@ -8,6 +8,8 @@ public class UpdateOrderDto
     public string? VendorName { get; set; }
     public string? ReferrerId { get; set; }
     public string? ReferrerName { get; set; }
+    public string? PostventaId { get; set; }
+    public string? PostventaName { get; set; }
     public List<OrderProductDto>? Products { get; set; }
     public decimal? Subtotal { get; set; }
     public decimal? TaxAmount { get; set; }

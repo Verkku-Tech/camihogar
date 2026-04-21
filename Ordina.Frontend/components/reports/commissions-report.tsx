@@ -20,18 +20,36 @@ import {
   type Order,
   type Category,
   type Product,
+  type OrderCommissionLine,
 } from "@/lib/storage"
 
 interface CommissionReportRow {
   fecha: string
   cliente: string
+  pedido: string
   vendedor: string
   descripcion: string
   cantidadArticulos: number
   tipoVenta: string
-  comision: number
-  vendedorSecundario?: string
-  comisionSecundaria?: number
+  comisionVendedor: number
+  comisionPostventa: number
+  comisionReferido: number
+  vendedorPostventa?: string
+  vendedorReferido?: string
+}
+
+function aggregateCommissionsByProduct(lines: OrderCommissionLine[]) {
+  const m = new Map<string, { vendor: number; postventa: number; referrer: number }>()
+  for (const c of lines) {
+    if (!m.has(c.productId)) {
+      m.set(c.productId, { vendor: 0, postventa: 0, referrer: 0 })
+    }
+    const b = m.get(c.productId)!
+    if (c.payoutRole === "vendor") b.vendor += c.commission
+    else if (c.payoutRole === "postventa") b.postventa += c.commission
+    else b.referrer += c.commission
+  }
+  return m
 }
 
 const TEAMS = [
@@ -89,15 +107,14 @@ export function CommissionsReport() {
 
         for (const order of filteredOrders) {
           const tipoVenta = getCommissionSaleTypeLabelForOrder(order, saleTypeRules)
-          // Calcular comisiones del pedido
-          const commissions = await calculateOrderCommissions(order)
+          const lines = await calculateOrderCommissions(order)
+          const byProduct = aggregateCommissionsByProduct(lines)
 
-          for (const comm of commissions) {
-            if (!comm.commission || comm.commission === 0) continue
-            const product = order.products.find((p) => p.id === comm.productId)
-            if (!product) continue
+          for (const product of order.products) {
+            const agg = byProduct.get(product.id)
+            if (!agg) continue
+            if (agg.vendor === 0 && agg.postventa === 0 && agg.referrer === 0) continue
 
-            // Formatear descripción del producto
             const productDesc = await formatProductDescription(
               product,
               categories,
@@ -107,17 +124,17 @@ export function CommissionsReport() {
             reportRows.push({
               fecha: order.createdAt,
               cliente: order.clientName,
-              vendedor: comm.sellerName,
+              pedido: order.orderNumber,
+              vendedor: order.vendorName,
               descripcion: productDesc,
               cantidadArticulos: product.quantity,
               tipoVenta,
-              comision: comm.commission,
-              vendedorSecundario: comm.isShared
-                ? comm.sellerId === order.vendorId
-                  ? order.referrerName
-                  : order.vendorName
-                : undefined,
-              comisionSecundaria: comm.isShared ? comm.commission : undefined,
+              comisionVendedor: agg.vendor,
+              comisionPostventa: agg.postventa,
+              comisionReferido: agg.referrer,
+              vendedorPostventa:
+                agg.postventa > 0 ? order.postventaName?.trim() || "Post venta" : undefined,
+              vendedorReferido: agg.referrer > 0 ? order.referrerName : undefined,
             })
           }
         }
@@ -225,15 +242,16 @@ export function CommissionsReport() {
         return orderDate >= startDateObj && orderDate <= endDateObj
       })
 
-      // Calcular comisiones
-      const commissionData: any[] = []
+      const commissionData: Record<string, unknown>[] = []
       for (const order of filteredOrders) {
         const tipoVenta = getCommissionSaleTypeLabelForOrder(order, saleTypeRules)
-        const commissions = await calculateOrderCommissions(order)
-        for (const comm of commissions) {
-          if (!comm.commission || comm.commission === 0) continue
-          const product = order.products.find((p) => p.id === comm.productId)
-          if (!product) continue
+        const lines = await calculateOrderCommissions(order)
+        const byProduct = aggregateCommissionsByProduct(lines)
+
+        for (const product of order.products) {
+          const agg = byProduct.get(product.id)
+          if (!agg) continue
+          if (agg.vendor === 0 && agg.postventa === 0 && agg.referrer === 0) continue
 
           const productDesc = await formatProductDescription(
             product,
@@ -241,20 +259,27 @@ export function CommissionsReport() {
             products
           )
 
+          const shared = agg.referrer > 0 || agg.postventa > 0
           commissionData.push({
             fecha: order.createdAt,
             cliente: order.clientName,
-            vendedor: comm.sellerName,
+            vendedor: order.vendorName,
+            pedido: order.orderNumber,
             descripcion: productDesc,
             cantidadArticulos: product.quantity,
             tipoVenta,
-            comision: comm.commission,
-            vendedorSecundario: comm.isShared
-              ? comm.sellerId === order.vendorId
-                ? order.referrerName
-                : order.vendorName
-              : null,
-            comisionSecundaria: comm.isShared ? comm.commission : null,
+            comision: agg.vendor,
+            vendedorSecundario: agg.referrer > 0 ? order.referrerName ?? null : null,
+            comisionSecundaria: agg.referrer > 0 ? agg.referrer : null,
+            vendedorPostventa: agg.postventa > 0 ? order.postventaName?.trim() || "Post venta" : null,
+            comisionPostventa: agg.postventa > 0 ? agg.postventa : null,
+            sueldoBase: 0,
+            tasaComisionBase: 0,
+            tasaAplicadaVendedor: 0,
+            tasaAplicadaReferido: null,
+            tasaAplicadaPostventa: null,
+            esVentaCompartida: shared,
+            esVendedorExclusivo: false,
           })
         }
       }
@@ -331,12 +356,9 @@ export function CommissionsReport() {
     }
   }
 
-  // Calcular totales
-  const totalComision = reportData.reduce((sum, row) => sum + row.comision, 0)
-  const totalComisionSecundaria = reportData.reduce(
-    (sum, row) => sum + (row.comisionSecundaria || 0),
-    0
-  )
+  const totalVendedor = reportData.reduce((sum, row) => sum + row.comisionVendedor, 0)
+  const totalPostventa = reportData.reduce((sum, row) => sum + row.comisionPostventa, 0)
+  const totalReferido = reportData.reduce((sum, row) => sum + row.comisionReferido, 0)
 
   return (
     <div className="space-y-6">
@@ -454,11 +476,14 @@ export function CommissionsReport() {
                     <TableRow>
                       <TableHead>Fecha</TableHead>
                       <TableHead>Cliente</TableHead>
-                      <TableHead>Vendedor</TableHead>
+                      <TableHead>Pedido</TableHead>
+                      <TableHead>Vendedor tienda</TableHead>
                       <TableHead>Descripción</TableHead>
-                      <TableHead className="text-center">Cant. Artículos</TableHead>
-                      <TableHead>Tipo de venta</TableHead>
-                      <TableHead className="text-right">Comisión (USD)</TableHead>
+                      <TableHead className="text-center">Cant.</TableHead>
+                      <TableHead>Tipo venta</TableHead>
+                      <TableHead className="text-right">Com. vendedor</TableHead>
+                      <TableHead className="text-right">Post venta</TableHead>
+                      <TableHead className="text-right">Referido</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -467,23 +492,40 @@ export function CommissionsReport() {
                         <TableCell className="whitespace-nowrap">
                           {formatDate(row.fecha)}
                         </TableCell>
-                        <TableCell className="max-w-[200px] truncate">{row.cliente}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">{row.vendedor}</TableCell>
-                        <TableCell className="max-w-[300px]">{row.descripcion}</TableCell>
+                        <TableCell className="max-w-[160px] truncate">{row.cliente}</TableCell>
+                        <TableCell className="font-mono text-sm">{row.pedido}</TableCell>
+                        <TableCell className="max-w-[140px] truncate">{row.vendedor}</TableCell>
+                        <TableCell className="max-w-[240px]">{row.descripcion}</TableCell>
                         <TableCell className="text-center">{row.cantidadArticulos}</TableCell>
-                        <TableCell>{row.tipoVenta}</TableCell>
+                        <TableCell className="max-w-[120px] truncate">{row.tipoVenta}</TableCell>
                         <TableCell className="text-right font-medium">
-                          {formatCommissionUsd(row.comision)}
+                          {formatCommissionUsd(row.comisionVendedor)}
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {row.comisionPostventa > 0
+                            ? formatCommissionUsd(row.comisionPostventa)
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {row.comisionReferido > 0
+                            ? formatCommissionUsd(row.comisionReferido)
+                            : "—"}
                         </TableCell>
                       </TableRow>
                     ))}
                     {reportData.length > 0 && (
                       <TableRow className="font-bold bg-muted/50">
-                        <TableCell colSpan={6} className="text-right">
-                          Total Comisiones:
+                        <TableCell colSpan={7} className="text-right">
+                          Totales (USD):
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatCommissionUsd(totalComision)}
+                          {formatCommissionUsd(totalVendedor)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCommissionUsd(totalPostventa)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCommissionUsd(totalReferido)}
                         </TableCell>
                       </TableRow>
                     )}

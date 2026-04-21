@@ -18,6 +18,8 @@ public class CreateOrderDto
     
     public string? ReferrerId { get; set; }
     public string? ReferrerName { get; set; }
+    public string? PostventaId { get; set; }
+    public string? PostventaName { get; set; }
     
     [Required(ErrorMessage = "Los productos son requeridos")]
     public List<OrderProductDto> Products { get; set; } = new();
