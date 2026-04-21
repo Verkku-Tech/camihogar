@@ -26,7 +26,11 @@ import {
   type ExchangeRate,
   type Currency,
 } from "@/lib/currency-utils";
-import { getActivePaymentsList } from "@/lib/order-payments";
+import {
+  getActivePaymentsList,
+  filterCasheaStubForEditForm,
+  PAYMENT_BALANCE_EPSILON_BS,
+} from "@/lib/order-payments";
 
 export interface OrderFormData {
   vendor: string;
@@ -449,7 +453,12 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       }
 
       // 6. Abonos (misma regla que detalle: partial si tiene ítems, si no mixed)
-      setPayments(getActivePaymentsList(initialOrder));
+      setPayments(
+        filterCasheaStubForEditForm(
+          initialOrder,
+          getActivePaymentsList(initialOrder),
+        ),
+      );
 
       // 7. Descuentos y observaciones
       if (initialOrder.generalDiscountAmount && initialOrder.generalDiscountAmount > 0) {
@@ -641,10 +650,13 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     calculateTotal();
   }, [payments]);
 
-  const remainingAmount =
-    paymentCondition === "cashea" ? 0 : total - totalPaidInBs;
+  const remainingAmount = total - totalPaidInBs;
   const isPaymentsValid =
-    paymentCondition === "cashea" || Math.abs(remainingAmount) < 0.10;
+    paymentCondition === "cashea"
+      ? payments.length === 1 &&
+        (payments[0].amount || 0) > 0 &&
+        (payments[0].amount || 0) <= total + PAYMENT_BALANCE_EPSILON_BS
+      : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
 
   // Formatear precios
   useEffect(() => {

@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Search, Plus, Eye, Edit, Trash2, X } from "lucide-react"
+import { OrderPdfRowAction } from "@/components/orders/order-pdf-row-action"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import {
@@ -461,6 +462,11 @@ export default function PedidosPage() {
                                 >
                                   <Eye className="w-4 h-4" />
                                 </Button>
+                                <OrderPdfRowAction
+                                  orderId={order.id}
+                                  orderType={order.type}
+                                  status={order.status}
+                                />
                                 {canEditOrder(order) && (
                                   <Button
                                     variant="ghost"

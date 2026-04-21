@@ -101,10 +101,22 @@ export const digitalPaymentMethods = [
   "Zelle",
 ];
 
-/** Solo estos métodos ocultan “tasa manual / equivalente exacto en Bs” (no confundir con digitalPaymentMethods: AirTM/Facebank siguen con tasa manual). */
+/**
+ * Métodos que en el paso de pagos muestran selector de cuenta receptora y deben validarse al guardar.
+ * No incluir AirTM, Facebank ni PayPal: no tienen ese campo en la UI.
+ */
+export const paymentMethodsRequiringReceivingAccount = [
+  "Binance",
+  "Banesco Panamá",
+  "Mercantil Panamá",
+] as const;
+
+/** Métodos que ocultan “tasa manual / equivalente exacto en Bs”; el monto en divisa se convierte solo con la tasa oficial del día. */
 export const paymentMethodsNoManualBsConversion = [
+  "AirTM",
   "Banesco Panamá",
   "Binance",
+  "Facebank",
   "Mercantil Panamá",
   "Paypal",
   "Zelle",

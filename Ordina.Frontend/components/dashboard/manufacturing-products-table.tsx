@@ -28,6 +28,9 @@ export function ManufacturingProductsTable() {
         const manufacturingProducts: ManufacturingProduct[] = []
 
         orders.forEach((order) => {
+          if (order.status === "Generado" || order.status === "Generada") {
+            return
+          }
           order.products.forEach((product) => {
             // SOLO procesar productos que deben mandarse a fabricar
             if (product.locationStatus !== "FABRICACION") {

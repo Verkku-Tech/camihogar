@@ -77,6 +77,9 @@ export function CommissionsReport() {
         endDateObj.setHours(23, 59, 59, 999) // Incluir todo el día final
 
         const filteredOrders = orders.filter((order) => {
+          if (order.status === "Generado" || order.status === "Generada") {
+            return false
+          }
           const orderDate = new Date(order.createdAt)
           return orderDate >= startDateObj && orderDate <= endDateObj
         })
@@ -215,6 +218,9 @@ export function CommissionsReport() {
       endDateObj.setHours(23, 59, 59, 999)
 
       const filteredOrders = orders.filter((order) => {
+        if (order.status === "Generado" || order.status === "Generada") {
+          return false
+        }
         const orderDate = new Date(order.createdAt)
         return orderDate >= startDateObj && orderDate <= endDateObj
       })

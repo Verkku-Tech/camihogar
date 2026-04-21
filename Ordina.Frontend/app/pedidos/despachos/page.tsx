@@ -81,6 +81,7 @@ const getProductDispatchStatus = (product: OrderProduct): TabType | "none" => {
 // Helper: Verifica si el pedido debe mostrarse en una pestaña específica
 const isOrderInTab = (order: UnifiedOrder, tab: TabType): boolean => {
   if (order.type !== "order") return false
+  if (order.status === "Generado" || order.status === "Generada") return false
 
   // Si pedimos ver despachados y la orden está completada entera, la mostramos ahí
   if (tab === "despachados" && order.status === "Completada") return true

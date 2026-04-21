@@ -1,5 +1,8 @@
 import type { Order, PartialPayment } from "@/lib/storage";
 
+/** Misma tolerancia que en formularios de pedido para saldo y validación. */
+export const PAYMENT_BALANCE_EPSILON_BS = 0.1;
+
 /** Objeto con listas de abonos (pedido, listado unificado, etc.) */
 export type PartialMixedPaymentsSource = {
   partialPayments?: PartialPayment[] | null | undefined;
@@ -62,4 +65,56 @@ export function normalizePaymentsForSave(
       paymentDetails: hasDetail ? base : undefined,
     };
   });
+}
+
+/** Líneas guardadas en pedido Cashea: el stub sintético tiene este método. */
+export const CASHEA_FINANCED_METHOD_LABEL = "Cashea (financiación)";
+
+/**
+ * Tras normalizar exactamente el pago inicial, añade (si aplica) la línea de saldo financiado por Cashea.
+ */
+export function buildCasheaPaymentsForSave(
+  normalizedInitialOneRow: PartialPayment[],
+  orderTotalBs: number,
+): PartialPayment[] {
+  if (normalizedInitialOneRow.length !== 1) {
+    throw new Error("Cashea: se requiere exactamente un pago inicial.");
+  }
+  const first = normalizedInitialOneRow[0];
+  const initialAmt = first.amount || 0;
+  const remainder = orderTotalBs - initialAmt;
+  if (remainder <= PAYMENT_BALANCE_EPSILON_BS) {
+    return [first];
+  }
+  const stubAmount = Math.round(Math.max(0, remainder) * 100) / 100;
+  const stub: PartialPayment = {
+    id: `cashea-fin-${Date.now().toString(36)}`,
+    amount: stubAmount,
+    method: CASHEA_FINANCED_METHOD_LABEL,
+    date: first.date,
+    currency: "Bs",
+    paymentDetails: {
+      casheaFinancedPortion: true,
+      originalAmount: stubAmount,
+      originalCurrency: "Bs",
+    },
+  };
+  return [first, stub];
+}
+
+/** Suma solo lo cobrado en tienda (excluye la porción financiada automática en Cashea). */
+export function sumPaymentsInStoreBs(payments: PartialPayment[]): number {
+  return payments.reduce((sum, p) => {
+    if (p.paymentDetails?.casheaFinancedPortion) return sum;
+    return sum + (p.amount || 0);
+  }, 0);
+}
+
+/** Para editar: quita la línea sintética y deja solo el abono inicial en el formulario. */
+export function filterCasheaStubForEditForm(
+  order: Order,
+  list: PartialPayment[],
+): PartialPayment[] {
+  if (order.paymentCondition !== "cashea") return list;
+  return list.filter((p) => !p.paymentDetails?.casheaFinancedPortion);
 }

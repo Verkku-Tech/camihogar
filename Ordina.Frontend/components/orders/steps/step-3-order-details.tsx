@@ -27,6 +27,7 @@ import type { UseOrderFormReturn } from "../hooks/use-order-form";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import { toast } from "sonner";
 import { type ProductImage } from "@/lib/storage";
+import { PAYMENT_BALANCE_EPSILON_BS } from "@/lib/order-payments";
 import { ImageUploader } from "../ImageUploader";
 import {
   PAYMENT_CONDITIONS,
@@ -38,6 +39,7 @@ import {
   bsOnlyPaymentMethods,
   paymentMethodUsesOnlyOfficialBsRate,
   efectivoCashExcludesManualBs,
+  paymentMethodsRequiringReceivingAccount,
 } from "../constants";
 
 /** `<input type="date" />` solo acepta yyyy-MM-dd; el API suele devolver ISO completo. */
@@ -82,7 +84,8 @@ export function Step3OrderDetails({
   paymentsOnly = false,
   allowRemovePayment = true,
 }: Step3OrderDetailsProps) {
-  const readOnlyPayments = orderForm.paymentCondition === "cashea";
+  const casheaOneLineOnly =
+    orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1;
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -117,7 +120,7 @@ export function Step3OrderDetails({
                     htmlFor="hasDelivery"
                     className="text-base font-medium"
                   >
-                    ¿Requiere delivery?
+                    ¿Requiere servicio adicional?
                   </Label>
                 </div>
 
@@ -370,7 +373,7 @@ export function Step3OrderDetails({
                           }}
                         />
                         <Label htmlFor="servicioArmado" className="text-sm sm:text-base font-medium">
-                          SERVICIO DE ARMADO <span className="text-red-500">*</span>
+                          SERVICIO DE ARMADO
                         </Label>
                       </div>
                       {orderForm.deliveryServices.servicioArmado?.enabled && (
@@ -945,7 +948,7 @@ export function Step3OrderDetails({
                   <Label className="text-sm sm:text-base">
                     Pagos
                   </Label>
-                  {addPayment && (
+                  {addPayment && !casheaOneLineOnly && (
                     <Button
                       type="button"
                       variant="outline"
@@ -960,14 +963,14 @@ export function Step3OrderDetails({
                 </div>
                 {orderForm.paymentCondition === "cashea" && (
                   <p className="text-sm text-muted-foreground">
-                    Financiación Cashea: no se registran pagos en tienda; el cobro de cuotas es con Cashea.
+                    Cashea: registre un único pago inicial en tienda. Al guardar el pedido, el saldo
+                    restante se registrará como financiación Cashea.
                   </p>
                 )}
 
                 {orderForm.payments.map((payment) => (
                   <fieldset
                     key={payment.id}
-                    disabled={readOnlyPayments}
                     className="space-y-3 sm:space-y-4 p-3 sm:p-4 border rounded-lg min-w-0 border-border"
                   >
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:items-end">
@@ -1947,13 +1950,15 @@ export function Step3OrderDetails({
                               })()}
                             </div>
                             {/* Campo de cuenta para métodos bancarios y digitales */}
-                            {["Banesco Panamá", "Mercantil Panamá", "Binance", "Paypal"].includes(payment.method) && (
+                            {(paymentMethodsRequiringReceivingAccount as readonly string[]).includes(
+                              payment.method,
+                            ) && (
                               <div className="space-y-2">
                                 <Label
                                   htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-account-${payment.id}`}
                                   className="text-xs"
                                 >
-                                  Cuenta {["Binance", "Paypal"].includes(payment.method) ? "(Digital)" : "(Bancaria)"} *
+                                  Cuenta {payment.method === "Binance" ? "(Digital)" : "(Bancaria)"} *
                                 </Label>
                                 <Select
                                   value={payment.paymentDetails?.accountId || undefined}
@@ -1967,7 +1972,7 @@ export function Step3OrderDetails({
                                   <SelectTrigger>
                                     <SelectValue
                                       placeholder={
-                                        ["Binance", "Paypal"].includes(payment.method)
+                                        payment.method === "Binance"
                                           ? "Seleccione cuenta digital"
                                           : "Seleccione cuenta bancaria"
                                       }
@@ -2448,7 +2453,8 @@ export function Step3OrderDetails({
                       </TableRow>
                     </TableBody>
                   </Table>
-                  {orderForm.isPaymentsValid && (
+                  {Math.abs(orderForm.remainingAmount) <
+                    PAYMENT_BALANCE_EPSILON_BS && (
                     <p className="text-xs text-green-600 text-center mt-2">
                       (Pagado completo)
                     </p>
