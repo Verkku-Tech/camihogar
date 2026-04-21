@@ -27,6 +27,7 @@ import type { UseOrderFormReturn } from "../hooks/use-order-form";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import { toast } from "sonner";
 import { type ProductImage } from "@/lib/storage";
+import { PAYMENT_BALANCE_EPSILON_BS } from "@/lib/order-payments";
 import { ImageUploader } from "../ImageUploader";
 import {
   PAYMENT_CONDITIONS,
@@ -38,6 +39,7 @@ import {
   bsOnlyPaymentMethods,
   paymentMethodUsesOnlyOfficialBsRate,
   efectivoCashExcludesManualBs,
+  paymentMethodsRequiringReceivingAccount,
 } from "../constants";
 
 /** `<input type="date" />` solo acepta yyyy-MM-dd; el API suele devolver ISO completo. */
@@ -1948,7 +1950,9 @@ export function Step3OrderDetails({
                               })()}
                             </div>
                             {/* Campo de cuenta para métodos bancarios y digitales */}
-                            {["Banesco Panamá", "Mercantil Panamá", "Binance"].includes(payment.method) && (
+                            {(paymentMethodsRequiringReceivingAccount as readonly string[]).includes(
+                              payment.method,
+                            ) && (
                               <div className="space-y-2">
                                 <Label
                                   htmlFor={`${payment.method.toLowerCase().replace(/\s+/g, '-')}-account-${payment.id}`}
@@ -2449,7 +2453,8 @@ export function Step3OrderDetails({
                       </TableRow>
                     </TableBody>
                   </Table>
-                  {orderForm.isPaymentsValid && (
+                  {Math.abs(orderForm.remainingAmount) <
+                    PAYMENT_BALANCE_EPSILON_BS && (
                     <p className="text-xs text-green-600 text-center mt-2">
                       (Pagado completo)
                     </p>

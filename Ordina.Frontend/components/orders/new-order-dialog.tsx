@@ -47,6 +47,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
 
 interface NewOrderDialogProps {
   open: boolean;
@@ -442,9 +443,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               toast.error(`${paymentLabel} (Zelle): Debe ingresar quién envía`);
               return;
             }
-          } else if (["AirTM", "Binance", "Banesco Panamá", "Mercantil Panamá"].includes(payment.method)) {
+          } else if (
+            (paymentMethodsRequiringReceivingAccount as readonly string[]).includes(
+              payment.method,
+            )
+          ) {
             if (!payment.paymentDetails?.accountId) {
-              toast.error(`${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`);
+              toast.error(
+                `${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`,
+              );
               return;
             }
           }
