@@ -103,10 +103,9 @@ export const digitalPaymentMethods = [
 
 /**
  * Métodos que en el paso de pagos muestran selector de cuenta receptora y deben validarse al guardar.
- * No incluir AirTM, Facebank ni PayPal: no tienen ese campo en la UI.
+ * No incluir AirTM, Facebank, PayPal ni Binance: no aplican cuenta receptora en la UI.
  */
 export const paymentMethodsRequiringReceivingAccount = [
-  "Binance",
   "Banesco Panamá",
   "Mercantil Panamá",
 ] as const;
