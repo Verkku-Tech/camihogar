@@ -23,6 +23,7 @@ import { OrderConfirmationDialog } from "./order-confirmation-dialog";
 import {
   addOrder,
   addBudget,
+  addPendingConfirmationOrder,
   type Order,
   type OrderProduct,
   type PartialPayment,
@@ -343,15 +344,128 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     }
   };
 
+  const handleCreatePendingConfirmation = async () => {
+    try {
+      if (!user?.id) {
+        toast.error("Debes iniciar sesión");
+        return;
+      }
+      if (!orderForm.selectedClient) {
+        toast.error("Por favor selecciona un cliente");
+        return;
+      }
+      if (orderForm.selectedProducts.length === 0) {
+        toast.error("Por favor agrega al menos un producto");
+        return;
+      }
+      if (!orderForm.saleType) {
+        toast.error("Por favor selecciona el tipo de venta");
+        return;
+      }
+      if (!orderForm.deliveryType) {
+        toast.error("Por favor selecciona el tipo de entrega");
+        return;
+      }
+      if (!orderForm.deliveryZone) {
+        toast.error("Por favor selecciona la zona de entrega");
+        return;
+      }
+      if (
+        orderForm.hasDelivery &&
+        orderForm.deliveryServices.servicioArmado?.enabled
+      ) {
+        if (
+          !orderForm.deliveryServices.servicioArmado.cost ||
+          orderForm.deliveryServices.servicioArmado.cost <= 0
+        ) {
+          toast.error("El precio del Servicio de Armado es obligatorio");
+          return;
+        }
+      }
+
+      const onlineName =
+        orderForm.mockVendors.find((v) => v.id === user.id)?.name ||
+        orderForm.mockReferrers.find((r) => r.id === user.id)?.name ||
+        user.name ||
+        "";
+
+      const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
+        clientId: orderForm.selectedClient.id,
+        clientName: orderForm.selectedClient.name,
+        vendorId: user.id,
+        vendorName: onlineName,
+        referrerId: user.id,
+        referrerName: onlineName,
+        products: orderForm.selectedProducts.map((product) => ({
+          ...product,
+          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+        })),
+        subtotalBeforeDiscounts: orderForm.productSubtotal,
+        productDiscountTotal:
+          orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
+        generalDiscountAmount:
+          orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+        subtotal: orderForm.subtotal,
+        taxAmount: orderForm.taxAmount,
+        deliveryCost: orderForm.deliveryCost,
+        total: orderForm.total,
+        paymentType: "directo",
+        paymentMethod: "N/A",
+        paymentCondition: "pagara_en_tienda",
+        saleType: orderForm.saleType as Order["saleType"],
+        deliveryType: orderForm.deliveryType as Order["deliveryType"],
+        deliveryZone: orderForm.deliveryZone as Order["deliveryZone"],
+        hasDelivery: orderForm.hasDelivery,
+        deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
+        deliveryServices: orderForm.hasDelivery
+          ? {
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.deliveryExpress.cost,
+                    currency: orderForm.deliveryServices.deliveryExpress.currency,
+                  }
+                : undefined,
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioAcarreo.cost,
+                    currency: orderForm.deliveryServices.servicioAcarreo.currency,
+                  }
+                : undefined,
+              servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioArmado.cost,
+                    currency: orderForm.deliveryServices.servicioArmado.currency,
+                  }
+                : undefined,
+            }
+          : undefined,
+        observations: orderForm.generalObservations.trim() || undefined,
+        baseCurrency: preferredCurrency,
+        exchangeRatesAtCreation: orderForm.exchangeRates,
+        productMarkups: orderForm.productMarkups,
+        createSupplierOrder: orderForm.createSupplierOrder,
+        status: "Por Confirmar",
+        type: "PendingConfirmation",
+      };
+
+      const created = await addPendingConfirmationOrder(orderData);
+      toast.success(`Pedido por confirmar ${created.orderNumber} guardado. Visible en el historial del cliente.`);
+      orderForm.clearDraftStorage();
+      orderForm.resetForm();
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error creating pending confirmation order:", error);
+      toast.error("Error al guardar el pedido por confirmar. Intenta de nuevo.");
+    }
+  };
+
   // Handler para submit del pedido
   const handleSubmit = async () => {
     try {
-      if (orderForm.isOnlineSellerReferrer) {
-        toast.error(
-          "En modo referidor solo puedes generar presupuestos. Un vendedor de tienda convertirá el presupuesto en pedido."
-        );
-        return;
-      }
       if (!orderForm.selectedClient) {
         toast.error("Por favor selecciona un cliente");
         return;
@@ -553,10 +667,6 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const handleConfirmOrder = async () => {
     try {
       if (!pendingOrderData || !orderForm.selectedClient) return;
-      if (orderForm.isOnlineSellerReferrer) {
-        toast.error("No puedes confirmar un pedido en modo referidor.");
-        return;
-      }
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (orderForm.paymentCondition === "cashea") {
@@ -794,17 +904,16 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                   Siguiente
                   <ChevronRight className="w-4 h-4 ml-2" />
                 </Button>
-              ) : (
+              ) : orderForm.isOnlineSellerReferrer ? (
                 <Button
-                  onClick={handleSubmit}
+                  onClick={handleCreatePendingConfirmation}
                   className="w-full sm:w-auto"
-                  disabled={orderForm.isOnlineSellerReferrer}
-                  title={
-                    orderForm.isOnlineSellerReferrer
-                      ? "En modo referidor solo puedes crear presupuestos"
-                      : undefined
-                  }
+                  variant="secondary"
                 >
+                  Guardar Pedido por Confirmar
+                </Button>
+              ) : (
+                <Button onClick={handleSubmit} className="w-full sm:w-auto">
                   Crear Pedido
                 </Button>
               )}

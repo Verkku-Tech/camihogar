@@ -53,6 +53,15 @@ public class OrdersController : ControllerBase
             || string.Equals(role, "Administrator", StringComparison.Ordinal);
     }
 
+    private static bool CanConfirmPendingOrder(ClaimsPrincipal user)
+    {
+        var role = user.FindFirstValue(ClaimTypes.Role);
+        if (string.IsNullOrWhiteSpace(role)) return false;
+        return string.Equals(role, "Store Seller", StringComparison.Ordinal)
+            || string.Equals(role, "Administrator", StringComparison.Ordinal)
+            || string.Equals(role, "Super Administrator", StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Obtiene pedidos con paginación y filtro de sincronización incremental
     /// </summary>
@@ -339,6 +348,46 @@ public class OrdersController : ControllerBase
         {
             _logger.LogError(ex, "Error al actualizar pedido con ID {OrderId}", id);
             return StatusCode(500, new { message = "Error interno del servidor al actualizar el pedido" });
+        }
+    }
+
+    /// <summary>
+    /// Convierte un pedido por confirmar (PCF) en pedido real (ORD).
+    /// </summary>
+    [HttpPost("{id}/confirm")]
+    [Authorize]
+    [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderResponseDto>> ConfirmPendingOrder(string id, [FromBody] ConfirmOrderDto confirmDto)
+    {
+        try
+        {
+            if (!CanConfirmPendingOrder(User))
+                return Forbid();
+
+            if (string.IsNullOrWhiteSpace(id))
+                return BadRequest(new { message = "El ID del pedido es requerido" });
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var (userId, userName) = GetActor(User);
+            var order = await _orderService.ConfirmPendingOrderAsync(id, confirmDto, userId, userName);
+            return Ok(order);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al confirmar pedido pendiente {OrderId}", id);
+            return StatusCode(500, new { message = "Error interno del servidor al confirmar el pedido" });
         }
     }
 
