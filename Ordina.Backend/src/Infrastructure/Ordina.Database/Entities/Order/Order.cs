@@ -125,5 +125,13 @@ public class Order
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     [BsonElement("type")]
-    public string Type { get; set; } = "Order"; // "Order", "Budget"
+    public string Type { get; set; } = "Order"; // "Order", "Budget", "PendingConfirmation"
+
+    /// <summary>ID del PCF origen cuando este pedido se creó al confirmar un pedido por confirmar.</summary>
+    [BsonElement("originalOrderId")]
+    public string? OriginalOrderId { get; set; }
+
+    /// <summary>Snapshot de productos al crear el PCF (para detectar cambios en confirmación).</summary>
+    [BsonElement("originalProducts")]
+    public List<OrderProduct>? OriginalProducts { get; set; }
 }

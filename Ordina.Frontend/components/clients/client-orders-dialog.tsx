@@ -18,13 +18,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Eye, Loader2 } from "lucide-react"
+import { Eye, Loader2, ClipboardCheck } from "lucide-react"
 import { toast } from "sonner"
 import {
   apiClient,
   type ClientResponseDto,
   type OrderResponseDto,
 } from "@/lib/api-client"
+import { useAuth } from "@/contexts/auth-context"
+import { ConfirmOrderDialog } from "@/components/orders/confirm-order-dialog"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -55,6 +57,10 @@ const getStatusColor = (status: string) => {
     case "Generado":
     case "Generada":
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+    case "Por Confirmar":
+      return "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+    case "Convertido":
+      return "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200"
     default:
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
   }
@@ -91,8 +97,17 @@ export function ClientOrdersHistoryDialog({
   client,
 }: ClientOrdersHistoryDialogProps) {
   const router = useRouter()
+  const { user } = useAuth()
   const [orders, setOrders] = useState<OrderResponseDto[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [confirmPcfId, setConfirmPcfId] = useState<string | null>(null)
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+
+  const canConfirmPcf =
+    user &&
+    (user.role === "Store Seller" ||
+      user.role === "Administrator" ||
+      user.role === "Super Administrator")
 
   useEffect(() => {
     if (!open || !client) {
@@ -154,18 +169,33 @@ export function ClientOrdersHistoryDialog({
               <TableHeader>
                 <TableRow>
                   <TableHead>Pedido</TableHead>
+                  <TableHead>Tipo</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Método de pago</TableHead>
                   <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="w-[72px] text-right">Ver</TableHead>
+                  <TableHead className="text-right w-[120px]">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {orders.map((order) => (
-                  <TableRow key={order.id}>
+                {orders.map((order) => {
+                  const isPcfPending =
+                    order.type === "PendingConfirmation" && order.status === "Por Confirmar"
+                  const typeLabel =
+                    order.type === "PendingConfirmation"
+                      ? "Por confirmar"
+                      : order.type === "Budget"
+                        ? "Presupuesto"
+                        : "Pedido"
+                  return (
+                    <TableRow key={order.id}>
                     <TableCell className="font-mono text-sm font-medium">
                       {order.orderNumber}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="font-normal">
+                        {typeLabel}
+                      </Badge>
                     </TableCell>
                     <TableCell>{formatDate(order.createdAt)}</TableCell>
                     <TableCell>
@@ -180,28 +210,72 @@ export function ClientOrdersHistoryDialog({
                       {formatBs(order.total)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        title="Ver detalle"
-                        onClick={() => {
-                          onOpenChange(false)
-                          router.push(
-                            `/pedidos/${encodeURIComponent(order.orderNumber)}`,
-                          )
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        {canConfirmPcf && isPcfPending && (
+                          <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            className="h-8 px-2"
+                            title="Confirmar pedido en tienda"
+                            onClick={() => {
+                              setConfirmPcfId(order.id)
+                              setConfirmDialogOpen(true)
+                            }}
+                          >
+                            <ClipboardCheck className="h-4 w-4 sm:mr-1" />
+                            <span className="hidden sm:inline">Confirmar</span>
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          title="Ver detalle"
+                          onClick={() => {
+                            onOpenChange(false)
+                            router.push(
+                              `/pedidos/${encodeURIComponent(order.orderNumber)}`,
+                            )
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           )}
         </div>
       </DialogContent>
+
+      <ConfirmOrderDialog
+        open={confirmDialogOpen}
+        onOpenChange={(o) => {
+          setConfirmDialogOpen(o)
+          if (!o) setConfirmPcfId(null)
+        }}
+        pendingOrderId={confirmPcfId}
+        onConfirmed={() => {
+          if (!client) return
+          void (async () => {
+            try {
+              const list = await apiClient.getOrdersByClient(client.id)
+              const sorted = [...list].sort(
+                (a, b) =>
+                  new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+              )
+              setOrders(sorted)
+            } catch (e) {
+              console.error(e)
+              toast.error("No se pudo actualizar el historial.")
+            }
+          })()
+        }}
+      />
     </Dialog>
   )
 }

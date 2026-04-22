@@ -853,8 +853,9 @@ public class ReportService : IReportService
 
         foreach (var order in orders)
         {
-            // Presupuestos no forman parte del reporte de pagos de pedidos
-            if (string.Equals(order.Type, "Budget", StringComparison.OrdinalIgnoreCase))
+            // Presupuestos y pedidos por confirmar no forman parte del reporte de pagos de pedidos
+            if (string.Equals(order.Type, "Budget", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(order.Type, "PendingConfirmation", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             // Un solo origen de abonos (misma regla que el detalle del pedido): partial si existe, si no mixed
@@ -1285,6 +1286,9 @@ public class ReportService : IReportService
         {
             // Filtrar por fecha (OBLIGATORIO)
             if (order.CreatedAt < adjustedStartDate || order.CreatedAt > adjustedEndDate)
+                continue;
+
+            if (string.Equals(order.Type, "PendingConfirmation", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             // Filtrar por vendedor si se especifica

@@ -40,5 +40,8 @@ public class OrderResponseDto
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public string Type { get; set; } = "Order";
+
+    public string? OriginalOrderId { get; set; }
+    public List<OrderProductDto>? OriginalProducts { get; set; }
 }
 
