@@ -74,25 +74,31 @@ public class SaleTypeCommissionRuleRepository : ISaleTypeCommissionRuleRepositor
     }
 
     /// <summary>
-    /// Inicializa las reglas por defecto según el documento de especificaciones
+    /// Inicializa las reglas por defecto (% de la comisión USD de familia × unidad).
+    /// ENCARGO y SA incluyen reparto a post venta; el resto postventaRate = 0.
     /// </summary>
-    public async Task SeedDefaultRulesAsync()
+    public async Task SeedDefaultRulesAsync(bool forceReset = false)
     {
         var existingRules = await GetAllAsync();
-        if (existingRules.Any())
+        if (existingRules.Any() && !forceReset)
         {
-            return; // Ya hay reglas configuradas, no sobrescribir
+            return;
+        }
+
+        if (forceReset && existingRules.Any())
+        {
+            await _collection.DeleteManyAsync(Builders<SaleTypeCommissionRule>.Filter.Empty);
         }
 
         var defaultRules = new List<SaleTypeCommissionRule>
         {
-            new() { SaleType = "entrega", SaleTypeLabel = "ENTREGA", VendorRate = 2.5m, ReferrerRate = 0m },
-            new() { SaleType = "encargo_entrega", SaleTypeLabel = "ENCARGO/ENTREGA", VendorRate = 2.5m, ReferrerRate = 0m },
-            new() { SaleType = "delivery_express", SaleTypeLabel = "DELIVERY EXPRESS", VendorRate = 2.5m, ReferrerRate = 0m },
-            new() { SaleType = "retiro_tienda", SaleTypeLabel = "RETIRO POR TIENDA (RxT)", VendorRate = 2.5m, ReferrerRate = 0m },
-            new() { SaleType = "retiro_almacen", SaleTypeLabel = "RETIRO POR ALMACÉN (RxA)", VendorRate = 2.5m, ReferrerRate = 0m },
-            new() { SaleType = "encargo", SaleTypeLabel = "ENCARGO", VendorRate = 2m, ReferrerRate = 1m },
-            new() { SaleType = "sistema_apartado", SaleTypeLabel = "SISTEMA DE APARTADO (SA)", VendorRate = 1.5m, ReferrerRate = 1.5m },
+            new() { SaleType = "entrega", SaleTypeLabel = "ENTREGA", VendorRate = 100m, ReferrerRate = 60m, PostventaRate = 0m },
+            new() { SaleType = "encargo_entrega", SaleTypeLabel = "ENCARGO/ENTREGA", VendorRate = 100m, ReferrerRate = 60m, PostventaRate = 0m },
+            new() { SaleType = "delivery_express", SaleTypeLabel = "DELIVERY EXPRESS", VendorRate = 100m, ReferrerRate = 60m, PostventaRate = 0m },
+            new() { SaleType = "retiro_tienda", SaleTypeLabel = "RETIRO POR TIENDA (RxT)", VendorRate = 100m, ReferrerRate = 60m, PostventaRate = 0m },
+            new() { SaleType = "retiro_almacen", SaleTypeLabel = "RETIRO POR ALMACÉN (RxA)", VendorRate = 100m, ReferrerRate = 60m, PostventaRate = 0m },
+            new() { SaleType = "encargo", SaleTypeLabel = "ENCARGO", VendorRate = 80m, ReferrerRate = 60m, PostventaRate = 40m },
+            new() { SaleType = "sistema_apartado", SaleTypeLabel = "SISTEMA DE APARTADO (SA)", VendorRate = 60m, ReferrerRate = 60m, PostventaRate = 60m },
         };
 
         foreach (var rule in defaultRules)

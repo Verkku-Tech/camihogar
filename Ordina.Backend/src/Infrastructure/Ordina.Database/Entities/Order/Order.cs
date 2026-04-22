@@ -30,6 +30,12 @@ public class Order
     [BsonElement("referrerName")]
     public string? ReferrerName { get; set; }
 
+    [BsonElement("postventaId")]
+    public string? PostventaId { get; set; }
+
+    [BsonElement("postventaName")]
+    public string? PostventaName { get; set; }
+
     [BsonElement("products")]
     public List<OrderProduct> Products { get; set; } = new();
 

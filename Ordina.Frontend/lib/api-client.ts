@@ -1364,9 +1364,10 @@ export class ApiClient {
     );
   }
 
-  async seedDefaultSaleTypeRules(): Promise<SaleTypeCommissionRuleDto[]> {
+  async seedDefaultSaleTypeRules(force = false): Promise<SaleTypeCommissionRuleDto[]> {
+    const q = force ? "?force=true" : "";
     return this.request<SaleTypeCommissionRuleDto[]>(
-      "/api/CommissionSettings/SaleTypeRules/SeedDefaults",
+      `/api/CommissionSettings/SaleTypeRules/SeedDefaults${q}`,
       {
         method: "POST",
       },
@@ -1494,6 +1495,7 @@ export interface SaleTypeCommissionRuleDto {
   saleTypeLabel: string;
   vendorRate: number;
   referrerRate: number;
+  postventaRate?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -1503,6 +1505,8 @@ export interface CreateSaleTypeCommissionRuleDto {
   saleTypeLabel: string;
   vendorRate: number;
   referrerRate: number;
+  /** Opcional por compatibilidad; el backend asume 0 si falta. */
+  postventaRate?: number;
 }
 
 // Types
@@ -1908,6 +1912,8 @@ export interface OrderResponseDto {
   vendorName: string;
   referrerId?: string;
   referrerName?: string;
+  postventaId?: string;
+  postventaName?: string;
   products: OrderProductDto[];
   subtotal: number;
   taxAmount: number;
@@ -2019,6 +2025,8 @@ export interface CreateOrderDto {
   vendorName: string;
   referrerId?: string;
   referrerName?: string;
+  postventaId?: string;
+  postventaName?: string;
   products: OrderProductDto[];
   subtotal: number;
   taxAmount: number;
@@ -2075,6 +2083,8 @@ export interface UpdateOrderDto {
   vendorName?: string;
   referrerId?: string;
   referrerName?: string;
+  postventaId?: string;
+  postventaName?: string;
   products?: OrderProductDto[];
   subtotal?: number;
   taxAmount?: number;

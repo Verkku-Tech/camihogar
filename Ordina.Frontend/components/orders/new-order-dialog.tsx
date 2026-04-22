@@ -192,7 +192,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   };
 
   const getAccountsForPaymentMethod = (method: string): Account[] => {
-    if (["Binance", "Paypal"].includes(method)) {
+    if (method === "Paypal") {
       return orderForm.accounts.filter((acc) => acc.accountType === "Cuentas Digitales");
     } else if (
       [
