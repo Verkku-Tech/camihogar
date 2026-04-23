@@ -16,6 +16,7 @@ import type {
   OrderResponseDto,
   CreateOrderDto,
   UpdateOrderDto,
+  ConvertBudgetToOrderDto,
   OrderProductDto as OrderProductDtoBackend,
   PaymentDetailsDto,
   PartialPaymentDto as PartialPaymentDtoBackend,
@@ -2193,6 +2194,61 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   type: order.type ?? "Order",
 });
 
+/** Body para POST /api/Orders/{id}/convert-to-order (el servidor toma cliente/vendedor del presupuesto). */
+export function orderToConvertBudgetDto(
+  order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">
+): ConvertBudgetToOrderDto {
+  const c = orderToBackendDto(order);
+  return {
+    products: c.products,
+    paymentType: c.paymentType,
+    paymentMethod: c.paymentMethod,
+    paymentCondition: c.paymentCondition,
+    paymentDetails: c.paymentDetails,
+    partialPayments: c.partialPayments,
+    mixedPayments: c.mixedPayments,
+    saleType: c.saleType,
+    deliveryType: c.deliveryType,
+    deliveryZone: c.deliveryZone,
+    deliveryAddress: c.deliveryAddress,
+    hasDelivery: c.hasDelivery,
+    deliveryServices: c.deliveryServices,
+    observations: c.observations,
+    subtotal: c.subtotal,
+    taxAmount: c.taxAmount,
+    deliveryCost: c.deliveryCost,
+    total: c.total,
+    subtotalBeforeDiscounts: c.subtotalBeforeDiscounts,
+    productDiscountTotal: c.productDiscountTotal,
+    generalDiscountAmount: c.generalDiscountAmount,
+    productMarkups: c.productMarkups,
+    createSupplierOrder: c.createSupplierOrder,
+    postventaId: c.postventaId,
+    postventaName: c.postventaName,
+    exchangeRatesAtCreation: c.exchangeRatesAtCreation,
+  };
+}
+
+/** Tras convertir presupuesto en API: nuevo ORD en `orders` y quitar el PRE de `budgets`. */
+export async function persistConvertedBudgetLocally(
+  budgetId: string,
+  dto: OrderResponseDto
+): Promise<Order> {
+  const localOrder = orderFromBackendDto(dto);
+  try {
+    await db.remove("budgets", budgetId);
+  } catch {
+    /* no estaba en budgets */
+  }
+  try {
+    await db.remove("orders", budgetId);
+  } catch {
+    /* no estaba en orders */
+  }
+  await db.put("orders", localOrder);
+  return localOrder;
+}
+
 /**
  * Opciones de compatibilidad (server-first ignora throttles; refresh fuerza fetch desde API).
  */
@@ -2590,6 +2646,52 @@ export const updateOrder = async (
                 : undefined,
             status: updatedOrder.status !== existingOrder.status ? updatedOrder.status : undefined,
             observations: updatedOrder.observations !== existingOrder.observations ? updatedOrder.observations : undefined,
+            paymentDetails:
+              JSON.stringify(updatedOrder.paymentDetails) !== JSON.stringify(existingOrder.paymentDetails)
+                ? updatedOrder.paymentDetails
+                  ? {
+                      pagomovilReference: updatedOrder.paymentDetails.pagomovilReference,
+                      pagomovilBank: updatedOrder.paymentDetails.pagomovilBank,
+                      pagomovilPhone: updatedOrder.paymentDetails.pagomovilPhone,
+                      pagomovilDate: updatedOrder.paymentDetails.pagomovilDate,
+                      transferenciaBank: updatedOrder.paymentDetails.transferenciaBank,
+                      transferenciaReference: updatedOrder.paymentDetails.transferenciaReference,
+                      transferenciaDate: updatedOrder.paymentDetails.transferenciaDate,
+                      cashAmount: updatedOrder.paymentDetails.cashAmount,
+                      cashCurrency: updatedOrder.paymentDetails.cashCurrency,
+                      cashReceived: updatedOrder.paymentDetails.cashReceived,
+                      exchangeRate: updatedOrder.paymentDetails.exchangeRate,
+                      originalAmount: updatedOrder.paymentDetails.originalAmount,
+                      originalCurrency: updatedOrder.paymentDetails.originalCurrency,
+                      accountId: updatedOrder.paymentDetails.accountId,
+                      accountNumber: updatedOrder.paymentDetails.accountNumber,
+                      bank: updatedOrder.paymentDetails.bank,
+                      email: updatedOrder.paymentDetails.email,
+                      wallet: updatedOrder.paymentDetails.wallet,
+                      envia: updatedOrder.paymentDetails.envia,
+                      isConciliated: updatedOrder.paymentDetails.isConciliated,
+                    }
+                  : undefined
+                : undefined,
+            type: updatedOrder.type !== existingOrder.type ? updatedOrder.type : undefined,
+            saleType: updatedOrder.saleType !== existingOrder.saleType ? updatedOrder.saleType : undefined,
+            deliveryType: updatedOrder.deliveryType !== existingOrder.deliveryType ? updatedOrder.deliveryType : undefined,
+            deliveryZone: updatedOrder.deliveryZone !== existingOrder.deliveryZone ? updatedOrder.deliveryZone : undefined,
+            postventaId: updatedOrder.postventaId !== existingOrder.postventaId ? updatedOrder.postventaId : undefined,
+            postventaName: updatedOrder.postventaName !== existingOrder.postventaName ? updatedOrder.postventaName : undefined,
+            productMarkups:
+              JSON.stringify(updatedOrder.productMarkups) !== JSON.stringify(existingOrder.productMarkups)
+                ? updatedOrder.productMarkups
+                : undefined,
+            createSupplierOrder:
+              updatedOrder.createSupplierOrder !== existingOrder.createSupplierOrder
+                ? updatedOrder.createSupplierOrder
+                : undefined,
+            exchangeRatesAtCreation:
+              JSON.stringify(updatedOrder.exchangeRatesAtCreation) !==
+              JSON.stringify(existingOrder.exchangeRatesAtCreation)
+                ? updatedOrder.exchangeRatesAtCreation
+                : undefined,
           };
 
           // Remover campos undefined
@@ -2741,6 +2843,45 @@ export const updateOrder = async (
               isConciliated: p.paymentDetails.isConciliated,
             } : undefined,
           })),
+          paymentType: updatedOrder.paymentType,
+          paymentMethod: updatedOrder.paymentMethod,
+          paymentCondition: updatedOrder.paymentCondition,
+          paymentDetails: updatedOrder.paymentDetails
+            ? {
+                pagomovilReference: updatedOrder.paymentDetails.pagomovilReference,
+                pagomovilBank: updatedOrder.paymentDetails.pagomovilBank,
+                pagomovilPhone: updatedOrder.paymentDetails.pagomovilPhone,
+                pagomovilDate: updatedOrder.paymentDetails.pagomovilDate,
+                transferenciaBank: updatedOrder.paymentDetails.transferenciaBank,
+                transferenciaReference: updatedOrder.paymentDetails.transferenciaReference,
+                transferenciaDate: updatedOrder.paymentDetails.transferenciaDate,
+                cashAmount: updatedOrder.paymentDetails.cashAmount,
+                cashCurrency: updatedOrder.paymentDetails.cashCurrency,
+                cashReceived: updatedOrder.paymentDetails.cashReceived,
+                exchangeRate: updatedOrder.paymentDetails.exchangeRate,
+                originalAmount: updatedOrder.paymentDetails.originalAmount,
+                originalCurrency: updatedOrder.paymentDetails.originalCurrency,
+                accountId: updatedOrder.paymentDetails.accountId,
+                accountNumber: updatedOrder.paymentDetails.accountNumber,
+                bank: updatedOrder.paymentDetails.bank,
+                email: updatedOrder.paymentDetails.email,
+                wallet: updatedOrder.paymentDetails.wallet,
+                envia: updatedOrder.paymentDetails.envia,
+                isConciliated: updatedOrder.paymentDetails.isConciliated,
+              }
+            : undefined,
+          saleType: updatedOrder.saleType,
+          deliveryType: updatedOrder.deliveryType,
+          deliveryZone: updatedOrder.deliveryZone,
+          postventaId: updatedOrder.postventaId,
+          postventaName: updatedOrder.postventaName,
+          deliveryAddress: updatedOrder.deliveryAddress,
+          hasDelivery: updatedOrder.hasDelivery,
+          productMarkups: updatedOrder.productMarkups,
+          createSupplierOrder: updatedOrder.createSupplierOrder,
+          exchangeRatesAtCreation: updatedOrder.exchangeRatesAtCreation,
+          type: updatedOrder.type,
+          observations: updatedOrder.observations,
           status: updatedOrder.status,
           deliveryServices: updatedOrder.deliveryServices,
         };

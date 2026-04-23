@@ -1221,6 +1221,16 @@ export class ApiClient {
     });
   }
 
+  async convertBudgetToOrder(id: string, body: ConvertBudgetToOrderDto) {
+    return this.request<OrderResponseDto>(
+      `/api/Orders/${encodeURIComponent(id)}/convert-to-order`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    );
+  }
+
   async updateOrder(id: string, order: UpdateOrderDto) {
     return this.request<OrderResponseDto>(`/api/Orders/${id}`, {
       method: "PUT",
@@ -1974,6 +1984,36 @@ export interface OrderResponseDto {
   type?: string;
   originalOrderId?: string;
   originalProducts?: OrderProductDto[];
+}
+
+/** Convertir un presupuesto (Budget) en pedido ORD. */
+export interface ConvertBudgetToOrderDto {
+  products?: OrderProductDto[];
+  paymentType: string;
+  paymentMethod: string;
+  paymentCondition?: string;
+  paymentDetails?: PaymentDetailsDto;
+  partialPayments?: PartialPaymentDto[];
+  mixedPayments?: PartialPaymentDto[];
+  saleType?: string;
+  deliveryType?: string;
+  deliveryZone?: string;
+  deliveryAddress?: string;
+  hasDelivery?: boolean;
+  deliveryServices?: CreateOrderDto["deliveryServices"];
+  observations?: string;
+  subtotal?: number;
+  taxAmount?: number;
+  deliveryCost?: number;
+  total?: number;
+  subtotalBeforeDiscounts?: number;
+  productDiscountTotal?: number;
+  generalDiscountAmount?: number;
+  productMarkups?: { [key: string]: number };
+  createSupplierOrder?: boolean;
+  postventaId?: string;
+  postventaName?: string;
+  exchangeRatesAtCreation?: CreateOrderDto["exchangeRatesAtCreation"];
 }
 
 /** Confirmar un pedido por confirmar (PCF) y crear el ORD. */

@@ -366,6 +366,119 @@ public class OrderService : IOrderService
         return MapToDto(created);
     }
 
+    public async Task<OrderResponseDto> ConvertBudgetToOrderAsync(string budgetId, ConvertBudgetToOrderDto dto, string userId, string userName)
+    {
+        if (string.IsNullOrWhiteSpace(budgetId))
+            throw new ArgumentException("El ID del presupuesto es requerido", nameof(budgetId));
+
+        var budget = await _orderRepository.GetByIdAsync(budgetId);
+        if (budget == null)
+            throw new KeyNotFoundException($"Presupuesto con ID {budgetId} no encontrado");
+
+        if (!string.Equals(budget.Type, "Budget", StringComparison.Ordinal))
+            throw new ArgumentException("El documento no es un presupuesto (Budget).");
+
+        if (string.Equals(budget.Status, "Convertido", StringComparison.Ordinal))
+            throw new ArgumentException("Este presupuesto ya fue convertido a pedido.");
+
+        List<OrderProduct> finalProducts;
+        if (dto.Products != null && dto.Products.Count > 0)
+            finalProducts = dto.Products.Select(MapProductFromDto).ToList();
+        else
+            finalProducts = CloneOrderProducts(budget.Products);
+
+        if (string.IsNullOrWhiteSpace(dto.PaymentType))
+            throw new ArgumentException("El tipo de pago es requerido para convertir a pedido", nameof(dto.PaymentType));
+        if (string.IsNullOrWhiteSpace(dto.PaymentMethod))
+            throw new ArgumentException("El método de pago es requerido para convertir a pedido", nameof(dto.PaymentMethod));
+
+        var partialPayments = dto.PartialPayments?.Select(MapPartialPaymentFromDto).ToList();
+        var mixedPayments = dto.MixedPayments?.Select(MapPartialPaymentFromDto).ToList();
+        var partialCount = partialPayments?.Count ?? 0;
+        var mixedCount = mixedPayments?.Count ?? 0;
+        var multi = partialCount > 1 || mixedCount > 1;
+
+        var paymentMethodResolved = dto.PaymentMethod;
+        if (multi && string.IsNullOrWhiteSpace(paymentMethodResolved))
+            paymentMethodResolved = "Mixto";
+
+        PaymentDetails? paymentDetailsEntity = dto.PaymentDetails != null
+            ? MapPaymentDetailsFromDto(dto.PaymentDetails)
+            : null;
+        if (paymentDetailsEntity == null && !multi && partialCount == 1 && partialPayments != null &&
+            partialPayments[0].PaymentDetails != null)
+            paymentDetailsEntity = partialPayments[0].PaymentDetails;
+        if (paymentDetailsEntity == null && !multi && mixedCount == 1 && mixedPayments != null &&
+            mixedPayments[0].PaymentDetails != null)
+            paymentDetailsEntity = mixedPayments[0].PaymentDetails;
+
+        var newOrder = new Order
+        {
+            ClientId = budget.ClientId,
+            ClientName = budget.ClientName,
+            VendorId = budget.VendorId,
+            VendorName = budget.VendorName,
+            ReferrerId = budget.ReferrerId,
+            ReferrerName = budget.ReferrerName,
+            PostventaId = dto.PostventaId ?? budget.PostventaId,
+            PostventaName = dto.PostventaName ?? budget.PostventaName,
+            Products = finalProducts,
+            Subtotal = dto.Subtotal ?? budget.Subtotal,
+            TaxAmount = dto.TaxAmount ?? budget.TaxAmount,
+            DeliveryCost = dto.DeliveryCost ?? budget.DeliveryCost,
+            Total = dto.Total ?? budget.Total,
+            SubtotalBeforeDiscounts = dto.SubtotalBeforeDiscounts ?? budget.SubtotalBeforeDiscounts,
+            ProductDiscountTotal = dto.ProductDiscountTotal ?? budget.ProductDiscountTotal,
+            GeneralDiscountAmount = dto.GeneralDiscountAmount ?? budget.GeneralDiscountAmount,
+            PaymentType = dto.PaymentType,
+            PaymentMethod = paymentMethodResolved,
+            PaymentCondition = dto.PaymentCondition,
+            PaymentDetails = paymentDetailsEntity,
+            PartialPayments = multi ? new List<PartialPayment>() : partialPayments,
+            MixedPayments = multi ? mixedPayments : null,
+            DeliveryAddress = dto.DeliveryAddress ?? budget.DeliveryAddress,
+            HasDelivery = dto.HasDelivery ?? budget.HasDelivery,
+            DeliveryServices = dto.DeliveryServices != null ? MapDeliveryServicesFromDto(dto.DeliveryServices) : budget.DeliveryServices,
+            Status = "Generado",
+            ProductMarkups = dto.ProductMarkups ?? budget.ProductMarkups,
+            CreateSupplierOrder = dto.CreateSupplierOrder ?? budget.CreateSupplierOrder,
+            Observations = dto.Observations ?? budget.Observations,
+            SaleType = dto.SaleType ?? budget.SaleType,
+            DeliveryType = dto.DeliveryType ?? budget.DeliveryType,
+            DeliveryZone = dto.DeliveryZone ?? budget.DeliveryZone,
+            ExchangeRatesAtCreation = dto.ExchangeRatesAtCreation != null
+                ? MapExchangeRatesFromDto(dto.ExchangeRatesAtCreation)
+                : budget.ExchangeRatesAtCreation,
+            Type = "Order",
+            OriginalOrderId = budget.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var existingOrders = (await _orderRepository.GetAllAsync()).ToList();
+        var ordCount = existingOrders.Count(o => string.Equals(o.Type, "Order", StringComparison.Ordinal));
+        var orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + 1)}";
+        var attempts = 0;
+        while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
+        {
+            orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + attempts + 2)}";
+            attempts++;
+        }
+        newOrder.OrderNumber = orderNumber;
+
+        RecalculateOrderStatus(newOrder);
+        var created = await _orderRepository.CreateAsync(newOrder);
+        await _auditLogService.LogOrderCreatedAsync(created, userId, userName);
+
+        var budgetBefore = OrderDeepClone.Clone(budget);
+        budget.Status = "Convertido";
+        budget.UpdatedAt = DateTime.UtcNow;
+        var updatedBudget = await _orderRepository.UpdateAsync(budget);
+        await _auditLogService.LogOrderUpdatedAsync(budgetBefore, updatedBudget, userId, userName);
+
+        return MapToDto(created);
+    }
+
     public async Task<OrderResponseDto> UpdateOrderAsync(string id, UpdateOrderDto updateDto, string userId, string userName)
     {
         try

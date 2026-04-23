@@ -24,12 +24,15 @@ import {
   addOrder,
   updateOrder,
   addBudget,
+  orderToConvertBudgetDto,
+  persistConvertedBudgetLocally,
   type Order,
   type OrderProduct,
   type PartialPayment,
   type ProductImage,
   type Account,
 } from "@/lib/storage";
+import { apiClient } from "@/lib/api-client";
 import { Currency } from "@/lib/currency-utils";
 import {
   normalizePaymentsForSave,
@@ -93,6 +96,10 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
   const allowRemovePayment = hasPermission("orders.delete");
   const orderForm = useEditOrderForm(open, order);
   const isPaymentsOnly = mode === "payments";
+  const isEditingBudget =
+    !!order &&
+    ((order.type || "").toLowerCase() === "budget" ||
+      (order.orderNumber || "").toUpperCase().startsWith("PRE-"));
 
   // En modo solo pagos, forzar paso 3
   useEffect(() => {
@@ -796,18 +803,28 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
         },
       };
 
-      const updatedOrder = await updateOrder(order.id, orderData);
+      if (isEditingBudget) {
+        const body = orderToConvertBudgetDto(orderData);
+        const created = await apiClient.convertBudgetToOrder(order.id, body);
+        await persistConvertedBudgetLocally(order.id, created);
+        setIsConfirmationOpen(false);
+        onOpenChange(false);
+        toast.success(`Pedido ${created.orderNumber} creado desde el presupuesto.`);
+      } else {
+        await updateOrder(order.id, {
+          ...orderData,
+          type: "Order",
+        });
 
-      setIsConfirmationOpen(false);
-      onOpenChange(false);
-      toast.success("Pedido actualizado exitosamente");
+        setIsConfirmationOpen(false);
+        onOpenChange(false);
+        toast.success("Pedido actualizado exitosamente");
+      }
 
       // Reset form
       orderForm.resetForm();
       setPendingOrderData(null);
 
-      // Redirigir o recargar (opcional, si queremos ver los cambios reflejados donde se invocó)
-      // window.location.href = `/pedidos/${order.orderNumber}`;
       if (typeof window !== "undefined") {
         window.location.reload();
       }
@@ -906,7 +923,7 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
                   </Button>
                 ) : (
                   <Button onClick={handleSubmit} className="w-full sm:w-auto">
-                    Crear Pedido
+                    {isEditingBudget ? "Guardar como pedido" : "Crear Pedido"}
                   </Button>
                 )}
               </div>
@@ -977,6 +994,7 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
             setPendingOrderData(null);
           }}
           orderData={pendingOrderData}
+          isBudgetConversion={isEditingBudget}
         />
       )}
     </>

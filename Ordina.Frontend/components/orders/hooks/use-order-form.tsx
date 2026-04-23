@@ -27,6 +27,10 @@ import {
   type Currency,
 } from "@/lib/currency-utils";
 import { PAYMENT_BALANCE_EPSILON_BS } from "@/lib/order-payments";
+import {
+  mergeDiscountUiIntoAttributes,
+  readDiscountUiFromProduct,
+} from "@/lib/product-discount-ui";
 
 export interface OrderFormData {
   vendor: string;
@@ -196,7 +200,11 @@ export interface UseOrderFormReturn {
   getDefaultCurrencyFromSelection: () => Currency;
   getCurrencyOrder: () => Currency[];
   handleProductsSelect: (products: OrderProduct[]) => void;
-  handleProductDiscountChange: (productId: string, value: number) => void;
+  handleProductDiscountChange: (
+    productId: string,
+    value: number,
+    opts?: { inputCurrency?: Currency }
+  ) => void;
   handleProductDiscountTypeChange: (
     productId: string,
     type: "monto" | "porcentaje"
@@ -794,10 +802,18 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       const newCurrencies: Record<string, Currency> = {};
       products.forEach((product) => {
         if (!productDiscountTypes[product.id]) {
-          newTypes[product.id] = "monto";
+          const { type, currency } = readDiscountUiFromProduct(
+            product,
+            getDefaultCurrencyFromSelection()
+          );
+          newTypes[product.id] = type;
+          newCurrencies[product.id] = currency;
         }
-        if (!productDiscountCurrencies[product.id]) {
-          newCurrencies[product.id] = getDefaultCurrencyFromSelection();
+        if (!productDiscountCurrencies[product.id] && !newCurrencies[product.id]) {
+          newCurrencies[product.id] = readDiscountUiFromProduct(
+            product,
+            getDefaultCurrencyFromSelection()
+          ).currency;
         }
       });
       if (Object.keys(newTypes).length > 0) {
@@ -815,7 +831,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
   );
 
   const handleProductDiscountChange = useCallback(
-    (productId: string, value: number) => {
+    (productId: string, value: number, opts?: { inputCurrency?: Currency }) => {
       setSelectedProducts((products) =>
         products.map((product) => {
           if (product.id !== productId) {
@@ -824,7 +840,9 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
           const baseTotal = getProductBaseTotal(product);
           const discountType = productDiscountTypes[productId] || "monto";
           const discountCurrency =
-            productDiscountCurrencies[productId] || getDefaultCurrencyFromSelection();
+            opts?.inputCurrency ??
+            productDiscountCurrencies[productId] ??
+            getDefaultCurrencyFromSelection();
 
           let discountAmount: number;
           if (discountType === "porcentaje") {
@@ -867,6 +885,11 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
           return {
             ...product,
             discount: discountAmount,
+            attributes: mergeDiscountUiIntoAttributes(
+              product.attributes,
+              discountType,
+              discountCurrency
+            ),
           };
         })
       );
@@ -884,8 +907,19 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
   const handleProductDiscountTypeChange = useCallback(
     (productId: string, type: "monto" | "porcentaje") => {
       setProductDiscountTypes((prev) => ({ ...prev, [productId]: type }));
+      setSelectedProducts((products) =>
+        products.map((p) => {
+          if (p.id !== productId) return p;
+          const currency =
+            productDiscountCurrencies[productId] ?? getDefaultCurrencyFromSelection();
+          return {
+            ...p,
+            attributes: mergeDiscountUiIntoAttributes(p.attributes, type, currency),
+          };
+        })
+      );
     },
-    []
+    [productDiscountCurrencies, getDefaultCurrencyFromSelection]
   );
 
   const handleGeneralDiscountChange = useCallback(

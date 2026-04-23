@@ -295,6 +295,13 @@ public class ReportService : IReportService
 
         foreach (var order in orders)
         {
+            // Alinear con Inventario → Fabricación: no listar pedidos aún no validados
+            if (string.Equals(order.Status, "Generado", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(order.Status, "Generada", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             // Filtrar por número de pedido si se especifica
             if (!string.IsNullOrWhiteSpace(orderNumber) && 
                 !(order.OrderNumber ?? "").Equals(orderNumber, StringComparison.OrdinalIgnoreCase))
@@ -1537,6 +1544,9 @@ public class ReportService : IReportService
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
+                var usdMoneyStyle = sl.CreateStyle();
+                usdMoneyStyle.FormatCode = "\"$\"#,##0.00";
+
                 // Aplicar estilo a las celdas de headers
                 for (int col = 1; col <= 11; col++)
                 {
@@ -1557,6 +1567,8 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 8, item.EstadoPago);
                     sl.SetCellValue(row, 9, item.ImporteTotal);
                     sl.SetCellValue(row, 10, item.SaldoPendiente);
+                    sl.SetCellStyle(row, 9, usdMoneyStyle);
+                    sl.SetCellStyle(row, 10, usdMoneyStyle);
                     sl.SetCellValue(row, 11, " ");
                     row++;
                 }
@@ -1694,6 +1706,8 @@ public class ReportService : IReportService
                 var totalPagadoBs = CalculateTotalPaid(order);
                 var totalPagadoUsd = totalPagadoBs / usdRate;
                 saldoPendiente = Math.Max(0m, importeTotalUsd - totalPagadoUsd);
+                importeTotalUsd = decimal.Round(importeTotalUsd, 2, MidpointRounding.AwayFromZero);
+                saldoPendiente = decimal.Round(saldoPendiente, 2, MidpointRounding.AwayFromZero);
             }
             catch (InvalidOperationException ex)
             {
@@ -1701,6 +1715,11 @@ public class ReportService : IReportService
                     order.OrderNumber, ex.Message);
                 continue;
             }
+
+            var direccionEntrega = (order.DeliveryAddress ?? string.Empty).Trim();
+            var direccionReporte = !string.IsNullOrWhiteSpace(direccionEntrega)
+                ? direccionEntrega
+                : (client?.Direccion ?? string.Empty).Trim();
 
             reportData.Add(new DispatchReportRow
             {
@@ -1710,7 +1729,7 @@ public class ReportService : IReportService
                 Telefono2 = client?.Telefono2 ?? "",
                 CantidadTotal = cantidadTotal,
                 Descripcion = descripcionCompleta,
-                Direccion = order.DeliveryAddress ?? "",
+                Direccion = direccionReporte,
                 EstadoPago = estadoPago,
                 ImporteTotal = importeTotalUsd,
                 SaldoPendiente = saldoPendiente
