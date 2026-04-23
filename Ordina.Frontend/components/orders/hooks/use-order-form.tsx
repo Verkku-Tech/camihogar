@@ -559,15 +559,22 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         setProductDiscountCurrencies(d.productDiscountCurrencies as Record<string, Currency>);
       if (typeof d.deliveryCurrency === "string") setDeliveryCurrency(d.deliveryCurrency as Currency);
       if (Array.isArray(d.selectedCurrencies)) setSelectedCurrencies(d.selectedCurrencies as Currency[]);
-      if (d.onlineSellerMode === "vendor" || d.onlineSellerMode === "referrer" || d.onlineSellerMode === null)
-        setOnlineSellerMode(d.onlineSellerMode as "vendor" | "referrer" | null);
+      const draftSellerMode =
+        d.onlineSellerMode === "vendor" || d.onlineSellerMode === "referrer"
+          ? d.onlineSellerMode
+          : null;
+      setOnlineSellerMode(
+        user?.role === "Online Seller" && draftSellerMode === null
+          ? "vendor"
+          : draftSellerMode
+      );
       setDraftResolution("loaded");
     } catch (e) {
       console.error("Error loading order draft:", e);
       clearDraftStorage();
       setDraftResolution("none");
     }
-  }, [clearDraftStorage, getDraftStorageKey]);
+  }, [clearDraftStorage, getDraftStorageKey, user?.role]);
 
   // Funciones helper
   const getCurrencyOrder = useCallback((): Currency[] => {
@@ -956,7 +963,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       if (currentStep === 1) {
         if (!step1SellerReady) {
           toast.error(
-            "Por favor selecciona un vendedor o, si eres referidor, activa el modo referidor"
+            "Por favor completa el paso 1: vendedor asignado, cliente y al menos un producto."
           );
           return;
         }
