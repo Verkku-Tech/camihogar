@@ -31,6 +31,8 @@ interface Step1BudgetProps {
   onProductSelection: () => void;
   onEditProduct: (product: any) => void;
   onRemoveProduct: (product: any) => void;
+  /** Si true, el referidor se muestra solo lectura (p. ej. confirmación de PCF en tienda). */
+  referrerLocked?: boolean;
 }
 
 export function Step1Budget({
@@ -39,6 +41,7 @@ export function Step1Budget({
   onProductSelection,
   onEditProduct,
   onRemoveProduct,
+  referrerLocked = false,
 }: Step1BudgetProps) {
   const { preferredCurrency } = useCurrency();
   const { user } = useAuth();
@@ -124,7 +127,9 @@ export function Step1Budget({
 
               <div className="space-y-2">
                 <Label htmlFor="referrer">Referidor</Label>
-                {isOnlineSeller && orderForm.onlineSellerMode === "referrer" ? (
+                {referrerLocked ? (
+                  <Input readOnly id="referrer" value={referrerDisplayName || "—"} />
+                ) : isOnlineSeller && orderForm.onlineSellerMode === "referrer" ? (
                   <Input readOnly id="referrer" value={referrerDisplayName} />
                 ) : (
                   <Select

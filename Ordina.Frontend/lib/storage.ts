@@ -1824,7 +1824,7 @@ function paymentConditionFromOrderDto(
   return undefined;
 }
 
-const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
+export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   id: dto.id,
   orderNumber:
     dto.orderNumber ??
