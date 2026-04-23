@@ -865,118 +865,121 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="relative w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4">
-          {isCheckingClientPcf && (
-            <div
-              className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-lg bg-background/70 backdrop-blur-sm"
-              aria-busy="true"
-              aria-live="polite"
-            >
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Verificando pedidos del cliente…</p>
-            </div>
-          )}
-          <DialogHeader className="pb-2 sm:pb-4">
-            <DialogTitle className="text-lg sm:text-xl">
-              Nuevo Pedido - Paso {orderForm.currentStep} de 3
-            </DialogTitle>
-            <DialogDescription>
-              {orderForm.currentStep === 1 && "Configura el presupuesto, cliente y productos"}
-              {orderForm.currentStep === 2 && "Define el estado de los productos"}
-              {orderForm.currentStep === 3 && "Completa los detalles finales del pedido"}
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4">
+          {/* relative solo en wrapper interno: evita que tailwind-merge quite position:fixed del DialogContent base */}
+          <div className="relative flex min-h-0 flex-1 flex-col gap-4">
+            {isCheckingClientPcf && (
+              <div
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-lg bg-background/70 backdrop-blur-sm"
+                aria-busy="true"
+                aria-live="polite"
+              >
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Verificando pedidos del cliente…</p>
+              </div>
+            )}
+            <DialogHeader className="pb-2 sm:pb-4">
+              <DialogTitle className="text-lg sm:text-xl">
+                Nuevo Pedido - Paso {orderForm.currentStep} de 3
+              </DialogTitle>
+              <DialogDescription>
+                {orderForm.currentStep === 1 && "Configura el presupuesto, cliente y productos"}
+                {orderForm.currentStep === 2 && "Define el estado de los productos"}
+                {orderForm.currentStep === 3 && "Completa los detalles finales del pedido"}
+              </DialogDescription>
+            </DialogHeader>
 
-          {/* Renderizar paso actual */}
-          {orderForm.currentStep === 1 && (
-            <Step1Budget
-              orderForm={orderForm}
-              onClientLookup={() => setIsClientLookupOpen(true)}
-              onProductSelection={() => setIsProductSelectionOpen(true)}
-              onEditProduct={handleEditProduct}
-              onRemoveProduct={handleRemoveProduct}
-            />
-          )}
+            {/* Renderizar paso actual */}
+            {orderForm.currentStep === 1 && (
+              <Step1Budget
+                orderForm={orderForm}
+                onClientLookup={() => setIsClientLookupOpen(true)}
+                onProductSelection={() => setIsProductSelectionOpen(true)}
+                onEditProduct={handleEditProduct}
+                onRemoveProduct={handleRemoveProduct}
+              />
+            )}
 
-          {orderForm.currentStep === 2 && (
-            <Step2ProductStatus orderForm={orderForm} />
-          )}
+            {orderForm.currentStep === 2 && (
+              <Step2ProductStatus orderForm={orderForm} />
+            )}
 
-          {orderForm.currentStep === 3 && (
-            <Step3OrderDetails
-              orderForm={orderForm}
-              onSubmit={handleSubmit}
-              addPayment={
-                orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1
-                  ? undefined
-                  : addPayment
-              }
-              updatePayment={updatePayment}
-              updatePaymentDetails={updatePaymentDetails}
-              removePayment={removePayment}
-              getAccountsForPaymentMethod={getAccountsForPaymentMethod}
-              saveAccountInfoToPayment={saveAccountInfoToPayment}
-              updatePaymentImages={updatePaymentImages}
-            />
-          )}
+            {orderForm.currentStep === 3 && (
+              <Step3OrderDetails
+                orderForm={orderForm}
+                onSubmit={handleSubmit}
+                addPayment={
+                  orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1
+                    ? undefined
+                    : addPayment
+                }
+                updatePayment={updatePayment}
+                updatePaymentDetails={updatePaymentDetails}
+                removePayment={removePayment}
+                getAccountsForPaymentMethod={getAccountsForPaymentMethod}
+                saveAccountInfoToPayment={saveAccountInfoToPayment}
+                updatePaymentImages={updatePaymentImages}
+              />
+            )}
 
-          {/* Footer con botones de navegación */}
-          <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t">
-            <Button
-              variant="outline"
-              onClick={orderForm.handleBack}
-              disabled={orderForm.currentStep === 1}
-              className="w-full sm:w-auto"
-            >
-              <ChevronLeft className="w-4 h-4 mr-2" />
-              Anterior
-            </Button>
+            {/* Footer con botones de navegación */}
+            <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={orderForm.handleBack}
+                disabled={orderForm.currentStep === 1}
+                className="w-full sm:w-auto"
+              >
+                <ChevronLeft className="w-4 h-4 mr-2" />
+                Anterior
+              </Button>
 
-            <div className="flex flex-col sm:flex-row gap-3">
-              {orderForm.currentStep === 1 && (
-                <Button
-                  onClick={handleCreateBudget}
-                  variant="outline"
-                  className="w-full sm:w-auto"
-                  disabled={!orderForm.canCreateBudget}
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Presupuesto
-                </Button>
-              )}
-
-              {orderForm.currentStep < 3 ? (
-                <Button
-                  onClick={orderForm.handleNext}
-                  className="w-full sm:w-auto"
-                  disabled={!orderForm.canGoToNextStep}
-                >
-                  Siguiente
-                  <ChevronRight className="w-4 h-4 ml-2" />
-                </Button>
-              ) : user?.role === "Online Seller" ? (
-                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <div className="flex flex-col sm:flex-row gap-3">
+                {orderForm.currentStep === 1 && (
                   <Button
-                    type="button"
+                    onClick={handleCreateBudget}
                     variant="outline"
-                    onClick={handleCreatePendingConfirmation}
                     className="w-full sm:w-auto"
+                    disabled={!orderForm.canCreateBudget}
                   >
-                    Guardar Pedido por Confirmar
+                    <FileText className="w-4 h-4 mr-2" />
+                    Presupuesto
                   </Button>
+                )}
+
+                {orderForm.currentStep < 3 ? (
                   <Button
-                    type="button"
-                    onClick={handleSubmit}
+                    onClick={orderForm.handleNext}
                     className="w-full sm:w-auto"
+                    disabled={!orderForm.canGoToNextStep}
                   >
+                    Siguiente
+                    <ChevronRight className="w-4 h-4 ml-2" />
+                  </Button>
+                ) : user?.role === "Online Seller" ? (
+                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleCreatePendingConfirmation}
+                      className="w-full sm:w-auto"
+                    >
+                      Guardar Pedido por Confirmar
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleSubmit}
+                      className="w-full sm:w-auto"
+                    >
+                      Crear Pedido
+                    </Button>
+                  </div>
+                ) : (
+                  <Button onClick={handleSubmit} className="w-full sm:w-auto">
                     Crear Pedido
                   </Button>
-                </div>
-              ) : (
-                <Button onClick={handleSubmit} className="w-full sm:w-auto">
-                  Crear Pedido
-                </Button>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </DialogContent>
