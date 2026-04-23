@@ -251,11 +251,18 @@ export default function PedidosPage() {
     }
   }
 
-  const canEditAllOrders = hasPermission("orders.update")
+  const canEditOrderFull = hasPermission("orders.update")
+  const canConvertBudget = hasPermission("budgets.convert_to_order")
   const canEditOrderPaymentsOnly = hasPermission("orders.payments.manage")
 
   const handleEdit = (order: UnifiedOrder) => {
-    if (canEditAllOrders) {
+    if (order.type === "budget" && (canConvertBudget || canEditOrderFull)) {
+      setOrderToEdit(order)
+      setEditMode("full")
+      setIsEditOrderOpen(true)
+      return
+    }
+    if (order.type === "order" && canEditOrderFull) {
       setOrderToEdit(order)
       setEditMode("full")
       setIsEditOrderOpen(true)
@@ -273,7 +280,9 @@ export default function PedidosPage() {
   }
 
   const canEditOrder = (order: UnifiedOrder) =>
-    canEditAllOrders || (canEditOrderPaymentsOnly && order.type === "order")
+    (order.type === "budget" && (canConvertBudget || canEditOrderFull)) ||
+    (order.type === "order" && canEditOrderFull) ||
+    (canEditOrderPaymentsOnly && order.type === "order")
 
   const canDeleteOrder = (order: UnifiedOrder) =>
     order.type === "order"
@@ -472,7 +481,13 @@ export default function PedidosPage() {
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => handleEdit(order)}
-                                    title={canEditAllOrders ? "Editar pedido" : "Editar pagos"}
+                                    title={
+                                      order.type === "budget"
+                                        ? "Editar presupuesto"
+                                        : canEditOrderFull
+                                          ? "Editar pedido"
+                                          : "Editar pagos"
+                                    }
                                   >
                                     <Edit className="w-4 h-4" />
                                   </Button>

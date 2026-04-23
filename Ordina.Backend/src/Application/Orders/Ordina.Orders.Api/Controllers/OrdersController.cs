@@ -392,6 +392,52 @@ public class OrdersController : ControllerBase
     }
 
     /// <summary>
+    /// Convierte un presupuesto (Budget) en pedido real (ORD). El presupuesto queda en estado Convertido.
+    /// </summary>
+    [HttpPost("{id}/convert-to-order")]
+    [Authorize]
+    [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderResponseDto>> ConvertBudgetToOrder(string id, [FromBody] ConvertBudgetToOrderDto dto)
+    {
+        try
+        {
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            var canConvertBudget = UserHasPermission(User, "budgets.convert_to_order")
+                || UserHasPermission(User, "orders.update")
+                || string.Equals(role, "Super Administrator", StringComparison.Ordinal)
+                || string.Equals(role, "Administrator", StringComparison.Ordinal);
+            if (!canConvertBudget)
+                return Forbid();
+
+            if (string.IsNullOrWhiteSpace(id))
+                return BadRequest(new { message = "El ID del presupuesto es requerido" });
+
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var (userId, userName) = GetActor(User);
+            var order = await _orderService.ConvertBudgetToOrderAsync(id, dto, userId, userName);
+            return Ok(order);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al convertir presupuesto {BudgetId}", id);
+            return StatusCode(500, new { message = "Error interno del servidor al convertir el presupuesto" });
+        }
+    }
+
+    /// <summary>
     /// Valida un ítem específico del pedido (cambiando su estado a Fabricándose)
     /// </summary>
     [HttpPatch("{id}/items/{itemId}/validate")]

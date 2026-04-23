@@ -324,7 +324,8 @@ export function Step1Budget({
                                       }
                                       orderForm.handleProductDiscountChange(
                                         product.id,
-                                        discountInNewCurrency
+                                        discountInNewCurrency,
+                                        { inputCurrency: newCurrency }
                                       );
                                     }
                                   }}
@@ -578,7 +579,8 @@ export function Step1Budget({
                                           }
                                           orderForm.handleProductDiscountChange(
                                             product.id,
-                                            discountInNewCurrency
+                                            discountInNewCurrency,
+                                            { inputCurrency: newCurrency }
                                           );
                                         }
                                       }}
