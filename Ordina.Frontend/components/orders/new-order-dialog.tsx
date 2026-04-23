@@ -268,6 +268,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   // Handler para crear presupuesto
   const handleCreateBudget = async () => {
     try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
       if (!orderForm.canCreateBudget) {
         toast.error("Por favor completa la información requerida");
         return;
@@ -346,6 +349,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
   const handleCreatePendingConfirmation = async () => {
     try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
       if (!user?.id) {
         toast.error("Debes iniciar sesión");
         return;
@@ -466,6 +472,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   // Handler para submit del pedido
   const handleSubmit = async () => {
     try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
       if (!orderForm.selectedClient) {
         toast.error("Por favor selecciona un cliente");
         return;

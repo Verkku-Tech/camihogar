@@ -269,6 +269,9 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
   const handleSavePaymentsOnly = async () => {
     if (!order) return;
     try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
       const paymentCondition = order.paymentCondition ?? "pago_parcial";
       if (paymentCondition === "pago_a_entrega") {
         toast.error("Este pedido es pago a la entrega; no se registran abonos aquí.");
@@ -392,6 +395,9 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
   // Handler para crear presupuesto
   const handleCreateBudget = async () => {
     try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
       if (
         !orderForm.selectedClient ||
         !orderForm.formData.vendor ||
@@ -469,6 +475,9 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
   // Handler para submit del pedido
   const handleSubmit = async () => {
     try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
       if (!orderForm.selectedClient) {
         toast.error("Por favor selecciona un cliente");
         return;
@@ -667,6 +676,9 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
   // Handler para confirmar el pedido
   const handleConfirmOrder = async () => {
     try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
       if (!pendingOrderData || !orderForm.selectedClient || !order) return;
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
