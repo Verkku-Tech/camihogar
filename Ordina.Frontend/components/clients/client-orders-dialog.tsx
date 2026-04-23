@@ -28,6 +28,10 @@ import {
 import { useAuth } from "@/contexts/auth-context"
 import { EditOrderDialog } from "@/components/orders/edit-order-dialog"
 import { orderFromBackendDto, type Order } from "@/lib/storage"
+import {
+  formatUsdOnlyFromOrderTotal,
+  getActiveExchangeRates,
+} from "@/lib/currency-utils"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -67,13 +71,6 @@ const getStatusColor = (status: string) => {
   }
 }
 
-function formatBs(total: number) {
-  return `Bs. ${total.toLocaleString("es-VE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
-
 function formatDate(iso: string) {
   try {
     return new Date(iso).toLocaleDateString("es-VE", {
@@ -102,6 +99,7 @@ export function ClientOrdersHistoryDialog({
   const [orders, setOrders] = useState<OrderResponseDto[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [pcfOrderToConfirm, setPcfOrderToConfirm] = useState<Order | null>(null)
+  const [orderTotalsUsd, setOrderTotalsUsd] = useState<Record<string, string>>({})
 
   const canConfirmPcf =
     user &&
@@ -142,6 +140,28 @@ export function ClientOrdersHistoryDialog({
       cancelled = true
     }
   }, [open, client?.id])
+
+  useEffect(() => {
+    if (orders.length === 0) {
+      setOrderTotalsUsd({})
+      return
+    }
+    let cancelled = false
+    const run = async () => {
+      const fallbackRates = await getActiveExchangeRates()
+      if (cancelled) return
+      const totals: Record<string, string> = {}
+      for (const row of orders) {
+        const formatted = await formatUsdOnlyFromOrderTotal(row.total, row, fallbackRates)
+        totals[row.id] = formatted
+      }
+      if (!cancelled) setOrderTotalsUsd(totals)
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [orders])
 
   const title = client
     ? `Historial de pedidos — ${client.nombreRazonSocial}`
@@ -208,7 +228,7 @@ export function ClientOrdersHistoryDialog({
                       {order.paymentMethod || "—"}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatBs(order.total)}
+                      {orderTotalsUsd[order.id] ?? "—"}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">

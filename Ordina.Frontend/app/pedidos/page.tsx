@@ -197,7 +197,17 @@ export default function PedidosPage() {
       (digitsOnly(clientSearch) !== "" &&
         digitsOnly(haystack).includes(digitsOnly(clientSearch)))
 
-    return matchesSearch && matchesVendor && matchesStatus && matchesPaymentMethod && matchesClient
+    const isConvertedBudget =
+      order.type === "budget" && order.status.trim().toLowerCase() === "convertido"
+
+    return (
+      matchesSearch &&
+      matchesVendor &&
+      matchesStatus &&
+      matchesPaymentMethod &&
+      matchesClient &&
+      !isConvertedBudget
+    )
   })
 
   // Paginación
