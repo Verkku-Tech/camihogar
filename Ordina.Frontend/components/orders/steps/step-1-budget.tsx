@@ -64,31 +64,6 @@ export function Step1Budget({
         <CardContent className="space-y-5 p-4 sm:p-6">
           {/* Vendedor / Referidor (según rol) */}
           <div className="space-y-3">
-            {isOnlineSeller && (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant={
-                    orderForm.onlineSellerMode === "vendor" ? "default" : "outline"
-                  }
-                  size="sm"
-                  onClick={() => orderForm.setOnlineSellerMode("vendor")}
-                >
-                  Actúo como Vendedor
-                </Button>
-                <Button
-                  type="button"
-                  variant={
-                    orderForm.onlineSellerMode === "referrer" ? "default" : "outline"
-                  }
-                  size="sm"
-                  onClick={() => orderForm.setOnlineSellerMode("referrer")}
-                >
-                  Actúo como Referidor
-                </Button>
-              </div>
-            )}
-
             <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="vendor">Vendedor</Label>

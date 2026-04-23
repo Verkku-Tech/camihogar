@@ -913,14 +913,24 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                   Siguiente
                   <ChevronRight className="w-4 h-4 ml-2" />
                 </Button>
-              ) : orderForm.isOnlineSellerReferrer ? (
-                <Button
-                  onClick={handleCreatePendingConfirmation}
-                  className="w-full sm:w-auto"
-                  variant="secondary"
-                >
-                  Guardar Pedido por Confirmar
-                </Button>
+              ) : user?.role === "Online Seller" ? (
+                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCreatePendingConfirmation}
+                    className="w-full sm:w-auto"
+                  >
+                    Guardar Pedido por Confirmar
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleSubmit}
+                    className="w-full sm:w-auto"
+                  >
+                    Crear Pedido
+                  </Button>
+                </div>
               ) : (
                 <Button onClick={handleSubmit} className="w-full sm:w-auto">
                   Crear Pedido
