@@ -26,7 +26,8 @@ import {
   type OrderResponseDto,
 } from "@/lib/api-client"
 import { useAuth } from "@/contexts/auth-context"
-import { ConfirmOrderDialog } from "@/components/orders/confirm-order-dialog"
+import { EditOrderDialog } from "@/components/orders/edit-order-dialog"
+import { orderFromBackendDto, type Order } from "@/lib/storage"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -100,8 +101,7 @@ export function ClientOrdersHistoryDialog({
   const { user } = useAuth()
   const [orders, setOrders] = useState<OrderResponseDto[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [confirmPcfId, setConfirmPcfId] = useState<string | null>(null)
-  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [pcfOrderToConfirm, setPcfOrderToConfirm] = useState<Order | null>(null)
 
   const canConfirmPcf =
     user &&
@@ -148,6 +148,7 @@ export function ClientOrdersHistoryDialog({
     : "Historial de pedidos"
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
@@ -219,8 +220,7 @@ export function ClientOrdersHistoryDialog({
                             className="h-8 px-2"
                             title="Confirmar pedido en tienda"
                             onClick={() => {
-                              setConfirmPcfId(order.id)
-                              setConfirmDialogOpen(true)
+                              setPcfOrderToConfirm(orderFromBackendDto(order))
                             }}
                           >
                             <ClipboardCheck className="h-4 w-4 sm:mr-1" />
@@ -251,31 +251,32 @@ export function ClientOrdersHistoryDialog({
           )}
         </div>
       </DialogContent>
-
-      <ConfirmOrderDialog
-        open={confirmDialogOpen}
-        onOpenChange={(o) => {
-          setConfirmDialogOpen(o)
-          if (!o) setConfirmPcfId(null)
-        }}
-        pendingOrderId={confirmPcfId}
-        onConfirmed={() => {
-          if (!client) return
-          void (async () => {
-            try {
-              const list = await apiClient.getOrdersByClient(client.id)
-              const sorted = [...list].sort(
-                (a, b) =>
-                  new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-              )
-              setOrders(sorted)
-            } catch (e) {
-              console.error(e)
-              toast.error("No se pudo actualizar el historial.")
-            }
-          })()
-        }}
-      />
     </Dialog>
+
+    <EditOrderDialog
+      open={pcfOrderToConfirm != null}
+      onOpenChange={(o) => {
+        if (!o) setPcfOrderToConfirm(null)
+      }}
+      order={pcfOrderToConfirm}
+      mode="confirm-pcf"
+      onConfirmed={() => {
+        if (!client) return
+        void (async () => {
+          try {
+            const list = await apiClient.getOrdersByClient(client.id)
+            const sorted = [...list].sort(
+              (a, b) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+            )
+            setOrders(sorted)
+          } catch (e) {
+            console.error(e)
+            toast.error("No se pudo actualizar el historial.")
+          }
+        })()
+      }}
+    />
+    </>
   )
 }

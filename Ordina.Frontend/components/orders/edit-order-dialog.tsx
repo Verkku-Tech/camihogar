@@ -32,7 +32,7 @@ import {
   type ProductImage,
   type Account,
 } from "@/lib/storage";
-import { apiClient } from "@/lib/api-client";
+import { apiClient, type ConfirmOrderDto, type OrderProductDto } from "@/lib/api-client";
 import { Currency } from "@/lib/currency-utils";
 import {
   normalizePaymentsForSave,
@@ -43,12 +43,59 @@ import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
 
+function mapOrderProductsToConfirmDto(products: OrderProduct[]): OrderProductDto[] {
+  return products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    quantity: p.quantity,
+    total: p.total,
+    category: p.category,
+    stock: p.stock,
+    attributes: p.attributes,
+    discount: p.discount,
+    observations: p.observations,
+    images: p.images?.map((img) => ({
+      id: img.id,
+      base64: img.base64,
+      filename: img.filename,
+      type: img.type,
+      uploadedAt: img.uploadedAt,
+      size: img.size,
+    })),
+    availabilityStatus: p.availabilityStatus,
+    manufacturingStatus: p.manufacturingStatus,
+    manufacturingProviderId: p.manufacturingProviderId,
+    manufacturingProviderName: p.manufacturingProviderName,
+    manufacturingStartedAt: p.manufacturingStartedAt,
+    manufacturingCompletedAt: p.manufacturingCompletedAt,
+    manufacturingNotes: p.manufacturingNotes,
+    locationStatus: p.locationStatus,
+    logisticStatus: p.logisticStatus,
+    surchargeEnabled: p.surchargeEnabled,
+    surchargeAmount: p.surchargeAmount,
+    surchargeReason: p.surchargeReason,
+    refabricationReason: p.refabricationReason,
+    refabricatedAt: p.refabricatedAt,
+    refabricationHistory: p.refabricationHistory?.map((r) => ({
+      reason: r.reason,
+      date: r.date,
+      previousProviderId: r.previousProviderId,
+      previousProviderName: r.previousProviderName,
+      newProviderId: r.newProviderId,
+      newProviderName: r.newProviderName,
+    })),
+  }));
+}
+
 interface EditOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: Order | null;
-  /** "full" = admin puede editar todo; "payments" = vendedor solo edita pagos (paso 3). */
-  mode?: "full" | "payments";
+  /** "full" = admin puede editar todo; "payments" = vendedor solo edita pagos (paso 3); "confirm-pcf" = confirmar PCF desde historial de cliente. */
+  mode?: "full" | "payments" | "confirm-pcf";
+  /** Tras confirmar un PCF con éxito (nuevo número de pedido). */
+  onConfirmed?: (orderNumber: string) => void;
 }
 
 // Constantes
@@ -90,12 +137,19 @@ export const DELIVERY_ZONES = [
 // Las constantes de métodos de pago se importan desde constants.ts
 // y se usan en step-3-order-details.tsx
 
-export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: EditOrderDialogProps) {
+export function EditOrderDialog({
+  open,
+  onOpenChange,
+  order,
+  mode = "full",
+  onConfirmed,
+}: EditOrderDialogProps) {
   const { preferredCurrency } = useCurrency();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const allowRemovePayment = hasPermission("orders.delete");
   const orderForm = useEditOrderForm(open, order);
   const isPaymentsOnly = mode === "payments";
+  const isConfirmingPcf = mode === "confirm-pcf";
   const isEditingBudget =
     !!order &&
     ((order.type || "").toLowerCase() === "budget" ||
@@ -687,6 +741,139 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
       }
       const multi = paymentsNorm.length > 1;
 
+      if (isConfirmingPcf) {
+        if (!user?.id) {
+          toast.error("Debes iniciar sesión para confirmar el pedido.");
+          return;
+        }
+
+        const paymentType =
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea"
+            ? "directo"
+            : orderForm.paymentCondition === "todo_pago"
+              ? "directo"
+              : "apartado";
+
+        const paymentMethod =
+          orderForm.paymentCondition === "pago_a_entrega"
+            ? "Pago a la entrega"
+            : orderForm.paymentCondition === "cashea"
+              ? "Cashea"
+              : orderForm.paymentCondition === "pagara_en_tienda"
+                ? "Pagará en Tienda"
+                : multi
+                  ? "Mixto"
+                  : paymentsNorm[0]?.method || "";
+
+        const productsPrepared = orderForm.selectedProducts.map((product) => ({
+          ...product,
+          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+        }));
+
+        const body: ConfirmOrderDto = {
+          storeVendorId: user.id,
+          storeVendorName: user.name || user.username || "Tienda",
+          products: mapOrderProductsToConfirmDto(productsPrepared),
+          paymentType,
+          paymentMethod,
+          paymentCondition: orderForm.paymentCondition || undefined,
+          paymentDetails:
+            orderForm.paymentCondition === "pago_a_entrega" ||
+            orderForm.paymentCondition === "pagara_en_tienda" ||
+            orderForm.payments.length === 0
+              ? undefined
+              : !multi
+                ? paymentsNorm[0]?.paymentDetails
+                : undefined,
+          partialPayments:
+            orderForm.paymentCondition === "pago_a_entrega" ||
+            orderForm.paymentCondition === "pagara_en_tienda"
+              ? undefined
+              : multi
+                ? []
+                : paymentsNorm,
+          mixedPayments:
+            orderForm.paymentCondition === "pago_a_entrega" ||
+            orderForm.paymentCondition === "pagara_en_tienda"
+              ? undefined
+              : multi
+                ? paymentsNorm
+                : undefined,
+          saleType: orderForm.saleType || undefined,
+          deliveryType: orderForm.deliveryType || undefined,
+          deliveryZone: orderForm.deliveryZone || undefined,
+          deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
+          hasDelivery: orderForm.hasDelivery,
+          deliveryServices: orderForm.hasDelivery
+            ? {
+                deliveryExpress: orderForm.deliveryServices.deliveryExpress?.enabled
+                  ? {
+                      enabled: true,
+                      cost: orderForm.deliveryServices.deliveryExpress.cost,
+                      currency: orderForm.deliveryServices.deliveryExpress.currency,
+                    }
+                  : undefined,
+                servicioAcarreo: orderForm.deliveryServices.servicioAcarreo?.enabled
+                  ? {
+                      enabled: true,
+                      cost: orderForm.deliveryServices.servicioAcarreo.cost,
+                      currency: orderForm.deliveryServices.servicioAcarreo.currency,
+                    }
+                  : undefined,
+                servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
+                  ? {
+                      enabled: true,
+                      cost: orderForm.deliveryServices.servicioArmado.cost,
+                      currency: orderForm.deliveryServices.servicioArmado.currency,
+                    }
+                  : undefined,
+              }
+            : undefined,
+          observations: orderForm.generalObservations.trim() || undefined,
+          subtotal: orderForm.subtotal,
+          taxAmount: orderForm.taxAmount,
+          deliveryCost: orderForm.deliveryCost,
+          total: orderForm.total,
+          subtotalBeforeDiscounts: orderForm.productSubtotal,
+          productDiscountTotal:
+            orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
+          generalDiscountAmount:
+            orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+          productMarkups: orderForm.productMarkups,
+          createSupplierOrder: orderForm.createSupplierOrder,
+          postventaId: order.postventaId,
+          postventaName: order.postventaName,
+          exchangeRatesAtCreation: {
+            USD: orderForm.exchangeRates.USD
+              ? {
+                  rate: orderForm.exchangeRates.USD.rate,
+                  effectiveDate: orderForm.exchangeRates.USD.effectiveDate,
+                }
+              : undefined,
+            EUR: orderForm.exchangeRates.EUR
+              ? {
+                  rate: orderForm.exchangeRates.EUR.rate,
+                  effectiveDate: orderForm.exchangeRates.EUR.effectiveDate,
+                }
+              : undefined,
+          },
+        };
+
+        const created = await apiClient.confirmPendingOrder(order.id, body);
+        setIsConfirmationOpen(false);
+        onOpenChange(false);
+        toast.success(`Pedido ${created.orderNumber} confirmado.`);
+        orderForm.resetForm();
+        setPendingOrderData(null);
+        onConfirmed?.(created.orderNumber);
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+        return;
+      }
+
       const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
         clientId: orderForm.selectedClient.id,
         clientName: orderForm.selectedClient.name,
@@ -853,11 +1040,22 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
         <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4">
           <DialogHeader className="pb-2 sm:pb-4">
             <DialogTitle className="text-lg sm:text-xl">
-              {isPaymentsOnly ? "Editar pagos del pedido" : `Nuevo Pedido - Paso ${orderForm.currentStep} de 3`}
+              {isPaymentsOnly
+                ? "Editar pagos del pedido"
+                : isConfirmingPcf
+                  ? `Confirmar pedido — Paso ${orderForm.currentStep} de 3`
+                  : `Nuevo Pedido - Paso ${orderForm.currentStep} de 3`}
             </DialogTitle>
             <DialogDescription>
               {isPaymentsOnly && "Agrega o edita los pagos de este pedido."}
-              {!isPaymentsOnly && orderForm.currentStep === 1 && "Configura el presupuesto, cliente y productos"}
+              {!isPaymentsOnly &&
+                !isConfirmingPcf &&
+                orderForm.currentStep === 1 &&
+                "Configura el presupuesto, cliente y productos"}
+              {!isPaymentsOnly &&
+                isConfirmingPcf &&
+                orderForm.currentStep === 1 &&
+                "Revisa vendedor, productos y cliente. El referidor no se puede cambiar en esta confirmación."}
               {!isPaymentsOnly && orderForm.currentStep === 2 && "Define el estado de los productos"}
               {!isPaymentsOnly && orderForm.currentStep === 3 && "Completa los detalles finales del pedido"}
             </DialogDescription>
@@ -871,6 +1069,7 @@ export function EditOrderDialog({ open, onOpenChange, order, mode = "full" }: Ed
               onProductSelection={() => setIsProductSelectionOpen(true)}
               onEditProduct={handleEditProduct}
               onRemoveProduct={handleRemoveProduct}
+              referrerLocked={isConfirmingPcf}
             />
           )}
 
