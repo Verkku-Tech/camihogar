@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Loader2 } from "lucide-react";
 import { useOrderForm } from "./hooks/use-order-form";
 import { Step1Budget } from "./steps/step-1-budget";
 import { Step2ProductStatus } from "./steps/step-2-product-status";
@@ -20,15 +20,19 @@ import { ProductSelectionDialog } from "./product-selection-dialog";
 import { ProductEditDialog } from "./product-edit-dialog";
 import { RemoveProductDialog } from "./remove-product-dialog";
 import { OrderConfirmationDialog } from "./order-confirmation-dialog";
+import { EditOrderDialog } from "./edit-order-dialog";
 import {
   addOrder,
   addBudget,
+  addPendingConfirmationOrder,
+  orderFromBackendDto,
   type Order,
   type OrderProduct,
   type PartialPayment,
   type ProductImage,
   type Account,
 } from "@/lib/storage";
+import { apiClient, type OrderResponseDto } from "@/lib/api-client";
 import { Currency } from "@/lib/currency-utils";
 import {
   normalizePaymentsForSave,
@@ -48,6 +52,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
+
+type OrderFormSelectedClient = {
+  id: string;
+  name: string;
+  address?: string;
+  telefono?: string;
+  telefono2?: string;
+  email?: string;
+  rutId?: string;
+};
 
 interface NewOrderDialogProps {
   open: boolean;
@@ -107,6 +121,24 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(null);
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
+
+  const [isCheckingClientPcf, setIsCheckingClientPcf] = useState(false);
+  const [pendingPcfPrompt, setPendingPcfPrompt] = useState<{
+    client: OrderFormSelectedClient;
+    pcfDto: OrderResponseDto;
+  } | null>(null);
+  const [pcfToOpen, setPcfToOpen] = useState<Order | null>(null);
+  const pcfPromptClosingForLoadRef = useRef(false);
+
+  const applySelectedClientToForm = (client: OrderFormSelectedClient) => {
+    orderForm.setSelectedClient(client);
+    if (orderForm.hasDelivery && client.address) {
+      orderForm.setFormData((prev) => ({
+        ...prev,
+        deliveryAddress: client.address || prev.deliveryAddress,
+      }));
+    }
+  };
 
   // Handlers de productos
   const handleEditProduct = (product: OrderProduct) => {
@@ -267,6 +299,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   // Handler para crear presupuesto
   const handleCreateBudget = async () => {
     try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
       if (!orderForm.canCreateBudget) {
         toast.error("Por favor completa la información requerida");
         return;
@@ -343,14 +378,133 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     }
   };
 
+  const handleCreatePendingConfirmation = async () => {
+    try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
+      if (!user?.id) {
+        toast.error("Debes iniciar sesión");
+        return;
+      }
+      if (!orderForm.selectedClient) {
+        toast.error("Por favor selecciona un cliente");
+        return;
+      }
+      if (orderForm.selectedProducts.length === 0) {
+        toast.error("Por favor agrega al menos un producto");
+        return;
+      }
+      if (!orderForm.saleType) {
+        toast.error("Por favor selecciona el tipo de venta");
+        return;
+      }
+      if (!orderForm.deliveryType) {
+        toast.error("Por favor selecciona el tipo de entrega");
+        return;
+      }
+      if (!orderForm.deliveryZone) {
+        toast.error("Por favor selecciona la zona de entrega");
+        return;
+      }
+      if (
+        orderForm.hasDelivery &&
+        orderForm.deliveryServices.servicioArmado?.enabled
+      ) {
+        if (
+          !orderForm.deliveryServices.servicioArmado.cost ||
+          orderForm.deliveryServices.servicioArmado.cost <= 0
+        ) {
+          toast.error("El precio del Servicio de Armado es obligatorio");
+          return;
+        }
+      }
+
+      const onlineName =
+        orderForm.mockVendors.find((v) => v.id === user.id)?.name ||
+        orderForm.mockReferrers.find((r) => r.id === user.id)?.name ||
+        user.name ||
+        "";
+
+      const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
+        clientId: orderForm.selectedClient.id,
+        clientName: orderForm.selectedClient.name,
+        vendorId: user.id,
+        vendorName: onlineName,
+        referrerId: user.id,
+        referrerName: onlineName,
+        products: orderForm.selectedProducts.map((product) => ({
+          ...product,
+          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+        })),
+        subtotalBeforeDiscounts: orderForm.productSubtotal,
+        productDiscountTotal:
+          orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
+        generalDiscountAmount:
+          orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+        subtotal: orderForm.subtotal,
+        taxAmount: orderForm.taxAmount,
+        deliveryCost: orderForm.deliveryCost,
+        total: orderForm.total,
+        paymentType: "directo",
+        paymentMethod: "N/A",
+        paymentCondition: "pagara_en_tienda",
+        saleType: orderForm.saleType as Order["saleType"],
+        deliveryType: orderForm.deliveryType as Order["deliveryType"],
+        deliveryZone: orderForm.deliveryZone as Order["deliveryZone"],
+        hasDelivery: orderForm.hasDelivery,
+        deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
+        deliveryServices: orderForm.hasDelivery
+          ? {
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.deliveryExpress.cost,
+                    currency: orderForm.deliveryServices.deliveryExpress.currency,
+                  }
+                : undefined,
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioAcarreo.cost,
+                    currency: orderForm.deliveryServices.servicioAcarreo.currency,
+                  }
+                : undefined,
+              servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioArmado.cost,
+                    currency: orderForm.deliveryServices.servicioArmado.currency,
+                  }
+                : undefined,
+            }
+          : undefined,
+        observations: orderForm.generalObservations.trim() || undefined,
+        baseCurrency: preferredCurrency,
+        exchangeRatesAtCreation: orderForm.exchangeRates,
+        productMarkups: orderForm.productMarkups,
+        createSupplierOrder: orderForm.createSupplierOrder,
+        status: "Por Confirmar",
+        type: "PendingConfirmation",
+      };
+
+      const created = await addPendingConfirmationOrder(orderData);
+      toast.success(`Pedido por confirmar ${created.orderNumber} guardado. Visible en el historial del cliente.`);
+      orderForm.clearDraftStorage();
+      orderForm.resetForm();
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error creating pending confirmation order:", error);
+      toast.error("Error al guardar el pedido por confirmar. Intenta de nuevo.");
+    }
+  };
+
   // Handler para submit del pedido
   const handleSubmit = async () => {
     try {
-      if (orderForm.isOnlineSellerReferrer) {
-        toast.error(
-          "En modo referidor solo puedes generar presupuestos. Un vendedor de tienda convertirá el presupuesto en pedido."
-        );
-        return;
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
       }
       if (!orderForm.selectedClient) {
         toast.error("Por favor selecciona un cliente");
@@ -553,10 +707,6 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const handleConfirmOrder = async () => {
     try {
       if (!pendingOrderData || !orderForm.selectedClient) return;
-      if (orderForm.isOnlineSellerReferrer) {
-        toast.error("No puedes confirmar un pedido en modo referidor.");
-        return;
-      }
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (orderForm.paymentCondition === "cashea") {
@@ -716,98 +866,120 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4">
-          <DialogHeader className="pb-2 sm:pb-4">
-            <DialogTitle className="text-lg sm:text-xl">
-              Nuevo Pedido - Paso {orderForm.currentStep} de 3
-            </DialogTitle>
-            <DialogDescription>
-              {orderForm.currentStep === 1 && "Configura el presupuesto, cliente y productos"}
-              {orderForm.currentStep === 2 && "Define el estado de los productos"}
-              {orderForm.currentStep === 3 && "Completa los detalles finales del pedido"}
-            </DialogDescription>
-          </DialogHeader>
+          {/* relative solo en wrapper interno: evita que tailwind-merge quite position:fixed del DialogContent base */}
+          <div className="relative flex min-h-0 flex-1 flex-col gap-4">
+            {isCheckingClientPcf && (
+              <div
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-lg bg-background/70 backdrop-blur-sm"
+                aria-busy="true"
+                aria-live="polite"
+              >
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Verificando pedidos del cliente…</p>
+              </div>
+            )}
+            <DialogHeader className="pb-2 sm:pb-4">
+              <DialogTitle className="text-lg sm:text-xl">
+                Nuevo Pedido - Paso {orderForm.currentStep} de 3
+              </DialogTitle>
+              <DialogDescription>
+                {orderForm.currentStep === 1 && "Configura el presupuesto, cliente y productos"}
+                {orderForm.currentStep === 2 && "Define el estado de los productos"}
+                {orderForm.currentStep === 3 && "Completa los detalles finales del pedido"}
+              </DialogDescription>
+            </DialogHeader>
 
-          {/* Renderizar paso actual */}
-          {orderForm.currentStep === 1 && (
-            <Step1Budget
-              orderForm={orderForm}
-              onClientLookup={() => setIsClientLookupOpen(true)}
-              onProductSelection={() => setIsProductSelectionOpen(true)}
-              onEditProduct={handleEditProduct}
-              onRemoveProduct={handleRemoveProduct}
-            />
-          )}
+            {/* Renderizar paso actual */}
+            {orderForm.currentStep === 1 && (
+              <Step1Budget
+                orderForm={orderForm}
+                onClientLookup={() => setIsClientLookupOpen(true)}
+                onProductSelection={() => setIsProductSelectionOpen(true)}
+                onEditProduct={handleEditProduct}
+                onRemoveProduct={handleRemoveProduct}
+              />
+            )}
 
-          {orderForm.currentStep === 2 && (
-            <Step2ProductStatus orderForm={orderForm} />
-          )}
+            {orderForm.currentStep === 2 && (
+              <Step2ProductStatus orderForm={orderForm} />
+            )}
 
-          {orderForm.currentStep === 3 && (
-            <Step3OrderDetails
-              orderForm={orderForm}
-              onSubmit={handleSubmit}
-              addPayment={
-                orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1
-                  ? undefined
-                  : addPayment
-              }
-              updatePayment={updatePayment}
-              updatePaymentDetails={updatePaymentDetails}
-              removePayment={removePayment}
-              getAccountsForPaymentMethod={getAccountsForPaymentMethod}
-              saveAccountInfoToPayment={saveAccountInfoToPayment}
-              updatePaymentImages={updatePaymentImages}
-            />
-          )}
+            {orderForm.currentStep === 3 && (
+              <Step3OrderDetails
+                orderForm={orderForm}
+                onSubmit={handleSubmit}
+                addPayment={
+                  orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1
+                    ? undefined
+                    : addPayment
+                }
+                updatePayment={updatePayment}
+                updatePaymentDetails={updatePaymentDetails}
+                removePayment={removePayment}
+                getAccountsForPaymentMethod={getAccountsForPaymentMethod}
+                saveAccountInfoToPayment={saveAccountInfoToPayment}
+                updatePaymentImages={updatePaymentImages}
+              />
+            )}
 
-          {/* Footer con botones de navegación */}
-          <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t">
-            <Button
-              variant="outline"
-              onClick={orderForm.handleBack}
-              disabled={orderForm.currentStep === 1}
-              className="w-full sm:w-auto"
-            >
-              <ChevronLeft className="w-4 h-4 mr-2" />
-              Anterior
-            </Button>
+            {/* Footer con botones de navegación */}
+            <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={orderForm.handleBack}
+                disabled={orderForm.currentStep === 1}
+                className="w-full sm:w-auto"
+              >
+                <ChevronLeft className="w-4 h-4 mr-2" />
+                Anterior
+              </Button>
 
-            <div className="flex flex-col sm:flex-row gap-3">
-              {orderForm.currentStep === 1 && (
-                <Button
-                  onClick={handleCreateBudget}
-                  variant="outline"
-                  className="w-full sm:w-auto"
-                  disabled={!orderForm.canCreateBudget}
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Presupuesto
-                </Button>
-              )}
+              <div className="flex flex-col sm:flex-row gap-3">
+                {orderForm.currentStep === 1 && (
+                  <Button
+                    onClick={handleCreateBudget}
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    disabled={!orderForm.canCreateBudget}
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    Presupuesto
+                  </Button>
+                )}
 
-              {orderForm.currentStep < 3 ? (
-                <Button
-                  onClick={orderForm.handleNext}
-                  className="w-full sm:w-auto"
-                  disabled={!orderForm.canGoToNextStep}
-                >
-                  Siguiente
-                  <ChevronRight className="w-4 h-4 ml-2" />
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleSubmit}
-                  className="w-full sm:w-auto"
-                  disabled={orderForm.isOnlineSellerReferrer}
-                  title={
-                    orderForm.isOnlineSellerReferrer
-                      ? "En modo referidor solo puedes crear presupuestos"
-                      : undefined
-                  }
-                >
-                  Crear Pedido
-                </Button>
-              )}
+                {orderForm.currentStep < 3 ? (
+                  <Button
+                    onClick={orderForm.handleNext}
+                    className="w-full sm:w-auto"
+                    disabled={!orderForm.canGoToNextStep}
+                  >
+                    Siguiente
+                    <ChevronRight className="w-4 h-4 ml-2" />
+                  </Button>
+                ) : user?.role === "Online Seller" ? (
+                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleCreatePendingConfirmation}
+                      className="w-full sm:w-auto"
+                    >
+                      Guardar Pedido por Confirmar
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleSubmit}
+                      className="w-full sm:w-auto"
+                    >
+                      Crear Pedido
+                    </Button>
+                  </div>
+                ) : (
+                  <Button onClick={handleSubmit} className="w-full sm:w-auto">
+                    Crear Pedido
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </DialogContent>
@@ -818,13 +990,34 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         open={isClientLookupOpen}
         onOpenChange={setIsClientLookupOpen}
         onClientSelect={(client) => {
-          orderForm.setSelectedClient(client);
-          if (orderForm.hasDelivery && client.address) {
-            orderForm.setFormData((prev) => ({
-              ...prev,
-              deliveryAddress: client.address || prev.deliveryAddress,
-            }));
-          }
+          void (async () => {
+            setIsCheckingClientPcf(true);
+            try {
+              const list = await apiClient.getOrdersByClient(client.id);
+              const pending = list
+                .filter(
+                  (o) =>
+                    o.type === "PendingConfirmation" && o.status === "Por Confirmar"
+                )
+                .sort(
+                  (a, b) =>
+                    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                );
+              if (pending.length === 0) {
+                applySelectedClientToForm(client);
+              } else {
+                setPendingPcfPrompt({ client, pcfDto: pending[0]! });
+              }
+            } catch (e) {
+              console.error(e);
+              toast.error(
+                "No se pudo comprobar el historial del cliente. Se continúa con el cliente seleccionado."
+              );
+              applySelectedClientToForm(client);
+            } finally {
+              setIsCheckingClientPcf(false);
+            }
+          })();
         }}
       />
 
@@ -861,6 +1054,76 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           orderData={pendingOrderData}
         />
       )}
+
+      <AlertDialog
+        open={pendingPcfPrompt !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && pendingPcfPrompt && !pcfPromptClosingForLoadRef.current) {
+            applySelectedClientToForm(pendingPcfPrompt.client);
+            setPendingPcfPrompt(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="z-[110]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pedido por confirmar</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left text-sm text-muted-foreground">
+                <p>
+                  {pendingPcfPrompt?.client.name} tiene un pedido pendiente de confirmar (
+                  <span className="font-mono font-medium text-foreground">
+                    {pendingPcfPrompt?.pcfDto.orderNumber}
+                  </span>
+                  ).
+                </p>
+                <p>
+                  ¿Quieres cargarlo para revisarlo o confirmarlo en tienda, o prefieres crear un
+                  pedido nuevo desde cero?
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:space-x-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (!pendingPcfPrompt) return;
+                const { client } = pendingPcfPrompt;
+                setPendingPcfPrompt(null);
+                applySelectedClientToForm(client);
+              }}
+            >
+              Pedido nuevo
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!pendingPcfPrompt) return;
+                const { pcfDto } = pendingPcfPrompt;
+                pcfPromptClosingForLoadRef.current = true;
+                setPendingPcfPrompt(null);
+                onOpenChange(false);
+                setPcfToOpen(orderFromBackendDto(pcfDto));
+                queueMicrotask(() => {
+                  pcfPromptClosingForLoadRef.current = false;
+                });
+              }}
+            >
+              Cargar pendiente
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <EditOrderDialog
+        open={pcfToOpen !== null}
+        onOpenChange={(next) => {
+          if (!next) setPcfToOpen(null);
+        }}
+        order={pcfToOpen}
+        mode="confirm-pcf"
+      />
 
       {/* Después del Dialog principal para que el portal quede encima (mismo z-index) */}
       <AlertDialog open={orderForm.needsDraftPrompt}>

@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.Repositories;
 using Ordina.Orders.Application.DTOs;
 using System.Text.Json;
+using System.Linq;
 
 namespace Ordina.Orders.Application.Services;
 
@@ -145,8 +147,10 @@ public class OrderService : IOrderService
     {
         try
         {
-            var isBudget = createDto.Type == "Budget";
-            if (!isBudget)
+            var isBudget = string.Equals(createDto.Type, "Budget", StringComparison.Ordinal);
+            var isPendingConfirmation = string.Equals(createDto.Type, "PendingConfirmation", StringComparison.Ordinal);
+            var requiresPayment = !isBudget && !isPendingConfirmation;
+            if (requiresPayment)
             {
                 if (string.IsNullOrWhiteSpace(createDto.PaymentType))
                     throw new ArgumentException("El tipo de pago es requerido para pedidos", nameof(createDto.PaymentType));
@@ -155,23 +159,26 @@ public class OrderService : IOrderService
             }
 
             var existingOrders = (await _orderRepository.GetAllAsync()).ToList();
-            var prefix = isBudget ? "PRE-" : "ORD-";
-            var orderNumber = $"{prefix}{String.Format("{0:D3}", existingOrders.Count(o => o.Type == (isBudget ? "Budget" : "Order")) + 1)}";
+            var typeForCount = isBudget ? "Budget" : isPendingConfirmation ? "PendingConfirmation" : "Order";
+            var prefix = isBudget ? "PRE-" : isPendingConfirmation ? "PCF-" : "ORD-";
+            var countForType = existingOrders.Count(o => string.Equals(o.Type, typeForCount, StringComparison.Ordinal));
+            var orderNumber = $"{prefix}{String.Format("{0:D3}", countForType + 1)}";
 
-            // Verificar que el número no exista (por si acaso)
             int attempts = 0;
             while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
             {
-                orderNumber = $"{prefix}{String.Format("{0:D3}", existingOrders.Count(o => o.Type == (isBudget ? "Budget" : "Order")) + attempts + 2)}";
+                orderNumber = $"{prefix}{String.Format("{0:D3}", countForType + attempts + 2)}";
                 attempts++;
             }
 
-            var paymentType = isBudget
+            var paymentType = isBudget || isPendingConfirmation
                 ? (string.IsNullOrWhiteSpace(createDto.PaymentType) ? "N/A" : createDto.PaymentType!)
                 : createDto.PaymentType!;
-            var paymentMethod = isBudget
+            var paymentMethod = isBudget || isPendingConfirmation
                 ? (string.IsNullOrWhiteSpace(createDto.PaymentMethod) ? "N/A" : createDto.PaymentMethod!)
                 : createDto.PaymentMethod!;
+
+            var mappedProducts = createDto.Products.Select(MapProductFromDto).ToList();
 
             var order = new Order
             {
@@ -184,7 +191,7 @@ public class OrderService : IOrderService
                 ReferrerName = createDto.ReferrerName,
                 PostventaId = createDto.PostventaId,
                 PostventaName = createDto.PostventaName,
-                Products = createDto.Products.Select(MapProductFromDto).ToList(),
+                Products = mappedProducts,
                 Subtotal = createDto.Subtotal,
                 TaxAmount = createDto.TaxAmount,
                 DeliveryCost = createDto.DeliveryCost,
@@ -210,6 +217,7 @@ public class OrderService : IOrderService
                 DeliveryZone = createDto.DeliveryZone,
                 ExchangeRatesAtCreation = createDto.ExchangeRatesAtCreation != null ? MapExchangeRatesFromDto(createDto.ExchangeRatesAtCreation) : null,
                 Type = createDto.Type,
+                OriginalProducts = isPendingConfirmation ? CloneOrderProducts(mappedProducts) : null,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -224,6 +232,251 @@ public class OrderService : IOrderService
             _logger.LogError(ex, "Error al crear pedido");
             throw;
         }
+    }
+
+    public async Task<OrderResponseDto> ConfirmPendingOrderAsync(string pendingOrderId, ConfirmOrderDto confirmDto, string userId, string userName)
+    {
+        if (string.IsNullOrWhiteSpace(pendingOrderId))
+            throw new ArgumentException("El ID del pedido por confirmar es requerido", nameof(pendingOrderId));
+
+        var pcf = await _orderRepository.GetByIdAsync(pendingOrderId);
+        if (pcf == null)
+            throw new KeyNotFoundException($"Pedido con ID {pendingOrderId} no encontrado");
+
+        if (!string.Equals(pcf.Type, "PendingConfirmation", StringComparison.Ordinal))
+            throw new ArgumentException("El documento no es un pedido por confirmar (PendingConfirmation).");
+
+        if (!string.Equals(pcf.Status, "Por Confirmar", StringComparison.Ordinal))
+            throw new ArgumentException($"Solo se pueden confirmar pedidos en estado «Por Confirmar». Estado actual: {pcf.Status}");
+
+        var baseline = pcf.OriginalProducts is { Count: > 0 } ? pcf.OriginalProducts : pcf.Products;
+        List<OrderProduct> finalProducts;
+        if (confirmDto.Products != null && confirmDto.Products.Count > 0)
+            finalProducts = confirmDto.Products.Select(MapProductFromDto).ToList();
+        else
+            finalProducts = CloneOrderProducts(pcf.Products);
+
+        var structureChanged = HasProductStructureChanges(baseline, finalProducts);
+
+        string vendorId;
+        string vendorName;
+        string? referrerId;
+        string? referrerName;
+        if (structureChanged)
+        {
+            vendorId = confirmDto.StoreVendorId;
+            vendorName = confirmDto.StoreVendorName;
+            var onlineId = !string.IsNullOrWhiteSpace(pcf.ReferrerId) ? pcf.ReferrerId! : pcf.VendorId;
+            var onlineName = !string.IsNullOrWhiteSpace(pcf.ReferrerName) ? pcf.ReferrerName! : pcf.VendorName;
+            referrerId = onlineId;
+            referrerName = onlineName;
+        }
+        else
+        {
+            vendorId = pcf.VendorId;
+            vendorName = pcf.VendorName;
+            referrerId = null;
+            referrerName = null;
+        }
+
+        var partialPayments = confirmDto.PartialPayments?.Select(MapPartialPaymentFromDto).ToList();
+        var mixedPayments = confirmDto.MixedPayments?.Select(MapPartialPaymentFromDto).ToList();
+        var partialCount = partialPayments?.Count ?? 0;
+        var mixedCount = mixedPayments?.Count ?? 0;
+        var multi = partialCount > 1 || mixedCount > 1;
+
+        var paymentMethodResolved = confirmDto.PaymentMethod;
+        if (multi && string.IsNullOrWhiteSpace(paymentMethodResolved))
+            paymentMethodResolved = "Mixto";
+
+        PaymentDetails? paymentDetailsEntity = confirmDto.PaymentDetails != null
+            ? MapPaymentDetailsFromDto(confirmDto.PaymentDetails)
+            : null;
+        if (paymentDetailsEntity == null && !multi && partialCount == 1 && partialPayments != null &&
+            partialPayments[0].PaymentDetails != null)
+            paymentDetailsEntity = partialPayments[0].PaymentDetails;
+        if (paymentDetailsEntity == null && !multi && mixedCount == 1 && mixedPayments != null &&
+            mixedPayments[0].PaymentDetails != null)
+            paymentDetailsEntity = mixedPayments[0].PaymentDetails;
+
+        var newOrder = new Order
+        {
+            ClientId = pcf.ClientId,
+            ClientName = pcf.ClientName,
+            VendorId = vendorId,
+            VendorName = vendorName,
+            ReferrerId = referrerId,
+            ReferrerName = referrerName,
+            PostventaId = confirmDto.PostventaId ?? pcf.PostventaId,
+            PostventaName = confirmDto.PostventaName ?? pcf.PostventaName,
+            Products = finalProducts,
+            Subtotal = confirmDto.Subtotal ?? pcf.Subtotal,
+            TaxAmount = confirmDto.TaxAmount ?? pcf.TaxAmount,
+            DeliveryCost = confirmDto.DeliveryCost ?? pcf.DeliveryCost,
+            Total = confirmDto.Total ?? pcf.Total,
+            SubtotalBeforeDiscounts = confirmDto.SubtotalBeforeDiscounts ?? pcf.SubtotalBeforeDiscounts,
+            ProductDiscountTotal = confirmDto.ProductDiscountTotal ?? pcf.ProductDiscountTotal,
+            GeneralDiscountAmount = confirmDto.GeneralDiscountAmount ?? pcf.GeneralDiscountAmount,
+            PaymentType = confirmDto.PaymentType,
+            PaymentMethod = paymentMethodResolved,
+            PaymentCondition = confirmDto.PaymentCondition,
+            PaymentDetails = paymentDetailsEntity,
+            PartialPayments = multi ? new List<PartialPayment>() : partialPayments,
+            MixedPayments = multi ? mixedPayments : null,
+            DeliveryAddress = confirmDto.DeliveryAddress ?? pcf.DeliveryAddress,
+            HasDelivery = confirmDto.HasDelivery ?? pcf.HasDelivery,
+            DeliveryServices = confirmDto.DeliveryServices != null ? MapDeliveryServicesFromDto(confirmDto.DeliveryServices) : pcf.DeliveryServices,
+            Status = "Generado",
+            ProductMarkups = confirmDto.ProductMarkups ?? pcf.ProductMarkups,
+            CreateSupplierOrder = confirmDto.CreateSupplierOrder ?? pcf.CreateSupplierOrder,
+            Observations = confirmDto.Observations ?? pcf.Observations,
+            SaleType = confirmDto.SaleType ?? pcf.SaleType,
+            DeliveryType = confirmDto.DeliveryType ?? pcf.DeliveryType,
+            DeliveryZone = confirmDto.DeliveryZone ?? pcf.DeliveryZone,
+            ExchangeRatesAtCreation = confirmDto.ExchangeRatesAtCreation != null
+                ? MapExchangeRatesFromDto(confirmDto.ExchangeRatesAtCreation)
+                : pcf.ExchangeRatesAtCreation,
+            Type = "Order",
+            OriginalOrderId = pcf.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var existingOrders = (await _orderRepository.GetAllAsync()).ToList();
+        var ordCount = existingOrders.Count(o => string.Equals(o.Type, "Order", StringComparison.Ordinal));
+        var orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + 1)}";
+        var attempts = 0;
+        while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
+        {
+            orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + attempts + 2)}";
+            attempts++;
+        }
+        newOrder.OrderNumber = orderNumber;
+
+        RecalculateOrderStatus(newOrder);
+        var created = await _orderRepository.CreateAsync(newOrder);
+        await _auditLogService.LogOrderCreatedAsync(created, userId, userName);
+
+        var pcfBefore = OrderDeepClone.Clone(pcf);
+        pcf.Status = "Convertido";
+        pcf.UpdatedAt = DateTime.UtcNow;
+        var updatedPcf = await _orderRepository.UpdateAsync(pcf);
+        await _auditLogService.LogOrderUpdatedAsync(pcfBefore, updatedPcf, userId, userName);
+
+        return MapToDto(created);
+    }
+
+    public async Task<OrderResponseDto> ConvertBudgetToOrderAsync(string budgetId, ConvertBudgetToOrderDto dto, string userId, string userName)
+    {
+        if (string.IsNullOrWhiteSpace(budgetId))
+            throw new ArgumentException("El ID del presupuesto es requerido", nameof(budgetId));
+
+        var budget = await _orderRepository.GetByIdAsync(budgetId);
+        if (budget == null)
+            throw new KeyNotFoundException($"Presupuesto con ID {budgetId} no encontrado");
+
+        if (!string.Equals(budget.Type, "Budget", StringComparison.Ordinal))
+            throw new ArgumentException("El documento no es un presupuesto (Budget).");
+
+        if (string.Equals(budget.Status, "Convertido", StringComparison.Ordinal))
+            throw new ArgumentException("Este presupuesto ya fue convertido a pedido.");
+
+        List<OrderProduct> finalProducts;
+        if (dto.Products != null && dto.Products.Count > 0)
+            finalProducts = dto.Products.Select(MapProductFromDto).ToList();
+        else
+            finalProducts = CloneOrderProducts(budget.Products);
+
+        if (string.IsNullOrWhiteSpace(dto.PaymentType))
+            throw new ArgumentException("El tipo de pago es requerido para convertir a pedido", nameof(dto.PaymentType));
+        if (string.IsNullOrWhiteSpace(dto.PaymentMethod))
+            throw new ArgumentException("El método de pago es requerido para convertir a pedido", nameof(dto.PaymentMethod));
+
+        var partialPayments = dto.PartialPayments?.Select(MapPartialPaymentFromDto).ToList();
+        var mixedPayments = dto.MixedPayments?.Select(MapPartialPaymentFromDto).ToList();
+        var partialCount = partialPayments?.Count ?? 0;
+        var mixedCount = mixedPayments?.Count ?? 0;
+        var multi = partialCount > 1 || mixedCount > 1;
+
+        var paymentMethodResolved = dto.PaymentMethod;
+        if (multi && string.IsNullOrWhiteSpace(paymentMethodResolved))
+            paymentMethodResolved = "Mixto";
+
+        PaymentDetails? paymentDetailsEntity = dto.PaymentDetails != null
+            ? MapPaymentDetailsFromDto(dto.PaymentDetails)
+            : null;
+        if (paymentDetailsEntity == null && !multi && partialCount == 1 && partialPayments != null &&
+            partialPayments[0].PaymentDetails != null)
+            paymentDetailsEntity = partialPayments[0].PaymentDetails;
+        if (paymentDetailsEntity == null && !multi && mixedCount == 1 && mixedPayments != null &&
+            mixedPayments[0].PaymentDetails != null)
+            paymentDetailsEntity = mixedPayments[0].PaymentDetails;
+
+        var newOrder = new Order
+        {
+            ClientId = budget.ClientId,
+            ClientName = budget.ClientName,
+            VendorId = budget.VendorId,
+            VendorName = budget.VendorName,
+            ReferrerId = budget.ReferrerId,
+            ReferrerName = budget.ReferrerName,
+            PostventaId = dto.PostventaId ?? budget.PostventaId,
+            PostventaName = dto.PostventaName ?? budget.PostventaName,
+            Products = finalProducts,
+            Subtotal = dto.Subtotal ?? budget.Subtotal,
+            TaxAmount = dto.TaxAmount ?? budget.TaxAmount,
+            DeliveryCost = dto.DeliveryCost ?? budget.DeliveryCost,
+            Total = dto.Total ?? budget.Total,
+            SubtotalBeforeDiscounts = dto.SubtotalBeforeDiscounts ?? budget.SubtotalBeforeDiscounts,
+            ProductDiscountTotal = dto.ProductDiscountTotal ?? budget.ProductDiscountTotal,
+            GeneralDiscountAmount = dto.GeneralDiscountAmount ?? budget.GeneralDiscountAmount,
+            PaymentType = dto.PaymentType,
+            PaymentMethod = paymentMethodResolved,
+            PaymentCondition = dto.PaymentCondition,
+            PaymentDetails = paymentDetailsEntity,
+            PartialPayments = multi ? new List<PartialPayment>() : partialPayments,
+            MixedPayments = multi ? mixedPayments : null,
+            DeliveryAddress = dto.DeliveryAddress ?? budget.DeliveryAddress,
+            HasDelivery = dto.HasDelivery ?? budget.HasDelivery,
+            DeliveryServices = dto.DeliveryServices != null ? MapDeliveryServicesFromDto(dto.DeliveryServices) : budget.DeliveryServices,
+            Status = "Generado",
+            ProductMarkups = dto.ProductMarkups ?? budget.ProductMarkups,
+            CreateSupplierOrder = dto.CreateSupplierOrder ?? budget.CreateSupplierOrder,
+            Observations = dto.Observations ?? budget.Observations,
+            SaleType = dto.SaleType ?? budget.SaleType,
+            DeliveryType = dto.DeliveryType ?? budget.DeliveryType,
+            DeliveryZone = dto.DeliveryZone ?? budget.DeliveryZone,
+            ExchangeRatesAtCreation = dto.ExchangeRatesAtCreation != null
+                ? MapExchangeRatesFromDto(dto.ExchangeRatesAtCreation)
+                : budget.ExchangeRatesAtCreation,
+            Type = "Order",
+            OriginalOrderId = budget.Id,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        var existingOrders = (await _orderRepository.GetAllAsync()).ToList();
+        var ordCount = existingOrders.Count(o => string.Equals(o.Type, "Order", StringComparison.Ordinal));
+        var orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + 1)}";
+        var attempts = 0;
+        while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
+        {
+            orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + attempts + 2)}";
+            attempts++;
+        }
+        newOrder.OrderNumber = orderNumber;
+
+        RecalculateOrderStatus(newOrder);
+        var created = await _orderRepository.CreateAsync(newOrder);
+        await _auditLogService.LogOrderCreatedAsync(created, userId, userName);
+
+        var budgetBefore = OrderDeepClone.Clone(budget);
+        budget.Status = "Convertido";
+        budget.UpdatedAt = DateTime.UtcNow;
+        var updatedBudget = await _orderRepository.UpdateAsync(budget);
+        await _auditLogService.LogOrderUpdatedAsync(budgetBefore, updatedBudget, userId, userName);
+
+        return MapToDto(created);
     }
 
     public async Task<OrderResponseDto> UpdateOrderAsync(string id, UpdateOrderDto updateDto, string userId, string userName)
@@ -531,13 +784,57 @@ public class OrderService : IOrderService
             ExchangeRatesAtCreation = order.ExchangeRatesAtCreation != null ? MapExchangeRatesToDto(order.ExchangeRatesAtCreation) : null,
             CreatedAt = order.CreatedAt,
             UpdatedAt = order.UpdatedAt,
-            Type = order.Type
+            Type = order.Type,
+            OriginalOrderId = order.OriginalOrderId,
+            OriginalProducts = order.OriginalProducts?.Select(MapProductToDto).ToList()
         };
+    }
+
+    private static List<OrderProduct> CloneOrderProducts(IEnumerable<OrderProduct> products)
+    {
+        return products.Select(p => BsonSerializer.Deserialize<OrderProduct>(p.ToBsonDocument())).ToList();
+    }
+
+    private static string AttributesFingerprint(Dictionary<string, object>? attrs)
+    {
+        if (attrs == null || attrs.Count == 0)
+            return "";
+
+        try
+        {
+            var sorted = attrs.OrderBy(kv => kv.Key).ToDictionary(kv => kv.Key, kv => kv.Value);
+            return JsonSerializer.Serialize(sorted);
+        }
+        catch
+        {
+            return $"n:{attrs.Count}";
+        }
+    }
+
+    private static bool HasProductStructureChanges(IReadOnlyList<OrderProduct> original, IReadOnlyList<OrderProduct> current)
+    {
+        var o = original.OrderBy(p => p.Id).ToList();
+        var c = current.OrderBy(p => p.Id).ToList();
+        if (o.Count != c.Count)
+            return true;
+
+        for (var i = 0; i < o.Count; i++)
+        {
+            if (!string.Equals(o[i].Id, c[i].Id, StringComparison.Ordinal))
+                return true;
+            if (o[i].Quantity != c[i].Quantity)
+                return true;
+            if (!string.Equals(AttributesFingerprint(o[i].Attributes), AttributesFingerprint(c[i].Attributes), StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     private void RecalculateOrderStatus(Order order)
     {
-        if (order.Type == "Budget")
+        if (string.Equals(order.Type, "Budget", StringComparison.Ordinal)
+            || string.Equals(order.Type, "PendingConfirmation", StringComparison.Ordinal))
             return;
 
         if (order.Products == null || !order.Products.Any())

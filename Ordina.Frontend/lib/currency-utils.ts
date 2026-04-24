@@ -280,3 +280,37 @@ export const formatCurrencyWithUsdPrimaryFromOrder = async (
   return formatCurrency(amountInBs, "Bs");
 };
 
+/**
+ * Total en USD solo (sin Bs entre paréntesis). Misma resolución de tasa que formatCurrencyWithUsdPrimaryFromOrder.
+ */
+export const formatUsdOnlyFromOrderTotal = async (
+  amountInBs: number,
+  orderOrBudget?: {
+    exchangeRatesAtCreation?: ExchangeRatesAtCreationNormalized | ExchangeRatesAtCreationRaw;
+  },
+  fallbackRates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
+): Promise<string> => {
+  let usdRate: number | null = null;
+
+  const fromOrder = normalizeExchangeRatesAtCreation(
+    orderOrBudget?.exchangeRatesAtCreation as ExchangeRatesAtCreationRaw
+  );
+  if (fromOrder?.USD?.rate && fromOrder.USD.rate > 0) {
+    usdRate = fromOrder.USD.rate;
+  }
+
+  if (!usdRate) {
+    if (!fallbackRates) {
+      fallbackRates = await getActiveExchangeRates();
+    }
+    usdRate = fallbackRates?.USD?.rate || null;
+  }
+
+  if (usdRate && usdRate > 0) {
+    const amountInUsd = amountInBs / usdRate;
+    return formatCurrency(amountInUsd, "USD");
+  }
+
+  return formatCurrency(amountInBs, "Bs");
+};
+

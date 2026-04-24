@@ -366,6 +366,8 @@ interface OrderConfirmationDialogProps {
     };
     observations?: string;
   };
+  /** Textos del diálogo al convertir un presupuesto en pedido ORD. */
+  isBudgetConversion?: boolean;
 }
 
 type ConfirmationStep =
@@ -382,6 +384,7 @@ export function OrderConfirmationDialog({
   onConfirm,
   onCancel,
   orderData,
+  isBudgetConversion = false,
 }: OrderConfirmationDialogProps) {
   const { exchangeRates, preferredCurrency } = useCurrency();
   const [currentStep, setCurrentStep] = useState<ConfirmationStep>("general");
@@ -1314,13 +1317,17 @@ export function OrderConfirmationDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-amber-500" />
-            Confirmar Creación de Pedido
+            {isBudgetConversion
+              ? "Convertir presupuesto en pedido"
+              : "Confirmar Creación de Pedido"}
             <Badge variant="outline" className="ml-2">
               Paso {currentStepIndex + 1} de {steps.length}
             </Badge>
           </DialogTitle>
           <DialogDescription>
-            Revisa los detalles del pedido antes de confirmar su creación
+            {isBudgetConversion
+              ? "Revisa los datos y confirma para generar el pedido real (ORD)."
+              : "Revisa los detalles del pedido antes de confirmar su creación"}
           </DialogDescription>
         </DialogHeader>
 
@@ -1368,7 +1375,7 @@ export function OrderConfirmationDialog({
             {isLastStep ? (
               <>
                 <CheckCircle2 className="w-4 h-4 mr-2" />
-                Confirmar y Crear Pedido
+                {isBudgetConversion ? "Confirmar y generar pedido" : "Confirmar y Crear Pedido"}
               </>
             ) : (
               <>

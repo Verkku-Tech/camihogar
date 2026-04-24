@@ -80,6 +80,8 @@ public static class Permissions
         public const string ReadAll = "budgets.read.all"; // Consultar toda la base de datos
         public const string Create = "budgets.create";
         public const string Update = "budgets.update";
+        /// <summary>Convertir un presupuesto (PRE) en pedido real (ORD) vía API dedicada.</summary>
+        public const string ConvertToOrder = "budgets.convert_to_order";
         public const string Close = "budgets.close";
         public const string Delete = "budgets.delete";
         public const string ViewStatistics = "budgets.statistics.view";

@@ -40,7 +40,7 @@ public static class RoleSeeder
                     Permissions.Inventory.ViewStock, Permissions.Inventory.ViewMovements,
                     Permissions.Products.Read,
                     Permissions.Settings.ManageAlerts,
-                    Permissions.Budgets.ReadAll, Permissions.Budgets.Create, Permissions.Budgets.Update, Permissions.Budgets.Close,
+                    Permissions.Budgets.ReadAll, Permissions.Budgets.Create, Permissions.Budgets.Update, Permissions.Budgets.ConvertToOrder, Permissions.Budgets.Close,
                     Permissions.Orders.Read, Permissions.Orders.Create, Permissions.Orders.Update, Permissions.Orders.Export,
                     Permissions.Dispatch.Read, Permissions.Dispatch.Create, Permissions.Dispatch.Update,
                     Permissions.Reports.Dispatch, Permissions.Reports.Commissions
@@ -58,7 +58,7 @@ public static class RoleSeeder
                     Permissions.Inventory.ViewStock,
                     Permissions.Products.Read,
                     Permissions.Settings.ManageAlerts,
-                    Permissions.Budgets.Create, Permissions.Budgets.Update, Permissions.Budgets.Close,
+                    Permissions.Budgets.Create, Permissions.Budgets.Update, Permissions.Budgets.ConvertToOrder, Permissions.Budgets.Close,
                     Permissions.Orders.Read, Permissions.Orders.Create, Permissions.Orders.Update, Permissions.Orders.Export,
                     Permissions.Dispatch.Read, Permissions.Dispatch.Create, Permissions.Dispatch.Update
                 },
@@ -75,7 +75,7 @@ public static class RoleSeeder
                     Permissions.Inventory.ViewStock,
                     Permissions.Products.Read,
                     Permissions.Settings.ManageAlerts,
-                    Permissions.Budgets.Create, Permissions.Budgets.Update, Permissions.Budgets.Close,
+                    Permissions.Budgets.Create, Permissions.Budgets.Update, Permissions.Budgets.ConvertToOrder, Permissions.Budgets.Close,
                     Permissions.Orders.Read, Permissions.Orders.Create, Permissions.Orders.Update, Permissions.Orders.Export,
                     Permissions.Dispatch.Read, Permissions.Dispatch.Create, Permissions.Dispatch.Update
                 },
@@ -83,6 +83,9 @@ public static class RoleSeeder
                 UpdatedAt = DateTime.UtcNow
             }
         };
+
+        // Nota: solo InsertOne cuando el rol no existe. Entornos con roles ya en Mongo deben asignar
+        // budgets.convert_to_order en Configuración > Roles o vía migración del array Permissions.
 
         foreach (var roleEntry in rolesKeyed)
         {

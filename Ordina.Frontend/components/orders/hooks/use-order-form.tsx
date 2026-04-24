@@ -27,6 +27,10 @@ import {
   type Currency,
 } from "@/lib/currency-utils";
 import { PAYMENT_BALANCE_EPSILON_BS } from "@/lib/order-payments";
+import {
+  mergeDiscountUiIntoAttributes,
+  readDiscountUiFromProduct,
+} from "@/lib/product-discount-ui";
 
 export interface OrderFormData {
   vendor: string;
@@ -196,7 +200,11 @@ export interface UseOrderFormReturn {
   getDefaultCurrencyFromSelection: () => Currency;
   getCurrencyOrder: () => Currency[];
   handleProductsSelect: (products: OrderProduct[]) => void;
-  handleProductDiscountChange: (productId: string, value: number) => void;
+  handleProductDiscountChange: (
+    productId: string,
+    value: number,
+    opts?: { inputCurrency?: Currency }
+  ) => void;
   handleProductDiscountTypeChange: (
     productId: string,
     type: "monto" | "porcentaje"
@@ -551,15 +559,22 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         setProductDiscountCurrencies(d.productDiscountCurrencies as Record<string, Currency>);
       if (typeof d.deliveryCurrency === "string") setDeliveryCurrency(d.deliveryCurrency as Currency);
       if (Array.isArray(d.selectedCurrencies)) setSelectedCurrencies(d.selectedCurrencies as Currency[]);
-      if (d.onlineSellerMode === "vendor" || d.onlineSellerMode === "referrer" || d.onlineSellerMode === null)
-        setOnlineSellerMode(d.onlineSellerMode as "vendor" | "referrer" | null);
+      const draftSellerMode =
+        d.onlineSellerMode === "vendor" || d.onlineSellerMode === "referrer"
+          ? d.onlineSellerMode
+          : null;
+      setOnlineSellerMode(
+        user?.role === "Online Seller" && draftSellerMode === null
+          ? "vendor"
+          : draftSellerMode
+      );
       setDraftResolution("loaded");
     } catch (e) {
       console.error("Error loading order draft:", e);
       clearDraftStorage();
       setDraftResolution("none");
     }
-  }, [clearDraftStorage, getDraftStorageKey]);
+  }, [clearDraftStorage, getDraftStorageKey, user?.role]);
 
   // Funciones helper
   const getCurrencyOrder = useCallback((): Currency[] => {
@@ -794,10 +809,18 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       const newCurrencies: Record<string, Currency> = {};
       products.forEach((product) => {
         if (!productDiscountTypes[product.id]) {
-          newTypes[product.id] = "monto";
+          const { type, currency } = readDiscountUiFromProduct(
+            product,
+            getDefaultCurrencyFromSelection()
+          );
+          newTypes[product.id] = type;
+          newCurrencies[product.id] = currency;
         }
-        if (!productDiscountCurrencies[product.id]) {
-          newCurrencies[product.id] = getDefaultCurrencyFromSelection();
+        if (!productDiscountCurrencies[product.id] && !newCurrencies[product.id]) {
+          newCurrencies[product.id] = readDiscountUiFromProduct(
+            product,
+            getDefaultCurrencyFromSelection()
+          ).currency;
         }
       });
       if (Object.keys(newTypes).length > 0) {
@@ -815,7 +838,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
   );
 
   const handleProductDiscountChange = useCallback(
-    (productId: string, value: number) => {
+    (productId: string, value: number, opts?: { inputCurrency?: Currency }) => {
       setSelectedProducts((products) =>
         products.map((product) => {
           if (product.id !== productId) {
@@ -824,7 +847,9 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
           const baseTotal = getProductBaseTotal(product);
           const discountType = productDiscountTypes[productId] || "monto";
           const discountCurrency =
-            productDiscountCurrencies[productId] || getDefaultCurrencyFromSelection();
+            opts?.inputCurrency ??
+            productDiscountCurrencies[productId] ??
+            getDefaultCurrencyFromSelection();
 
           let discountAmount: number;
           if (discountType === "porcentaje") {
@@ -867,6 +892,11 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
           return {
             ...product,
             discount: discountAmount,
+            attributes: mergeDiscountUiIntoAttributes(
+              product.attributes,
+              discountType,
+              discountCurrency
+            ),
           };
         })
       );
@@ -884,8 +914,19 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
   const handleProductDiscountTypeChange = useCallback(
     (productId: string, type: "monto" | "porcentaje") => {
       setProductDiscountTypes((prev) => ({ ...prev, [productId]: type }));
+      setSelectedProducts((products) =>
+        products.map((p) => {
+          if (p.id !== productId) return p;
+          const currency =
+            productDiscountCurrencies[productId] ?? getDefaultCurrencyFromSelection();
+          return {
+            ...p,
+            attributes: mergeDiscountUiIntoAttributes(p.attributes, type, currency),
+          };
+        })
+      );
     },
-    []
+    [productDiscountCurrencies, getDefaultCurrencyFromSelection]
   );
 
   const handleGeneralDiscountChange = useCallback(
@@ -922,7 +963,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       if (currentStep === 1) {
         if (!step1SellerReady) {
           toast.error(
-            "Por favor selecciona un vendedor o, si eres referidor, activa el modo referidor"
+            "Por favor completa el paso 1: vendedor asignado, cliente y al menos un producto."
           );
           return;
         }

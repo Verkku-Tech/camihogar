@@ -18,13 +18,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Eye, Loader2 } from "lucide-react"
+import { Eye, Loader2, ClipboardCheck } from "lucide-react"
 import { toast } from "sonner"
 import {
   apiClient,
   type ClientResponseDto,
   type OrderResponseDto,
 } from "@/lib/api-client"
+import { useAuth } from "@/contexts/auth-context"
+import { EditOrderDialog } from "@/components/orders/edit-order-dialog"
+import { orderFromBackendDto, type Order } from "@/lib/storage"
+import {
+  formatUsdOnlyFromOrderTotal,
+  getActiveExchangeRates,
+} from "@/lib/currency-utils"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -55,16 +62,13 @@ const getStatusColor = (status: string) => {
     case "Generado":
     case "Generada":
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+    case "Por Confirmar":
+      return "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+    case "Convertido":
+      return "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200"
     default:
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
   }
-}
-
-function formatBs(total: number) {
-  return `Bs. ${total.toLocaleString("es-VE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
 }
 
 function formatDate(iso: string) {
@@ -91,8 +95,17 @@ export function ClientOrdersHistoryDialog({
   client,
 }: ClientOrdersHistoryDialogProps) {
   const router = useRouter()
+  const { user } = useAuth()
   const [orders, setOrders] = useState<OrderResponseDto[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [pcfOrderToConfirm, setPcfOrderToConfirm] = useState<Order | null>(null)
+  const [orderTotalsUsd, setOrderTotalsUsd] = useState<Record<string, string>>({})
+
+  const canConfirmPcf =
+    user &&
+    (user.role === "Store Seller" ||
+      user.role === "Administrator" ||
+      user.role === "Super Administrator")
 
   useEffect(() => {
     if (!open || !client) {
@@ -128,11 +141,34 @@ export function ClientOrdersHistoryDialog({
     }
   }, [open, client?.id])
 
+  useEffect(() => {
+    if (orders.length === 0) {
+      setOrderTotalsUsd({})
+      return
+    }
+    let cancelled = false
+    const run = async () => {
+      const fallbackRates = await getActiveExchangeRates()
+      if (cancelled) return
+      const totals: Record<string, string> = {}
+      for (const row of orders) {
+        const formatted = await formatUsdOnlyFromOrderTotal(row.total, row, fallbackRates)
+        totals[row.id] = formatted
+      }
+      if (!cancelled) setOrderTotalsUsd(totals)
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [orders])
+
   const title = client
     ? `Historial de pedidos — ${client.nombreRazonSocial}`
     : "Historial de pedidos"
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
@@ -154,18 +190,33 @@ export function ClientOrdersHistoryDialog({
               <TableHeader>
                 <TableRow>
                   <TableHead>Pedido</TableHead>
+                  <TableHead>Tipo</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Método de pago</TableHead>
                   <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="w-[72px] text-right">Ver</TableHead>
+                  <TableHead className="text-right w-[120px]">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {orders.map((order) => (
-                  <TableRow key={order.id}>
+                {orders.map((order) => {
+                  const isPcfPending =
+                    order.type === "PendingConfirmation" && order.status === "Por Confirmar"
+                  const typeLabel =
+                    order.type === "PendingConfirmation"
+                      ? "Por confirmar"
+                      : order.type === "Budget"
+                        ? "Presupuesto"
+                        : "Pedido"
+                  return (
+                    <TableRow key={order.id}>
                     <TableCell className="font-mono text-sm font-medium">
                       {order.orderNumber}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="font-normal">
+                        {typeLabel}
+                      </Badge>
                     </TableCell>
                     <TableCell>{formatDate(order.createdAt)}</TableCell>
                     <TableCell>
@@ -177,31 +228,75 @@ export function ClientOrdersHistoryDialog({
                       {order.paymentMethod || "—"}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatBs(order.total)}
+                      {orderTotalsUsd[order.id] ?? "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        title="Ver detalle"
-                        onClick={() => {
-                          onOpenChange(false)
-                          router.push(
-                            `/pedidos/${encodeURIComponent(order.orderNumber)}`,
-                          )
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        {canConfirmPcf && isPcfPending && (
+                          <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            className="h-8 px-2"
+                            title="Confirmar pedido en tienda"
+                            onClick={() => {
+                              setPcfOrderToConfirm(orderFromBackendDto(order))
+                            }}
+                          >
+                            <ClipboardCheck className="h-4 w-4 sm:mr-1" />
+                            <span className="hidden sm:inline">Confirmar</span>
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          title="Ver detalle"
+                          onClick={() => {
+                            onOpenChange(false)
+                            router.push(
+                              `/pedidos/${encodeURIComponent(order.orderNumber)}`,
+                            )
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           )}
         </div>
       </DialogContent>
     </Dialog>
+
+    <EditOrderDialog
+      open={pcfOrderToConfirm != null}
+      onOpenChange={(o) => {
+        if (!o) setPcfOrderToConfirm(null)
+      }}
+      order={pcfOrderToConfirm}
+      mode="confirm-pcf"
+      onConfirmed={() => {
+        if (!client) return
+        void (async () => {
+          try {
+            const list = await apiClient.getOrdersByClient(client.id)
+            const sorted = [...list].sort(
+              (a, b) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+            )
+            setOrders(sorted)
+          } catch (e) {
+            console.error(e)
+            toast.error("No se pudo actualizar el historial.")
+          }
+        })()
+      }}
+    />
+    </>
   )
 }
