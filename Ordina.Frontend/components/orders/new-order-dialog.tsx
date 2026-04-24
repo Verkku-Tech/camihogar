@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Loader2 } from "lucide-react";
 import { useOrderForm } from "./hooks/use-order-form";
 import { Step1Budget } from "./steps/step-1-budget";
 import { Step2ProductStatus } from "./steps/step-2-product-status";
@@ -20,16 +20,19 @@ import { ProductSelectionDialog } from "./product-selection-dialog";
 import { ProductEditDialog } from "./product-edit-dialog";
 import { RemoveProductDialog } from "./remove-product-dialog";
 import { OrderConfirmationDialog } from "./order-confirmation-dialog";
+import { EditOrderDialog } from "./edit-order-dialog";
 import {
   addOrder,
   addBudget,
   addPendingConfirmationOrder,
+  orderFromBackendDto,
   type Order,
   type OrderProduct,
   type PartialPayment,
   type ProductImage,
   type Account,
 } from "@/lib/storage";
+import { apiClient, type OrderResponseDto } from "@/lib/api-client";
 import { Currency } from "@/lib/currency-utils";
 import {
   normalizePaymentsForSave,
@@ -49,6 +52,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
+
+type OrderFormSelectedClient = {
+  id: string;
+  name: string;
+  address?: string;
+  telefono?: string;
+  telefono2?: string;
+  email?: string;
+  rutId?: string;
+};
 
 interface NewOrderDialogProps {
   open: boolean;
@@ -108,6 +121,24 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(null);
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
+
+  const [isCheckingClientPcf, setIsCheckingClientPcf] = useState(false);
+  const [pendingPcfPrompt, setPendingPcfPrompt] = useState<{
+    client: OrderFormSelectedClient;
+    pcfDto: OrderResponseDto;
+  } | null>(null);
+  const [pcfToOpen, setPcfToOpen] = useState<Order | null>(null);
+  const pcfPromptClosingForLoadRef = useRef(false);
+
+  const applySelectedClientToForm = (client: OrderFormSelectedClient) => {
+    orderForm.setSelectedClient(client);
+    if (orderForm.hasDelivery && client.address) {
+      orderForm.setFormData((prev) => ({
+        ...prev,
+        deliveryAddress: client.address || prev.deliveryAddress,
+      }));
+    }
+  };
 
   // Handlers de productos
   const handleEditProduct = (product: OrderProduct) => {
@@ -959,13 +990,34 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         open={isClientLookupOpen}
         onOpenChange={setIsClientLookupOpen}
         onClientSelect={(client) => {
-          orderForm.setSelectedClient(client);
-          if (orderForm.hasDelivery && client.address) {
-            orderForm.setFormData((prev) => ({
-              ...prev,
-              deliveryAddress: client.address || prev.deliveryAddress,
-            }));
-          }
+          void (async () => {
+            setIsCheckingClientPcf(true);
+            try {
+              const list = await apiClient.getOrdersByClient(client.id);
+              const pending = list
+                .filter(
+                  (o) =>
+                    o.type === "PendingConfirmation" && o.status === "Por Confirmar"
+                )
+                .sort(
+                  (a, b) =>
+                    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                );
+              if (pending.length === 0) {
+                applySelectedClientToForm(client);
+              } else {
+                setPendingPcfPrompt({ client, pcfDto: pending[0]! });
+              }
+            } catch (e) {
+              console.error(e);
+              toast.error(
+                "No se pudo comprobar el historial del cliente. Se continúa con el cliente seleccionado."
+              );
+              applySelectedClientToForm(client);
+            } finally {
+              setIsCheckingClientPcf(false);
+            }
+          })();
         }}
       />
 
@@ -1002,6 +1054,76 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           orderData={pendingOrderData}
         />
       )}
+
+      <AlertDialog
+        open={pendingPcfPrompt !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && pendingPcfPrompt && !pcfPromptClosingForLoadRef.current) {
+            applySelectedClientToForm(pendingPcfPrompt.client);
+            setPendingPcfPrompt(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="z-[110]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pedido por confirmar</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left text-sm text-muted-foreground">
+                <p>
+                  {pendingPcfPrompt?.client.name} tiene un pedido pendiente de confirmar (
+                  <span className="font-mono font-medium text-foreground">
+                    {pendingPcfPrompt?.pcfDto.orderNumber}
+                  </span>
+                  ).
+                </p>
+                <p>
+                  ¿Quieres cargarlo para revisarlo o confirmarlo en tienda, o prefieres crear un
+                  pedido nuevo desde cero?
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:space-x-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (!pendingPcfPrompt) return;
+                const { client } = pendingPcfPrompt;
+                setPendingPcfPrompt(null);
+                applySelectedClientToForm(client);
+              }}
+            >
+              Pedido nuevo
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!pendingPcfPrompt) return;
+                const { pcfDto } = pendingPcfPrompt;
+                pcfPromptClosingForLoadRef.current = true;
+                setPendingPcfPrompt(null);
+                onOpenChange(false);
+                setPcfToOpen(orderFromBackendDto(pcfDto));
+                queueMicrotask(() => {
+                  pcfPromptClosingForLoadRef.current = false;
+                });
+              }}
+            >
+              Cargar pendiente
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <EditOrderDialog
+        open={pcfToOpen !== null}
+        onOpenChange={(next) => {
+          if (!next) setPcfToOpen(null);
+        }}
+        order={pcfToOpen}
+        mode="confirm-pcf"
+      />
 
       {/* Después del Dialog principal para que el portal quede encima (mismo z-index) */}
       <AlertDialog open={orderForm.needsDraftPrompt}>
