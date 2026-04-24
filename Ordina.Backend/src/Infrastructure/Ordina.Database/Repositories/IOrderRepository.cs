@@ -24,5 +24,8 @@ public interface IOrderRepository
     Task<bool> DeleteAsync(string id);
     Task<bool> ExistsAsync(string id);
     Task<bool> OrderNumberExistsAsync(string orderNumber);
+
+    /// <summary>Cuenta documentos por <see cref="Order.Type"/> sin cargar toda la colección.</summary>
+    Task<long> CountByTypeAsync(string type);
 }
 
