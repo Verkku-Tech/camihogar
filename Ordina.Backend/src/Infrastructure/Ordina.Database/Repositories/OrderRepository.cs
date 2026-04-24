@@ -104,5 +104,10 @@ public class OrderRepository : IOrderRepository
         var count = await _collection.CountDocumentsAsync(o => o.OrderNumber == orderNumber);
         return count > 0;
     }
+
+    public async Task<long> CountByTypeAsync(string type)
+    {
+        return await _collection.CountDocumentsAsync(o => o.Type == type);
+    }
 }
 

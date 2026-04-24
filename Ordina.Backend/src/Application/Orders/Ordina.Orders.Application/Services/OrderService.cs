@@ -158,10 +158,9 @@ public class OrderService : IOrderService
                     throw new ArgumentException("El método de pago es requerido para pedidos", nameof(createDto.PaymentMethod));
             }
 
-            var existingOrders = (await _orderRepository.GetAllAsync()).ToList();
             var typeForCount = isBudget ? "Budget" : isPendingConfirmation ? "PendingConfirmation" : "Order";
             var prefix = isBudget ? "PRE-" : isPendingConfirmation ? "PCF-" : "ORD-";
-            var countForType = existingOrders.Count(o => string.Equals(o.Type, typeForCount, StringComparison.Ordinal));
+            var countForType = (int)await _orderRepository.CountByTypeAsync(typeForCount);
             var orderNumber = $"{prefix}{String.Format("{0:D3}", countForType + 1)}";
 
             int attempts = 0;
@@ -342,8 +341,7 @@ public class OrderService : IOrderService
             UpdatedAt = DateTime.UtcNow
         };
 
-        var existingOrders = (await _orderRepository.GetAllAsync()).ToList();
-        var ordCount = existingOrders.Count(o => string.Equals(o.Type, "Order", StringComparison.Ordinal));
+        var ordCount = (int)await _orderRepository.CountByTypeAsync("Order");
         var orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + 1)}";
         var attempts = 0;
         while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
@@ -455,8 +453,7 @@ public class OrderService : IOrderService
             UpdatedAt = DateTime.UtcNow
         };
 
-        var existingOrders = (await _orderRepository.GetAllAsync()).ToList();
-        var ordCount = existingOrders.Count(o => string.Equals(o.Type, "Order", StringComparison.Ordinal));
+        var ordCount = (int)await _orderRepository.CountByTypeAsync("Order");
         var orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + 1)}";
         var attempts = 0;
         while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)

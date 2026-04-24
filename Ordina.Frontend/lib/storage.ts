@@ -2397,6 +2397,41 @@ export const getOrdersByStatus = async (status: string): Promise<Order[]> => {
   }
 };
 
+function newLocalOrderId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/** Siguiente ORD-xxx libre respecto al índice único orderNumber en IndexedDB. */
+function nextOfflineOrderNumber(existingOrders: Order[]): string {
+  const existingNumbers = new Set(
+    existingOrders
+      .map((o) => o.orderNumber)
+      .filter((n): n is string => typeof n === "string" && n.trim() !== "")
+  );
+  let max = 0;
+  const re = /^ORD-(\d+)$/i;
+  for (const o of existingOrders) {
+    const m = o.orderNumber?.match(re);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (!Number.isNaN(n) && n > max) max = n;
+    }
+  }
+  let candidate = max + 1;
+  for (let i = 0; i < 100000; i++) {
+    const label =
+      candidate <= 999
+        ? `ORD-${String(candidate).padStart(3, "0")}`
+        : `ORD-${candidate}`;
+    if (!existingNumbers.has(label)) return label;
+    candidate++;
+  }
+  return `ORD-L-${Date.now()}`;
+}
+
 export const addOrder = async (
   order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">
 ): Promise<Order> => {
@@ -2425,25 +2460,16 @@ export const addOrder = async (
   // Guardar en IndexedDB (offline o falló el backend)
   try {
     const orders = await db.getAll<Order>("orders");
-    const orderNumber = `ORD-${String(orders.length + 1).padStart(3, "0")}`;
+    const orderNumber = nextOfflineOrderNumber(orders);
 
     newOrder = {
       ...order,
-      id: Date.now().toString(),
+      id: newLocalOrderId(),
       orderNumber,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       status: order.status || "Generado", // Estado inicial para pedidos normales
     };
-
-    // DEBUG: Verificar imágenes antes de guardar
-    newOrder.products.forEach((p, idx) => {
-      if (p.images && p.images.length > 0) {
-        console.log(`💾 Guardando pedido: Producto ${idx} (${p.name}) tiene ${p.images.length} imágenes`);
-      } else {
-        console.log(`⚠️ Guardando pedido: Producto ${idx} (${p.name}) NO tiene imágenes`);
-      }
-    });
 
     await db.add("orders", newOrder);
     console.log("✅ Pedido guardado en IndexedDB:", newOrder.orderNumber);
