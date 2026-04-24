@@ -1,6 +1,8 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
+using MongoDB.Driver;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.Repositories;
 using Ordina.Orders.Application.DTOs;
@@ -160,15 +162,7 @@ public class OrderService : IOrderService
 
             var typeForCount = isBudget ? "Budget" : isPendingConfirmation ? "PendingConfirmation" : "Order";
             var prefix = isBudget ? "PRE-" : isPendingConfirmation ? "PCF-" : "ORD-";
-            var countForType = (int)await _orderRepository.CountByTypeAsync(typeForCount);
-            var orderNumber = $"{prefix}{String.Format("{0:D3}", countForType + 1)}";
-
-            int attempts = 0;
-            while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
-            {
-                orderNumber = $"{prefix}{String.Format("{0:D3}", countForType + attempts + 2)}";
-                attempts++;
-            }
+            var orderNumber = await AllocateNextOrderNumberAsync(typeForCount, prefix);
 
             var paymentType = isBudget || isPendingConfirmation
                 ? (string.IsNullOrWhiteSpace(createDto.PaymentType) ? "N/A" : createDto.PaymentType!)
@@ -222,8 +216,7 @@ public class OrderService : IOrderService
             };
 
             RecalculateOrderStatus(order);
-            var createdOrder = await _orderRepository.CreateAsync(order);
-            await _auditLogService.LogOrderCreatedAsync(createdOrder, userId, userName);
+            var createdOrder = await CreateOrderAndAuditAsync(order, typeForCount, prefix, userId, userName);
             return MapToDto(createdOrder);
         }
         catch (Exception ex)
@@ -341,19 +334,10 @@ public class OrderService : IOrderService
             UpdatedAt = DateTime.UtcNow
         };
 
-        var ordCount = (int)await _orderRepository.CountByTypeAsync("Order");
-        var orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + 1)}";
-        var attempts = 0;
-        while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
-        {
-            orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + attempts + 2)}";
-            attempts++;
-        }
-        newOrder.OrderNumber = orderNumber;
+        newOrder.OrderNumber = await AllocateNextOrderNumberAsync("Order", "ORD-");
 
         RecalculateOrderStatus(newOrder);
-        var created = await _orderRepository.CreateAsync(newOrder);
-        await _auditLogService.LogOrderCreatedAsync(created, userId, userName);
+        var created = await CreateOrderAndAuditAsync(newOrder, "Order", "ORD-", userId, userName);
 
         var pcfBefore = OrderDeepClone.Clone(pcf);
         pcf.Status = "Convertido";
@@ -453,19 +437,10 @@ public class OrderService : IOrderService
             UpdatedAt = DateTime.UtcNow
         };
 
-        var ordCount = (int)await _orderRepository.CountByTypeAsync("Order");
-        var orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + 1)}";
-        var attempts = 0;
-        while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
-        {
-            orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + attempts + 2)}";
-            attempts++;
-        }
-        newOrder.OrderNumber = orderNumber;
+        newOrder.OrderNumber = await AllocateNextOrderNumberAsync("Order", "ORD-");
 
         RecalculateOrderStatus(newOrder);
-        var created = await _orderRepository.CreateAsync(newOrder);
-        await _auditLogService.LogOrderCreatedAsync(created, userId, userName);
+        var created = await CreateOrderAndAuditAsync(newOrder, "Order", "ORD-", userId, userName);
 
         var budgetBefore = OrderDeepClone.Clone(budget);
         budget.Status = "Convertido";
@@ -740,6 +715,63 @@ public class OrderService : IOrderService
     }
 
     // Mappers
+    private static string FormatOrderNumberWithPrefix(string prefix, int suffix) =>
+        $"{prefix}{suffix.ToString("D3", CultureInfo.InvariantCulture)}";
+
+    private async Task<string> AllocateNextOrderNumberAsync(string orderType, string prefix)
+    {
+        var maxSuffix = await _orderRepository.GetMaxNumericSuffixForTypeAndPrefixAsync(orderType, prefix);
+        var candidate = maxSuffix + 1;
+        const int cap = 5000;
+        for (var i = 0; i < cap; i++)
+        {
+            var orderNumber = FormatOrderNumberWithPrefix(prefix, candidate);
+            if (!await _orderRepository.OrderNumberExistsAsync(orderNumber))
+                return orderNumber;
+            candidate++;
+        }
+
+        throw new InvalidOperationException(
+            $"No se pudo generar un número único para el prefijo {prefix} (tipo {orderType}).");
+    }
+
+    private static bool IsDuplicateKeyWrite(MongoWriteException ex) =>
+        ex.WriteError?.Code == 11000;
+
+    private async Task<Order> CreateOrderAndAuditAsync(
+        Order order,
+        string orderTypeForNumber,
+        string orderNumberPrefix,
+        string userId,
+        string userName)
+    {
+        const int maxDupRetries = 10;
+        for (var attempt = 0; attempt < maxDupRetries; attempt++)
+        {
+            try
+            {
+                var created = await _orderRepository.CreateAsync(order);
+                await _auditLogService.LogOrderCreatedAsync(created, userId, userName);
+                return created;
+            }
+            catch (MongoWriteException ex) when (IsDuplicateKeyWrite(ex))
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Clave duplicada al insertar pedido (orderNumber {OrderNumber}, intento {Attempt}). Reasignando.",
+                    order.OrderNumber,
+                    attempt + 1);
+
+                if (attempt == maxDupRetries - 1)
+                    throw;
+
+                order.OrderNumber = await AllocateNextOrderNumberAsync(orderTypeForNumber, orderNumberPrefix);
+            }
+        }
+
+        throw new InvalidOperationException("Fallo inesperado al persistir el pedido.");
+    }
+
     private OrderResponseDto MapToDto(Order order)
     {
         return new OrderResponseDto
