@@ -27,5 +27,11 @@ public interface IOrderRepository
 
     /// <summary>Cuenta documentos por <see cref="Order.Type"/> sin cargar toda la colección.</summary>
     Task<long> CountByTypeAsync(string type);
+
+    /// <summary>
+    /// Máximo sufijo numérico de <c>orderNumber</c> con formato <c>{prefix}{dígitos}</c> para el tipo dado
+    /// (p. ej. tipo Order y prefijo ORD-). Si no hay coincidencias, devuelve 0.
+    /// </summary>
+    Task<int> GetMaxNumericSuffixForTypeAndPrefixAsync(string orderType, string prefix);
 }
 

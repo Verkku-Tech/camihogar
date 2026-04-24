@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.MongoContext;
@@ -108,6 +110,42 @@ public class OrderRepository : IOrderRepository
     public async Task<long> CountByTypeAsync(string type)
     {
         return await _collection.CountDocumentsAsync(o => o.Type == type);
+    }
+
+    public async Task<int> GetMaxNumericSuffixForTypeAndPrefixAsync(string orderType, string prefix)
+    {
+        if (string.IsNullOrEmpty(orderType) || string.IsNullOrEmpty(prefix))
+            return 0;
+
+        var pattern = $"^{Regex.Escape(prefix)}\\d+$";
+        var matchFilter = Builders<Order>.Filter.And(
+            Builders<Order>.Filter.Eq(o => o.Type, orderType),
+            Builders<Order>.Filter.Regex(o => o.OrderNumber, new BsonRegularExpression(pattern, "i")));
+
+        var addFields = new BsonDocument("$addFields", new BsonDocument("num",
+            new BsonDocument("$toInt",
+                new BsonDocument("$arrayElemAt", new BsonArray
+                {
+                    new BsonDocument("$split", new BsonArray { "$orderNumber", "-" }),
+                    -1
+                }))));
+
+        var group = new BsonDocument("$group", new BsonDocument
+        {
+            ["_id"] = BsonNull.Value,
+            ["maxNum"] = new BsonDocument("$max", "$num")
+        });
+
+        var doc = await _collection.Aggregate()
+            .Match(matchFilter)
+            .AppendStage<BsonDocument>(addFields)
+            .AppendStage<BsonDocument>(group)
+            .FirstOrDefaultAsync();
+
+        if (doc == null || !doc.TryGetValue("maxNum", out var maxVal) || maxVal.IsBsonNull)
+            return 0;
+
+        return maxVal.ToInt32();
     }
 }
 
