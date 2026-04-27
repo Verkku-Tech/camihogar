@@ -25,6 +25,17 @@ export function getActivePaymentsList(
   return [];
 }
 
+/** Saldo pendiente vs el total (Bs): partial si tiene ítems, si no mixed. */
+export function getOrderPendingTotal(
+  order: PartialMixedPaymentsSource & { total: number }
+): number {
+  const totalPaid = getActivePaymentsList(order).reduce(
+    (sum, p) => sum + (p.amount || 0),
+    0
+  );
+  return Math.max(0, order.total - totalPaid);
+}
+
 /** Misma regla que el detalle del pedido y el reporte backend: partial si existe, si no mixed */
 export function getActivePaymentsForReport(order: Order): {
   payments: PartialPayment[];

@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Ordina.Database.Entities.Commission;
 using Ordina.Database.MongoContext;
@@ -25,7 +27,14 @@ public class ProductCommissionRepository : IProductCommissionRepository
 
     public async Task<ProductCommission?> GetByCategoryNameAsync(string categoryName)
     {
-        return await _collection.Find(c => c.CategoryName == categoryName).FirstOrDefaultAsync();
+        if (string.IsNullOrWhiteSpace(categoryName)) return null;
+        var trimmed = categoryName.Trim();
+        // Coincidencia exacta insensible a mayúsculas (evita duplicados "Copete solo" vs "Copete Solo")
+        var pattern = "^" + Regex.Escape(trimmed) + "$";
+        var filter = Builders<ProductCommission>.Filter.Regex(
+            c => c.CategoryName,
+            new BsonRegularExpression(pattern, "i"));
+        return await _collection.Find(filter).FirstOrDefaultAsync();
     }
 
     public async Task<IEnumerable<ProductCommission>> GetAllAsync()
@@ -62,11 +71,18 @@ public class ProductCommissionRepository : IProductCommissionRepository
             commission.CreatedAt = existing.CreatedAt;
             if (string.IsNullOrWhiteSpace(commission.CategoryId))
                 commission.CategoryId = existing.CategoryId;
+            var incomingName = (commission.CategoryName ?? string.Empty).Trim();
+            commission.CategoryName = !string.IsNullOrEmpty(incomingName)
+                ? incomingName
+                : (existing.CategoryName ?? string.Empty).Trim();
             return await UpdateAsync(commission);
         }
 
+        if (!string.IsNullOrWhiteSpace(commission.CategoryName))
+            commission.CategoryName = commission.CategoryName.Trim();
+
         if (string.IsNullOrWhiteSpace(commission.CategoryId) && !string.IsNullOrWhiteSpace(commission.CategoryName))
-            commission.CategoryId = commission.CategoryName.Trim();
+            commission.CategoryId = commission.CategoryName;
 
         return await CreateAsync(commission);
     }

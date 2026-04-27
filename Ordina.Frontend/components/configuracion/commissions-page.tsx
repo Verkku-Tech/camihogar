@@ -36,6 +36,11 @@ import {
 } from "@/lib/storage";
 import { apiClient } from "@/lib/api-client";
 
+/** Alinea espacios y mayúsculas al cruzar catálogo con comisiones del API. */
+function normalizeCategoryKey(s: string): string {
+  return s.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
 type EditedRule = { vendorRate: number; referrerRate: number; postventaRate: number };
 
 export function CommissionsPage() {
@@ -94,7 +99,7 @@ export function CommissionsPage() {
         const existingCommission = loadedProductCommissions.find(
           (pc) =>
             (category.backendId && pc.categoryId === category.backendId) ||
-            pc.categoryName?.trim().toLowerCase() === category.name.trim().toLowerCase()
+            normalizeCategoryKey(pc.categoryName ?? "") === normalizeCategoryKey(category.name)
         );
         commissionValues[category.name] = existingCommission?.commissionValue || 0;
       });
@@ -138,10 +143,11 @@ export function CommissionsPage() {
       const commissionsToSave = categories.map((category) => {
         const fromBackend = (category.backendId || "").trim();
         const fromId = String(category.id ?? "").trim();
-        const categoryId = fromBackend || fromId || category.name.trim();
+        const nameNorm = category.name.replace(/\s+/g, " ").trim();
+        const categoryId = fromBackend || fromId || nameNorm;
         return {
           categoryId,
-          categoryName: category.name,
+          categoryName: nameNorm,
           commissionValue: Math.max(0, categoryCommissionValues[category.name] ?? 0),
         };
       });

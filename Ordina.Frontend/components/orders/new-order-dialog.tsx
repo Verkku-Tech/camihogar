@@ -122,6 +122,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
 
+  const [isPendingConfirmationSaving, setIsPendingConfirmationSaving] = useState(false);
   const [isCheckingClientPcf, setIsCheckingClientPcf] = useState(false);
   const [pendingPcfPrompt, setPendingPcfPrompt] = useState<{
     client: OrderFormSelectedClient;
@@ -379,6 +380,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   };
 
   const handleCreatePendingConfirmation = async () => {
+    if (isPendingConfirmationSaving) {
+      return;
+    }
+    setIsPendingConfirmationSaving(true);
     try {
       if (typeof document !== "undefined") {
         (document.activeElement as HTMLElement | null)?.blur?.();
@@ -497,6 +502,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     } catch (error) {
       console.error("Error creating pending confirmation order:", error);
       toast.error("Error al guardar el pedido por confirmar. Intenta de nuevo.");
+    } finally {
+      setIsPendingConfirmationSaving(false);
     }
   };
 
@@ -963,13 +970,22 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                       variant="outline"
                       onClick={handleCreatePendingConfirmation}
                       className="w-full sm:w-auto"
+                      disabled={isPendingConfirmationSaving}
                     >
-                      Guardar Pedido por Confirmar
+                      {isPendingConfirmationSaving ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 shrink-0 animate-spin" />
+                          Guardando…
+                        </>
+                      ) : (
+                        "Guardar Pedido por Confirmar"
+                      )}
                     </Button>
                     <Button
                       type="button"
                       onClick={handleSubmit}
                       className="w-full sm:w-auto"
+                      disabled={isPendingConfirmationSaving}
                     >
                       Crear Pedido
                     </Button>

@@ -32,6 +32,8 @@ import type {
   UpdateStoreDto,
 } from "./api-client";
 import { syncManager } from "./sync-manager";
+import { getOrderPendingTotal, PAYMENT_BALANCE_EPSILON_BS } from "./order-payments";
+import { getDaysSinceOrder, getLayawayDaysPastWindow, SA_LAYAWAY_DAYS } from "./order-sa";
 
 export interface AttributeValue {
   id: string;
@@ -3339,38 +3341,36 @@ export const calculateDashboardMetrics = async (
       )
       : 0;
 
-  // 5. Sistemas de Apartado (SA) Vencidos
-  // "lo que tenga deuda ya es un SA vencido" -> saldo > 0
-  // "debe reflejar lo vencido, sin cancelación" -> status no cancelado
-  // Solo considerar pedidos con saleType === "sistema_apartado"
-
-  const expiredLayawaysOrders = orders.filter(order => {
-    // SOLO considerar Sistemas de Apartado
+  // 5. Sistemas de Apartado (SA) vencidos: deuda con partial/mixed, y más de 90 días desde el pedido
+  // (a partir del día 91: getDaysSinceOrder(createdAt) > SA_LAYAWAY_DAYS)
+  const expiredLayawaysOrders = orders.filter((order) => {
     if (order.saleType !== "sistema_apartado") {
       return false;
     }
-
-    // No considerar cancelados
     if (order.status === "Cancelado") {
       return false;
     }
-
-    // "lo que tenga deuda ya es un SA vencido" - verificar deuda pendiente
-    const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-    const pendingAmount = Math.max(0, order.total - paidAmount);
-
-    // Si tiene deuda, está vencido
-    return pendingAmount > 0;
+    const pendingAmount = getOrderPendingTotal(order);
+    if (pendingAmount <= PAYMENT_BALANCE_EPSILON_BS) {
+      return false;
+    }
+    if (getDaysSinceOrder(order.createdAt) <= SA_LAYAWAY_DAYS) {
+      return false;
+    }
+    return true;
   });
 
   const expiredLayawaysCount = expiredLayawaysOrders.length;
-  const expiredLayawaysAmount = expiredLayawaysOrders.reduce((total, order) => {
-    const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-    return total + Math.max(0, order.total - paidAmount);
-  }, 0);
+  const expiredLayawaysAmount = expiredLayawaysOrders.reduce(
+    (total, order) => total + getOrderPendingTotal(order),
+    0,
+  );
 
-  // Productos por fabricar (Métrica existente)
+  // Productos por fabricar (Métrica): excluir pedidos SA con saldo (alineado con cola de fabricación)
   const productsToManufacture = orders.reduce((count, order) => {
+    if (order.saleType === "sistema_apartado" && getOrderPendingTotal(order) > PAYMENT_BALANCE_EPSILON_BS) {
+      return count;
+    }
     return (
       count +
       order.products.filter((product) => {
@@ -3408,37 +3408,30 @@ export const calculateDashboardMetrics = async (
 };
 
 /**
- * Obtiene todos los Sistemas de Apartado (SA) vencidos
- * Un SA está vencido si tiene saleType === "sistema_apartado" y tiene deuda pendiente
- * @returns Array de órdenes con SA vencidos, incluyendo información de días vencidos y deuda
+ * Sistemas de Apartado (SA) vencidos: deuda pendiente, más de 90 días desde el pedido.
+ * `daysExpired` = días de mora sobre el plazo (después del día 90).
  */
 export const getExpiredLayaways = async (): Promise<Array<Order & { daysExpired: number; pendingAmount: number }>> => {
   const orders = await getOrders();
   const now = new Date();
 
   const expiredLayaways = orders
-    .filter(order => {
-      // SOLO considerar Sistemas de Apartado
+    .filter((order) => {
       if (order.saleType !== "sistema_apartado") {
         return false;
       }
-
-      // No considerar cancelados
       if (order.status === "Cancelado") {
         return false;
       }
-
-      // "lo que tenga deuda ya es un SA vencido" - verificar deuda pendiente
-      const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-      const pendingAmount = Math.max(0, order.total - paidAmount);
-
-      return pendingAmount > 0;
+      const pendingAmount = getOrderPendingTotal(order);
+      if (pendingAmount <= PAYMENT_BALANCE_EPSILON_BS) {
+        return false;
+      }
+      return getDaysSinceOrder(order.createdAt, now) > SA_LAYAWAY_DAYS;
     })
-    .map(order => {
-      const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-      const pendingAmount = Math.max(0, order.total - paidAmount);
-      const orderDate = new Date(order.createdAt);
-      const daysExpired = Math.floor((now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
+    .map((order) => {
+      const pendingAmount = getOrderPendingTotal(order);
+      const daysExpired = getLayawayDaysPastWindow(order.createdAt, now);
 
       return {
         ...order,
@@ -3446,7 +3439,7 @@ export const getExpiredLayaways = async (): Promise<Array<Order & { daysExpired:
         pendingAmount
       };
     })
-    .sort((a, b) => b.daysExpired - a.daysExpired); // Ordenar por días vencidos (más antiguos primero)
+    .sort((a, b) => b.daysExpired - a.daysExpired);
 
   return expiredLayaways;
 };
