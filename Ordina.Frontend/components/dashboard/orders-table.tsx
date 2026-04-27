@@ -15,6 +15,8 @@ import { useAuth } from "@/contexts/auth-context"
 
 interface OrdersTableProps {
   limit?: number
+  /** Si el padre ya sincronizó pedidos, evita otro getOrders al montar. */
+  prefetchedOrders?: Order[]
 }
 
 const getStatusColor = (status: string) => {
@@ -58,7 +60,7 @@ function filterAndSortGeneratedOrders(allOrders: Order[], limit: number) {
     .slice(0, limit)
 }
 
-export function OrdersTable({ limit = 10 }: OrdersTableProps) {
+export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) {
   const router = useRouter()
   const { user } = useAuth()
   const canValidateOrders =
@@ -74,6 +76,11 @@ export function OrdersTable({ limit = 10 }: OrdersTableProps) {
   }, [limit])
 
   useEffect(() => {
+    if (prefetchedOrders !== undefined) {
+      setOrders(filterAndSortGeneratedOrders(prefetchedOrders, limit))
+      setIsLoading(false)
+      return
+    }
     const loadOrders = async () => {
       try {
         await reloadGeneratedOrders()
@@ -84,8 +91,8 @@ export function OrdersTable({ limit = 10 }: OrdersTableProps) {
       }
     }
 
-    loadOrders()
-  }, [reloadGeneratedOrders])
+    void loadOrders()
+  }, [prefetchedOrders, limit, reloadGeneratedOrders])
 
   useEffect(() => {
     const formatAmounts = async () => {

@@ -76,32 +76,52 @@ export const getLatestExchangeRate = async (
   }
 };
 
-// Obtener todas las tasas activas
+const ACTIVE_RATES_TTL_MS = 45_000;
+let inflightActiveRates: Promise<{ USD?: ExchangeRate; EUR?: ExchangeRate }> | null = null;
+let cachedActiveRates: { USD?: ExchangeRate; EUR?: ExchangeRate } | null = null;
+let cachedActiveRatesAt = 0;
+
+// Obtener todas las tasas activas (inflight + caché en memoria para no martillar la API)
 export const getActiveExchangeRates = async (): Promise<{
   USD?: ExchangeRate;
   EUR?: ExchangeRate;
 }> => {
-  try {
-    const { ApiClient } = await import("./api-client");
-    const client = new ApiClient();
-    const rates = await client.getActiveExchangeRates();
-
-    // Convertir array a objeto { USD: ..., EUR: ... }
-    const result: { USD?: ExchangeRate; EUR?: ExchangeRate } = {};
-
-    if (Array.isArray(rates)) {
-      const usdRate = rates.find(r => r.toCurrency === "USD");
-      if (usdRate) result.USD = usdRate;
-
-      const eurRate = rates.find(r => r.toCurrency === "EUR");
-      if (eurRate) result.EUR = eurRate;
-    }
-
-    return result;
-  } catch (error) {
-    console.error("Error getting active exchange rates:", error);
-    return {};
+  const now = Date.now();
+  if (cachedActiveRates && now - cachedActiveRatesAt < ACTIVE_RATES_TTL_MS) {
+    return cachedActiveRates;
   }
+  if (inflightActiveRates) {
+    return await inflightActiveRates;
+  }
+
+  inflightActiveRates = (async () => {
+    try {
+      const { ApiClient } = await import("./api-client");
+      const client = new ApiClient();
+      const rates = await client.getActiveExchangeRates();
+
+      const result: { USD?: ExchangeRate; EUR?: ExchangeRate } = {};
+
+      if (Array.isArray(rates)) {
+        const usdRate = rates.find((r) => r.toCurrency === "USD");
+        if (usdRate) result.USD = usdRate;
+
+        const eurRate = rates.find((r) => r.toCurrency === "EUR");
+        if (eurRate) result.EUR = eurRate;
+      }
+
+      cachedActiveRates = result;
+      cachedActiveRatesAt = Date.now();
+      return result;
+    } catch (error) {
+      console.error("Error getting active exchange rates:", error);
+      return {};
+    } finally {
+      inflightActiveRates = null;
+    }
+  })();
+
+  return await inflightActiveRates;
 };
 
 // Convertir de Bs a otra moneda
