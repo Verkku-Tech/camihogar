@@ -18,7 +18,18 @@ function clientContactLine(client?: Client): string | null {
   return bits.length > 0 ? bits.join(" · ") : null
 }
 
-export function OrderSearchCombobox() {
+type Preloaded = Order[] | null | undefined
+
+type OrderSearchComboboxProps = {
+  /**
+   * undefined: carga getOrders + getClients (comportamiento legado).
+   * null: el padre aún sincroniza pedidos; no llama a getOrders (solo clientes).
+   * Order[]: pedidos ya cargados (p. ej. Dashboard).
+   */
+  preloadedOrders?: Preloaded
+}
+
+export function OrderSearchCombobox({ preloadedOrders }: OrderSearchComboboxProps = {}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
@@ -28,22 +39,40 @@ export function OrderSearchCombobox() {
   useEffect(() => {
     const load = async () => {
       try {
+        const buildClientMap = (clientList: Client[]) => {
+          const map = new Map<string, Client>()
+          for (const c of clientList) {
+            map.set(c.id, c)
+          }
+          setClientById(map)
+        }
+        if (preloadedOrders === null) {
+          setOrders([])
+          const clientList = await getClients()
+          buildClientMap(clientList)
+          return
+        }
+        if (preloadedOrders !== undefined) {
+          const sorted = preloadedOrders
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 100)
+          setOrders(sorted)
+          const clientList = await getClients()
+          buildClientMap(clientList)
+          return
+        }
         const [orderData, clientList] = await Promise.all([getOrders(), getClients()])
         const sorted = orderData.sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
         setOrders(sorted.slice(0, 100))
-        const map = new Map<string, Client>()
-        for (const c of clientList) {
-          map.set(c.id, c)
-        }
-        setClientById(map)
+        buildClientMap(clientList)
       } catch (error) {
         console.error("Error loading orders/clients for search:", error)
       }
     }
     void load()
-  }, [])
+  }, [preloadedOrders])
 
   const handleSelect = (orderNumber: string) => {
     setOpen(false)
