@@ -19,6 +19,8 @@ export interface OrderGroupCollapsibleProps {
   productCount: number
   isExpanded: boolean
   onOpenChange: (open: boolean) => void
+  /** Contenido junto al número de pedido (ej. badge SA). */
+  orderNumberSuffix?: React.ReactNode
   /** Contenido a la derecha de la fila del pedido (ej: Total, Estado, Fecha, botones Ver/Despachar) */
   headerRight?: React.ReactNode
   /** Checkbox para seleccionar el pedido completo (ej: despacho masivo). Si no se pasa, no se muestra. */
@@ -48,6 +50,7 @@ export function OrderGroupCollapsible({
   productCount,
   isExpanded,
   onOpenChange,
+  orderNumberSuffix,
   headerRight,
   selectControl,
   children,
@@ -86,7 +89,10 @@ export function OrderGroupCollapsible({
                       <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                     )}
                     <div className="min-w-0">
-                      <div className="font-semibold">#{orderNumber}</div>
+                      <div className="font-semibold flex items-center gap-2 flex-wrap">
+                        <span>#{orderNumber}</span>
+                        {orderNumberSuffix}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {new Date(orderDate).toLocaleDateString()}
                       </div>

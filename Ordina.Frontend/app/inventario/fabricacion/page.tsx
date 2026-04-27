@@ -41,6 +41,7 @@ import { SelectProviderDialog } from "@/components/manufacturing/select-provider
 import { useRouter } from "next/navigation"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
+import { isSistemaApartado } from "@/lib/order-sa"
 
 // Tipo para productos agrupados por pedido
 interface ProductRow {
@@ -48,6 +49,7 @@ interface ProductRow {
   orderNumber: string
   clientName: string
   orderDate: string
+  saleType?: Order["saleType"]
   product: OrderProduct
   status: "disponible" | "debe_fabricar" | "fabricando" | "almacen_no_fabricado"
 }
@@ -135,6 +137,7 @@ export default function FabricacionPage() {
           orderNumber: order.orderNumber,
           clientName: order.clientName,
           orderDate: order.createdAt,
+          saleType: order.saleType,
           product,
           status
         })
@@ -456,12 +459,22 @@ export default function FabricacionPage() {
         orderNumber: row.orderNumber,
         clientName: row.clientName,
         orderDate: row.orderDate,
-        products: []
+        saleType: row.saleType,
+        products: [],
       }
     }
     acc[row.orderId].products.push(row)
     return acc
-  }, {} as Record<string, { orderNumber: string; clientName: string; orderDate: string; products: ProductRow[] }>)
+  }, {} as Record<
+    string,
+    {
+      orderNumber: string
+      clientName: string
+      orderDate: string
+      saleType?: Order["saleType"]
+      products: ProductRow[]
+    }
+  >)
 
   // Función para toggle del acordeón
   const toggleOrder = (orderId: string) => {
@@ -1049,7 +1062,21 @@ export default function FabricacionPage() {
                                               <ChevronRight className="w-4 h-4 text-muted-foreground" />
                                             )}
                                             <div>
-                                              <div className="font-semibold">#{group.orderNumber}</div>
+                                              <div className="font-semibold flex items-center gap-2 flex-wrap">
+                                                <span>#{group.orderNumber}</span>
+                                                {isSistemaApartado({
+                                                  type: "order",
+                                                  saleType: group.saleType,
+                                                }) && (
+                                                  <Badge
+                                                    variant="outline"
+                                                    className="shrink-0 border-amber-600/50 text-amber-900 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-100 dark:border-amber-500/50 text-xs"
+                                                    title="Sistema de Apartado"
+                                                  >
+                                                    SA
+                                                  </Badge>
+                                                )}
+                                              </div>
                                               <div className="text-xs text-muted-foreground">
                                                 {new Date(group.orderDate).toLocaleDateString()}
                                               </div>
@@ -1116,8 +1143,22 @@ export default function FabricacionPage() {
                                     </HoverCardTrigger>
                                     <HoverCardContent className="min-w-[480px] max-w-[min(640px,95vw)] w-max" align="start">
                                       <div className="space-y-3">
-                                        <h4 className="font-semibold text-sm">
-                                          #{group.orderNumber} - {totalProducts} producto(s)
+                                        <h4 className="font-semibold text-sm flex items-center gap-2 flex-wrap">
+                                          <span>
+                                            #{group.orderNumber} - {totalProducts} producto(s)
+                                          </span>
+                                          {isSistemaApartado({
+                                            type: "order",
+                                            saleType: group.saleType,
+                                          }) && (
+                                            <Badge
+                                              variant="outline"
+                                              className="shrink-0 border-amber-600/50 text-amber-900 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-100 dark:border-amber-500/50 text-xs"
+                                              title="Sistema de Apartado"
+                                            >
+                                              SA
+                                            </Badge>
+                                          )}
                                         </h4>
                                         {group.products.map((row, idx) => {
                                           const pairs = getProductAttributePairs(row.product)

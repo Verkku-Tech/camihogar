@@ -41,7 +41,21 @@ import {
 import { useAuth } from "@/contexts/auth-context"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
-import { ORDER_STATUSES, PAYMENT_METHODS_FILTER } from "@/components/orders/constants"
+import { ORDER_STATUSES, PURCHASE_TYPES } from "@/components/orders/constants"
+import {
+  isSistemaApartado,
+  isSaWarehouseHighlight,
+  purchaseTypeLabel,
+} from "@/lib/order-sa"
+
+/** yyyy-MM-dd en calendario local (alineado con toLocaleDateString de la tabla). */
+function toLocalDateKey(iso: string): string {
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -85,8 +99,10 @@ export default function PedidosPage() {
   const [filters, setFilters] = useState({
     vendor: "all",
     status: "all",
-    paymentMethod: "all",
+    saleType: "all",
   })
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
   const [isEditOrderOpen, setIsEditOrderOpen] = useState(false)
   const [orderToEdit, setOrderToEdit] = useState<UnifiedOrder | null>(null)
@@ -169,9 +185,13 @@ export default function PedidosPage() {
   // Obtener valores únicos para los filtros
   const uniqueVendors = Array.from(new Set(orders.map((o) => o.vendorName))).sort()
 
-  // Usar lista fija de estados y métodos de pago
-  const uniqueStatuses = ORDER_STATUSES.map(s => s.value)
-  const uniquePaymentMethods = [...PAYMENT_METHODS_FILTER]
+  const uniqueStatuses = ORDER_STATUSES.map((s) => s.value)
+
+  let rangeFrom = dateFrom
+  let rangeTo = dateTo
+  if (rangeFrom && rangeTo && rangeFrom > rangeTo) {
+    ;[rangeFrom, rangeTo] = [rangeTo, rangeFrom]
+  }
 
   const filteredOrders = orders.filter((order) => {
     // Filtro de búsqueda general (existente)
@@ -184,8 +204,15 @@ export default function PedidosPage() {
     // Filtros por columna
     const matchesVendor = filters.vendor === "all" || order.vendorName === filters.vendor
     const matchesStatus = filters.status === "all" || order.status === filters.status
-    const matchesPaymentMethod =
-      filters.paymentMethod === "all" || order.paymentMethod === filters.paymentMethod
+    // Presupuestos unificados suelen no tener saleType; no coinciden con un tipo concreto.
+    const matchesSaleType =
+      filters.saleType === "all" ||
+      (order.saleType !== undefined && order.saleType === filters.saleType)
+
+    const orderDay = toLocalDateKey(order.createdAt)
+    const matchesDateFrom = !rangeFrom || orderDay >= rangeFrom
+    const matchesDateTo = !rangeTo || orderDay <= rangeTo
+
     const q = clientSearch.trim().toLowerCase()
     const haystack = buildClientFilterHaystack(
       order.clientName,
@@ -204,7 +231,9 @@ export default function PedidosPage() {
       matchesSearch &&
       matchesVendor &&
       matchesStatus &&
-      matchesPaymentMethod &&
+      matchesSaleType &&
+      matchesDateFrom &&
+      matchesDateTo &&
       matchesClient &&
       !isConvertedBudget
     )
@@ -392,34 +421,59 @@ export default function PedidosPage() {
                 </Select>
 
                 <Select
-                  value={filters.paymentMethod}
+                  value={filters.saleType}
                   onValueChange={(value) =>
-                    setFilters((prev) => ({ ...prev, paymentMethod: value }))
+                    setFilters((prev) => ({ ...prev, saleType: value }))
                   }
                 >
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Todos los métodos" />
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Todos los tipos" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todos los métodos</SelectItem>
-                    {uniquePaymentMethods.map((method) => (
-                      <SelectItem key={method} value={method}>
-                        {method}
+                    <SelectItem value="all">Todos los tipos</SelectItem>
+                    {PURCHASE_TYPES.map((pt) => (
+                      <SelectItem key={pt.value} value={pt.value}>
+                        {pt.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
 
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">Desde</span>
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="w-[150px]"
+                    aria-label="Fecha desde"
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">Hasta</span>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="w-[150px]"
+                    aria-label="Fecha hasta"
+                  />
+                </div>
+
                 {(clientSearch !== "" ||
                   filters.vendor !== "all" ||
                   filters.status !== "all" ||
-                  filters.paymentMethod !== "all") && (
+                  filters.saleType !== "all" ||
+                  dateFrom !== "" ||
+                  dateTo !== "") && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setFilters({ vendor: "all", status: "all", paymentMethod: "all" })
+                      setFilters({ vendor: "all", status: "all", saleType: "all" })
                       setClientSearch("")
+                      setDateFrom("")
+                      setDateTo("")
                     }}
                     className="gap-2"
                   >
@@ -450,6 +504,7 @@ export default function PedidosPage() {
                           <TableHead>Vendedor</TableHead>
                           <TableHead>Total</TableHead>
                           <TableHead>Estado</TableHead>
+                          <TableHead>Tipo</TableHead>
                           <TableHead>Método de Pago</TableHead>
                           <TableHead>Fecha</TableHead>
                           <TableHead>Productos</TableHead>
@@ -458,8 +513,28 @@ export default function PedidosPage() {
                       </TableHeader>
                       <TableBody>
                         {paginatedOrders.map((order) => (
-                          <TableRow key={order.id}>
-                            <TableCell className="font-medium">{order.orderNumber}</TableCell>
+                          <TableRow
+                            key={order.id}
+                            className={
+                              isSaWarehouseHighlight(order)
+                                ? "bg-amber-50/70 dark:bg-amber-950/25 border-l-4 border-l-amber-500/80"
+                                : undefined
+                            }
+                          >
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span>{order.orderNumber}</span>
+                                {isSistemaApartado(order) && (
+                                  <Badge
+                                    variant="outline"
+                                    className="shrink-0 border-amber-600/50 text-amber-900 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-100 dark:border-amber-500/50"
+                                    title="Sistema de Apartado"
+                                  >
+                                    SA
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
                             <TableCell>{order.clientName}</TableCell>
                             <TableCell>{order.vendorName}</TableCell>
                             <TableCell>
@@ -467,6 +542,9 @@ export default function PedidosPage() {
                             </TableCell>
                             <TableCell>
                               <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground max-w-[200px]">
+                              {purchaseTypeLabel(order.saleType) ?? "—"}
                             </TableCell>
                             <TableCell>{order.paymentMethod || (order.type === "budget" ? "N/A" : "-")}</TableCell>
                             <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
