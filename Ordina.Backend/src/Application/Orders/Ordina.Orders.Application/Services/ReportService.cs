@@ -92,6 +92,7 @@ public class ReportService : IReportService
     private readonly ISaleTypeCommissionRuleRepository _saleTypeCommissionRuleRepository;
     private readonly IUserRepository _userRepository;
     private readonly IClientRepository _clientRepository;
+    private readonly IAccountRepository _accountRepository;
     private readonly ILogger<ReportService> _logger;
 
     public ReportService(
@@ -103,6 +104,7 @@ public class ReportService : IReportService
         ISaleTypeCommissionRuleRepository saleTypeCommissionRuleRepository,
         IUserRepository userRepository,
         IClientRepository clientRepository,
+        IAccountRepository accountRepository,
         ILogger<ReportService> logger)
     {
         _orderRepository = orderRepository;
@@ -113,6 +115,7 @@ public class ReportService : IReportService
         _saleTypeCommissionRuleRepository = saleTypeCommissionRuleRepository;
         _userRepository = userRepository;
         _clientRepository = clientRepository;
+        _accountRepository = accountRepository;
         _logger = logger;
     }
 
@@ -893,7 +896,8 @@ public class ReportService : IReportService
                         }
                     }
 
-                    var row = CreatePaymentReportRow(order, payment, payment.Date, activePaymentType, i);
+                    var row = await CreatePaymentReportRowAsync(
+                        order, payment, payment.Date, activePaymentType, i);
                     reportData.Add(row);
                 }
             }
@@ -921,7 +925,7 @@ public class ReportService : IReportService
                 }
 
                 var referencia = GetPaymentReference(order.PaymentDetails, order.PaymentMethod);
-                var cuenta = GetAccountDisplay(order.PaymentDetails);
+                var cuenta = await GetAccountDisplayAsync(order.PaymentDetails);
                 
                 // Usar originalAmount y originalCurrency si están disponibles
                 // Si no hay originalAmount, intentar usar CashReceived y CashCurrency para efectivo
@@ -973,10 +977,15 @@ public class ReportService : IReportService
         return (new List<PartialPayment>(), string.Empty);
     }
 
-    private PaymentReportRow CreatePaymentReportRow(Order order, PartialPayment payment, DateTime paymentDate, string paymentType, int paymentIndex)
+    private async Task<PaymentReportRow> CreatePaymentReportRowAsync(
+        Order order,
+        PartialPayment payment,
+        DateTime paymentDate,
+        string paymentType,
+        int paymentIndex)
     {
         var referencia = GetPaymentReference(payment.PaymentDetails, payment.Method);
-        var cuenta = GetAccountDisplay(payment.PaymentDetails);
+        var cuenta = await GetAccountDisplayAsync(payment.PaymentDetails);
         
         // Usar originalAmount y originalCurrency si están disponibles
         // Si no hay originalAmount, intentar usar CashReceived y CashCurrency para efectivo
@@ -1035,17 +1044,23 @@ public class ReportService : IReportService
     {
         if (paymentDetails == null) return string.Empty;
 
-        if (paymentMethod == "Zelle" && !string.IsNullOrWhiteSpace(paymentDetails.TransferenciaReference))
+        if (string.Equals(paymentMethod, "Zelle", StringComparison.OrdinalIgnoreCase))
         {
-            return paymentDetails.TransferenciaReference;
+            if (!string.IsNullOrWhiteSpace(paymentDetails.Envia))
+                return paymentDetails.Envia.Trim();
+            if (!string.IsNullOrWhiteSpace(paymentDetails.TransferenciaReference))
+                return paymentDetails.TransferenciaReference;
+            return string.Empty;
         }
 
-        if (paymentMethod == "Pago Móvil" && !string.IsNullOrWhiteSpace(paymentDetails.PagomovilReference))
+        if (string.Equals(paymentMethod, "Pago Móvil", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(paymentDetails.PagomovilReference))
         {
             return paymentDetails.PagomovilReference;
         }
 
-        if (paymentMethod == "Transferencia" && !string.IsNullOrWhiteSpace(paymentDetails.TransferenciaReference))
+        if (string.Equals(paymentMethod, "Transferencia", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(paymentDetails.TransferenciaReference))
         {
             return paymentDetails.TransferenciaReference;
         }
@@ -1053,22 +1068,35 @@ public class ReportService : IReportService
         return string.Empty;
     }
 
-    private string GetAccountDisplay(PaymentDetails? paymentDetails)
+    private async Task<string> GetAccountDisplayAsync(PaymentDetails? paymentDetails)
     {
         if (paymentDetails == null) return "-";
         
-        // Si es cuenta digital, mostrar email
         if (!string.IsNullOrWhiteSpace(paymentDetails.Email))
         {
             return paymentDetails.Email;
         }
         
-        // Si es cuenta bancaria, mostrar número enmascarado y banco
         if (!string.IsNullOrWhiteSpace(paymentDetails.AccountNumber) && 
             !string.IsNullOrWhiteSpace(paymentDetails.Bank))
         {
             var maskedNumber = MaskAccountNumber(paymentDetails.AccountNumber);
             return $"{maskedNumber} - {paymentDetails.Bank}";
+        }
+        
+        if (!string.IsNullOrWhiteSpace(paymentDetails.AccountId))
+        {
+            var acc = await _accountRepository.GetByIdAsync(paymentDetails.AccountId);
+            if (acc != null)
+            {
+                if (string.Equals(acc.AccountType, "Cuentas Digitales", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(acc.Email))
+                {
+                    return acc.Email;
+                }
+                if (!string.IsNullOrWhiteSpace(acc.Label)) return acc.Label;
+                if (!string.IsNullOrWhiteSpace(acc.Code)) return acc.Code;
+            }
         }
         
         return "-";
