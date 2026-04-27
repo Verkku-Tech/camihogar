@@ -41,7 +41,8 @@ import { SelectProviderDialog } from "@/components/manufacturing/select-provider
 import { useRouter } from "next/navigation"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
-import { isSistemaApartado } from "@/lib/order-sa"
+import { PURCHASE_TYPES } from "@/components/orders/constants"
+import { isSistemaApartado, isSistemaApartadoReadyForNormalFlow } from "@/lib/order-sa"
 
 // Tipo para productos agrupados por pedido
 interface ProductRow {
@@ -61,6 +62,7 @@ export default function FabricacionPage() {
   const [productRows, setProductRows] = useState<ProductRow[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [filterStatus, setFilterStatus] = useState<"all" | "needs_fabrication" | "fabricating" | "warehouse">("all")
+  const [filterPurchaseType, setFilterPurchaseType] = useState<"all" | "encargo" | "encargo_entrega" | "sistema_apartado">("all")
   const [filterProvider, setFilterProvider] = useState<string>("all")
   const [selectedProduct, setSelectedProduct] = useState<{ orderId: string; product: OrderProduct } | null>(null)
   const [selectProviderDialogOpen, setSelectProviderDialogOpen] = useState(false)
@@ -112,6 +114,9 @@ export default function FabricacionPage() {
 
     orders.forEach(order => {
       if (order.status === "Generado" || order.status === "Generada") return
+      if (isSistemaApartado(order) && !isSistemaApartadoReadyForNormalFlow(order)) {
+        return
+      }
       order.products.forEach(product => {
         // SOLO procesar productos que deben mandarse a fabricar
         if (product.locationStatus !== "FABRICACION") {
@@ -175,6 +180,11 @@ export default function FabricacionPage() {
       })
     }
 
+    // Tipo de venta (Encargo, Encargo/Entrega, SA)
+    if (filterPurchaseType !== "all") {
+      filtered = filtered.filter((row) => row.saleType === filterPurchaseType)
+    }
+
     // Ordenar: primero por ESTADO (Debe Fabricar → Fabricando → En almacén), luego por pedido
     filtered.sort((a, b) => {
       const statusOrder = { "debe_fabricar": 0, "fabricando": 1, "almacen_no_fabricado": 2, "disponible": 3 }
@@ -184,7 +194,7 @@ export default function FabricacionPage() {
     })
 
     setProductRows(filtered)
-  }, [orders, filterStatus, filterProvider, searchTerm])
+  }, [orders, filterStatus, filterPurchaseType, filterProvider, searchTerm])
 
   // Paginación
   const {
@@ -332,7 +342,11 @@ export default function FabricacionPage() {
       toast.info("Este producto ya está disponible")
       return
     }
-    
+    const order = orders.find((o) => o.id === orderId)
+    if (order && !isSistemaApartadoReadyForNormalFlow(order)) {
+      toast.error("Sistema de Apartado: liquida el saldo en el pedido para continuar con la fabricación")
+      return
+    }
     setSelectedProduct({ orderId, product })
     setIsRefabrication(false) // No es refabricación
     setSelectProviderDialogOpen(true)
@@ -340,6 +354,11 @@ export default function FabricacionPage() {
 
   // Manejar click en "Reiniciar Fabricación" (desde almacén)
   const handleRefabricationClick = (orderId: string, product: OrderProduct) => {
+    const order = orders.find((o) => o.id === orderId)
+    if (order && !isSistemaApartadoReadyForNormalFlow(order)) {
+      toast.error("Sistema de Apartado: liquida el saldo en el pedido para continuar con la fabricación")
+      return
+    }
     setSelectedProduct({ orderId, product })
     setIsRefabrication(true) // Es refabricación
     setSelectProviderDialogOpen(true)
@@ -352,6 +371,10 @@ export default function FabricacionPage() {
     try {
       const order = await getOrder(selectedProduct.orderId)
       if (!order) throw new Error("Pedido no encontrado")
+      if (!isSistemaApartadoReadyForNormalFlow(order)) {
+        toast.error("Sistema de Apartado: liquida el saldo en el pedido para continuar con la fabricación")
+        return
+      }
 
       const productIndex = order.products.findIndex(p => p.id === selectedProduct.product.id)
       if (productIndex === -1) throw new Error("Producto no encontrado")
@@ -424,6 +447,10 @@ export default function FabricacionPage() {
     try {
       const order = await getOrder(orderId)
       if (!order) throw new Error("Pedido no encontrado")
+      if (!isSistemaApartadoReadyForNormalFlow(order)) {
+        toast.error("Sistema de Apartado: liquida el saldo en el pedido para continuar con la fabricación")
+        return
+      }
 
       const productIndex = order.products.findIndex(p => p.id === productId)
       if (productIndex === -1) throw new Error("Producto no encontrado")
@@ -563,7 +590,9 @@ export default function FabricacionPage() {
     // Filtrar solo productos que estén en "debe_fabricar"
     const selectedKeys = Array.from(selectedProducts)
     const validProducts = selectedKeys.filter(key => {
-      const [orderId, productId] = key.split('|')
+      const [orderId, productId] = key.split("|")
+      const order = orders.find((o) => o.id === orderId)
+      if (!order || !isSistemaApartadoReadyForNormalFlow(order)) return false
       const row = productRows.find(r => r.orderId === orderId && r.product.id === productId)
       return row && row.status === "debe_fabricar"
     })
@@ -586,7 +615,9 @@ export default function FabricacionPage() {
     // Filtrar solo productos que estén en "fabricando"
     const selectedKeys = Array.from(selectedProducts)
     const validProducts = selectedKeys.filter(key => {
-      const [orderId, productId] = key.split('|')
+      const [orderId, productId] = key.split("|")
+      const order = orders.find((o) => o.id === orderId)
+      if (!order || !isSistemaApartadoReadyForNormalFlow(order)) return false
       const row = productRows.find(r => r.orderId === orderId && r.product.id === productId)
       return row && row.status === "fabricando"
     })
@@ -611,6 +642,9 @@ export default function FabricacionPage() {
         const order = await getOrder(orderId)
         if (!order) {
           errorCount++
+          continue
+        }
+        if (!isSistemaApartadoReadyForNormalFlow(order)) {
           continue
         }
 
@@ -676,6 +710,9 @@ export default function FabricacionPage() {
           errorCount++
           continue
         }
+        if (!isSistemaApartadoReadyForNormalFlow(order)) {
+          continue
+        }
 
         const productIndex = order.products.findIndex(p => p.id === productId)
         if (productIndex === -1) {
@@ -725,26 +762,32 @@ export default function FabricacionPage() {
 
   // Obtener productos seleccionados válidos para cada acción
   const getSelectedProductsForManufacture = () => {
-    return Array.from(selectedProducts).filter(key => {
-      const [orderId, productId] = key.split('|')
-      const row = productRows.find(r => r.orderId === orderId && r.product.id === productId)
+    return Array.from(selectedProducts).filter((key) => {
+      const [orderId, productId] = key.split("|")
+      const order = orders.find((o) => o.id === orderId)
+      if (!order || !isSistemaApartadoReadyForNormalFlow(order)) return false
+      const row = productRows.find((r) => r.orderId === orderId && r.product.id === productId)
       return row && row.status === "debe_fabricar"
     })
   }
 
   const getSelectedProductsForFabricated = () => {
-    return Array.from(selectedProducts).filter(key => {
-      const [orderId, productId] = key.split('|')
-      const row = productRows.find(r => r.orderId === orderId && r.product.id === productId)
+    return Array.from(selectedProducts).filter((key) => {
+      const [orderId, productId] = key.split("|")
+      const order = orders.find((o) => o.id === orderId)
+      if (!order || !isSistemaApartadoReadyForNormalFlow(order)) return false
+      const row = productRows.find((r) => r.orderId === orderId && r.product.id === productId)
       return row && row.status === "fabricando"
     })
   }
 
   // Obtener productos seleccionados válidos para refabricación (en almacén)
   const getSelectedProductsForRefabrication = () => {
-    return Array.from(selectedProducts).filter(key => {
-      const [orderId, productId] = key.split('|')
-      const row = productRows.find(r => r.orderId === orderId && r.product.id === productId)
+    return Array.from(selectedProducts).filter((key) => {
+      const [orderId, productId] = key.split("|")
+      const order = orders.find((o) => o.id === orderId)
+      if (!order || !isSistemaApartadoReadyForNormalFlow(order)) return false
+      const row = productRows.find((r) => r.orderId === orderId && r.product.id === productId)
       return row && row.status === "almacen_no_fabricado"
     })
   }
@@ -785,6 +828,9 @@ export default function FabricacionPage() {
         const order = await getOrder(orderId)
         if (!order) {
           errorCount++
+          continue
+        }
+        if (!isSistemaApartadoReadyForNormalFlow(order)) {
           continue
         }
 
@@ -918,6 +964,28 @@ export default function FabricacionPage() {
                       </SelectContent>
                     </Select>
 
+                    <Select
+                      value={filterPurchaseType}
+                      onValueChange={(v: typeof filterPurchaseType) => setFilterPurchaseType(v)}
+                    >
+                      <SelectTrigger className="w-full min-w-0 sm:min-w-[12rem] sm:max-w-[20rem]">
+                        <SelectValue placeholder="Tipo de venta" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos los tipos de venta</SelectItem>
+                        {PURCHASE_TYPES.filter(
+                          (t) =>
+                            t.value === "encargo" ||
+                            t.value === "encargo_entrega" ||
+                            t.value === "sistema_apartado"
+                        ).map((t) => (
+                          <SelectItem key={t.value} value={t.value}>
+                            {t.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
                     <Select value={filterProvider} onValueChange={setFilterProvider}>
                       <SelectTrigger className="w-full sm:w-56">
                         <SelectValue placeholder="Todos los proveedores" />
@@ -985,7 +1053,7 @@ export default function FabricacionPage() {
                   <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-medium mb-2">No hay productos para fabricar</h3>
                   <p className="text-muted-foreground">
-                    {searchTerm || filterStatus !== "all"
+                    {searchTerm || filterStatus !== "all" || filterPurchaseType !== "all" || filterProvider !== "all"
                       ? "Intenta ajustar los filtros de búsqueda"
                       : "Todos los productos están disponibles"}
                   </p>

@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { getExpiredLayaways, type Order } from "@/lib/storage"
+import { getActivePaymentsList } from "@/lib/order-payments"
 import { formatCurrency, formatCurrencyWithUsdPrimaryFromOrder, getActiveExchangeRates } from "@/lib/currency-utils"
 import { Eye, Download, AlertTriangle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -85,12 +86,12 @@ export function ExpiredLayawaysTable() {
       "Monto Cobrado",
       "Deuda Pendiente",
       "Fecha Creación",
-      "Días Vencidos",
+      "Días vencidos (mora post 90 d)",
       "Estado"
     ]
 
     const rows = expiredLayaways.map(order => {
-      const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0
+      const paidAmount = getActivePaymentsList(order).reduce((sum, p) => sum + (p.amount || 0), 0)
       const totalFormatted = `${formatCurrency(order.total, order.baseCurrency || "Bs")}`
       const paidFormatted = `${formatCurrency(paidAmount, order.baseCurrency || "Bs")}`
       const pendingFormatted = `${formatCurrency(order.pendingAmount, order.baseCurrency || "Bs")}`
@@ -123,10 +124,11 @@ export function ExpiredLayawaysTable() {
     document.body.removeChild(link)
   }
 
+  /** `days` = días de mora después de los 90 días de plazo (mismo valor que en métricas). */
   const getDaysExpiredBadge = (days: number) => {
-    if (days >= 90) {
+    if (days >= 60) {
       return <Badge className="bg-red-500 text-white">+{days} días</Badge>
-    } else if (days >= 60) {
+    } else if (days >= 30) {
       return <Badge className="bg-orange-500 text-white">{days} días</Badge>
     } else {
       return <Badge className="bg-yellow-500 text-white">{days} días</Badge>
@@ -145,7 +147,7 @@ export function ExpiredLayawaysTable() {
                   <TableHead className="font-medium text-muted-foreground">Cliente</TableHead>
                   <TableHead className="font-medium text-muted-foreground">Deuda Pendiente</TableHead>
                   <TableHead className="font-medium text-muted-foreground">Fecha Creación</TableHead>
-                  <TableHead className="font-medium text-muted-foreground">Días Vencidos</TableHead>
+                  <TableHead className="font-medium text-muted-foreground">Días vencidos (post 90 d)</TableHead>
                   <TableHead className="font-medium text-muted-foreground">Estado</TableHead>
                   <TableHead className="font-medium text-muted-foreground">Acciones</TableHead>
                 </TableRow>
@@ -206,7 +208,7 @@ export function ExpiredLayawaysTable() {
                 <TableHead className="font-medium text-muted-foreground">Cliente</TableHead>
                 <TableHead className="font-medium text-muted-foreground">Deuda Pendiente</TableHead>
                 <TableHead className="font-medium text-muted-foreground">Fecha Creación</TableHead>
-                <TableHead className="font-medium text-muted-foreground">Días Vencidos</TableHead>
+                <TableHead className="font-medium text-muted-foreground">Días vencidos (post 90 d)</TableHead>
                 <TableHead className="font-medium text-muted-foreground">Estado</TableHead>
                 <TableHead className="font-medium text-muted-foreground">Acciones</TableHead>
               </TableRow>

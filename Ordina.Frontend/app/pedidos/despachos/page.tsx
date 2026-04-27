@@ -22,12 +22,10 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Search, Eye, Truck, CheckCircle, PackageCheck, RotateCcw } from "lucide-react"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
-import { formatCurrency } from "@/lib/currency-utils"
 import { OrderGroupCollapsible } from "@/components/orders/order-group-collapsible"
 import { toast } from "sonner"
 import { getUnifiedOrders, getCategories, updateOrder, type UnifiedOrder, type OrderProduct, type Category, type AttributeValue } from "@/lib/storage"
 import { isSistemaApartado } from "@/lib/order-sa"
-import { getActivePaymentsList } from "@/lib/order-payments"
 import { useCurrency } from "@/contexts/currency-context"
 import { useRouter } from "next/navigation"
 import { DELIVERY_TYPES, DELIVERY_ZONES } from "@/components/orders/new-order-dialog"
@@ -91,20 +89,6 @@ const isOrderInTab = (order: UnifiedOrder, tab: TabType): boolean => {
 
   // Un pedido aparece en la pestaña si al menos uno de sus productos corresponde a ese estado
   return order.products.some(p => getProductDispatchStatus(p) === tab)
-}
-
-// Calcular saldo pendiente en Bs y equivalente en USD
-function getPendingBalance(order: UnifiedOrder) {
-  const totalPaid = getActivePaymentsList(order).reduce(
-    (sum, p) => sum + (p.amount || 0),
-    0,
-  )
-  return Math.max(0, order.total - totalPaid)
-}
-
-function formatPendingInUsd(pendingBs: number, usdRate: number | undefined): string {
-  if (!usdRate || usdRate <= 0) return formatCurrency(pendingBs, "Bs")
-  return formatCurrency(pendingBs / usdRate, "USD")
 }
 
 export default function DespachosPage() {
