@@ -849,7 +849,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
           const discountCurrency =
             opts?.inputCurrency ??
             productDiscountCurrencies[productId] ??
-            getDefaultCurrencyFromSelection();
+            preferredCurrency;
 
           let discountAmount: number;
           if (discountType === "porcentaje") {
@@ -866,6 +866,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
                 discountInBs = value * rate;
               }
             }
+            discountInBs = Math.round(discountInBs * 100) / 100;
             discountAmount = Math.max(0, Math.min(discountInBs, baseTotal));
 
             const category = categories.find(
@@ -889,13 +890,19 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
             }
           }
 
+          const percentForAttrs =
+            discountType === "porcentaje"
+              ? Math.max(0, Math.min(value, 100))
+              : undefined;
+
           return {
             ...product,
             discount: discountAmount,
             attributes: mergeDiscountUiIntoAttributes(
               product.attributes,
               discountType,
-              discountCurrency
+              discountCurrency,
+              percentForAttrs
             ),
           };
         })
@@ -905,7 +912,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       getProductBaseTotal,
       productDiscountTypes,
       productDiscountCurrencies,
-      getDefaultCurrencyFromSelection,
+      preferredCurrency,
       exchangeRates,
       categories,
     ]
@@ -918,7 +925,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         products.map((p) => {
           if (p.id !== productId) return p;
           const currency =
-            productDiscountCurrencies[productId] ?? getDefaultCurrencyFromSelection();
+            productDiscountCurrencies[productId] ?? preferredCurrency;
           return {
             ...p,
             attributes: mergeDiscountUiIntoAttributes(p.attributes, type, currency),
@@ -926,7 +933,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         })
       );
     },
-    [productDiscountCurrencies, getDefaultCurrencyFromSelection]
+    [productDiscountCurrencies, preferredCurrency]
   );
 
   const handleGeneralDiscountChange = useCallback(

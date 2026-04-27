@@ -26,6 +26,7 @@ import { formatCurrency } from "@/lib/currency-utils"
 import { OrderGroupCollapsible } from "@/components/orders/order-group-collapsible"
 import { toast } from "sonner"
 import { getUnifiedOrders, getCategories, updateOrder, type UnifiedOrder, type OrderProduct, type Category, type AttributeValue } from "@/lib/storage"
+import { isSistemaApartado } from "@/lib/order-sa"
 import { getActivePaymentsList } from "@/lib/order-payments"
 import { useCurrency } from "@/contexts/currency-context"
 import { useRouter } from "next/navigation"
@@ -694,6 +695,17 @@ export default function DespachosPage() {
                                 open ? setExpandedOrders((s) => new Set(s).add(order.id)) : setExpandedOrders((s) => { const n = new Set(s); n.delete(order.id); return n })
                               }
                               showViewDetailsButton={false}
+                              orderNumberSuffix={
+                                isSistemaApartado(order) ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="shrink-0 border-amber-600/50 text-amber-900 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-100 dark:border-amber-500/50 text-xs"
+                                    title="Sistema de Apartado"
+                                  >
+                                    SA
+                                  </Badge>
+                                ) : undefined
+                              }
                               selectControl={
                                 activeTab !== "despachados" && activeProducts.length > 0
                                   ? {
@@ -879,8 +891,17 @@ export default function DespachosPage() {
             <AlertDialogDescription>
               {getModalDescription()}
               <br />
-              <span className="text-sm font-medium text-foreground mt-4 block">
+              <span className="text-sm font-medium text-foreground mt-4 flex items-center gap-2 flex-wrap">
                 Pedido: #{orderToActOn?.orderNumber}
+                {orderToActOn && isSistemaApartado(orderToActOn) && (
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 border-amber-600/50 text-amber-900 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-100 dark:border-amber-500/50 text-xs"
+                    title="Sistema de Apartado"
+                  >
+                    SA
+                  </Badge>
+                )}
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>

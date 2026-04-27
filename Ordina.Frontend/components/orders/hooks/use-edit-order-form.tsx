@@ -496,6 +496,9 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         setProductMarkups(initialOrder.productMarkups);
       }
 
+      // 9. Impuesto: alinear con datos persistidos (misma heurística que confirm-order-dialog)
+      setTaxEnabled((initialOrder.taxAmount ?? 0) > 0.001);
+
       const newTypes: Record<string, "monto" | "porcentaje"> = {};
       const newCurrencies: Record<string, Currency> = {};
       productsHydrated.forEach((p) => {
@@ -797,7 +800,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
           const discountCurrency =
             opts?.inputCurrency ??
             productDiscountCurrencies[productId] ??
-            getDefaultCurrencyFromSelection();
+            preferredCurrency;
 
           let discountAmount: number;
           if (discountType === "porcentaje") {
@@ -814,6 +817,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
                 discountInBs = value * rate;
               }
             }
+            discountInBs = Math.round(discountInBs * 100) / 100;
             discountAmount = Math.max(0, Math.min(discountInBs, baseTotal));
 
             const category = categories.find(
@@ -837,13 +841,19 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
             }
           }
 
+          const percentForAttrs =
+            discountType === "porcentaje"
+              ? Math.max(0, Math.min(value, 100))
+              : undefined;
+
           return {
             ...product,
             discount: discountAmount,
             attributes: mergeDiscountUiIntoAttributes(
               product.attributes,
               discountType,
-              discountCurrency
+              discountCurrency,
+              percentForAttrs
             ),
           };
         })
@@ -853,7 +863,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       getProductBaseTotal,
       productDiscountTypes,
       productDiscountCurrencies,
-      getDefaultCurrencyFromSelection,
+      preferredCurrency,
       exchangeRates,
       categories,
     ]
@@ -866,7 +876,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         products.map((p) => {
           if (p.id !== productId) return p;
           const currency =
-            productDiscountCurrencies[productId] ?? getDefaultCurrencyFromSelection();
+            productDiscountCurrencies[productId] ?? preferredCurrency;
           return {
             ...p,
             attributes: mergeDiscountUiIntoAttributes(p.attributes, type, currency),
@@ -874,7 +884,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         })
       );
     },
-    [productDiscountCurrencies, getDefaultCurrencyFromSelection]
+    [productDiscountCurrencies, preferredCurrency]
   );
 
   const handleGeneralDiscountChange = useCallback(
