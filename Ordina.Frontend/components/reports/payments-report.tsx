@@ -467,10 +467,14 @@ export function PaymentsReport() {
   const getPaymentReference = (payment: PartialPayment, order: Order): string => {
     if (!order.paymentDetails && !payment.paymentDetails) return ""
 
-    // Para Zelle, usar nombre del remitente (si está disponible)
+    // Para Zelle, priorizar nombre del remitente (envia), luego ref. bancaria
     if (payment.method === "Zelle") {
-      // Buscar en paymentDetails primero, luego en order.paymentDetails
-      const ref = payment.paymentDetails?.transferenciaReference || order.paymentDetails?.transferenciaReference
+      const envia =
+        payment.paymentDetails?.envia?.trim() || order.paymentDetails?.envia?.trim()
+      if (envia) return envia
+      const ref =
+        payment.paymentDetails?.transferenciaReference ||
+        order.paymentDetails?.transferenciaReference
       return ref || ""
     }
 
@@ -492,8 +496,13 @@ export function PaymentsReport() {
   const getMainPaymentReference = (order: Order): string => {
     if (!order.paymentDetails) return ""
 
-    if (order.paymentMethod === "Zelle" && order.paymentDetails.transferenciaReference) {
-      return order.paymentDetails.transferenciaReference
+    if (order.paymentMethod === "Zelle" && order.paymentDetails) {
+      if (order.paymentDetails.envia?.trim()) {
+        return order.paymentDetails.envia.trim()
+      }
+      if (order.paymentDetails.transferenciaReference) {
+        return order.paymentDetails.transferenciaReference
+      }
     }
 
     if (order.paymentMethod === "Pago Móvil" && order.paymentDetails.pagomovilReference) {

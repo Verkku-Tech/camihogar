@@ -103,12 +103,9 @@ export const digitalPaymentMethods = [
 
 /**
  * Métodos que en el paso de pagos muestran selector de cuenta receptora y deben validarse al guardar.
- * No incluir AirTM, Facebank, PayPal ni Binance: no aplican cuenta receptora en la UI.
+ * Banesco/Mercantil Panamá no requieren cuenta en la app (no aplica al flujo de negocio).
  */
-export const paymentMethodsRequiringReceivingAccount = [
-  "Banesco Panamá",
-  "Mercantil Panamá",
-] as const;
+export const paymentMethodsRequiringReceivingAccount = [] as const;
 
 /** Métodos que ocultan “tasa manual / equivalente exacto en Bs”; el monto en divisa se convierte solo con la tasa oficial del día. */
 export const paymentMethodsNoManualBsConversion = [
