@@ -562,7 +562,6 @@ export default function PedidosPage() {
                                 <OrderPdfRowAction
                                   orderId={order.id}
                                   orderType={order.type}
-                                  status={order.status}
                                 />
                                 {canEditOrder(order) && (
                                   <Button

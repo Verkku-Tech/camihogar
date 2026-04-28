@@ -1267,13 +1267,10 @@ export default function OrderDetailPage() {
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     Volver
                   </Button>
-                  {order.status !== "Generado" &&
-                    order.status !== "Generada" && (
-                      <OrderPdfDownloadButton
-                        order={order}
-                        client={client}
-                      />
-                    )}
+                  <OrderPdfDownloadButton
+                    order={order}
+                    client={client}
+                  />
                   <HoverCard openDelay={300} closeDelay={100}>
                     <HoverCardTrigger asChild>
                       <div className="cursor-help border-b border-dashed border-transparent hover:border-muted-foreground/40 pb-0.5 transition-colors">
