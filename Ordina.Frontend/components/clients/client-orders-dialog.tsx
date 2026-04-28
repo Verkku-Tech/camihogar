@@ -32,6 +32,10 @@ import {
   formatUsdOnlyFromOrderTotal,
   getActiveExchangeRates,
 } from "@/lib/currency-utils"
+import {
+  getOrderPendingTotal,
+  PAYMENT_BALANCE_EPSILON_BS,
+} from "@/lib/order-payments"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -81,6 +85,16 @@ function formatDate(iso: string) {
   } catch {
     return iso
   }
+}
+
+function isOrderFullyPaid(order: OrderResponseDto): boolean {
+  return getOrderPendingTotal(order) <= PAYMENT_BALANCE_EPSILON_BS
+}
+
+function getPaymentStatusBadgeClass(paid: boolean) {
+  return paid
+    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+    : "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"
 }
 
 interface ClientOrdersHistoryDialogProps {
@@ -193,7 +207,7 @@ export function ClientOrdersHistoryDialog({
                   <TableHead>Tipo</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead>Método de pago</TableHead>
+                  <TableHead>Estado de pago</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right w-[120px]">Acciones</TableHead>
                 </TableRow>
@@ -208,6 +222,7 @@ export function ClientOrdersHistoryDialog({
                       : order.type === "Budget"
                         ? "Presupuesto"
                         : "Pedido"
+                  const fullyPaid = isOrderFullyPaid(order)
                   return (
                     <TableRow key={order.id}>
                     <TableCell className="font-mono text-sm font-medium">
@@ -224,8 +239,10 @@ export function ClientOrdersHistoryDialog({
                         {order.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="max-w-[180px] truncate">
-                      {order.paymentMethod || "—"}
+                    <TableCell>
+                      <Badge className={getPaymentStatusBadgeClass(fullyPaid)}>
+                        {fullyPaid ? "Pagada" : "Pendiente de pago"}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {orderTotalsUsd[order.id] ?? "—"}
