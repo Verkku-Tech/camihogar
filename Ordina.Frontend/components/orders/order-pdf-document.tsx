@@ -7,7 +7,10 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 import type { Order, Client, PartialPayment } from "@/lib/storage";
-import { getActivePaymentsList } from "@/lib/order-payments";
+import {
+  getActivePaymentsList,
+  getOrderPendingTotal,
+} from "@/lib/order-payments";
 import {
   formatCurrency,
   normalizeExchangeRatesAtCreation,
@@ -312,6 +315,8 @@ export function OrderPdfDocument({
   const products = order.products ?? [];
   const payments = getActivePaymentsList(order);
   const usdRate = getUsdRateFromOrder(order);
+  const pendingBs = getOrderPendingTotal(order);
+  const paidBs = Math.max(0, order.total - pendingBs);
 
   const addressForDelivery =
     order.deliveryAddress?.trim() ||
@@ -452,6 +457,14 @@ export function OrderPdfDocument({
           <View style={styles.totalGrand}>
             <Text>Total</Text>
             <OrderAmountBlock amountInBs={order.total} usdRate={usdRate} />
+          </View>
+          <View style={styles.totalRow}>
+            <Text>Pagado</Text>
+            <OrderAmountBlock amountInBs={paidBs} usdRate={usdRate} />
+          </View>
+          <View style={styles.totalRow}>
+            <Text>Resta por pagar</Text>
+            <OrderAmountBlock amountInBs={pendingBs} usdRate={usdRate} />
           </View>
         </View>
 

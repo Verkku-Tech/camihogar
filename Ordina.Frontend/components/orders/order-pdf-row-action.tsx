@@ -17,15 +17,11 @@ const OrderPdfDownloadButton = dynamic(
 type Props = {
   orderId: string;
   orderType: "order" | "budget";
-  status: string;
 };
 
-/** Botón PDF en tablas: solo pedidos (no presupuesto) y no en Generado/Generada. */
-export function OrderPdfRowAction({ orderId, orderType, status }: Props) {
-  const eligible =
-    orderType === "order" &&
-    status !== "Generado" &&
-    status !== "Generada";
+/** Botón PDF en tablas: solo pedidos (no presupuesto); incluye Generado/Generada. */
+export function OrderPdfRowAction({ orderId, orderType }: Props) {
+  const eligible = orderType === "order";
 
   const [order, setOrder] = useState<Order | null>(null);
   const [client, setClient] = useState<Client | null>(null);
