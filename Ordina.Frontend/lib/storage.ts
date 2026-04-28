@@ -32,6 +32,8 @@ import type {
   UpdateStoreDto,
 } from "./api-client";
 import { syncManager } from "./sync-manager";
+import { getOrderPendingTotal, PAYMENT_BALANCE_EPSILON_BS } from "./order-payments";
+import { getDaysSinceOrder, getLayawayDaysPastWindow, SA_LAYAWAY_DAYS } from "./order-sa";
 
 export interface AttributeValue {
   id: string;
@@ -324,9 +326,17 @@ export const INDEXEDDB_DATA_STORES = [
 /**
  * Limpia todas las tablas de datos en IndexedDB (no sync_queue ni app_settings).
  * Usado por bootSync y por la pantalla de emergencia en configuración.
+ * @param options.preserveOrderCaches Si true (boot), no vacía `orders` ni `budgets` para no forzar re-descarga múltiple en frío; getOrders sigue refrescando desde API.
  */
-export const clearAllIndexedDBDataStores = async (): Promise<void> => {
+export const clearAllIndexedDBDataStores = async (options?: {
+  preserveOrderCaches?: boolean;
+}): Promise<void> => {
+  const skip = options?.preserveOrderCaches
+    ? (name: (typeof INDEXEDDB_DATA_STORES)[number]) =>
+        name === "orders" || name === "budgets"
+    : () => false;
   for (const name of INDEXEDDB_DATA_STORES) {
+    if (skip(name)) continue;
     try {
       await db.clearStore(name);
     } catch (e) {
@@ -373,8 +383,8 @@ export const bootSync = async (): Promise<void> => {
     console.warn("bootSync: error en cola de sincronización", e);
   }
   try {
-    await clearAllIndexedDBDataStores();
-    console.log("bootSync: IndexedDB (datos) limpiado");
+    await clearAllIndexedDBDataStores({ preserveOrderCaches: true });
+    console.log("bootSync: IndexedDB (datos) limpiado (orders/budgets conservados)");
   } catch (e) {
     console.warn("bootSync: error al limpiar IndexedDB", e);
   }
@@ -2257,6 +2267,9 @@ export type GetOrdersOptions = {
   refreshFromBackend?: boolean;
 };
 
+/** Una sola sincronización a la vez: varias llamadas simultáneas comparten la misma promesa. */
+let inflightOrdersSync: Promise<Order[]> | null = null;
+
 export const getOrders = async (
   optionsOrForceFull?: boolean | GetOrdersOptions
 ): Promise<Order[]> => {
@@ -2268,60 +2281,71 @@ export const getOrders = async (
       return localOrders;
     }
 
-    try {
-      const allOrders: Order[] = [];
-      let page = 1;
-      let hasMore = true;
-
-      while (hasMore) {
-        const response = await apiClient.getOrdersPaged(page, 50);
-        const mappedOrders = response.orders.map(orderFromBackendDto);
-        allOrders.push(...mappedOrders);
-        hasMore = response.hasNextPage;
-        page++;
-        console.log(
-          `Pedidos página ${page - 1}: ${mappedOrders.length} (acumulado: ${allOrders.length}/${response.totalCount})`
-        );
-      }
-
-      // Presupuestos: misma sincronización paginada que los pedidos → cache en `budgets` (lista estable al refrescar).
-      for (const order of allOrders) {
-        if (!isBackendBudgetOrder(order)) continue;
-        try {
-          await db.remove("orders", order.id);
-        } catch {
-          /* no estaba en orders */
-        }
-        try {
-          await db.put("budgets", orderMappedToBudget(order));
-        } catch (err) {
-          console.warn(`Error guardando presupuesto ${order.orderNumber} en IndexedDB:`, err);
-        }
-      }
-
-      const ordersOnly = allOrders.filter((o) => !isBackendBudgetOrder(o));
-      const backendNumbers = new Set(ordersOnly.map((o) => o.orderNumber));
-      const localOnly = localOrders.filter(
-        (o) => !backendNumbers.has(o.orderNumber) && !isBackendBudgetOrder(o),
-      );
-
-      for (const order of ordersOnly) {
-        try {
-          await db.put("orders", order);
-        } catch (err) {
-          console.warn(`Error guardando orden ${order.orderNumber} en IndexedDB:`, err);
-        }
-      }
-
-      const merged = [...ordersOnly, ...localOnly];
-      console.log(
-        `Órdenes (sin presupuestos en store orders): ${ordersOnly.length} del servidor + ${localOnly.length} solo locales = ${merged.length}`
-      );
-      return merged;
-    } catch (error) {
-      console.warn("Error obteniendo órdenes del servidor, usando IndexedDB:", error);
-      return localOrders;
+    if (inflightOrdersSync) {
+      return await inflightOrdersSync;
     }
+
+    const localForMerge = localOrders;
+    inflightOrdersSync = (async (): Promise<Order[]> => {
+      try {
+        const allOrders: Order[] = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+          const response = await apiClient.getOrdersPaged(page, 50);
+          const mappedOrders = response.orders.map(orderFromBackendDto);
+          allOrders.push(...mappedOrders);
+          hasMore = response.hasNextPage;
+          page++;
+          console.log(
+            `Pedidos página ${page - 1}: ${mappedOrders.length} (acumulado: ${allOrders.length}/${response.totalCount})`
+          );
+        }
+
+        // Presupuestos: misma sincronización paginada que los pedidos → cache en `budgets` (lista estable al refrescar).
+        for (const order of allOrders) {
+          if (!isBackendBudgetOrder(order)) continue;
+          try {
+            await db.remove("orders", order.id);
+          } catch {
+            /* no estaba en orders */
+          }
+          try {
+            await db.put("budgets", orderMappedToBudget(order));
+          } catch (err) {
+            console.warn(`Error guardando presupuesto ${order.orderNumber} en IndexedDB:`, err);
+          }
+        }
+
+        const ordersOnly = allOrders.filter((o) => !isBackendBudgetOrder(o));
+        const backendNumbers = new Set(ordersOnly.map((o) => o.orderNumber));
+        const localOnly = localForMerge.filter(
+          (o) => !backendNumbers.has(o.orderNumber) && !isBackendBudgetOrder(o),
+        );
+
+        for (const order of ordersOnly) {
+          try {
+            await db.put("orders", order);
+          } catch (err) {
+            console.warn(`Error guardando orden ${order.orderNumber} en IndexedDB:`, err);
+          }
+        }
+
+        const merged = [...ordersOnly, ...localOnly];
+        console.log(
+          `Órdenes (sin presupuestos en store orders): ${ordersOnly.length} del servidor + ${localOnly.length} solo locales = ${merged.length}`
+        );
+        return merged;
+      } catch (error) {
+        console.warn("Error obteniendo órdenes del servidor, usando IndexedDB:", error);
+        return localForMerge;
+      } finally {
+        inflightOrdersSync = null;
+      }
+    })();
+
+    return await inflightOrdersSync;
   } catch (error) {
     console.error("Error loading orders:", error);
     return [];
@@ -3185,9 +3209,11 @@ export interface DashboardMetrics {
 }
 
 export const calculateDashboardMetrics = async (
-  period: "day" | "week" | "month" | "year" = "week"
+  period: "day" | "week" | "month" | "year" = "week",
+  /** Si se pasa, no se vuelve a llamar a getOrders (p. ej. Dashboard con carga unificada). */
+  existingOrders?: Order[]
 ): Promise<DashboardMetrics> => {
-  const orders = await getOrders();
+  const orders = existingOrders ?? (await getOrders());
 
   // Filtrar por período
   const now = new Date();
@@ -3315,38 +3341,36 @@ export const calculateDashboardMetrics = async (
       )
       : 0;
 
-  // 5. Sistemas de Apartado (SA) Vencidos
-  // "lo que tenga deuda ya es un SA vencido" -> saldo > 0
-  // "debe reflejar lo vencido, sin cancelación" -> status no cancelado
-  // Solo considerar pedidos con saleType === "sistema_apartado"
-
-  const expiredLayawaysOrders = orders.filter(order => {
-    // SOLO considerar Sistemas de Apartado
+  // 5. Sistemas de Apartado (SA) vencidos: deuda con partial/mixed, y más de 90 días desde el pedido
+  // (a partir del día 91: getDaysSinceOrder(createdAt) > SA_LAYAWAY_DAYS)
+  const expiredLayawaysOrders = orders.filter((order) => {
     if (order.saleType !== "sistema_apartado") {
       return false;
     }
-
-    // No considerar cancelados
     if (order.status === "Cancelado") {
       return false;
     }
-
-    // "lo que tenga deuda ya es un SA vencido" - verificar deuda pendiente
-    const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-    const pendingAmount = Math.max(0, order.total - paidAmount);
-
-    // Si tiene deuda, está vencido
-    return pendingAmount > 0;
+    const pendingAmount = getOrderPendingTotal(order);
+    if (pendingAmount <= PAYMENT_BALANCE_EPSILON_BS) {
+      return false;
+    }
+    if (getDaysSinceOrder(order.createdAt) <= SA_LAYAWAY_DAYS) {
+      return false;
+    }
+    return true;
   });
 
   const expiredLayawaysCount = expiredLayawaysOrders.length;
-  const expiredLayawaysAmount = expiredLayawaysOrders.reduce((total, order) => {
-    const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-    return total + Math.max(0, order.total - paidAmount);
-  }, 0);
+  const expiredLayawaysAmount = expiredLayawaysOrders.reduce(
+    (total, order) => total + getOrderPendingTotal(order),
+    0,
+  );
 
-  // Productos por fabricar (Métrica existente)
+  // Productos por fabricar (Métrica): excluir pedidos SA con saldo (alineado con cola de fabricación)
   const productsToManufacture = orders.reduce((count, order) => {
+    if (order.saleType === "sistema_apartado" && getOrderPendingTotal(order) > PAYMENT_BALANCE_EPSILON_BS) {
+      return count;
+    }
     return (
       count +
       order.products.filter((product) => {
@@ -3384,37 +3408,30 @@ export const calculateDashboardMetrics = async (
 };
 
 /**
- * Obtiene todos los Sistemas de Apartado (SA) vencidos
- * Un SA está vencido si tiene saleType === "sistema_apartado" y tiene deuda pendiente
- * @returns Array de órdenes con SA vencidos, incluyendo información de días vencidos y deuda
+ * Sistemas de Apartado (SA) vencidos: deuda pendiente, más de 90 días desde el pedido.
+ * `daysExpired` = días de mora sobre el plazo (después del día 90).
  */
 export const getExpiredLayaways = async (): Promise<Array<Order & { daysExpired: number; pendingAmount: number }>> => {
   const orders = await getOrders();
   const now = new Date();
 
   const expiredLayaways = orders
-    .filter(order => {
-      // SOLO considerar Sistemas de Apartado
+    .filter((order) => {
       if (order.saleType !== "sistema_apartado") {
         return false;
       }
-
-      // No considerar cancelados
       if (order.status === "Cancelado") {
         return false;
       }
-
-      // "lo que tenga deuda ya es un SA vencido" - verificar deuda pendiente
-      const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-      const pendingAmount = Math.max(0, order.total - paidAmount);
-
-      return pendingAmount > 0;
+      const pendingAmount = getOrderPendingTotal(order);
+      if (pendingAmount <= PAYMENT_BALANCE_EPSILON_BS) {
+        return false;
+      }
+      return getDaysSinceOrder(order.createdAt, now) > SA_LAYAWAY_DAYS;
     })
-    .map(order => {
-      const paidAmount = order.partialPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
-      const pendingAmount = Math.max(0, order.total - paidAmount);
-      const orderDate = new Date(order.createdAt);
-      const daysExpired = Math.floor((now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
+    .map((order) => {
+      const pendingAmount = getOrderPendingTotal(order);
+      const daysExpired = getLayawayDaysPastWindow(order.createdAt, now);
 
       return {
         ...order,
@@ -3422,7 +3439,7 @@ export const getExpiredLayaways = async (): Promise<Array<Order & { daysExpired:
         pendingAmount
       };
     })
-    .sort((a, b) => b.daysExpired - a.daysExpired); // Ordenar por días vencidos (más antiguos primero)
+    .sort((a, b) => b.daysExpired - a.daysExpired);
 
   return expiredLayaways;
 };
@@ -3768,18 +3785,28 @@ const repopulateClientsCache = async (clients: Client[]): Promise<void> => {
   }
 };
 
+let inflightClientsSync: Promise<Client[]> | null = null;
+
 export const getClients = async (): Promise<Client[]> => {
   try {
     if (isOnline()) {
-      try {
-        const result = await apiClient.getClientsPaged(1, 1000);
-        const list = (result.items || []).map(clientFromBackendDto);
-        void repopulateClientsCache(list);
-        return list;
-      } catch (error) {
-        console.warn("Error obteniendo clientes del backend, usando IndexedDB:", error);
-        return await db.getAll<Client>("clients");
+      if (inflightClientsSync) {
+        return await inflightClientsSync;
       }
+      inflightClientsSync = (async (): Promise<Client[]> => {
+        try {
+          const result = await apiClient.getClientsPaged(1, 1000);
+          const list = (result.items || []).map(clientFromBackendDto);
+          void repopulateClientsCache(list);
+          return list;
+        } catch (error) {
+          console.warn("Error obteniendo clientes del backend, usando IndexedDB:", error);
+          return await db.getAll<Client>("clients");
+        } finally {
+          inflightClientsSync = null;
+        }
+      })();
+      return await inflightClientsSync;
     }
     return await db.getAll<Client>("clients");
   } catch (error) {

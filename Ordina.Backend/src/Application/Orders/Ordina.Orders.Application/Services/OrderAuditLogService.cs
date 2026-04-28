@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Ordina.Database.Entities.Audit;
 using Ordina.Database.Entities.Order;
@@ -60,6 +62,13 @@ public class OrderAuditLogService : IOrderAuditLogService
                 return;
             }
 
+            var summary = $"Actualizó el pedido {newOrder.OrderNumber} ({changes.Count} cambio(s))";
+            var statusChange = changes.FirstOrDefault(c => c.Field == nameof(Order.Status));
+            if (statusChange != null)
+            {
+                summary += $" — estado: {statusChange.OldValue} → {statusChange.NewValue}";
+            }
+
             var log = new OrderAuditLog
             {
                 OrderId = newOrder.Id,
@@ -67,7 +76,7 @@ public class OrderAuditLogService : IOrderAuditLogService
                 Action = ActionUpdated,
                 UserId = userId,
                 UserName = userName,
-                Summary = $"Actualizó el pedido {newOrder.OrderNumber} ({changes.Count} cambio(s))",
+                Summary = summary,
                 Changes = changes,
                 Timestamp = DateTime.UtcNow
             };
@@ -196,7 +205,11 @@ public class OrderAuditLogService : IOrderAuditLogService
         DateTime? fromUtc,
         DateTime? toUtc)
     {
-        var (items, total) = await _repository.GetPagedAsync(page, pageSize, userId, orderNumber, action, fromUtc, toUtc);
+        var orderForFilter = string.IsNullOrWhiteSpace(orderNumber)
+            ? null
+            : NormalizeOrderNumberForFilter(orderNumber);
+        var (items, total) = await _repository.GetPagedAsync(
+            page, pageSize, userId, orderForFilter, action, fromUtc, toUtc);
         var totalPages = (int)Math.Ceiling(total / (double)Math.Max(1, pageSize));
 
         return new PagedAuditLogsResponseDto
@@ -363,13 +376,49 @@ public class OrderAuditLogService : IOrderAuditLogService
             return "(sin productos)";
         }
 
-        var sb = new StringBuilder();
-        foreach (var p in products)
+        return string.Join(
+            "\n",
+            products
+                .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(p => p.Id, StringComparer.Ordinal)
+                .Select(p =>
+                {
+                    var label = string.IsNullOrWhiteSpace(p.Name) ? p.Id : p.Name;
+                    return $"{label} × {p.Quantity} — {p.LogisticStatus}";
+                }));
+    }
+
+    /// <summary>
+    /// Alinea el filtro con ORD-xxx / PRE- / PCF- + 3 dígitos (mismo criterio que en el front).
+    /// </summary>
+    private static string NormalizeOrderNumberForFilter(string orderNumber)
+    {
+        var s = orderNumber.Trim();
+        if (s.Length == 0)
         {
-            sb.Append(p.Id).Append(':').Append(p.Quantity).Append(':').Append(p.LogisticStatus).Append(';');
+            return s;
         }
 
-        return sb.ToString();
+        static string Pad3(int n) => n.ToString("D3", CultureInfo.InvariantCulture);
+
+        var m = Regex.Match(s, @"^(?i)(ord|pre|pcf)\s*-\s*0*(\d+)$");
+        if (m.Success && int.TryParse(m.Groups[2].Value, out var n) && n >= 0)
+        {
+            return m.Groups[1].Value.ToUpperInvariant() switch
+            {
+                "ORD" => $"ORD-{Pad3(n)}",
+                "PRE" => $"PRE-{Pad3(n)}",
+                "PCF" => $"PCF-{Pad3(n)}",
+                _ => s
+            };
+        }
+
+        if (Regex.IsMatch(s, @"^\d+$") && int.TryParse(s, out var only) && only >= 0)
+        {
+            return $"ORD-{Pad3(only)}";
+        }
+
+        return s;
     }
 
     private static string FormatPaymentDetailsFull(PaymentDetails? d)

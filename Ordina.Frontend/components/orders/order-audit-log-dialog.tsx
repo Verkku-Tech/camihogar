@@ -34,6 +34,23 @@ import {
 } from "@/lib/api-client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { normalizeOrderNumberForAuditFilter } from "@/lib/order-audit-filter";
+
+type AppliedAuditFilters = {
+  userId: string;
+  orderNumber: string;
+  action: string;
+  from: string;
+  to: string;
+};
+
+const defaultApplied: AppliedAuditFilters = {
+  userId: "__all__",
+  orderNumber: "",
+  action: "__all__",
+  from: "",
+  to: "",
+};
 
 const ACTION_OPTIONS = [
   { value: "__all__", label: "Todas las acciones" },
@@ -66,13 +83,16 @@ export function OrderAuditLogDialog({
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [refresh, setRefresh] = useState(0);
 
   const [filterUserId, setFilterUserId] = useState<string>("__all__");
   const [filterOrderNumber, setFilterOrderNumber] = useState("");
   const [filterAction, setFilterAction] = useState<string>("__all__");
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
+
+  /** Valores con los que se hizo la última búsqueda; solo se actualizan con «Aplicar» o al abrir el diálogo. */
+  const [appliedFilters, setAppliedFilters] =
+    useState<AppliedAuditFilters>(defaultApplied);
 
   const [detailLog, setDetailLog] = useState<OrderAuditLogDto | null>(null);
 
@@ -92,24 +112,45 @@ export function OrderAuditLogDialog({
   }, [open, loadUsers]);
 
   useEffect(() => {
+    if (open) return;
+    setPage(1);
+    setAppliedFilters({ ...defaultApplied });
+    setFilterUserId(defaultApplied.userId);
+    setFilterOrderNumber(defaultApplied.orderNumber);
+    setFilterAction(defaultApplied.action);
+    setFilterFrom(defaultApplied.from);
+    setFilterTo(defaultApplied.to);
+  }, [open]);
+
+  useEffect(() => {
     if (!open) return;
 
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
+        const orderQuery = appliedFilters.orderNumber.trim()
+          ? normalizeOrderNumberForAuditFilter(appliedFilters.orderNumber)
+          : "";
+
         const res = await apiClient.getOrderAuditLogs({
           page,
           pageSize: PAGE_SIZE,
           userId:
-            filterUserId && filterUserId !== "__all__" ? filterUserId : undefined,
-          orderNumber: filterOrderNumber.trim() || undefined,
+            appliedFilters.userId && appliedFilters.userId !== "__all__"
+              ? appliedFilters.userId
+              : undefined,
+          orderNumber: orderQuery || undefined,
           action:
-            filterAction && filterAction !== "__all__" ? filterAction : undefined,
-          from: filterFrom
-            ? new Date(filterFrom).toISOString()
+            appliedFilters.action && appliedFilters.action !== "__all__"
+              ? appliedFilters.action
+              : undefined,
+          from: appliedFilters.from
+            ? new Date(appliedFilters.from).toISOString()
             : undefined,
-          to: filterTo ? new Date(filterTo).toISOString() : undefined,
+          to: appliedFilters.to
+            ? new Date(appliedFilters.to).toISOString()
+            : undefined,
         });
         if (!cancelled) {
           setLogs(res.items);
@@ -131,13 +172,21 @@ export function OrderAuditLogDialog({
     return () => {
       cancelled = true;
     };
-    // Filter fields omitted from deps: refetch via "Aplicar filtros" or page/refresh (not every keystroke).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, page, refresh]);
+  }, [open, page, appliedFilters]);
 
   const handleApplyFilters = () => {
+    const normOrder = filterOrderNumber.trim()
+      ? normalizeOrderNumberForAuditFilter(filterOrderNumber)
+      : "";
+    setFilterOrderNumber(normOrder);
+    setAppliedFilters({
+      userId: filterUserId,
+      orderNumber: normOrder,
+      action: filterAction,
+      from: filterFrom,
+      to: filterTo,
+    });
     setPage(1);
-    setRefresh((r) => r + 1);
   };
 
   return (
@@ -173,8 +222,19 @@ export function OrderAuditLogDialog({
               <Input
                 value={filterOrderNumber}
                 onChange={(e) => setFilterOrderNumber(e.target.value)}
-                placeholder="ORD-001"
+                placeholder="ORD-001 o 038"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleApplyFilters();
+                  }
+                }}
               />
+              <p className="text-xs text-muted-foreground">
+                Usa <span className="font-medium">Aplicar filtros</span> o Enter
+                para buscar. Acepta ORD-xxx o solo el número (se normaliza, p. ej.{" "}
+                <span className="whitespace-nowrap">038 → ORD-038</span>).
+              </p>
             </div>
             <div className="space-y-1">
               <Label>Acción</Label>

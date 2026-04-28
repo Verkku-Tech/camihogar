@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { getUnifiedOrders, type UnifiedOrder } from "@/lib/storage"
+import { isSistemaApartado } from "@/lib/order-sa"
 import { formatCurrency, formatCurrencyWithUsdPrimaryFromOrder, getActiveExchangeRates } from "@/lib/currency-utils"
 import { Eye } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -145,7 +146,18 @@ export function DispatchesTable() {
               {dispatches.map((dispatch) => (
                 <TableRow key={dispatch.id} className="hover:bg-muted/50">
                   <TableCell className="font-medium text-green-600">
-                    {dispatch.orderNumber}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{dispatch.orderNumber}</span>
+                      {isSistemaApartado(dispatch) && (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 border-amber-600/50 text-amber-900 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-100 dark:border-amber-500/50 text-xs"
+                          title="Sistema de Apartado"
+                        >
+                          SA
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-green-600 font-medium">
                     {dispatch.clientName}

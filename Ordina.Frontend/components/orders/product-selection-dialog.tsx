@@ -43,23 +43,24 @@ export function ProductSelectionDialog({
   const { formatWithPreference, preferredCurrency } = useCurrency()
   const [productPrices, setProductPrices] = useState<Record<number, string>>({})
 
-  // Cargar productos y calcular ventas
+  // Cargar solo al abrir: evita competir con Dashboard / otras vistas al montar el formulario
   useEffect(() => {
+    if (!open) {
+      return
+    }
     const loadData = async () => {
       try {
-        // Cargar productos, categorías, órdenes y tasas de cambio
         const [loadedProducts, loadedCategories, loadedOrders, rates] = await Promise.all([
           getProducts(),
           getCategories(),
           getOrders(),
           getActiveExchangeRates(),
         ])
-        
+
         setProducts(loadedProducts)
         setCategories(loadedCategories)
         setExchangeRates(rates)
 
-        // Calcular ventas por producto (suma de cantidades vendidas en todas las órdenes)
         const sales: Record<string, number> = {}
         loadedOrders.forEach((order) => {
           order.products.forEach((orderProduct) => {
@@ -72,8 +73,8 @@ export function ProductSelectionDialog({
         console.error("Error loading data:", error)
       }
     }
-    loadData()
-  }, [])
+    void loadData()
+  }, [open])
 
   // Actualizar precios cuando cambien los productos o la moneda preferida
   useEffect(() => {

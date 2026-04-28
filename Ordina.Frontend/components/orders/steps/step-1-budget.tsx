@@ -25,6 +25,10 @@ import {
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
 
+function roundDisplayAmount(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 interface Step1BudgetProps {
   orderForm: UseOrderFormReturn;
   onClientLookup: () => void;
@@ -183,6 +187,8 @@ export function Step1Budget({
                   {orderForm.selectedProducts.map((product) => {
                     const baseTotal = orderForm.getProductBaseTotal(product);
                     const discount = product.discount || 0;
+                    const discountInputCurrency =
+                      orderForm.productDiscountCurrencies[product.id] || preferredCurrency;
                     const finalTotal = Math.max(baseTotal - discount, 0);
 
                     return (
@@ -252,7 +258,7 @@ export function Step1Budget({
                                 <Select
                                   value={
                                     orderForm.productDiscountCurrencies[product.id] ||
-                                    orderForm.getDefaultCurrencyFromSelection()
+                                    preferredCurrency
                                   }
                                   onValueChange={(value: Currency) => {
                                     orderForm.setProductDiscountCurrencies((prev) => ({
@@ -263,7 +269,7 @@ export function Step1Budget({
                                     const currentDiscount = product.discount || 0;
                                     const currentCurrency =
                                       orderForm.productDiscountCurrencies[product.id] ||
-                                      orderForm.getDefaultCurrencyFromSelection();
+                                      preferredCurrency;
                                     const newCurrency = value;
                                     if (currentCurrency !== newCurrency) {
                                       // Convertir el descuento actual a la nueva moneda
@@ -374,21 +380,22 @@ export function Step1Budget({
                                       orderForm.productDiscountCurrencies[product.id] ||
                                       preferredCurrency;
                                     if (discountCurrency === "Bs") {
-                                      return discount;
+                                      return roundDisplayAmount(discount);
                                     }
                                     const rate =
                                       discountCurrency === "USD"
                                         ? orderForm.exchangeRates.USD?.rate
                                         : orderForm.exchangeRates.EUR?.rate;
                                     if (rate && rate > 0) {
-                                      return discount / rate;
+                                      return roundDisplayAmount(discount / rate);
                                     }
-                                    return discount;
+                                    return roundDisplayAmount(discount);
                                   })()}
                                   onChange={(e) =>
                                     orderForm.handleProductDiscountChange(
                                       product.id,
-                                      Number.parseFloat(e.target.value) || 0
+                                      Number.parseFloat(e.target.value) || 0,
+                                      { inputCurrency: discountInputCurrency }
                                     )
                                   }
                                   className="flex-1 min-w-0 text-sm"
@@ -461,6 +468,8 @@ export function Step1Budget({
                         {orderForm.selectedProducts.map((product) => {
                           const baseTotal = orderForm.getProductBaseTotal(product);
                           const discount = product.discount || 0;
+                          const discountInputCurrency =
+                            orderForm.productDiscountCurrencies[product.id] || preferredCurrency;
                           const finalTotal = Math.max(baseTotal - discount, 0);
 
                           return (
@@ -507,7 +516,7 @@ export function Step1Budget({
                                     <Select
                                       value={
                                         orderForm.productDiscountCurrencies[product.id] ||
-                                        orderForm.getDefaultCurrencyFromSelection()
+                                        preferredCurrency
                                       }
                                       onValueChange={(value: Currency) => {
                                         orderForm.setProductDiscountCurrencies((prev) => ({
@@ -631,21 +640,22 @@ export function Step1Budget({
                                           orderForm.productDiscountCurrencies[product.id] ||
                                           preferredCurrency;
                                         if (discountCurrency === "Bs") {
-                                          return discount;
+                                          return roundDisplayAmount(discount);
                                         }
                                         const rate =
                                           discountCurrency === "USD"
                                             ? orderForm.exchangeRates.USD?.rate
                                             : orderForm.exchangeRates.EUR?.rate;
                                         if (rate && rate > 0) {
-                                          return discount / rate;
+                                          return roundDisplayAmount(discount / rate);
                                         }
-                                        return discount;
+                                        return roundDisplayAmount(discount);
                                       })()}
                                       onChange={(e) =>
                                         orderForm.handleProductDiscountChange(
                                           product.id,
-                                          Number.parseFloat(e.target.value) || 0
+                                          Number.parseFloat(e.target.value) || 0,
+                                          { inputCurrency: discountInputCurrency }
                                         )
                                       }
                                       className="flex-1 min-w-0 h-7 text-sm"

@@ -10,8 +10,8 @@ import { BudgetsTable } from "./budgets-table"
 import { DispatchesTable } from "./dispatches-table"
 import { ExpiredLayawaysTable } from "./expired-layaways-table"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
-import { calculateDashboardMetrics, DashboardMetrics } from "@/lib/storage"
+import { Loader2, Plus } from "lucide-react"
+import { calculateDashboardMetrics, DashboardMetrics, getOrders, type Order } from "@/lib/storage"
 import { Card, CardContent } from "@/components/ui/card"
 import { NewOrderDialog } from "@/components/orders/new-order-dialog"
 
@@ -25,12 +25,35 @@ export function Dashboard() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(true)
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
+  /** null = aún no cargado; evita múltiples getOrders en cabecera/tabla/métricas. */
+  const [sharedOrders, setSharedOrders] = useState<Order[] | null>(null)
 
   useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const list = await getOrders()
+        if (!cancelled) setSharedOrders(list)
+      } catch (error) {
+        console.error("Error loading orders for dashboard:", error)
+        if (!cancelled) setSharedOrders([])
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (sharedOrders === null) {
+      setIsLoadingMetrics(true)
+      return
+    }
     const loadMetrics = async () => {
       setIsLoadingMetrics(true)
       try {
-        const calculatedMetrics = await calculateDashboardMetrics(period)
+        const calculatedMetrics = await calculateDashboardMetrics(period, sharedOrders)
         setMetrics(calculatedMetrics)
       } catch (error) {
         console.error("Error loading dashboard metrics:", error)
@@ -39,8 +62,8 @@ export function Dashboard() {
       }
     }
 
-    loadMetrics()
-  }, [period])
+    void loadMetrics()
+  }, [period, sharedOrders])
 
   const handlePeriodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value as Period
@@ -62,7 +85,10 @@ export function Dashboard() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
+        <DashboardHeader
+          onMenuClick={() => setSidebarOpen(true)}
+          orderSearchPreloaded={sharedOrders}
+        />
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           {/* Breadcrumb */}
@@ -155,7 +181,17 @@ export function Dashboard() {
             </div>
 
             {/* Tab Content */}
-            {activeTab === "pedidos" && <OrdersTable />}
+            {activeTab === "pedidos" &&
+              (sharedOrders === null ? (
+                <Card>
+                  <CardContent className="flex items-center gap-2 p-6 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                    Cargando pedidos…
+                  </CardContent>
+                </Card>
+              ) : (
+                <OrdersTable prefetchedOrders={sharedOrders} />
+              ))}
             {activeTab === "presupuestos" && <BudgetsTable />}
             {activeTab === "fabricacion" && <ManufacturingProductsTable />}
             {activeTab === "despachos" && <DispatchesTable />}

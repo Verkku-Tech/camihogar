@@ -31,6 +31,7 @@ import {
   CheckCircle2,
   ChevronRight,
   ChevronLeft,
+  Loader2,
 } from "lucide-react";
 import type {
   OrderProduct,
@@ -311,7 +312,7 @@ const calculateDetailedAttributeAdjustments = (
 interface OrderConfirmationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
   orderData: {
     clientName: string;
@@ -391,6 +392,7 @@ export function OrderConfirmationDialog({
   const [confirmedSteps, setConfirmedSteps] = useState<Set<ConfirmationStep>>(
     new Set()
   );
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [productBreakdowns, setProductBreakdowns] = useState<
@@ -444,6 +446,8 @@ export function OrderConfirmationDialog({
         }
       };
       loadData();
+    } else {
+      setIsSubmitting(false);
     }
   }, [open]);
 
@@ -800,18 +804,26 @@ export function OrderConfirmationDialog({
   const isLastStep = currentStepIndex === steps.length - 1;
   const isStepConfirmed = confirmedSteps.has(currentStep);
 
-  const handleConfirmStep = () => {
+  const handleConfirmStep = async () => {
+    if (isLastStep && isSubmitting) {
+      return;
+    }
+
     const newConfirmedSteps = new Set(confirmedSteps);
     newConfirmedSteps.add(currentStep);
     setConfirmedSteps(newConfirmedSteps);
 
-    // Avanzar al siguiente paso
     if (!isLastStep) {
       const nextStepIndex = currentStepIndex + 1;
       setCurrentStep(steps[nextStepIndex]);
-    } else {
-      // Si es el último paso, confirmar el pedido
-      onConfirm();
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await Promise.resolve(onConfirm());
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1359,23 +1371,35 @@ export function OrderConfirmationDialog({
         <DialogFooter className="flex justify-between">
           <div className="flex gap-2">
             {!isFirstStep && (
-              <Button variant="outline" onClick={handlePrevious}>
+              <Button
+                variant="outline"
+                onClick={handlePrevious}
+                disabled={isSubmitting}
+              >
                 <ChevronLeft className="w-4 h-4 mr-2" />
                 Anterior
               </Button>
             )}
-            <Button variant="outline" onClick={handleEdit}>
+            <Button variant="outline" onClick={handleEdit} disabled={isSubmitting}>
               Editar
             </Button>
           </div>
-          <Button 
-            onClick={handleConfirmStep} 
-            className="bg-green-600 hover:bg-green-700"
+          <Button
+            onClick={() => void handleConfirmStep()}
+            disabled={isSubmitting}
+            className="bg-green-600 hover:bg-green-700 disabled:opacity-70"
           >
-            {isLastStep ? (
+            {isLastStep && isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 shrink-0 animate-spin" />
+                Creando pedido…
+              </>
+            ) : isLastStep ? (
               <>
                 <CheckCircle2 className="w-4 h-4 mr-2" />
-                {isBudgetConversion ? "Confirmar y generar pedido" : "Confirmar y Crear Pedido"}
+                {isBudgetConversion
+                  ? "Confirmar y generar pedido"
+                  : "Confirmar y Crear Pedido"}
               </>
             ) : (
               <>

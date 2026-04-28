@@ -58,6 +58,10 @@ import {
 } from "@/components/ui/hover-card";
 import { ImageGallery } from "@/components/orders/image-gallery";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  getLineDiscountDisplayMode,
+  getIndividualDiscountsSummaryLabel,
+} from "@/lib/product-discount-ui";
 
 const OrderPdfDownloadButton = dynamic(
   () =>
@@ -550,6 +554,17 @@ export default function OrderDetailPage() {
           p.method === CASHEA_FINANCED_METHOD_LABEL,
       ),
     [order, activePayments],
+  );
+
+  const individualDiscountsSummaryLabel = useMemo(
+    () =>
+      order
+        ? getIndividualDiscountsSummaryLabel(
+            order.products,
+            (preferredCurrency as Currency) || "Bs"
+          )
+        : "Descuentos individuales:",
+    [order, preferredCurrency]
   );
 
   const handleValidateOrder = async () => {
@@ -1252,13 +1267,10 @@ export default function OrderDetailPage() {
                     <ArrowLeft className="w-4 h-4 mr-2" />
                     Volver
                   </Button>
-                  {order.status !== "Generado" &&
-                    order.status !== "Generada" && (
-                      <OrderPdfDownloadButton
-                        order={order}
-                        client={client}
-                      />
-                    )}
+                  <OrderPdfDownloadButton
+                    order={order}
+                    client={client}
+                  />
                   <HoverCard openDelay={300} closeDelay={100}>
                     <HoverCardTrigger asChild>
                       <div className="cursor-help border-b border-dashed border-transparent hover:border-muted-foreground/40 pb-0.5 transition-colors">
@@ -1537,20 +1549,31 @@ export default function OrderDetailPage() {
                                   <p className="text-sm text-muted-foreground">
                                     Cantidad: {product.quantity}
                                   </p>
-                                  {product.discount && product.discount > 0 && (
-                                    <p className="text-sm text-red-600 mt-1">
-                                      Descuento: -
-                                      {formattedProductDiscounts[product.id] ? (
-                                        <FormattedCurrencyDisplay
-                                          formatted={formattedProductDiscounts[product.id]}
-                                          inline={true}
-                                          className="inline"
-                                        />
-                                      ) : (
-                                        formatCurrency(product.discount, "Bs")
-                                      )}
-                                    </p>
-                                  )}
+                                  {product.discount && product.discount > 0 && (() => {
+                                    const discMode = getLineDiscountDisplayMode(
+                                      product,
+                                      (preferredCurrency as Currency) || "Bs"
+                                    );
+                                    return (
+                                      <p className="text-sm text-red-600 mt-1">
+                                        Descuento:
+                                        {discMode.mode === "porcentaje" ? (
+                                          <span> {discMode.percent}% </span>
+                                        ) : null}
+                                        {" "}
+                                        -
+                                        {formattedProductDiscounts[product.id] ? (
+                                          <FormattedCurrencyDisplay
+                                            formatted={formattedProductDiscounts[product.id]}
+                                            inline={true}
+                                            className="inline"
+                                          />
+                                        ) : (
+                                          formatCurrency(product.discount, "Bs")
+                                        )}
+                                      </p>
+                                    );
+                                  })()}
                                 </div>
                                 <div className="text-right">
                                   {formattedProductTotals[product.id] ? (
@@ -1858,7 +1881,7 @@ export default function OrderDetailPage() {
                     </div>
                     {order.productDiscountTotal && order.productDiscountTotal > 0 && (
                       <div className="flex justify-between text-red-600">
-                        <span>Descuentos individuales:</span>
+                        <span>{individualDiscountsSummaryLabel}</span>
                         {formattedTotals.productDiscountTotal ? (
                           <FormattedCurrencyDisplay formatted={formattedTotals.productDiscountTotal} />
                         ) : (
