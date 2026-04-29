@@ -145,6 +145,28 @@ const isOrderInTab = (order: UnifiedOrder, tab: TabType): boolean => {
   return order.products.some(p => getProductDispatchStatus(p) === tab)
 }
 
+type AttributesGridProps = {
+  pairs: { key: string; value: string }[]
+  productName?: string
+}
+
+function AttributesGrid({ pairs, productName }: AttributesGridProps) {
+  if (pairs.length === 0) return <p className="text-sm text-muted-foreground">Sin atributos</p>
+  return (
+    <div className="space-y-2">
+      {productName && <h4 className="font-semibold text-sm">{productName}</h4>}
+      <div className="grid grid-cols-5 gap-x-4 gap-y-2 text-sm">
+        {pairs.map(({ key, value }) => (
+          <div key={key} className="flex flex-col min-w-0">
+            <span className="text-muted-foreground font-medium">{key}:</span>
+            <span className="text-foreground break-words">{value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function DespachosPage() {
   const { formatWithPreference, preferredCurrency, exchangeRates } = useCurrency()
   const router = useRouter()
@@ -293,23 +315,6 @@ export default function DespachosPage() {
     return pairs
   }
 
-  const AttributesGrid = ({ pairs, productName }: { pairs: { key: string; value: string }[]; productName?: string }) => {
-    if (pairs.length === 0) return <p className="text-sm text-muted-foreground">Sin atributos</p>
-    return (
-      <div className="space-y-2">
-        {productName && <h4 className="font-semibold text-sm">{productName}</h4>}
-        <div className="grid grid-cols-5 gap-x-4 gap-y-2 text-sm">
-          {pairs.map(({ key, value }) => (
-            <div key={key} className="flex flex-col min-w-0">
-              <span className="text-muted-foreground font-medium">{key}:</span>
-              <span className="text-foreground break-words">{value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
   useEffect(() => {
     const updateTotals = async () => {
       const totals: Record<string, string> = {}
@@ -324,28 +329,36 @@ export default function DespachosPage() {
     }
   }, [orders, preferredCurrency, formatWithPreference])
 
-  const filteredOrders = orders.filter((order) => {
-    // 1. Filtrar por tab activo
-    if (!isOrderInTab(order, activeTab)) return false
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      // 1. Filtrar por tab activo
+      if (!isOrderInTab(order, activeTab)) return false
 
-    // 2. Filtro de búsqueda
-    const matchesSearch =
-      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
+      // 2. Filtro de búsqueda
+      const matchesSearch =
+        order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
 
-    // 3. Filtro por tipo de entrega
-    const matchesDeliveryType =
-      deliveryTypeFilter === "all" ||
-      order.deliveryType === deliveryTypeFilter
+      // 3. Filtro por tipo de entrega
+      const matchesDeliveryType =
+        deliveryTypeFilter === "all" ||
+        order.deliveryType === deliveryTypeFilter
 
-    // 4. Filtro por zona de entrega
-    const matchesDeliveryZone =
-      deliveryZoneFilter === "all" ||
-      order.deliveryZone === deliveryZoneFilter
+      // 4. Filtro por zona de entrega
+      const matchesDeliveryZone =
+        deliveryZoneFilter === "all" ||
+        order.deliveryZone === deliveryZoneFilter
 
-    return matchesSearch && matchesDeliveryType && matchesDeliveryZone
-  })
+      return matchesSearch && matchesDeliveryType && matchesDeliveryZone
+    })
+  }, [
+    orders,
+    activeTab,
+    searchTerm,
+    deliveryTypeFilter,
+    deliveryZoneFilter,
+  ])
 
   const deliveredRows = useMemo((): DeliveredRow[] => {
     const rows: DeliveredRow[] = []
@@ -422,6 +435,17 @@ export default function DespachosPage() {
 
   const paginatedOrders = ordersPagination.paginatedData
   const paginatedDeliveredRows = deliveredRowsPagination.paginatedData
+  const deliveredCurrentPage = deliveredRowsPagination.currentPage
+
+  const deliveredPageLineTotalsSignature = useMemo(() => {
+    if (activeTab !== "despachados") return ""
+    const start = (deliveredCurrentPage - 1) * itemsPerPage
+    const pageRows = deliveredRows.slice(start, start + itemsPerPage)
+    if (pageRows.length === 0) return ""
+    return pageRows
+      .map(({ order, product }) => `${order.id}|${product.id}|${product.total}`)
+      .join("|")
+  }, [activeTab, deliveredRows, deliveredCurrentPage, itemsPerPage])
 
   const listPagination =
     activeTab === "despachados" ? deliveredRowsPagination : ordersPagination
@@ -435,13 +459,17 @@ export default function DespachosPage() {
   } = listPagination
 
   useEffect(() => {
-    if (activeTab !== "despachados" || paginatedDeliveredRows.length === 0) {
+    if (activeTab !== "despachados" || deliveredPageLineTotalsSignature === "") {
       return
     }
+    const start = (deliveredCurrentPage - 1) * itemsPerPage
+    const pageRows = deliveredRows.slice(start, start + itemsPerPage)
+    if (pageRows.length === 0) return
+
     let cancelled = false
     const run = async () => {
       const next: Record<string, string> = {}
-      for (const { order, product } of paginatedDeliveredRows) {
+      for (const { order, product } of pageRows) {
         const k = `${order.id}|${product.id}`
         next[k] = await formatWithPreference(product.total, "Bs")
       }
@@ -453,7 +481,12 @@ export default function DespachosPage() {
     return () => {
       cancelled = true
     }
-  }, [activeTab, paginatedDeliveredRows, formatWithPreference])
+  }, [
+    activeTab,
+    deliveredPageLineTotalsSignature,
+    preferredCurrency,
+    formatWithPreference,
+  ])
 
   // Manejar selección individual de productos relevantes a la pestaña
   const handleToggleSelect = (orderId: string) => {
