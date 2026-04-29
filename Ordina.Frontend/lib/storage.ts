@@ -1722,6 +1722,8 @@ export interface Order {
   }; // Tasas de cambio del día en que se creó el pedido
   dispatchDate?: string; // Fecha de despacho
   completedAt?: string; // Fecha de completado
+  /** Crédito de tienda aplicado al pedido (USD), persistido con el pedido. */
+  appliedStoreCreditUsd?: number;
 }
 
 export interface Client {
@@ -2040,6 +2042,10 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   baseCurrency: dto.baseCurrency,
   dispatchDate: dto.dispatchDate,
   completedAt: dto.completedAt,
+  appliedStoreCreditUsd:
+    (dto as { appliedStoreCreditUsd?: number }).appliedStoreCreditUsd ??
+    (dto as { AppliedStoreCreditUsd?: number }).AppliedStoreCreditUsd ??
+    0,
   type: dto.type ?? (dto as unknown as { Type?: string }).Type ?? "Order",
 });
 
@@ -2211,6 +2217,9 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   deliveryServices: order.deliveryServices,
   exchangeRatesAtCreation: order.exchangeRatesAtCreation,
   type: order.type ?? "Order",
+  ...(order.appliedStoreCreditUsd != null && order.appliedStoreCreditUsd > 0
+    ? { appliedStoreCreditUsd: order.appliedStoreCreditUsd }
+    : {}),
 });
 
 /** Body para POST /api/Orders/{id}/convert-to-order (el servidor toma cliente/vendedor del presupuesto). */
@@ -2726,6 +2735,10 @@ export const updateOrder = async (
               JSON.stringify(existingOrder.exchangeRatesAtCreation)
                 ? updatedOrder.exchangeRatesAtCreation
                 : undefined,
+            appliedStoreCreditUsd:
+              (updatedOrder.appliedStoreCreditUsd ?? 0) !== (existingOrder.appliedStoreCreditUsd ?? 0)
+                ? updatedOrder.appliedStoreCreditUsd ?? 0
+                : undefined,
           };
 
           // Remover campos undefined
@@ -2916,6 +2929,7 @@ export const updateOrder = async (
           createSupplierOrder: updatedOrder.createSupplierOrder,
           exchangeRatesAtCreation: updatedOrder.exchangeRatesAtCreation,
           type: updatedOrder.type,
+          appliedStoreCreditUsd: updatedOrder.appliedStoreCreditUsd,
           observations: updatedOrder.observations,
           status: updatedOrder.status,
           deliveryServices: updatedOrder.deliveryServices,

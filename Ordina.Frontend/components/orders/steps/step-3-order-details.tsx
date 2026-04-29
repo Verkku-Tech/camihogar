@@ -1039,6 +1039,62 @@ export function Step3OrderDetails({
                   </p>
                 )}
 
+                {orderForm.selectedClient &&
+                  orderForm.paymentCondition !== "pago_a_entrega" &&
+                  orderForm.paymentCondition !== "pagara_en_tienda" && (
+                  <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
+                    <p className="text-sm font-medium">Saldo a favor del cliente</p>
+                    <p className="text-xs text-muted-foreground">
+                      Disponible (USD):{" "}
+                      {orderForm.clientStoreCreditBalanceUsd == null
+                        ? "…"
+                        : orderForm.clientStoreCreditBalanceUsd.toFixed(2)}
+                    </p>
+                    {(orderForm.clientStoreCreditBalanceUsd ?? 0) > 0 && (
+                      <div className="flex flex-col gap-2 max-w-sm">
+                        <Label className="text-xs" htmlFor="applied-store-credit-usd">
+                          Aplicar crédito (USD)
+                        </Label>
+                        <Input
+                          id="applied-store-credit-usd"
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          max={orderForm.maxApplicableStoreCreditUsd}
+                          step={0.01}
+                          value={
+                            orderForm.appliedStoreCreditUsd === 0
+                              ? ""
+                              : String(orderForm.appliedStoreCreditUsd)
+                          }
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "" || raw === ".") {
+                              orderForm.setAppliedStoreCreditUsd(0);
+                              return;
+                            }
+                            const v = Number.parseFloat(raw.replace(",", "."));
+                            if (!Number.isFinite(v)) {
+                              orderForm.setAppliedStoreCreditUsd(0);
+                              return;
+                            }
+                            const cap = orderForm.maxApplicableStoreCreditUsd;
+                            orderForm.setAppliedStoreCreditUsd(
+                              Math.round(Math.max(0, Math.min(v, cap)) * 100) / 100,
+                            );
+                          }}
+                        />
+                        {orderForm.appliedCreditBsApprox > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            Equivalente en Bs del crédito aplicado:{" "}
+                            {formatCurrency(orderForm.appliedCreditBsApprox, "Bs")}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {orderForm.payments.map((payment) => (
                   <fieldset
                     key={payment.id}
@@ -2470,15 +2526,7 @@ export function Step3OrderDetails({
                       {/* Total pagado */}
                       <TableRow>
                         <TableCell className="text-xs sm:text-sm">
-                          <span
-                            className={
-                              orderForm.isPaymentsValid
-                                ? "text-green-600 font-semibold"
-                                : "font-semibold"
-                            }
-                          >
-                            Total pagado:
-                          </span>
+                          Total pagado (cobros en tienda):
                         </TableCell>
                         {orderForm.renderCurrencyCell(
                           orderForm.totalPaidInBs,
@@ -2487,6 +2535,17 @@ export function Step3OrderDetails({
                             : "font-semibold"
                         )}
                       </TableRow>
+
+                      {orderForm.appliedCreditBsApprox > 0 && (
+                        <TableRow>
+                          <TableCell className="text-xs sm:text-sm text-emerald-800 dark:text-emerald-200">
+                            Crédito tienda aplicado (equiv. Bs):
+                          </TableCell>
+                          <TableCell className="text-right text-xs sm:text-sm font-medium text-emerald-800 dark:text-emerald-200">
+                            −{formatCurrency(orderForm.appliedCreditBsApprox, "Bs")}
+                          </TableCell>
+                        </TableRow>
+                      )}
 
                       {/* Total del pedido */}
                       <TableRow>

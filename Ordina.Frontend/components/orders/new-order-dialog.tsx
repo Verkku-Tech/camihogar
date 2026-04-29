@@ -39,6 +39,7 @@ import {
   buildCasheaPaymentsForSave,
   PAYMENT_BALANCE_EPSILON_BS,
 } from "@/lib/order-payments";
+import { tryComputeOverpaymentUsd } from "@/lib/order-store-credit-usd";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -121,6 +122,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(null);
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
+  const [overpaymentPrompt, setOverpaymentPrompt] = useState<{
+    orderId: string;
+    amountUsd: number;
+    orderNumber: string;
+  } | null>(null);
 
   const [isPendingConfirmationSaving, setIsPendingConfirmationSaving] = useState(false);
   const [isCheckingClientPcf, setIsCheckingClientPcf] = useState(false);
@@ -619,11 +625,23 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         }
         if (orderForm.paymentCondition === "cashea") {
           const p = orderForm.payments[0];
-          if ((p.amount || 0) > orderForm.total + PAYMENT_BALANCE_EPSILON_BS) {
+          if (
+            (p.amount || 0) >
+            orderForm.total - orderForm.appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS
+          ) {
             toast.error("El monto del pago inicial no puede superar el total del pedido.");
             return;
           }
         }
+      }
+
+      if (
+        orderForm.paymentCondition !== "pago_a_entrega" &&
+        orderForm.paymentCondition !== "pagara_en_tienda" &&
+        !orderForm.isPaymentsValid
+      ) {
+        toast.error("Los cobros no coinciden con el total del pedido (incluye crédito aplicado).");
+        return;
       }
 
       if (!orderForm.saleType) {
@@ -847,6 +865,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               }
             : undefined,
         },
+        ...(orderForm.paymentCondition !== "pago_a_entrega" &&
+        orderForm.paymentCondition !== "pagara_en_tienda" &&
+        orderForm.appliedStoreCreditUsd > 0
+          ? { appliedStoreCreditUsd: orderForm.appliedStoreCreditUsd }
+          : {}),
       };
 
       const createdOrder = await addOrder(orderData);
@@ -859,6 +882,21 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       // Reset form
       orderForm.resetForm();
       setPendingOrderData(null);
+
+      const excessUsd = tryComputeOverpaymentUsd(createdOrder);
+      if (
+        excessUsd != null &&
+        excessUsd > 0 &&
+        typeof navigator !== "undefined" &&
+        navigator.onLine
+      ) {
+        setOverpaymentPrompt({
+          orderId: createdOrder.id,
+          amountUsd: excessUsd,
+          orderNumber: createdOrder.orderNumber,
+        });
+        return;
+      }
 
       // Redirigir a la vista de detalle del pedido
       window.location.href = `/pedidos/${createdOrder.orderNumber}`;
@@ -1070,6 +1108,58 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           orderData={pendingOrderData}
         />
       )}
+
+      <AlertDialog
+        open={overpaymentPrompt !== null}
+        onOpenChange={(next) => {
+          if (!next && overpaymentPrompt) {
+            const num = overpaymentPrompt.orderNumber;
+            setOverpaymentPrompt(null);
+            window.location.href = `/pedidos/${num}`;
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sobrepago detectado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Hay un excedente de USD {overpaymentPrompt?.amountUsd.toFixed(2)} respecto al total
+              del pedido. ¿Registrar ese monto como saldo a favor del cliente?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                if (!overpaymentPrompt) return;
+                const num = overpaymentPrompt.orderNumber;
+                setOverpaymentPrompt(null);
+                window.location.href = `/pedidos/${num}`;
+              }}
+            >
+              No registrar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!overpaymentPrompt) return;
+                const num = overpaymentPrompt.orderNumber;
+                const oid = overpaymentPrompt.orderId;
+                try {
+                  await apiClient.recordStoreCreditOverpayment(oid);
+                  toast.success("Saldo a favor registrado (USD).");
+                } catch (e: unknown) {
+                  const msg = e instanceof Error ? e.message : "No se pudo registrar el crédito.";
+                  toast.error(msg);
+                } finally {
+                  setOverpaymentPrompt(null);
+                  window.location.href = `/pedidos/${num}`;
+                }
+              }}
+            >
+              Registrar saldo a favor
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={pendingPcfPrompt !== null}
