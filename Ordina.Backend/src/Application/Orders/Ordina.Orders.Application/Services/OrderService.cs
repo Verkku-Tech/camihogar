@@ -229,7 +229,8 @@ public class OrderService : IOrderService
             };
 
             RecalculateOrderStatus(order);
-            var createdOrder = await CreateOrderAndAuditAsync(order, typeForCount, prefix, userId, userName);
+            var createdOrder = await _orderRepository.CreateAsync(order);
+            await _auditLogService.LogOrderCreatedAsync(createdOrder, userId, userName);
 
             if (requiresPayment && createdOrder.AppliedStoreCreditUsd > 0)
             {
