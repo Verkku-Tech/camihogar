@@ -49,6 +49,7 @@ import {
   sumPaymentsInStoreBs,
   CASHEA_FINANCED_METHOD_LABEL,
 } from "@/lib/order-payments";
+import { appliedUsdToBs } from "@/lib/order-store-credit-usd";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
@@ -479,6 +480,16 @@ function getStatusColor(status: string) {
 /** Saldo residual por redondeo; alinear con validación de pagos del formulario (~0,01 Bs). */
 const PENDING_BALANCE_EPSILON_BS = 0.01;
 
+function appliedStoreCreditBsOnOrder(order: Order): number {
+  const usd = order.appliedStoreCreditUsd ?? 0;
+  if (usd <= 0) return 0;
+  try {
+    return appliedUsdToBs(usd, order);
+  } catch {
+    return 0;
+  }
+}
+
 export default function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -534,7 +545,8 @@ export default function OrderDetailPage() {
   const pendingBalanceAmountInBs = useMemo(() => {
     if (!order) return 0;
     const paid = activePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-    return order.total - paid;
+    const creditBs = appliedStoreCreditBsOnOrder(order);
+    return order.total - paid - creditBs;
   }, [order, activePayments]);
 
   const hasMeaningfulPendingBalance =
@@ -940,9 +952,10 @@ export default function OrderDetailPage() {
         setFormattedTotalPaid(formatCurrency(totalPaidInBs, "Bs"));
       }
 
-      // Calcular saldo pendiente
+      // Calcular saldo pendiente (restar crédito de tienda aplicado al pedido, misma tasa que el backend)
       const totalOrderInBs = order.total;
-      const pendingBalanceInBs = totalOrderInBs - totalPaidInBs;
+      const creditBsApplied = appliedStoreCreditBsOnOrder(order);
+      const pendingBalanceInBs = totalOrderInBs - totalPaidInBs - creditBsApplied;
 
       if (pendingBalanceInBs > PENDING_BALANCE_EPSILON_BS) {
         // Hay saldo pendiente
@@ -1297,7 +1310,8 @@ export default function OrderDetailPage() {
                         <>
                           {activePayments.length > 0 && (() => {
                             const totalPaid = activePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-                            const pending = order.total - totalPaid;
+                            const pending =
+                              order.total - totalPaid - appliedStoreCreditBsOnOrder(order);
                             if (pending > PENDING_BALANCE_EPSILON_BS) {
                               return (
                                 <p className="text-sm text-red-600 dark:text-red-400">
@@ -1308,10 +1322,17 @@ export default function OrderDetailPage() {
                             }
                             return null;
                           })()}
-                          {activePayments.length === 0 && order.total > PENDING_BALANCE_EPSILON_BS && (
+                          {activePayments.length === 0 &&
+                            order.total - appliedStoreCreditBsOnOrder(order) >
+                              PENDING_BALANCE_EPSILON_BS && (
                             <p className="text-sm text-red-600 dark:text-red-400">
                               <span className="text-muted-foreground">Saldo pendiente:</span>{" "}
-                              <CurrencyDisplay amountInBs={order.total} exchangeRates={localExchangeRates} inline className="inline font-medium" />
+                              <CurrencyDisplay
+                                amountInBs={order.total - appliedStoreCreditBsOnOrder(order)}
+                                exchangeRates={localExchangeRates}
+                                inline
+                                className="inline font-medium"
+                              />
                             </p>
                           )}
                           {order.paymentCondition === "cashea" && casheaHasFinancedLine && (
@@ -2193,6 +2214,15 @@ export default function OrderDetailPage() {
                           exchangeRates={localExchangeRates}
                         />
                       </div>
+                      {(order.appliedStoreCreditUsd ?? 0) > 0 && (
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                          <span>Crédito de tienda aplicado (equiv. Bs):</span>
+                          <CurrencyDisplay
+                            amountInBs={appliedStoreCreditBsOnOrder(order)}
+                            exchangeRates={localExchangeRates}
+                          />
+                        </div>
+                      )}
 
                       {/* Mostrar saldo pendiente si existe (en USD cuando hay tasa, para ver cuánto debe) */}
                       {formattedPendingBalance &&
@@ -2261,7 +2291,7 @@ export default function OrderDetailPage() {
                             Total pendiente:
                           </span>
                           <CurrencyDisplay
-                            amountInBs={order.total}
+                            amountInBs={pendingBalanceAmountInBs}
                             exchangeRates={localExchangeRates}
                             className="font-bold text-lg text-red-700 dark:text-red-300"
                           />
