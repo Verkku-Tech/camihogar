@@ -24,6 +24,9 @@ public class OrderProductDto
     public string? LocationStatus { get; set; }
     public string LogisticStatus { get; set; } = "Generado";
 
+    /// <summary>UTC cuando el producto se marcó como entregado/despachado.</summary>
+    public DateTime? DeliveredAt { get; set; }
+
     // Refabricación
     public string? RefabricationReason { get; set; }
     public DateTime? RefabricatedAt { get; set; }

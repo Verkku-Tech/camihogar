@@ -8,7 +8,11 @@ public class PaymentReportRowDto
     public string MetodoPago { get; set; } = string.Empty;
     public decimal MontoOriginal { get; set; }
     public string MonedaOriginal { get; set; } = string.Empty;
-    public decimal MontoBs { get; set; }
+    /// <summary>
+    /// Equivalente en Bs cuando aplica (p. ej. transferencia o pago móvil en USD con tasa).
+    /// Null si el pago fue en divisas por métodos solo extranjeros (Zelle, Binance, bancos Panamá, etc.): no se convierte a Bs en el reporte.
+    /// </summary>
+    public decimal? MontoBs { get; set; }
     /// <summary>Equivalente en USD cuando el pago es en Bs (tasa del día del pedido).</summary>
     public decimal? MontoUsd { get; set; }
     public string Cuenta { get; set; } = string.Empty;

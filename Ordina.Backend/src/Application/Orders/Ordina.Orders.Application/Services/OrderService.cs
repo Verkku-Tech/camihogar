@@ -904,6 +904,7 @@ public class OrderService : IOrderService
             ManufacturingNotes = product.ManufacturingNotes,
             LocationStatus = product.LocationStatus,
             LogisticStatus = product.LogisticStatus,
+            DeliveredAt = product.DeliveredAt,
             RefabricationReason = product.RefabricationReason,
             RefabricatedAt = product.RefabricatedAt,
             RefabricationHistory = product.RefabricationHistory?.Select(r => new RefabricationRecordDto
@@ -955,6 +956,7 @@ public class OrderService : IOrderService
             ManufacturingNotes = dto.ManufacturingNotes,
             LocationStatus = dto.LocationStatus,
             LogisticStatus = dto.LogisticStatus ?? "Generado",
+            DeliveredAt = dto.DeliveredAt,
             RefabricationReason = dto.RefabricationReason,
             RefabricatedAt = dto.RefabricatedAt,
             RefabricationHistory = dto.RefabricationHistory?.Select(r => new RefabricationRecord

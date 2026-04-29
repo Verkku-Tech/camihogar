@@ -1846,6 +1846,8 @@ export interface OrderProductDto {
   manufacturingNotes?: string;
   locationStatus?: string;
   logisticStatus?: string;
+  /** ISO cuando el producto se marcó entregado/despachado */
+  deliveredAt?: string;
   // Campos de refabricación
   refabricationReason?: string; // Razón de la última refabricación
   refabricatedAt?: string; // Fecha de última refabricación (ISO string)

@@ -61,6 +61,7 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   getLineDiscountDisplayMode,
   getIndividualDiscountsSummaryLabel,
+  getLineDiscountLabelLead,
 } from "@/lib/product-discount-ui";
 
 const OrderPdfDownloadButton = dynamic(
@@ -1556,12 +1557,8 @@ export default function OrderDetailPage() {
                                     );
                                     return (
                                       <p className="text-sm text-red-600 mt-1">
-                                        Descuento:
-                                        {discMode.mode === "porcentaje" ? (
-                                          <span> {discMode.percent}% </span>
-                                        ) : null}
-                                        {" "}
-                                        -
+                                        <span>{getLineDiscountLabelLead(discMode)}</span>
+                                        {" "}-{" "}
                                         {formattedProductDiscounts[product.id] ? (
                                           <FormattedCurrencyDisplay
                                             formatted={formattedProductDiscounts[product.id]}

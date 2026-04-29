@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Search, Eye, Truck, CheckCircle, PackageCheck, RotateCcw } from "lucide-react"
+import { Search, Eye, Truck, CheckCircle, PackageCheck, RotateCcw, Download } from "lucide-react"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { OrderGroupCollapsible } from "@/components/orders/order-group-collapsible"
 import { toast } from "sonner"
@@ -75,6 +75,58 @@ const getProductDispatchStatus = (product: OrderProduct): TabType | "none" => {
   }
 
   return "none"
+}
+
+/** Actualiza ubicación/logística y fecha de entrega al confirmar o revertir despacho. */
+const applyDispatchProductUpdate = (
+  product: OrderProduct,
+  action: ActionType
+): OrderProduct => {
+  if (action === "to_dispatch") {
+    return {
+      ...product,
+      locationStatus: "EN DESPACHO",
+      logisticStatus: "En Ruta",
+    }
+  }
+  if (action === "to_delivered") {
+    return {
+      ...product,
+      locationStatus: "DESPACHADO",
+      logisticStatus: "Completado",
+      deliveredAt: new Date().toISOString(),
+    }
+  }
+  return {
+    ...product,
+    locationStatus: "EN TIENDA",
+    logisticStatus: "En Almacén",
+    deliveredAt: undefined,
+  }
+}
+
+const formatDeliveredAtDisplay = (iso: string | undefined): string => {
+  if (!iso?.trim()) return "—"
+  try {
+    return new Date(iso).toLocaleString("es-VE", {
+      dateStyle: "short",
+      timeStyle: "short",
+    })
+  } catch {
+    return "—"
+  }
+}
+
+const escapeCsvCell = (value: string): string => {
+  const s = value ?? ""
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+const deliveryZoneLabel = (zone: string | undefined): string => {
+  if (!zone) return ""
+  const found = DELIVERY_ZONES.find((z) => z.value === zone)
+  return found?.label ?? zone
 }
 
 // Helper: Verifica si el pedido debe mostrarse en una pestaña específica
@@ -291,6 +343,54 @@ export default function DespachosPage() {
     return matchesSearch && matchesDeliveryType && matchesDeliveryZone
   })
 
+  const handleExportDispatchedCsv = useCallback(() => {
+    const headers = [
+      "Pedido",
+      "Cliente",
+      "Vendedor",
+      "Producto",
+      "Cantidad",
+      "Zona entrega",
+      "Fecha entrega",
+    ]
+    const rows: string[][] = []
+    for (const order of filteredOrders) {
+      if (order.type !== "order") continue
+      for (const product of order.products) {
+        if (getProductDispatchStatus(product) !== "despachados") continue
+        rows.push([
+          order.orderNumber,
+          order.clientName,
+          order.vendorName ?? "",
+          product.name,
+          String(product.quantity),
+          deliveryZoneLabel(order.deliveryZone),
+          product.deliveredAt
+            ? new Date(product.deliveredAt).toLocaleString("es-VE", {
+                dateStyle: "short",
+                timeStyle: "short",
+              })
+            : "",
+        ])
+      }
+    }
+    const lines = [headers.map(escapeCsvCell).join(",")]
+    for (const r of rows) {
+      lines.push(r.map(escapeCsvCell).join(","))
+    }
+    const csv = "\uFEFF" + lines.join("\r\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `historial-despachados-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    toast.success("Listado exportado (CSV)")
+  }, [filteredOrders])
+
   // Paginación
   const {
     currentPage,
@@ -400,14 +500,9 @@ export default function DespachosPage() {
 
       const actingIds = new Set(productsToActOn.map(p => p.id))
 
-      const updatedProducts = orderToActOn.products.map(p => {
-        if (actingIds.has(p.id)) {
-          if (actionType === "to_dispatch") return { ...p, locationStatus: "EN DESPACHO" as const, logisticStatus: "En Ruta" }
-          if (actionType === "to_delivered") return { ...p, locationStatus: "DESPACHADO" as const, logisticStatus: "Completado" }
-          if (actionType === "to_store") return { ...p, locationStatus: "EN TIENDA" as const, logisticStatus: "En Almacén" }
-        }
-        return p
-      })
+      const updatedProducts = orderToActOn.products.map(p =>
+        actingIds.has(p.id) ? applyDispatchProductUpdate(p, actionType) : p
+      )
 
       // Verificar si el pedido se completa totalmente
       // Un pedido está completo SOLO si TODOS sus productos tienen status DESPACHADO (o legacy finished)
@@ -476,14 +571,9 @@ export default function DespachosPage() {
         const order = orders.find(o => o.id === orderId)
         if (!order) continue
 
-        const updatedProducts = order.products.map(p => {
-          if (pIds.includes(p.id)) {
-            if (actionType === "to_dispatch") return { ...p, locationStatus: "EN DESPACHO" as const, logisticStatus: "En Ruta" }
-            if (actionType === "to_delivered") return { ...p, locationStatus: "DESPACHADO" as const, logisticStatus: "Completado" }
-            if (actionType === "to_store") return { ...p, locationStatus: "EN TIENDA" as const, logisticStatus: "En Almacén" }
-          }
-          return p
-        })
+        const updatedProducts = order.products.map(p =>
+          pIds.includes(p.id) ? applyDispatchProductUpdate(p, actionType) : p
+        )
 
         let newOrderStatus = order.status as any
         let completedAt = order.completedAt
@@ -607,7 +697,7 @@ export default function DespachosPage() {
 
                 <Card>
                   <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div>
+                    <div className="flex flex-col gap-2 min-w-0">
                       <CardTitle className="flex items-center gap-2">
                         {activeTab === "por_despachar" && <><Truck className="w-5 h-5" /> Productos Listos para Reparto</>}
                         {activeTab === "en_despacho" && <><Truck className="w-5 h-5 text-orange-500" /> Productos En Ruta</>}
@@ -619,6 +709,19 @@ export default function DespachosPage() {
                         {activeTab === "despachados" && "Consulta de productos y pedidos entregados exitosamente."}
                       </CardDescription>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                    {activeTab === "despachados" && filteredOrders.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={handleExportDispatchedCsv}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Exportar CSV
+                      </Button>
+                    )}
                     
                     {/* Botones de acción masiva */}
                     {selectedOrders.size > 0 && activeTab === "por_despachar" && (
@@ -636,6 +739,7 @@ export default function DespachosPage() {
                         </Button>
                       </div>
                     )}
+                    </div>
                   </CardHeader>
                   <CardContent>
                     {isLoading ? (
@@ -767,6 +871,9 @@ export default function DespachosPage() {
                                     <TableHead>Categoría</TableHead>
                                     <TableHead>Cantidad</TableHead>
                                     <TableHead>Estado</TableHead>
+                                    {activeTab === "despachados" && (
+                                      <TableHead className="whitespace-nowrap">Fecha entrega</TableHead>
+                                    )}
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -828,6 +935,11 @@ export default function DespachosPage() {
                                                 <Badge className="bg-muted text-muted-foreground">-</Badge>
                                               )}
                                             </TableCell>
+                                            {activeTab === "despachados" && (
+                                              <TableCell className="text-sm whitespace-nowrap tabular-nums">
+                                                {formatDeliveredAtDisplay(product.deliveredAt)}
+                                              </TableCell>
+                                            )}
                                           </TableRow>
                                         </HoverCardTrigger>
                                         <HoverCardContent className="min-w-[480px] max-w-[min(640px,95vw)] w-max" align="start">
