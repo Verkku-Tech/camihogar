@@ -43,5 +43,8 @@ public class OrderResponseDto
 
     public string? OriginalOrderId { get; set; }
     public List<OrderProductDto>? OriginalProducts { get; set; }
+
+    /// <summary>USD de saldo a favor del cliente aplicados a este pedido.</summary>
+    public decimal AppliedStoreCreditUsd { get; set; }
 }
 

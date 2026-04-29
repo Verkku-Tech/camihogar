@@ -15,15 +15,18 @@ public class OrderService : IOrderService
 {
     private readonly IOrderRepository _orderRepository;
     private readonly IOrderAuditLogService _auditLogService;
+    private readonly IClientCreditService _clientCreditService;
     private readonly ILogger<OrderService> _logger;
 
     public OrderService(
         IOrderRepository orderRepository,
         IOrderAuditLogService auditLogService,
+        IClientCreditService clientCreditService,
         ILogger<OrderService> logger)
     {
         _orderRepository = orderRepository;
         _auditLogService = auditLogService;
+        _clientCreditService = clientCreditService;
         _logger = logger;
     }
 
@@ -211,12 +214,21 @@ public class OrderService : IOrderService
                 ExchangeRatesAtCreation = createDto.ExchangeRatesAtCreation != null ? MapExchangeRatesFromDto(createDto.ExchangeRatesAtCreation) : null,
                 Type = createDto.Type,
                 OriginalProducts = isPendingConfirmation ? CloneOrderProducts(mappedProducts) : null,
+                AppliedStoreCreditUsd = requiresPayment && createDto.AppliedStoreCreditUsd is > 0
+                    ? Math.Round(createDto.AppliedStoreCreditUsd.Value, 2, MidpointRounding.AwayFromZero)
+                    : 0,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
 
             RecalculateOrderStatus(order);
             var createdOrder = await CreateOrderAndAuditAsync(order, typeForCount, prefix, userId, userName);
+
+            if (requiresPayment && createdOrder.AppliedStoreCreditUsd > 0)
+            {
+                await _clientCreditService.DebitAppliedCreditForNewOrderAsync(createdOrder, userId, userName);
+            }
+
             return MapToDto(createdOrder);
         }
         catch (Exception ex)
@@ -467,6 +479,7 @@ public class OrderService : IOrderService
             }
 
             var oldSnapshot = OrderDeepClone.Clone(existingOrder);
+            var previousAppliedStoreCreditUsd = existingOrder.AppliedStoreCreditUsd;
 
             // Actualizar campos si están presentes
             if (!string.IsNullOrEmpty(updateDto.ClientId))
@@ -537,10 +550,17 @@ public class OrderService : IOrderService
                 existingOrder.ExchangeRatesAtCreation = MapExchangeRatesFromDto(updateDto.ExchangeRatesAtCreation);
             if (!string.IsNullOrEmpty(updateDto.Type))
                 existingOrder.Type = updateDto.Type;
+            if (updateDto.AppliedStoreCreditUsd.HasValue)
+                existingOrder.AppliedStoreCreditUsd = Math.Round(updateDto.AppliedStoreCreditUsd.Value, 2, MidpointRounding.AwayFromZero);
 
             existingOrder.UpdatedAt = DateTime.UtcNow;
 
             RecalculateOrderStatus(existingOrder);
+            await _clientCreditService.SyncAppliedCreditAfterOrderUpdateAsync(
+                existingOrder,
+                previousAppliedStoreCreditUsd,
+                userId,
+                userName);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
             await _auditLogService.LogOrderUpdatedAsync(oldSnapshot, updatedOrder, userId, userName);
             return MapToDto(updatedOrder);
@@ -815,7 +835,8 @@ public class OrderService : IOrderService
             UpdatedAt = order.UpdatedAt,
             Type = order.Type,
             OriginalOrderId = order.OriginalOrderId,
-            OriginalProducts = order.OriginalProducts?.Select(MapProductToDto).ToList()
+            OriginalProducts = order.OriginalProducts?.Select(MapProductToDto).ToList(),
+            AppliedStoreCreditUsd = order.AppliedStoreCreditUsd,
         };
     }
 
