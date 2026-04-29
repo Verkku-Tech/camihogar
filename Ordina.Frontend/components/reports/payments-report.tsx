@@ -15,6 +15,7 @@ import { apiClient } from "@/lib/api-client"
 import { useAuth } from "@/contexts/auth-context"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { digitalPaymentMethods } from "@/components/orders/constants"
 
 interface PaymentReportRow {
   id: string
@@ -24,7 +25,8 @@ interface PaymentReportRow {
   metodoPago: string
   montoOriginal: number
   monedaOriginal: string
-  montoBs: number
+  /** Equivalente en Bs cuando aplica; null si el pago fue en divisas (Zelle, Binance, bancos Panamá, etc.) sin conversión en el reporte. */
+  montoBs: number | null
   /** Equivalente USD para pagos en Bs (tasa del día del pedido), desde API o cálculo local */
   montoUsd?: number
   referencia: string
@@ -35,13 +37,37 @@ interface PaymentReportRow {
   isConciliated: boolean
 }
 
+function isBolivaresCurrency(moneda: string): boolean {
+  return (moneda || "").trim().toLowerCase() === "bs"
+}
+
+function shouldOmitBsEquivalent(
+  paymentMethod: string,
+  monedaOriginal: string,
+): boolean {
+  if (isBolivaresCurrency(monedaOriginal)) return false
+  return (digitalPaymentMethods as readonly string[]).includes(paymentMethod)
+}
+
+/** Misma regla que el backend: sin equivalente en Bs para métodos solo en divisas cuando la moneda no es Bs. */
+function computeReportMontoBs(
+  paymentMethod: string,
+  montoOriginal: number,
+  monedaOriginal: string,
+  exchangeRate: number | undefined | null,
+): number | null {
+  if (isBolivaresCurrency(monedaOriginal)) return montoOriginal
+  if (shouldOmitBsEquivalent(paymentMethod, monedaOriginal)) return null
+  return montoOriginal * (exchangeRate ?? 1)
+}
+
 /** USD equivalente para filas en Bs usando tasas guardadas en el pedido */
 function computeMontoUsdForBsPayment(
   order: Order,
   monedaOriginal: string,
-  montoBs: number,
+  montoBs: number | null,
 ): number | undefined {
-  if (monedaOriginal !== "Bs") return undefined
+  if (monedaOriginal !== "Bs" || montoBs == null) return undefined
   const ex = order.exchangeRatesAtCreation as
     | { USD?: { rate: number }; usd?: { rate: number } }
     | undefined
@@ -117,7 +143,14 @@ export function PaymentsReport() {
   const reportTotals = useMemo(() => {
     const rows = filteredReportData
     return {
-      montoBs: rows.reduce((s, r) => s + r.montoBs, 0),
+      montoBs: rows.reduce(
+        (s, r) =>
+          s +
+          (typeof r.montoBs === "number" && Number.isFinite(r.montoBs)
+            ? r.montoBs
+            : 0),
+        0,
+      ),
       montoUsd: rows
         .filter((r) => r.monedaOriginal === "USD")
         .reduce((s, r) => s + r.montoOriginal, 0),
@@ -252,7 +285,14 @@ export function PaymentsReport() {
             metodoPago: String(row.metodoPago ?? ""),
             montoOriginal: Number(row.montoOriginal ?? 0),
             monedaOriginal: String(row.monedaOriginal ?? ""),
-            montoBs: Number(row.montoBs ?? 0),
+            montoBs: (() => {
+              const raw =
+                row.montoBs ?? (row as Record<string, unknown>).MontoBs
+              if (raw === null || raw === undefined || raw === "")
+                return null
+              const n = Number(raw)
+              return Number.isFinite(n) ? n : null
+            })(),
             montoUsd: (() => {
               const raw =
                 row.montoUsd ??
@@ -367,10 +407,12 @@ export function PaymentsReport() {
             const montoOriginal = originalPayment.amount
             const monedaOriginal = originalPayment.currency
 
-            const montoBs =
-              monedaOriginal === "Bs"
-                ? montoOriginal
-                : montoOriginal * (payment.paymentDetails?.exchangeRate || 1)
+            const montoBs = computeReportMontoBs(
+              payment.method,
+              montoOriginal,
+              monedaOriginal,
+              payment.paymentDetails?.exchangeRate,
+            )
 
             rows.push({
               id: `${order.id}-${activePaymentType}-${index}`,
@@ -427,10 +469,12 @@ export function PaymentsReport() {
             monedaOriginal = order.paymentDetails?.originalCurrency ?? order.baseCurrency ?? "Bs"
           }
           
-          // Calcular monto en Bs: si la moneda original no es Bs, convertir usando exchangeRate
-          const montoBs = monedaOriginal === "Bs" 
-            ? montoOriginal 
-            : montoOriginal * (order.paymentDetails?.exchangeRate || 1)
+          const montoBs = computeReportMontoBs(
+            order.paymentMethod,
+            montoOriginal,
+            monedaOriginal,
+            order.paymentDetails?.exchangeRate,
+          )
 
           rows.push({
             id: `${order.id}-main`,
@@ -999,8 +1043,9 @@ export function PaymentsReport() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {row.monedaOriginal !== "Bs" &&
-                        row.metodoPago === "Efectivo" ? (
+                        {row.montoBs == null ||
+                        (row.metodoPago === "Efectivo" &&
+                          row.monedaOriginal !== "Bs") ? (
                           <span className="text-muted-foreground text-xs">—</span>
                         ) : (
                           formatCurrency(row.montoBs, "Bs")

@@ -431,7 +431,8 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         const hasDiscount = Number.isFinite(discountNum) && discountNum > 0;
         const hasStoredDiscountUi =
           p.attributes != null &&
-          Object.prototype.hasOwnProperty.call(p.attributes, "discountUiType");
+          (Object.prototype.hasOwnProperty.call(p.attributes, "discountUiType") ||
+            Object.prototype.hasOwnProperty.call(p.attributes, "discountUiPercent"));
         if (!hasStoredDiscountUi && hasDiscount) {
           return {
             ...p,
@@ -510,12 +511,21 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         const hasDiscount = Number.isFinite(discountNum) && discountNum > 0;
         const hasStoredDiscountUi =
           p.attributes != null &&
-          Object.prototype.hasOwnProperty.call(p.attributes, "discountUiType");
+          (Object.prototype.hasOwnProperty.call(p.attributes, "discountUiType") ||
+            Object.prototype.hasOwnProperty.call(p.attributes, "discountUiPercent"));
         let finalType = attrType;
         let finalCurrency = attrCurrency;
         if (!hasStoredDiscountUi && hasDiscount) {
           finalType = "monto";
           finalCurrency = pref;
+        }
+        if (
+          p.attributes != null &&
+          !Object.prototype.hasOwnProperty.call(p.attributes, "discountUiType") &&
+          Object.prototype.hasOwnProperty.call(p.attributes, "discountUiPercent") &&
+          hasDiscount
+        ) {
+          finalType = "porcentaje";
         }
         newTypes[p.id] = finalType;
         newCurrencies[p.id] = finalCurrency;

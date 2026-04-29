@@ -1564,6 +1564,8 @@ export interface OrderProduct {
   // Estado de ubicación del producto
   locationStatus?: "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | "EN DESPACHO" | "DESPACHADO"; // Estado de ubicación
   logisticStatus?: string; // "Generado", "Fabricándose", "En Almacén", "En Ruta", "Completado"
+  /** ISO UTC cuando el ítem se marcó entregado/despachado */
+  deliveredAt?: string;
   // Campos de sobreprecio
   surchargeEnabled?: boolean; // Checkbox "Sobre precio" activo
   surchargeAmount?: number; // Monto del sobreprecio (en USD)
@@ -1889,6 +1891,12 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       return (p.locationStatus as "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | undefined) ?? "DISPONIBILIDAD INMEDIATA"
     })(),
     logisticStatus: p.logisticStatus,
+    deliveredAt:
+      typeof p.deliveredAt === "string"
+        ? p.deliveredAt
+        : p.deliveredAt != null
+          ? new Date(p.deliveredAt as string | number | Date).toISOString()
+          : undefined,
     surchargeEnabled: p.surchargeEnabled,
     surchargeAmount: p.surchargeAmount,
     surchargeReason: p.surchargeReason,
@@ -2072,6 +2080,7 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
     manufacturingNotes: p.manufacturingNotes,
     locationStatus: p.locationStatus,
     logisticStatus: p.logisticStatus,
+    deliveredAt: p.deliveredAt,
     surchargeEnabled: p.surchargeEnabled,
     surchargeAmount: p.surchargeAmount,
     surchargeReason: p.surchargeReason,
@@ -2592,6 +2601,7 @@ export const updateOrder = async (
               manufacturingNotes: p.manufacturingNotes,
               locationStatus: p.locationStatus,
               logisticStatus: p.logisticStatus,
+              deliveredAt: p.deliveredAt,
               surchargeEnabled: p.surchargeEnabled,
               surchargeAmount: p.surchargeAmount,
               surchargeReason: p.surchargeReason,
@@ -2807,6 +2817,7 @@ export const updateOrder = async (
             manufacturingNotes: p.manufacturingNotes,
             locationStatus: p.locationStatus,
             logisticStatus: p.logisticStatus,
+            deliveredAt: p.deliveredAt,
             surchargeEnabled: p.surchargeEnabled,
             surchargeAmount: p.surchargeAmount,
             surchargeReason: p.surchargeReason,

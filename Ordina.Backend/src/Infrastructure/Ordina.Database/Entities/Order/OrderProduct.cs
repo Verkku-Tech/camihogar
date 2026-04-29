@@ -77,6 +77,10 @@ public class OrderProduct
     [BsonElement("logisticStatus")]
     public string LogisticStatus { get; set; } = "Generado"; // "Generado", "Fabricándose", "En Almacén", "En Ruta", "Completado"
 
+    /// <summary>Momento en que el ítem pasó a entregado/despachado (location DESPACHADO + logística Completado).</summary>
+    [BsonElement("deliveredAt")]
+    public DateTime? DeliveredAt { get; set; }
+
     // Campos de sobreprecio
     [BsonElement("surchargeEnabled")]
     public bool? SurchargeEnabled { get; set; } // Indica si tiene sobreprecio
