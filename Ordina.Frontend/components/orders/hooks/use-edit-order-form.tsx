@@ -236,6 +236,7 @@ export interface UseOrderFormReturn {
   mockReferrers: Vendor[];
 
   needsDraftPrompt: boolean;
+  isDraftGateBlocking: boolean;
   applyDraftAndContinue: () => void;
   discardDraftAndStartFresh: () => void;
   clearDraftStorage: () => void;
@@ -1267,6 +1268,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     mockVendors: vendors,
     mockReferrers: referrers,
     needsDraftPrompt: false,
+    isDraftGateBlocking: false,
     applyDraftAndContinue: () => {},
     discardDraftAndStartFresh: () => {},
     clearDraftStorage: () => {},
