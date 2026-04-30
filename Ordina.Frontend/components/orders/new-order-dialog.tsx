@@ -638,6 +638,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       if (
         orderForm.paymentCondition !== "pago_a_entrega" &&
         orderForm.paymentCondition !== "pagara_en_tienda" &&
+        orderForm.paymentCondition !== "pago_parcial" &&
+        orderForm.paymentCondition !== "todo_pago" &&
         !orderForm.isPaymentsValid
       ) {
         toast.error("Los cobros no coinciden con el total del pedido (incluye crédito aplicado).");
