@@ -211,7 +211,7 @@ export function Step3OrderDetails({
           if (!open) setStoreCreditOfferDismissed(true);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-[min(32rem,calc(100vw-2rem))]">
           <AlertDialogHeader>
             <AlertDialogTitle>¿Usar saldo a favor del cliente?</AlertDialogTitle>
             <AlertDialogDescription asChild>
@@ -231,37 +231,38 @@ export function Step3OrderDetails({
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col gap-2 sm:flex-col sm:space-x-0">
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-2 w-full">
-              <AlertDialogCancel
-                type="button"
-                onClick={() => {
-                  orderForm.setAppliedStoreCreditUsd(0);
-                  closeStoreCreditOffer(true);
-                }}
-              >
-                No, no usar crédito
-              </AlertDialogCancel>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => closeStoreCreditOffer(true)}
-              >
-                Elegir monto abajo
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  const bal = orderForm.clientStoreCreditBalanceUsd ?? 0;
-                  const cap = orderForm.maxApplicableStoreCreditUsd;
-                  const amount = Math.round(Math.min(bal, cap) * 100) / 100;
-                  orderForm.setAppliedStoreCreditUsd(amount);
-                  closeStoreCreditOffer(true);
-                }}
-              >
-                Sí, aplicar todo lo posible
-              </Button>
-            </div>
+          <AlertDialogFooter className="flex w-full flex-col gap-2 sm:flex-col sm:space-x-0">
+            <AlertDialogCancel
+              type="button"
+              className="mt-0 w-full sm:mt-0"
+              onClick={() => {
+                orderForm.setAppliedStoreCreditUsd(0);
+                closeStoreCreditOffer(true);
+              }}
+            >
+              No, no usar crédito
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => closeStoreCreditOffer(true)}
+            >
+              Elegir monto abajo
+            </Button>
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => {
+                const bal = orderForm.clientStoreCreditBalanceUsd ?? 0;
+                const cap = orderForm.maxApplicableStoreCreditUsd;
+                const amount = Math.round(Math.min(bal, cap) * 100) / 100;
+                orderForm.setAppliedStoreCreditUsd(amount);
+                closeStoreCreditOffer(true);
+              }}
+            >
+              Sí, aplicar todo lo posible
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -2643,11 +2644,12 @@ export function Step3OrderDetails({
                       {orderForm.appliedCreditBsApprox > 0 && (
                         <TableRow>
                           <TableCell className="text-xs sm:text-sm text-emerald-800 dark:text-emerald-200">
-                            Crédito tienda aplicado (equiv. Bs):
+                            Crédito tienda aplicado:
                           </TableCell>
-                          <TableCell className="text-right text-xs sm:text-sm font-medium text-emerald-800 dark:text-emerald-200">
-                            −{formatCurrency(orderForm.appliedCreditBsApprox, "Bs")}
-                          </TableCell>
+                          {orderForm.renderCurrencyCellNegative(
+                            orderForm.appliedCreditBsApprox,
+                            "text-emerald-800 dark:text-emerald-200 [&>div.font-medium]:text-emerald-900 dark:[&>div.font-medium]:text-emerald-100 [&>div.text-muted-foreground]:text-emerald-800/90 dark:[&>div.text-muted-foreground]:text-emerald-200/85",
+                          )}
                         </TableRow>
                       )}
 
