@@ -176,7 +176,14 @@ export function Step3OrderDetails({
   }, [orderForm.selectedClient?.id]);
 
   useEffect(() => {
+    if (orderForm.isDraftGateBlocking) {
+      setStoreCreditOfferOpen(false);
+    }
+  }, [orderForm.isDraftGateBlocking]);
+
+  useEffect(() => {
     if (storeCreditOfferDismissed || storeCreditOfferOpen) return;
+    if (orderForm.isDraftGateBlocking) return;
     if (!orderForm.selectedClient?.id) return;
     const bal = orderForm.clientStoreCreditBalanceUsd;
     if (bal == null || bal <= 0) return;
@@ -189,6 +196,7 @@ export function Step3OrderDetails({
     if (orderForm.appliedStoreCreditUsd > 0) return;
     setStoreCreditOfferOpen(true);
   }, [
+    orderForm.isDraftGateBlocking,
     orderForm.selectedClient?.id,
     orderForm.clientStoreCreditBalanceUsd,
     orderForm.paymentCondition,

@@ -235,6 +235,8 @@ export interface UseOrderFormReturn {
 
   /** Borrador (localStorage, un borrador por usuario) */
   needsDraftPrompt: boolean;
+  /** true mientras no se ha leído el borrador (idle) o el usuario debe elegir (pending); evita otros AlertDialog antes que el de borrador */
+  isDraftGateBlocking: boolean;
   applyDraftAndContinue: () => void;
   discardDraftAndStartFresh: () => void;
   clearDraftStorage: () => void;
@@ -844,6 +846,14 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
           (payments[0].amount || 0) <= total - appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS
         : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
 
+  const isDraftGateBlocking = useMemo(
+    () =>
+      open &&
+      !!draftOwnerId &&
+      (draftResolution === "idle" || draftResolution === "pending"),
+    [open, draftOwnerId, draftResolution],
+  );
+
   // Formatear precios
   useEffect(() => {
     const formatPrices = async () => {
@@ -1398,6 +1408,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     mockVendors: vendors,
     mockReferrers: referrers,
     needsDraftPrompt: draftResolution === "pending",
+    isDraftGateBlocking,
     applyDraftAndContinue,
     discardDraftAndStartFresh,
     clearDraftStorage,
