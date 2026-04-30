@@ -84,6 +84,18 @@ public class ReportService : IReportService
         "fabricacion"
     }, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Mismos nombres que en la app (Mongo/UI). Pagos en divisas: el reporte no calcula equivalente en Bs.</summary>
+    private static readonly HashSet<string> ForeignCurrencyOnlyPaymentMethods = new HashSet<string>(new[]
+    {
+        "AirTM",
+        "Banesco Panamá",
+        "Binance",
+        "Facebank",
+        "Mercantil Panamá",
+        "Paypal",
+        "Zelle",
+    }, StringComparer.OrdinalIgnoreCase);
+
     private readonly IOrderRepository _orderRepository;
     private readonly IProviderRepository _providerRepository;
     private readonly ICategoryRepository _categoryRepository;
@@ -811,7 +823,10 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 4, item.MetodoPago);
                     sl.SetCellValue(row, 5, (double)item.MontoOriginal);
                     sl.SetCellValue(row, 6, item.MonedaOriginal);
-                    sl.SetCellValue(row, 7, (double)item.MontoBs);
+                    if (item.MontoBs.HasValue)
+                        sl.SetCellValue(row, 7, (double)item.MontoBs.Value);
+                    else
+                        sl.SetCellValue(row, 7, "—");
                     if (item.MontoUsd.HasValue)
                         sl.SetCellValue(row, 8, (double)item.MontoUsd.Value);
                     sl.SetCellValue(row, 9, item.Cuenta);
@@ -936,10 +951,11 @@ public class ReportService : IReportService
                                     order.PaymentDetails?.CashCurrency ?? 
                                     "Bs";
                 
-                // Calcular monto en Bs
-                var montoBs = monedaOriginal == "Bs" 
-                    ? montoOriginal 
-                    : montoOriginal * (order.PaymentDetails?.ExchangeRate ?? 1);
+                var montoBs = ComputeReportMontoBs(
+                    order.PaymentMethod,
+                    montoOriginal,
+                    monedaOriginal,
+                    order.PaymentDetails?.ExchangeRate);
 
                 reportData.Add(new PaymentReportRow
                 {
@@ -977,6 +993,30 @@ public class ReportService : IReportService
         return (new List<PartialPayment>(), string.Empty);
     }
 
+    private static bool IsBolivaresCurrency(string? monedaOriginal) =>
+        string.Equals(monedaOriginal?.Trim(), "Bs", StringComparison.OrdinalIgnoreCase);
+
+    private static bool ShouldOmitBsEquivalent(string paymentMethod, string? monedaOriginal)
+    {
+        if (IsBolivaresCurrency(monedaOriginal))
+            return false;
+        return ForeignCurrencyOnlyPaymentMethods.Contains(paymentMethod ?? string.Empty);
+    }
+
+    /// <summary>Monto en Bs para el reporte, o null si no aplica conversión (divisas en métodos solo extranjeros).</summary>
+    private static decimal? ComputeReportMontoBs(
+        string paymentMethod,
+        decimal montoOriginal,
+        string monedaOriginal,
+        decimal? exchangeRate)
+    {
+        if (IsBolivaresCurrency(monedaOriginal))
+            return montoOriginal;
+        if (ShouldOmitBsEquivalent(paymentMethod, monedaOriginal))
+            return null;
+        return montoOriginal * (exchangeRate ?? 1);
+    }
+
     private async Task<PaymentReportRow> CreatePaymentReportRowAsync(
         Order order,
         PartialPayment payment,
@@ -997,10 +1037,11 @@ public class ReportService : IReportService
                             payment.PaymentDetails?.CashCurrency ?? 
                             "Bs";
         
-        // Calcular monto en Bs
-        var montoBs = monedaOriginal == "Bs" 
-            ? montoOriginal 
-            : montoOriginal * (payment.PaymentDetails?.ExchangeRate ?? 1);
+        var montoBs = ComputeReportMontoBs(
+            payment.Method,
+            montoOriginal,
+            monedaOriginal,
+            payment.PaymentDetails?.ExchangeRate);
 
         return new PaymentReportRow
         {
@@ -1022,9 +1063,11 @@ public class ReportService : IReportService
     }
 
     /// <summary>Equivalente USD para filas en Bs usando la tasa del pedido (sin fallar si no hay tasa).</summary>
-    private decimal? GetMontoUsdForBsPayment(Order order, string monedaOriginal, decimal montoBs)
+    private decimal? GetMontoUsdForBsPayment(Order order, string monedaOriginal, decimal? montoBs)
     {
         if (!string.Equals(monedaOriginal?.Trim(), "Bs", StringComparison.OrdinalIgnoreCase))
+            return null;
+        if (!montoBs.HasValue)
             return null;
 
         try
@@ -1032,7 +1075,7 @@ public class ReportService : IReportService
             var rate = GetUsdExchangeRate(order);
             if (rate <= 0)
                 return null;
-            return Math.Round(montoBs / rate, 2, MidpointRounding.AwayFromZero);
+            return Math.Round(montoBs.Value / rate, 2, MidpointRounding.AwayFromZero);
         }
         catch
         {
@@ -1520,7 +1563,7 @@ public class ReportService : IReportService
         public string MetodoPago { get; set; } = string.Empty;
         public decimal MontoOriginal { get; set; }
         public string MonedaOriginal { get; set; } = string.Empty;
-        public decimal MontoBs { get; set; }
+        public decimal? MontoBs { get; set; }
         public decimal? MontoUsd { get; set; }
         public string Cuenta { get; set; } = string.Empty;
         public string Referencia { get; set; } = string.Empty;

@@ -1564,6 +1564,8 @@ export interface OrderProduct {
   // Estado de ubicación del producto
   locationStatus?: "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | "EN DESPACHO" | "DESPACHADO"; // Estado de ubicación
   logisticStatus?: string; // "Generado", "Fabricándose", "En Almacén", "En Ruta", "Completado"
+  /** ISO UTC cuando el ítem se marcó entregado/despachado */
+  deliveredAt?: string;
   // Campos de sobreprecio
   surchargeEnabled?: boolean; // Checkbox "Sobre precio" activo
   surchargeAmount?: number; // Monto del sobreprecio (en USD)
@@ -1720,6 +1722,8 @@ export interface Order {
   }; // Tasas de cambio del día en que se creó el pedido
   dispatchDate?: string; // Fecha de despacho
   completedAt?: string; // Fecha de completado
+  /** Crédito de tienda aplicado al pedido (USD), persistido con el pedido. */
+  appliedStoreCreditUsd?: number;
 }
 
 export interface Client {
@@ -1889,6 +1893,12 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       return (p.locationStatus as "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | undefined) ?? "DISPONIBILIDAD INMEDIATA"
     })(),
     logisticStatus: p.logisticStatus,
+    deliveredAt:
+      typeof p.deliveredAt === "string"
+        ? p.deliveredAt
+        : p.deliveredAt != null
+          ? new Date(p.deliveredAt as string | number | Date).toISOString()
+          : undefined,
     surchargeEnabled: p.surchargeEnabled,
     surchargeAmount: p.surchargeAmount,
     surchargeReason: p.surchargeReason,
@@ -2032,6 +2042,10 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   baseCurrency: dto.baseCurrency,
   dispatchDate: dto.dispatchDate,
   completedAt: dto.completedAt,
+  appliedStoreCreditUsd:
+    (dto as { appliedStoreCreditUsd?: number }).appliedStoreCreditUsd ??
+    (dto as { AppliedStoreCreditUsd?: number }).AppliedStoreCreditUsd ??
+    0,
   type: dto.type ?? (dto as unknown as { Type?: string }).Type ?? "Order",
 });
 
@@ -2072,6 +2086,7 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
     manufacturingNotes: p.manufacturingNotes,
     locationStatus: p.locationStatus,
     logisticStatus: p.logisticStatus,
+    deliveredAt: p.deliveredAt,
     surchargeEnabled: p.surchargeEnabled,
     surchargeAmount: p.surchargeAmount,
     surchargeReason: p.surchargeReason,
@@ -2202,6 +2217,9 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   deliveryServices: order.deliveryServices,
   exchangeRatesAtCreation: order.exchangeRatesAtCreation,
   type: order.type ?? "Order",
+  ...(order.appliedStoreCreditUsd != null && order.appliedStoreCreditUsd > 0
+    ? { appliedStoreCreditUsd: order.appliedStoreCreditUsd }
+    : {}),
 });
 
 /** Body para POST /api/Orders/{id}/convert-to-order (el servidor toma cliente/vendedor del presupuesto). */
@@ -2592,6 +2610,7 @@ export const updateOrder = async (
               manufacturingNotes: p.manufacturingNotes,
               locationStatus: p.locationStatus,
               logisticStatus: p.logisticStatus,
+              deliveredAt: p.deliveredAt,
               surchargeEnabled: p.surchargeEnabled,
               surchargeAmount: p.surchargeAmount,
               surchargeReason: p.surchargeReason,
@@ -2742,6 +2761,10 @@ export const updateOrder = async (
               JSON.stringify(existingOrder.exchangeRatesAtCreation)
                 ? updatedOrder.exchangeRatesAtCreation
                 : undefined,
+            appliedStoreCreditUsd:
+              (updatedOrder.appliedStoreCreditUsd ?? 0) !== (existingOrder.appliedStoreCreditUsd ?? 0)
+                ? updatedOrder.appliedStoreCreditUsd ?? 0
+                : undefined,
           };
 
           // Remover campos undefined
@@ -2807,6 +2830,7 @@ export const updateOrder = async (
             manufacturingNotes: p.manufacturingNotes,
             locationStatus: p.locationStatus,
             logisticStatus: p.logisticStatus,
+            deliveredAt: p.deliveredAt,
             surchargeEnabled: p.surchargeEnabled,
             surchargeAmount: p.surchargeAmount,
             surchargeReason: p.surchargeReason,
@@ -2931,6 +2955,7 @@ export const updateOrder = async (
           createSupplierOrder: updatedOrder.createSupplierOrder,
           exchangeRatesAtCreation: updatedOrder.exchangeRatesAtCreation,
           type: updatedOrder.type,
+          appliedStoreCreditUsd: updatedOrder.appliedStoreCreditUsd,
           observations: updatedOrder.observations,
           status: updatedOrder.status,
           deliveryServices: updatedOrder.deliveryServices,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
@@ -27,6 +27,8 @@ import {
   type Currency,
 } from "@/lib/currency-utils";
 import { PAYMENT_BALANCE_EPSILON_BS } from "@/lib/order-payments";
+import { getBsPerUsdFromOrder } from "@/lib/order-store-credit-usd";
+import { apiClient } from "@/lib/api-client";
 import {
   mergeDiscountUiIntoAttributes,
   readDiscountUiFromProduct,
@@ -176,6 +178,15 @@ export interface UseOrderFormReturn {
   remainingAmount: number;
   isPaymentsValid: boolean;
 
+  /** Crédito de tienda (USD): saldo del cliente y monto a aplicar al pedido. */
+  appliedStoreCreditUsd: number;
+  setAppliedStoreCreditUsd: React.Dispatch<React.SetStateAction<number>>;
+  /** null = sin cargar aún */
+  clientStoreCreditBalanceUsd: number | null;
+  refreshClientStoreCreditBalance: () => Promise<void>;
+  appliedCreditBsApprox: number;
+  maxApplicableStoreCreditUsd: number;
+
   // Formateados
   formattedProductPrices: Record<string, string>;
   formattedProductTotals: Record<string, string>;
@@ -224,6 +235,8 @@ export interface UseOrderFormReturn {
 
   /** Borrador (localStorage, un borrador por usuario) */
   needsDraftPrompt: boolean;
+  /** true mientras no se ha leído el borrador (idle) o el usuario debe elegir (pending); evita otros AlertDialog antes que el de borrador */
+  isDraftGateBlocking: boolean;
   applyDraftAndContinue: () => void;
   discardDraftAndStartFresh: () => void;
   clearDraftStorage: () => void;
@@ -304,6 +317,8 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     servicioArmado: { enabled: false, cost: 0, currency: "USD" },
   });
   const [payments, setPayments] = useState<PartialPayment[]>([]);
+  const [appliedStoreCreditUsd, setAppliedStoreCreditUsd] = useState(0);
+  const [clientStoreCreditBalanceUsd, setClientStoreCreditBalanceUsd] = useState<number | null>(null);
   const [generalDiscount, setGeneralDiscount] = useState(0);
   const [generalDiscountType, setGeneralDiscountType] = useState<
     "monto" | "porcentaje"
@@ -725,6 +740,90 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
   );
   const total = Math.max(totalBeforeGeneralDiscount - generalDiscountAmount, 0);
 
+  const orderSnapshotForCreditRates = useMemo(
+    () => ({
+      exchangeRatesAtCreation: {
+        USD: exchangeRates.USD
+          ? { rate: exchangeRates.USD.rate, effectiveDate: exchangeRates.USD.effectiveDate }
+          : undefined,
+        EUR: exchangeRates.EUR
+          ? { rate: exchangeRates.EUR.rate, effectiveDate: exchangeRates.EUR.effectiveDate }
+          : undefined,
+      },
+    }),
+    [exchangeRates.USD, exchangeRates.EUR],
+  );
+
+  const bsPerUsdForStoreCredit = useMemo(() => {
+    try {
+      return getBsPerUsdFromOrder(orderSnapshotForCreditRates);
+    } catch {
+      return 0;
+    }
+  }, [orderSnapshotForCreditRates]);
+
+  const appliedCreditBsApprox = useMemo(() => {
+    if (bsPerUsdForStoreCredit <= 0 || appliedStoreCreditUsd <= 0) return 0;
+    return appliedStoreCreditUsd * bsPerUsdForStoreCredit;
+  }, [appliedStoreCreditUsd, bsPerUsdForStoreCredit]);
+
+  const maxApplicableStoreCreditUsd = useMemo(() => {
+    if (bsPerUsdForStoreCredit <= 0) return 0;
+    const orderTotalUsd = total / bsPerUsdForStoreCredit;
+    const bal = clientStoreCreditBalanceUsd ?? 0;
+    const cap = Math.min(bal, orderTotalUsd);
+    return Math.round(Math.max(0, cap) * 100) / 100;
+  }, [total, bsPerUsdForStoreCredit, clientStoreCreditBalanceUsd]);
+
+  const prevClientIdRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!open) {
+      prevClientIdRef.current = undefined;
+      setClientStoreCreditBalanceUsd(null);
+      return;
+    }
+    const id = selectedClient?.id;
+    if (!id) {
+      setClientStoreCreditBalanceUsd(null);
+      return;
+    }
+    if (prevClientIdRef.current !== id) {
+      setAppliedStoreCreditUsd(0);
+      prevClientIdRef.current = id;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiClient.getClientStoreCreditBalanceUsd(id);
+        if (!cancelled) setClientStoreCreditBalanceUsd(res.balanceUsd);
+      } catch {
+        if (!cancelled) setClientStoreCreditBalanceUsd(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, selectedClient?.id]);
+
+  useEffect(() => {
+    if (appliedStoreCreditUsd <= 0) return;
+    if (appliedStoreCreditUsd > maxApplicableStoreCreditUsd + 1e-9) {
+      setAppliedStoreCreditUsd(maxApplicableStoreCreditUsd);
+    }
+  }, [maxApplicableStoreCreditUsd, appliedStoreCreditUsd]);
+
+  const refreshClientStoreCreditBalance = useCallback(async () => {
+    const id = selectedClient?.id;
+    if (!id) return;
+    try {
+      const res = await apiClient.getClientStoreCreditBalanceUsd(id);
+      setClientStoreCreditBalanceUsd(res.balanceUsd);
+    } catch {
+      setClientStoreCreditBalanceUsd(0);
+    }
+  }, [selectedClient?.id]);
+
   // Calcular total pagado
   useEffect(() => {
     const calculateTotal = async () => {
@@ -737,13 +836,23 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     calculateTotal();
   }, [payments]);
 
-  const remainingAmount = total - totalPaidInBs;
+  const remainingAmount = total - appliedCreditBsApprox - totalPaidInBs;
   const isPaymentsValid =
-    paymentCondition === "cashea"
-      ? payments.length === 1 &&
-        (payments[0].amount || 0) > 0 &&
-        (payments[0].amount || 0) <= total + PAYMENT_BALANCE_EPSILON_BS
-      : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
+    paymentCondition === "pago_a_entrega" || paymentCondition === "pagara_en_tienda"
+      ? true
+      : paymentCondition === "cashea"
+        ? payments.length === 1 &&
+          (payments[0].amount || 0) > 0 &&
+          (payments[0].amount || 0) <= total - appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS
+        : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
+
+  const isDraftGateBlocking = useMemo(
+    () =>
+      open &&
+      !!draftOwnerId &&
+      (draftResolution === "idle" || draftResolution === "pending"),
+    [open, draftOwnerId, draftResolution],
+  );
 
   // Formatear precios
   useEffect(() => {
@@ -1046,6 +1155,8 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     setProductDiscountTypes({});
     setProductDiscountCurrencies({});
     setOnlineSellerMode(user?.role === "Online Seller" ? "vendor" : null);
+    setAppliedStoreCreditUsd(0);
+    setClientStoreCreditBalanceUsd(null);
   }, [preferredCurrency, user?.role, user?.id, vendors]);
 
   const discardDraftAndStartFresh = useCallback(() => {
@@ -1265,6 +1376,12 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     totalPaidInBs,
     remainingAmount,
     isPaymentsValid,
+    appliedStoreCreditUsd,
+    setAppliedStoreCreditUsd,
+    clientStoreCreditBalanceUsd,
+    refreshClientStoreCreditBalance,
+    appliedCreditBsApprox,
+    maxApplicableStoreCreditUsd,
     formattedProductPrices,
     formattedProductTotals,
     formattedProductFinalTotals,
@@ -1291,6 +1408,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     mockVendors: vendors,
     mockReferrers: referrers,
     needsDraftPrompt: draftResolution === "pending",
+    isDraftGateBlocking,
     applyDraftAndContinue,
     discardDraftAndStartFresh,
     clearDraftStorage,

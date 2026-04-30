@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Search, Eye, Truck, CheckCircle, PackageCheck, RotateCcw } from "lucide-react"
+import { Search, Eye, Truck, CheckCircle, PackageCheck, RotateCcw, Download } from "lucide-react"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { OrderGroupCollapsible } from "@/components/orders/order-group-collapsible"
 import { toast } from "sonner"
@@ -43,6 +43,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type TabType = "por_despachar" | "en_despacho" | "despachados"
 type ActionType = "to_dispatch" | "to_delivered" | "to_store"
+
+type DeliveredRow = { order: UnifiedOrder; product: OrderProduct }
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -77,6 +79,58 @@ const getProductDispatchStatus = (product: OrderProduct): TabType | "none" => {
   return "none"
 }
 
+/** Actualiza ubicación/logística y fecha de entrega al confirmar o revertir despacho. */
+const applyDispatchProductUpdate = (
+  product: OrderProduct,
+  action: ActionType
+): OrderProduct => {
+  if (action === "to_dispatch") {
+    return {
+      ...product,
+      locationStatus: "EN DESPACHO",
+      logisticStatus: "En Ruta",
+    }
+  }
+  if (action === "to_delivered") {
+    return {
+      ...product,
+      locationStatus: "DESPACHADO",
+      logisticStatus: "Completado",
+      deliveredAt: new Date().toISOString(),
+    }
+  }
+  return {
+    ...product,
+    locationStatus: "EN TIENDA",
+    logisticStatus: "En Almacén",
+    deliveredAt: undefined,
+  }
+}
+
+const formatDeliveredAtDisplay = (iso: string | undefined): string => {
+  if (!iso?.trim()) return "—"
+  try {
+    return new Date(iso).toLocaleString("es-VE", {
+      dateStyle: "short",
+      timeStyle: "short",
+    })
+  } catch {
+    return "—"
+  }
+}
+
+const escapeCsvCell = (value: string): string => {
+  const s = value ?? ""
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+const deliveryZoneLabel = (zone: string | undefined): string => {
+  if (!zone) return ""
+  const found = DELIVERY_ZONES.find((z) => z.value === zone)
+  return found?.label ?? zone
+}
+
 // Helper: Verifica si el pedido debe mostrarse en una pestaña específica
 const isOrderInTab = (order: UnifiedOrder, tab: TabType): boolean => {
   if (order.type !== "order") return false
@@ -89,6 +143,28 @@ const isOrderInTab = (order: UnifiedOrder, tab: TabType): boolean => {
 
   // Un pedido aparece en la pestaña si al menos uno de sus productos corresponde a ese estado
   return order.products.some(p => getProductDispatchStatus(p) === tab)
+}
+
+type AttributesGridProps = {
+  pairs: { key: string; value: string }[]
+  productName?: string
+}
+
+function AttributesGrid({ pairs, productName }: AttributesGridProps) {
+  if (pairs.length === 0) return <p className="text-sm text-muted-foreground">Sin atributos</p>
+  return (
+    <div className="space-y-2">
+      {productName && <h4 className="font-semibold text-sm">{productName}</h4>}
+      <div className="grid grid-cols-5 gap-x-4 gap-y-2 text-sm">
+        {pairs.map(({ key, value }) => (
+          <div key={key} className="flex flex-col min-w-0">
+            <span className="text-muted-foreground font-medium">{key}:</span>
+            <span className="text-foreground break-words">{value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function DespachosPage() {
@@ -114,6 +190,8 @@ export default function DespachosPage() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [categories, setCategories] = useState<Category[]>([])
+  /** Totales de línea formateados (pestaña despachados, filas paginadas). */
+  const [lineTotalLabels, setLineTotalLabels] = useState<Record<string, string>>({})
 
   const toggleOrderExpanded = (orderId: string) => {
     setExpandedOrders((prev) => {
@@ -237,23 +315,6 @@ export default function DespachosPage() {
     return pairs
   }
 
-  const AttributesGrid = ({ pairs, productName }: { pairs: { key: string; value: string }[]; productName?: string }) => {
-    if (pairs.length === 0) return <p className="text-sm text-muted-foreground">Sin atributos</p>
-    return (
-      <div className="space-y-2">
-        {productName && <h4 className="font-semibold text-sm">{productName}</h4>}
-        <div className="grid grid-cols-5 gap-x-4 gap-y-2 text-sm">
-          {pairs.map(({ key, value }) => (
-            <div key={key} className="flex flex-col min-w-0">
-              <span className="text-muted-foreground font-medium">{key}:</span>
-              <span className="text-foreground break-words">{value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
   useEffect(() => {
     const updateTotals = async () => {
       const totals: Record<string, string> = {}
@@ -268,42 +329,164 @@ export default function DespachosPage() {
     }
   }, [orders, preferredCurrency, formatWithPreference])
 
-  const filteredOrders = orders.filter((order) => {
-    // 1. Filtrar por tab activo
-    if (!isOrderInTab(order, activeTab)) return false
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      // 1. Filtrar por tab activo
+      if (!isOrderInTab(order, activeTab)) return false
 
-    // 2. Filtro de búsqueda
-    const matchesSearch =
-      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
+      // 2. Filtro de búsqueda
+      const matchesSearch =
+        order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
 
-    // 3. Filtro por tipo de entrega
-    const matchesDeliveryType =
-      deliveryTypeFilter === "all" ||
-      order.deliveryType === deliveryTypeFilter
+      // 3. Filtro por tipo de entrega
+      const matchesDeliveryType =
+        deliveryTypeFilter === "all" ||
+        order.deliveryType === deliveryTypeFilter
 
-    // 4. Filtro por zona de entrega
-    const matchesDeliveryZone =
-      deliveryZoneFilter === "all" ||
-      order.deliveryZone === deliveryZoneFilter
+      // 4. Filtro por zona de entrega
+      const matchesDeliveryZone =
+        deliveryZoneFilter === "all" ||
+        order.deliveryZone === deliveryZoneFilter
 
-    return matchesSearch && matchesDeliveryType && matchesDeliveryZone
+      return matchesSearch && matchesDeliveryType && matchesDeliveryZone
+    })
+  }, [
+    orders,
+    activeTab,
+    searchTerm,
+    deliveryTypeFilter,
+    deliveryZoneFilter,
+  ])
+
+  const deliveredRows = useMemo((): DeliveredRow[] => {
+    const rows: DeliveredRow[] = []
+    for (const order of filteredOrders) {
+      if (order.type !== "order") continue
+      for (const product of order.products) {
+        if (getProductDispatchStatus(product) === "despachados") {
+          rows.push({ order, product })
+        }
+      }
+    }
+    return rows
+  }, [filteredOrders])
+
+  const handleExportDispatchedCsv = useCallback(() => {
+    const headers = [
+      "Pedido",
+      "Cliente",
+      "Vendedor",
+      "Producto",
+      "Cantidad",
+      "Precio de venta",
+      "Zona entrega",
+      "Fecha entrega",
+    ]
+    const rows: string[][] = []
+    for (const order of filteredOrders) {
+      if (order.type !== "order") continue
+      for (const product of order.products) {
+        if (getProductDispatchStatus(product) !== "despachados") continue
+        rows.push([
+          order.orderNumber,
+          order.clientName,
+          order.vendorName ?? "",
+          product.name,
+          String(product.quantity),
+          String(product.total),
+          deliveryZoneLabel(order.deliveryZone),
+          product.deliveredAt
+            ? new Date(product.deliveredAt).toLocaleString("es-VE", {
+                dateStyle: "short",
+                timeStyle: "short",
+              })
+            : "",
+        ])
+      }
+    }
+    const lines = [headers.map(escapeCsvCell).join(",")]
+    for (const r of rows) {
+      lines.push(r.map(escapeCsvCell).join(","))
+    }
+    const csv = "\uFEFF" + lines.join("\r\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `historial-despachados-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    toast.success("Listado exportado (CSV)")
+  }, [filteredOrders])
+
+  // Paginación: por pedido (almacén / en ruta) o por fila entregada (despachados)
+  const ordersPagination = usePagination({
+    data: filteredOrders,
+    itemsPerPage,
+  })
+  const deliveredRowsPagination = usePagination({
+    data: deliveredRows,
+    itemsPerPage,
   })
 
-  // Paginación
+  const paginatedOrders = ordersPagination.paginatedData
+  const paginatedDeliveredRows = deliveredRowsPagination.paginatedData
+  const deliveredCurrentPage = deliveredRowsPagination.currentPage
+
+  const deliveredPageLineTotalsSignature = useMemo(() => {
+    if (activeTab !== "despachados") return ""
+    const start = (deliveredCurrentPage - 1) * itemsPerPage
+    const pageRows = deliveredRows.slice(start, start + itemsPerPage)
+    if (pageRows.length === 0) return ""
+    return pageRows
+      .map(({ order, product }) => `${order.id}|${product.id}|${product.total}`)
+      .join("|")
+  }, [activeTab, deliveredRows, deliveredCurrentPage, itemsPerPage])
+
+  const listPagination =
+    activeTab === "despachados" ? deliveredRowsPagination : ordersPagination
   const {
     currentPage,
     totalPages,
-    paginatedData: paginatedOrders,
     goToPage,
     startIndex,
     endIndex,
     totalItems,
-  } = usePagination({
-    data: filteredOrders,
-    itemsPerPage,
-  })
+  } = listPagination
+
+  useEffect(() => {
+    if (activeTab !== "despachados" || deliveredPageLineTotalsSignature === "") {
+      return
+    }
+    const start = (deliveredCurrentPage - 1) * itemsPerPage
+    const pageRows = deliveredRows.slice(start, start + itemsPerPage)
+    if (pageRows.length === 0) return
+
+    let cancelled = false
+    const run = async () => {
+      const next: Record<string, string> = {}
+      for (const { order, product } of pageRows) {
+        const k = `${order.id}|${product.id}`
+        next[k] = await formatWithPreference(product.total, "Bs")
+      }
+      if (!cancelled) {
+        setLineTotalLabels((prev) => ({ ...prev, ...next }))
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeTab,
+    deliveredPageLineTotalsSignature,
+    preferredCurrency,
+    formatWithPreference,
+  ])
 
   // Manejar selección individual de productos relevantes a la pestaña
   const handleToggleSelect = (orderId: string) => {
@@ -400,14 +583,9 @@ export default function DespachosPage() {
 
       const actingIds = new Set(productsToActOn.map(p => p.id))
 
-      const updatedProducts = orderToActOn.products.map(p => {
-        if (actingIds.has(p.id)) {
-          if (actionType === "to_dispatch") return { ...p, locationStatus: "EN DESPACHO" as const, logisticStatus: "En Ruta" }
-          if (actionType === "to_delivered") return { ...p, locationStatus: "DESPACHADO" as const, logisticStatus: "Completado" }
-          if (actionType === "to_store") return { ...p, locationStatus: "EN TIENDA" as const, logisticStatus: "En Almacén" }
-        }
-        return p
-      })
+      const updatedProducts = orderToActOn.products.map(p =>
+        actingIds.has(p.id) ? applyDispatchProductUpdate(p, actionType) : p
+      )
 
       // Verificar si el pedido se completa totalmente
       // Un pedido está completo SOLO si TODOS sus productos tienen status DESPACHADO (o legacy finished)
@@ -476,14 +654,9 @@ export default function DespachosPage() {
         const order = orders.find(o => o.id === orderId)
         if (!order) continue
 
-        const updatedProducts = order.products.map(p => {
-          if (pIds.includes(p.id)) {
-            if (actionType === "to_dispatch") return { ...p, locationStatus: "EN DESPACHO" as const, logisticStatus: "En Ruta" }
-            if (actionType === "to_delivered") return { ...p, locationStatus: "DESPACHADO" as const, logisticStatus: "Completado" }
-            if (actionType === "to_store") return { ...p, locationStatus: "EN TIENDA" as const, logisticStatus: "En Almacén" }
-          }
-          return p
-        })
+        const updatedProducts = order.products.map(p =>
+          pIds.includes(p.id) ? applyDispatchProductUpdate(p, actionType) : p
+        )
 
         let newOrderStatus = order.status as any
         let completedAt = order.completedAt
@@ -607,7 +780,7 @@ export default function DespachosPage() {
 
                 <Card>
                   <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div>
+                    <div className="flex flex-col gap-2 min-w-0">
                       <CardTitle className="flex items-center gap-2">
                         {activeTab === "por_despachar" && <><Truck className="w-5 h-5" /> Productos Listos para Reparto</>}
                         {activeTab === "en_despacho" && <><Truck className="w-5 h-5 text-orange-500" /> Productos En Ruta</>}
@@ -619,6 +792,19 @@ export default function DespachosPage() {
                         {activeTab === "despachados" && "Consulta de productos y pedidos entregados exitosamente."}
                       </CardDescription>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                    {activeTab === "despachados" && deliveredRows.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={handleExportDispatchedCsv}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        Exportar CSV
+                      </Button>
+                    )}
                     
                     {/* Botones de acción masiva */}
                     {selectedOrders.size > 0 && activeTab === "por_despachar" && (
@@ -636,10 +822,93 @@ export default function DespachosPage() {
                         </Button>
                       </div>
                     )}
+                    </div>
                   </CardHeader>
                   <CardContent>
                     {isLoading ? (
                       <div className="text-center py-8">Cargando pedidos...</div>
+                    ) : activeTab === "despachados" ? (
+                      deliveredRows.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          {searchTerm ? "No se encontraron resultados" : "No hay elementos en esta área"}
+                        </div>
+                      ) : (
+                        <div className="rounded-md border overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="whitespace-nowrap">Número de orden</TableHead>
+                                <TableHead className="whitespace-nowrap">Fecha de entrega</TableHead>
+                                <TableHead>Descripción del producto</TableHead>
+                                <TableHead className="text-right whitespace-nowrap">Precio de venta</TableHead>
+                                <TableHead className="w-[72px] text-center">
+                                  <span className="sr-only">Ver pedido</span>
+                                </TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {paginatedDeliveredRows.map(({ order, product }) => {
+                                const lineKey = `${order.id}|${product.id}`
+                                return (
+                                  <TableRow key={lineKey}>
+                                    <TableCell className="font-medium whitespace-nowrap">
+                                      #{order.orderNumber}
+                                      {isSistemaApartado(order) && (
+                                        <Badge
+                                          variant="outline"
+                                          className="ml-2 shrink-0 border-amber-600/50 text-amber-900 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-100 dark:border-amber-500/50 text-xs"
+                                          title="Sistema de Apartado"
+                                        >
+                                          SA
+                                        </Badge>
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="text-sm whitespace-nowrap tabular-nums">
+                                      {formatDeliveredAtDisplay(product.deliveredAt)}
+                                    </TableCell>
+                                    <TableCell>
+                                      <HoverCard openDelay={200} closeDelay={100}>
+                                        <HoverCardTrigger asChild>
+                                          <button
+                                            type="button"
+                                            className="text-left font-medium hover:underline underline-offset-2"
+                                          >
+                                            {product.name}
+                                          </button>
+                                        </HoverCardTrigger>
+                                        <HoverCardContent
+                                          className="min-w-[480px] max-w-[min(640px,95vw)] w-max"
+                                          align="start"
+                                        >
+                                          <AttributesGrid
+                                            pairs={getProductAttributePairs(product)}
+                                            productName={product.name}
+                                          />
+                                        </HoverCardContent>
+                                      </HoverCard>
+                                    </TableCell>
+                                    <TableCell className="text-right tabular-nums font-medium">
+                                      {lineTotalLabels[lineKey] ?? `Bs.${product.total.toFixed(2)}`}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8"
+                                        aria-label={`Ver pedido ${order.orderNumber}`}
+                                        onClick={() => handleView(order)}
+                                      >
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                )
+                              })}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )
                     ) : filteredOrders.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground">
                         {searchTerm ? "No se encontraron resultados" : "No hay elementos en esta área"}
@@ -647,7 +916,9 @@ export default function DespachosPage() {
                     ) : (
                       <div className="space-y-4">
                         {/* Cabecera para selección de todos */}
-                        {activeTab !== "despachados" && filteredOrders.some(o => o.products.some(p => getProductDispatchStatus(p) === activeTab)) && (
+                        {filteredOrders.some((o) =>
+                          o.products.some((p) => getProductDispatchStatus(p) === activeTab),
+                        ) && (
                           <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground border-b pb-2 mb-2">
                             <Checkbox
                               checked={allSelected}
@@ -659,12 +930,19 @@ export default function DespachosPage() {
                         )}
                         
                         {paginatedOrders.map((order) => {
-                          const activeProducts = order.products.filter(p => getProductDispatchStatus(p) === activeTab)
-                          if (activeProducts.length === 0 && activeTab !== "despachados") return null
+                          const activeProducts = order.products.filter(
+                            (p) => getProductDispatchStatus(p) === activeTab,
+                          )
+                          if (activeProducts.length === 0) return null
 
-                          const activeProductKeys = activeProducts.map(p => `${order.id}|${p.id}`)
-                          const isSelected = activeProducts.length > 0 && activeProductKeys.every(key => selectedOrders.has(key))
-                          const isPartiallySelected = activeProducts.length > 0 && activeProductKeys.some(key => selectedOrders.has(key)) && !isSelected
+                          const activeProductKeys = activeProducts.map((p) => `${order.id}|${p.id}`)
+                          const isSelected =
+                            activeProducts.length > 0 &&
+                            activeProductKeys.every((key) => selectedOrders.has(key))
+                          const isPartiallySelected =
+                            activeProducts.length > 0 &&
+                            activeProductKeys.some((key) => selectedOrders.has(key)) &&
+                            !isSelected
 
                           return (
                             <OrderGroupCollapsible
@@ -676,7 +954,13 @@ export default function DespachosPage() {
                               productCount={order.products.length}
                               isExpanded={expandedOrders.has(order.id)}
                               onOpenChange={(open) =>
-                                open ? setExpandedOrders((s) => new Set(s).add(order.id)) : setExpandedOrders((s) => { const n = new Set(s); n.delete(order.id); return n })
+                                open
+                                  ? setExpandedOrders((s) => new Set(s).add(order.id))
+                                  : setExpandedOrders((s) => {
+                                      const n = new Set(s)
+                                      n.delete(order.id)
+                                      return n
+                                    })
                               }
                               showViewDetailsButton={false}
                               orderNumberSuffix={
@@ -691,12 +975,16 @@ export default function DespachosPage() {
                                 ) : undefined
                               }
                               selectControl={
-                                activeTab !== "despachados" && activeProducts.length > 0
+                                activeProducts.length > 0
                                   ? {
-                                    checked: isSelected ? true : isPartiallySelected ? "indeterminate" : false,
-                                    onCheckedChange: () => handleToggleSelect(order.id),
-                                    "aria-label": `Seleccionar de ${order.orderNumber}`,
-                                  }
+                                      checked: isSelected
+                                        ? true
+                                        : isPartiallySelected
+                                          ? "indeterminate"
+                                          : false,
+                                      onCheckedChange: () => handleToggleSelect(order.id),
+                                      "aria-label": `Seleccionar de ${order.orderNumber}`,
+                                    }
                                   : undefined
                               }
                               headerRight={
@@ -772,9 +1060,7 @@ export default function DespachosPage() {
                                 <TableBody>
                                   {order.products.map((product) => {
                                     const pTab = getProductDispatchStatus(product)
-                                    // Mostramos el producto si pertenece al tab actual, 
-                                    // O si el tab es despachados y queremos listar todo para contexto
-                                    if (pTab !== activeTab && activeTab !== "despachados") return null
+                                    if (pTab !== activeTab) return null
 
                                     const isProductSelected = selectedOrders.has(`${order.id}|${product.id}`)
 
@@ -782,17 +1068,12 @@ export default function DespachosPage() {
                                       <HoverCard key={product.id} openDelay={200} closeDelay={100}>
                                         <HoverCardTrigger asChild>
                                           <TableRow
-                                            className={`hover:bg-muted/50 cursor-pointer ${pTab === "despachados" ? 'bg-green-50/50 dark:bg-green-900/10' : ''}`}
-                                            onClick={(e) => {
-                                              if (activeTab !== "despachados" && pTab === activeTab) {
-                                                handleToggleProduct(order.id, product.id)
-                                              }
-                                            }}
+                                            className="hover:bg-muted/50 cursor-pointer"
+                                            onClick={() => handleToggleProduct(order.id, product.id)}
                                           >
                                             <TableCell className="w-[50px]">
                                               <Checkbox
-                                                checked={isProductSelected || pTab === "despachados"}
-                                                disabled={activeTab === "despachados" || pTab !== activeTab}
+                                                checked={isProductSelected}
                                                 onCheckedChange={() => handleToggleProduct(order.id, product.id)}
                                                 onClick={(e) => e.stopPropagation()}
                                               />
@@ -800,11 +1081,6 @@ export default function DespachosPage() {
                                             <TableCell className="font-medium">
                                               <div className="flex flex-col">
                                                 <span>{product.name}</span>
-                                                {pTab === "despachados" && (
-                                                  <span className="text-xs text-green-600 font-medium flex items-center gap-1 mt-1">
-                                                    <CheckCircle className="w-3 h-3" /> Entregado
-                                                  </span>
-                                                )}
                                                 {pTab === "en_despacho" && (
                                                   <span className="text-xs text-orange-600 font-medium flex items-center gap-1 mt-1">
                                                     <Truck className="w-3 h-3" /> En Ruta
@@ -847,7 +1123,9 @@ export default function DespachosPage() {
                       </div>
                     )}
 
-                    {!isLoading && filteredOrders.length > 0 && (
+                    {!isLoading &&
+                      ((activeTab === "despachados" && deliveredRows.length > 0) ||
+                        (activeTab !== "despachados" && filteredOrders.length > 0)) && (
                       <TablePagination
                         currentPage={currentPage}
                         totalPages={totalPages}

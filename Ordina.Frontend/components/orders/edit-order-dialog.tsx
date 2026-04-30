@@ -21,11 +21,11 @@ import { ProductEditDialog } from "./product-edit-dialog";
 import { RemoveProductDialog } from "./remove-product-dialog";
 import { OrderConfirmationDialog } from "./order-confirmation-dialog";
 import {
-  addOrder,
   updateOrder,
   addBudget,
   orderToConvertBudgetDto,
   persistConvertedBudgetLocally,
+  orderFromBackendDto,
   type Order,
   type OrderProduct,
   type PartialPayment,
@@ -39,9 +39,20 @@ import {
   buildCasheaPaymentsForSave,
   PAYMENT_BALANCE_EPSILON_BS,
 } from "@/lib/order-payments";
+import { tryComputeOverpaymentUsd } from "@/lib/order-store-credit-usd";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function mapOrderProductsToConfirmDto(products: OrderProduct[]): OrderProductDto[] {
   return products.map((p) => ({
@@ -171,6 +182,23 @@ export function EditOrderDialog({
   const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(null);
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
+  const [overpaymentPrompt, setOverpaymentPrompt] = useState<{
+    orderId: string;
+    amountUsd: number;
+  } | null>(null);
+
+  const offerOverpaymentPromptOrReload = (saved: Order) => {
+    if (typeof navigator === "undefined" || !navigator.onLine) {
+      window.location.reload();
+      return;
+    }
+    const excess = tryComputeOverpaymentUsd(saved);
+    if (excess != null && excess > 0) {
+      setOverpaymentPrompt({ orderId: saved.id, amountUsd: excess });
+      return;
+    }
+    window.location.reload();
+  };
 
   // Handlers de productos
   const handleEditProduct = (product: OrderProduct) => {
@@ -413,7 +441,7 @@ export function EditOrderDialog({
         paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, orderForm.total);
       }
       const multi = paymentsNorm.length > 1;
-      await updateOrder(order.id, {
+      const synced = await updateOrder(order.id, {
         partialPayments: multi ? [] : paymentsNorm,
         paymentMethod:
           paymentCondition === "cashea"
@@ -423,13 +451,14 @@ export function EditOrderDialog({
               : paymentsNorm[0]?.method ?? order.paymentMethod ?? "",
         paymentDetails: !multi ? paymentsNorm[0]?.paymentDetails : undefined,
         mixedPayments: multi ? paymentsNorm : [],
+        ...(orderForm.appliedStoreCreditUsd !== (order.appliedStoreCreditUsd ?? 0)
+          ? { appliedStoreCreditUsd: orderForm.appliedStoreCreditUsd }
+          : {}),
       });
       toast.success("Pagos actualizados correctamente");
       onOpenChange(false);
       orderForm.resetForm();
-      if (typeof window !== "undefined") {
-        window.location.reload();
-      }
+      offerOverpaymentPromptOrReload(synced);
     } catch (error) {
       console.error("Error updating payments:", error);
       toast.error("Error al guardar los pagos. Por favor intenta nuevamente.");
@@ -636,11 +665,25 @@ export function EditOrderDialog({
         }
         if (orderForm.paymentCondition === "cashea") {
           const p = orderForm.payments[0];
-          if ((p.amount || 0) > orderForm.total + PAYMENT_BALANCE_EPSILON_BS) {
+          if (
+            (p.amount || 0) >
+            orderForm.total - orderForm.appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS
+          ) {
             toast.error("El monto del pago inicial no puede superar el total del pedido.");
             return;
           }
         }
+      }
+
+      if (
+        orderForm.paymentCondition !== "pago_a_entrega" &&
+        orderForm.paymentCondition !== "pagara_en_tienda" &&
+        orderForm.paymentCondition !== "pago_parcial" &&
+        orderForm.paymentCondition !== "todo_pago" &&
+        !orderForm.isPaymentsValid
+      ) {
+        toast.error("Los cobros no coinciden con el total del pedido (incluye crédito aplicado).");
+        return;
       }
 
       if (!orderForm.saleType) {
@@ -862,15 +905,14 @@ export function EditOrderDialog({
         };
 
         const created = await apiClient.confirmPendingOrder(order.id, body);
+        const createdOrder = orderFromBackendDto(created);
         setIsConfirmationOpen(false);
         onOpenChange(false);
         toast.success(`Pedido ${created.orderNumber} confirmado.`);
         orderForm.resetForm();
         setPendingOrderData(null);
         onConfirmed?.(created.orderNumber);
-        if (typeof window !== "undefined") {
-          window.location.reload();
-        }
+        offerOverpaymentPromptOrReload(createdOrder);
         return;
       }
 
@@ -995,11 +1037,16 @@ export function EditOrderDialog({
             : undefined,
           EUR: orderForm.exchangeRates.EUR
             ? {
-              rate: orderForm.exchangeRates.EUR.rate,
-              effectiveDate: orderForm.exchangeRates.EUR.effectiveDate,
-            }
+                rate: orderForm.exchangeRates.EUR.rate,
+                effectiveDate: orderForm.exchangeRates.EUR.effectiveDate,
+              }
             : undefined,
         },
+        ...(orderForm.paymentCondition !== "pago_a_entrega" &&
+        orderForm.paymentCondition !== "pagara_en_tienda" &&
+        orderForm.appliedStoreCreditUsd > 0
+          ? { appliedStoreCreditUsd: orderForm.appliedStoreCreditUsd }
+          : {}),
       };
 
       if (isEditingBudget) {
@@ -1009,23 +1056,20 @@ export function EditOrderDialog({
         setIsConfirmationOpen(false);
         onOpenChange(false);
         toast.success(`Pedido ${created.orderNumber} creado desde el presupuesto.`);
+        orderForm.resetForm();
+        setPendingOrderData(null);
+        offerOverpaymentPromptOrReload(orderFromBackendDto(created));
       } else {
-        await updateOrder(order.id, {
+        const synced = await updateOrder(order.id, {
           ...orderData,
           type: "Order",
         });
-
         setIsConfirmationOpen(false);
         onOpenChange(false);
         toast.success("Pedido actualizado exitosamente");
-      }
-
-      // Reset form
-      orderForm.resetForm();
-      setPendingOrderData(null);
-
-      if (typeof window !== "undefined") {
-        window.location.reload();
+        orderForm.resetForm();
+        setPendingOrderData(null);
+        offerOverpaymentPromptOrReload(synced);
       }
     } catch (error) {
       console.error("Error updating order:", error);
@@ -1208,6 +1252,53 @@ export function EditOrderDialog({
           isBudgetConversion={isEditingBudget}
         />
       )}
+
+      <AlertDialog
+        open={overpaymentPrompt !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setOverpaymentPrompt(null);
+            window.location.reload();
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sobrepago detectado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Hay un excedente de USD {overpaymentPrompt?.amountUsd.toFixed(2)} respecto al total
+              del pedido. ¿Registrar ese monto como saldo a favor del cliente?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setOverpaymentPrompt(null);
+                window.location.reload();
+              }}
+            >
+              No registrar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!overpaymentPrompt) return;
+                try {
+                  await apiClient.recordStoreCreditOverpayment(overpaymentPrompt.orderId);
+                  toast.success("Saldo a favor registrado (USD).");
+                } catch (e: unknown) {
+                  const msg = e instanceof Error ? e.message : "No se pudo registrar el crédito.";
+                  toast.error(msg);
+                } finally {
+                  setOverpaymentPrompt(null);
+                  window.location.reload();
+                }
+              }}
+            >
+              Registrar saldo a favor
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

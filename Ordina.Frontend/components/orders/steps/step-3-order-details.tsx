@@ -9,6 +9,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -159,8 +168,112 @@ export function Step3OrderDetails({
   const casheaOneLineOnly =
     orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1;
 
+  const [storeCreditOfferOpen, setStoreCreditOfferOpen] = useState(false);
+  const [storeCreditOfferDismissed, setStoreCreditOfferDismissed] = useState(false);
+
+  useEffect(() => {
+    setStoreCreditOfferDismissed(false);
+  }, [orderForm.selectedClient?.id]);
+
+  useEffect(() => {
+    if (orderForm.isDraftGateBlocking) {
+      setStoreCreditOfferOpen(false);
+    }
+  }, [orderForm.isDraftGateBlocking]);
+
+  useEffect(() => {
+    if (storeCreditOfferDismissed || storeCreditOfferOpen) return;
+    if (orderForm.isDraftGateBlocking) return;
+    if (!orderForm.selectedClient?.id) return;
+    const bal = orderForm.clientStoreCreditBalanceUsd;
+    if (bal == null || bal <= 0) return;
+    if (
+      orderForm.paymentCondition === "pago_a_entrega" ||
+      orderForm.paymentCondition === "pagara_en_tienda"
+    ) {
+      return;
+    }
+    if (orderForm.appliedStoreCreditUsd > 0) return;
+    setStoreCreditOfferOpen(true);
+  }, [
+    orderForm.isDraftGateBlocking,
+    orderForm.selectedClient?.id,
+    orderForm.clientStoreCreditBalanceUsd,
+    orderForm.paymentCondition,
+    orderForm.appliedStoreCreditUsd,
+    storeCreditOfferDismissed,
+    storeCreditOfferOpen,
+  ]);
+
+  const closeStoreCreditOffer = (dismiss: boolean) => {
+    setStoreCreditOfferOpen(false);
+    if (dismiss) setStoreCreditOfferDismissed(true);
+  };
+
   return (
     <div className="space-y-5 sm:space-y-6">
+      <AlertDialog
+        open={storeCreditOfferOpen}
+        onOpenChange={(open) => {
+          setStoreCreditOfferOpen(open);
+          if (!open) setStoreCreditOfferDismissed(true);
+        }}
+      >
+        <AlertDialogContent className="max-w-[min(32rem,calc(100vw-2rem))]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Usar saldo a favor del cliente?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  Este cliente tiene{" "}
+                  <span className="font-medium text-foreground">
+                    USD {(orderForm.clientStoreCreditBalanceUsd ?? 0).toFixed(2)}
+                  </span>{" "}
+                  de crédito de tienda. Puede aplicarlo al total de este pedido o dejarlo intacto y
+                  cobrar solo en caja.
+                </p>
+                <p>
+                  Máximo aplicable a este pedido: USD{" "}
+                  {orderForm.maxApplicableStoreCreditUsd.toFixed(2)}.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex w-full flex-col gap-2 sm:flex-col sm:space-x-0">
+            <AlertDialogCancel
+              type="button"
+              className="mt-0 w-full sm:mt-0"
+              onClick={() => {
+                orderForm.setAppliedStoreCreditUsd(0);
+                closeStoreCreditOffer(true);
+              }}
+            >
+              No, no usar crédito
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => closeStoreCreditOffer(true)}
+            >
+              Elegir monto abajo
+            </Button>
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => {
+                const bal = orderForm.clientStoreCreditBalanceUsd ?? 0;
+                const cap = orderForm.maxApplicableStoreCreditUsd;
+                const amount = Math.round(Math.min(bal, cap) * 100) / 100;
+                orderForm.setAppliedStoreCreditUsd(amount);
+                closeStoreCreditOffer(true);
+              }}
+            >
+              Sí, aplicar todo lo posible
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Card>
         <CardHeader className="p-4 sm:p-6 pb-4 sm:pb-6">
           <CardTitle className="text-base sm:text-lg">
@@ -1037,6 +1150,62 @@ export function Step3OrderDetails({
                     Cashea: registre un único pago inicial en tienda. Al guardar el pedido, el saldo
                     restante se registrará como financiación Cashea.
                   </p>
+                )}
+
+                {orderForm.selectedClient &&
+                  orderForm.paymentCondition !== "pago_a_entrega" &&
+                  orderForm.paymentCondition !== "pagara_en_tienda" && (
+                  <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
+                    <p className="text-sm font-medium">Saldo a favor del cliente</p>
+                    <p className="text-xs text-muted-foreground">
+                      Disponible (USD):{" "}
+                      {orderForm.clientStoreCreditBalanceUsd == null
+                        ? "…"
+                        : orderForm.clientStoreCreditBalanceUsd.toFixed(2)}
+                    </p>
+                    {(orderForm.clientStoreCreditBalanceUsd ?? 0) > 0 && (
+                      <div className="flex flex-col gap-2 max-w-sm">
+                        <Label className="text-xs" htmlFor="applied-store-credit-usd">
+                          Aplicar crédito (USD)
+                        </Label>
+                        <Input
+                          id="applied-store-credit-usd"
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          max={orderForm.maxApplicableStoreCreditUsd}
+                          step={0.01}
+                          value={
+                            orderForm.appliedStoreCreditUsd === 0
+                              ? ""
+                              : String(orderForm.appliedStoreCreditUsd)
+                          }
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "" || raw === ".") {
+                              orderForm.setAppliedStoreCreditUsd(0);
+                              return;
+                            }
+                            const v = Number.parseFloat(raw.replace(",", "."));
+                            if (!Number.isFinite(v)) {
+                              orderForm.setAppliedStoreCreditUsd(0);
+                              return;
+                            }
+                            const cap = orderForm.maxApplicableStoreCreditUsd;
+                            orderForm.setAppliedStoreCreditUsd(
+                              Math.round(Math.max(0, Math.min(v, cap)) * 100) / 100,
+                            );
+                          }}
+                        />
+                        {orderForm.appliedCreditBsApprox > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            Equivalente en Bs del crédito aplicado:{" "}
+                            {formatCurrency(orderForm.appliedCreditBsApprox, "Bs")}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {orderForm.payments.map((payment) => (
@@ -2470,15 +2639,7 @@ export function Step3OrderDetails({
                       {/* Total pagado */}
                       <TableRow>
                         <TableCell className="text-xs sm:text-sm">
-                          <span
-                            className={
-                              orderForm.isPaymentsValid
-                                ? "text-green-600 font-semibold"
-                                : "font-semibold"
-                            }
-                          >
-                            Total pagado:
-                          </span>
+                          Total pagado (cobros en tienda):
                         </TableCell>
                         {orderForm.renderCurrencyCell(
                           orderForm.totalPaidInBs,
@@ -2487,6 +2648,18 @@ export function Step3OrderDetails({
                             : "font-semibold"
                         )}
                       </TableRow>
+
+                      {orderForm.appliedCreditBsApprox > 0 && (
+                        <TableRow>
+                          <TableCell className="text-xs sm:text-sm text-emerald-800 dark:text-emerald-200">
+                            Crédito tienda aplicado:
+                          </TableCell>
+                          {orderForm.renderCurrencyCellNegative(
+                            orderForm.appliedCreditBsApprox,
+                            "text-emerald-800 dark:text-emerald-200 [&>div.font-medium]:text-emerald-900 dark:[&>div.font-medium]:text-emerald-100 [&>div.text-muted-foreground]:text-emerald-800/90 dark:[&>div.text-muted-foreground]:text-emerald-200/85",
+                          )}
+                        </TableRow>
+                      )}
 
                       {/* Total del pedido */}
                       <TableRow>

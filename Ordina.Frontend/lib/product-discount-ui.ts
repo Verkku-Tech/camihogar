@@ -14,6 +14,20 @@ function normalizeType(raw: unknown): DiscountUiType {
   return s === "porcentaje" ? "porcentaje" : "monto";
 }
 
+/** Valor en `discountUiType` cuando la clave existe; si falta la clave → undefined (no asumir monto). */
+function parseExplicitDiscountUiType(
+  attrs: ProductAttrs | undefined
+): "porcentaje" | "monto" | undefined {
+  const raw = attrs?.[DISCOUNT_UI_TYPE_KEY];
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return undefined;
+  }
+  const s = String(raw).toLowerCase().trim();
+  if (s === "porcentaje") return "porcentaje";
+  if (s === "monto") return "monto";
+  return undefined;
+}
+
 function normalizeCurrency(
   raw: unknown,
   fallback: Currency
@@ -92,21 +106,26 @@ type LineForDiscount = {
  */
 export function getLineDiscountDisplayMode(
   product: LineForDiscount,
-  fallbackCurrency: Currency
+  _fallbackCurrency: Currency
 ):
   | { mode: "monto" }
   | { mode: "porcentaje"; percent: number } {
   const d = product.discount ?? 0;
   if (d <= 0) return { mode: "monto" };
-  const { type, percent: storedPercent } = readDiscountUiFromProduct(
-    product,
-    fallbackCurrency
-  );
-  if (type === "monto") return { mode: "monto" };
-  const percent =
-    storedPercent ?? getImpliedDiscountPercentFromLine(product.total, d);
-  if (percent == null) return { mode: "monto" };
-  return { mode: "porcentaje", percent };
+
+  const explicit = parseExplicitDiscountUiType(product.attributes);
+  const storedPercent = readPercentFromAttrs(product.attributes);
+
+  if (explicit === "monto") return { mode: "monto" };
+
+  if (explicit === "porcentaje" || storedPercent != null) {
+    const percent =
+      storedPercent ?? getImpliedDiscountPercentFromLine(product.total, d);
+    if (percent == null) return { mode: "monto" };
+    return { mode: "porcentaje", percent };
+  }
+
+  return { mode: "monto" };
 }
 
 function formatPercentForDisplay(percent: number): string {
@@ -115,6 +134,18 @@ function formatPercentForDisplay(percent: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   });
+}
+
+/**
+ * Texto antes del guion y montos en detalle de pedido: `Descuento:` o `Descuento: 10%`.
+ */
+export function getLineDiscountLabelLead(
+  discMode: { mode: "monto" } | { mode: "porcentaje"; percent: number }
+): string {
+  if (discMode.mode === "porcentaje") {
+    return `Descuento: ${formatPercentForDisplay(discMode.percent)}%`;
+  }
+  return "Descuento:";
 }
 
 /**

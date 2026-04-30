@@ -19,6 +19,7 @@ builder.Services.AddMongoDb(builder.Configuration);
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IOrderAuditLogService, OrderAuditLogService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IClientCreditService, ClientCreditService>();
 
 builder.Services.AddHttpContextAccessor();
 

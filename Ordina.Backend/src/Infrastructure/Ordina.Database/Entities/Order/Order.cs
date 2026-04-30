@@ -85,6 +85,11 @@ public class Order
     [BsonElement("mixedPayments")]
     public List<PartialPayment>? MixedPayments { get; set; }
 
+    /// <summary>USD aplicados como saldo a favor del cliente a este pedido (reduce cobro en efectivo/otros medios).</summary>
+    [BsonElement("appliedStoreCreditUsd")]
+    [BsonRepresentation(BsonType.Decimal128)]
+    public decimal AppliedStoreCreditUsd { get; set; }
+
     [BsonElement("deliveryAddress")]
     public string? DeliveryAddress { get; set; }
 
