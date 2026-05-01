@@ -1635,6 +1635,8 @@ export interface Order {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
+  generalDiscountType?: "monto" | "porcentaje";
+  generalDiscountPercent?: number;
   paymentType: "directo" | "apartado" | "mixto"; // Mantener para compatibilidad
   paymentMode?: "simple" | "mixto"; // Nuevo campo
   paymentMethod: string;
@@ -1925,6 +1927,11 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   subtotalBeforeDiscounts: dto.subtotalBeforeDiscounts,
   productDiscountTotal: dto.productDiscountTotal,
   generalDiscountAmount: dto.generalDiscountAmount,
+  generalDiscountType:
+    dto.generalDiscountType === "porcentaje" || dto.generalDiscountType === "monto"
+      ? dto.generalDiscountType
+      : undefined,
+  generalDiscountPercent: dto.generalDiscountPercent,
   paymentType: dto.paymentType as "directo" | "apartado" | "mixto",
   paymentMethod: dto.paymentMethod,
   paymentCondition: paymentConditionFromOrderDto(dto),
@@ -2108,6 +2115,8 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
   productDiscountTotal: order.productDiscountTotal,
   generalDiscountAmount: order.generalDiscountAmount,
+  generalDiscountType: order.generalDiscountType,
+  generalDiscountPercent: order.generalDiscountPercent,
   paymentType: order.paymentType,
   paymentMethod: order.paymentMethod,
   paymentCondition: order.paymentCondition,
@@ -2249,6 +2258,8 @@ export function orderToConvertBudgetDto(
     subtotalBeforeDiscounts: c.subtotalBeforeDiscounts,
     productDiscountTotal: c.productDiscountTotal,
     generalDiscountAmount: c.generalDiscountAmount,
+    generalDiscountType: c.generalDiscountType,
+    generalDiscountPercent: c.generalDiscountPercent,
     productMarkups: c.productMarkups,
     createSupplierOrder: c.createSupplierOrder,
     postventaId: c.postventaId,
@@ -2606,6 +2617,8 @@ export const updateOrder = async (
             subtotalBeforeDiscounts: updatedOrder.subtotalBeforeDiscounts !== existingOrder.subtotalBeforeDiscounts ? updatedOrder.subtotalBeforeDiscounts : undefined,
             productDiscountTotal: updatedOrder.productDiscountTotal !== existingOrder.productDiscountTotal ? updatedOrder.productDiscountTotal : undefined,
             generalDiscountAmount: updatedOrder.generalDiscountAmount !== existingOrder.generalDiscountAmount ? updatedOrder.generalDiscountAmount : undefined,
+            generalDiscountType: updatedOrder.generalDiscountType !== existingOrder.generalDiscountType ? updatedOrder.generalDiscountType : undefined,
+            generalDiscountPercent: updatedOrder.generalDiscountPercent !== existingOrder.generalDiscountPercent ? updatedOrder.generalDiscountPercent : undefined,
             paymentType: updatedOrder.paymentType !== existingOrder.paymentType ? updatedOrder.paymentType : undefined,
             paymentMethod: updatedOrder.paymentMethod !== existingOrder.paymentMethod ? updatedOrder.paymentMethod : undefined,
             paymentCondition: updatedOrder.paymentCondition !== existingOrder.paymentCondition ? updatedOrder.paymentCondition : undefined,
@@ -3046,6 +3059,8 @@ export interface UnifiedOrder {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
+  generalDiscountType?: "monto" | "porcentaje";
+  generalDiscountPercent?: number;
   deliveryAddress?: string;
   hasDelivery: boolean;
   status: string;
@@ -3113,6 +3128,8 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
       productDiscountTotal: order.productDiscountTotal,
       generalDiscountAmount: order.generalDiscountAmount,
+      generalDiscountType: order.generalDiscountType,
+      generalDiscountPercent: order.generalDiscountPercent,
       deliveryAddress: order.deliveryAddress,
       hasDelivery: order.hasDelivery,
       status: order.status,
@@ -3154,6 +3171,8 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       subtotalBeforeDiscounts: budget.subtotalBeforeDiscounts,
       productDiscountTotal: budget.productDiscountTotal,
       generalDiscountAmount: budget.generalDiscountAmount,
+      generalDiscountType: budget.generalDiscountType,
+      generalDiscountPercent: budget.generalDiscountPercent,
       deliveryAddress: budget.deliveryAddress,
       hasDelivery: budget.hasDelivery,
       status: budget.status,
@@ -3462,6 +3481,8 @@ export interface Budget {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
+  generalDiscountType?: "monto" | "porcentaje";
+  generalDiscountPercent?: number;
   deliveryAddress?: string;
   hasDelivery: boolean;
   status: "Presupuesto" | "Aprobado" | "Rechazado" | "Vencido" | "Convertido";
@@ -3508,6 +3529,8 @@ function orderMappedToBudget(
     subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
     productDiscountTotal: order.productDiscountTotal,
     generalDiscountAmount: order.generalDiscountAmount,
+    generalDiscountType: order.generalDiscountType,
+    generalDiscountPercent: order.generalDiscountPercent,
     deliveryAddress: order.deliveryAddress,
     hasDelivery: order.hasDelivery,
     status: order.status as Budget["status"],

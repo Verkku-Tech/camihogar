@@ -62,6 +62,7 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   getLineDiscountDisplayMode,
   getIndividualDiscountsSummaryLabel,
+  getGeneralDiscountSummaryLabel,
   getLineDiscountLabelLead,
 } from "@/lib/product-discount-ui";
 
@@ -578,6 +579,11 @@ export default function OrderDetailPage() {
           )
         : "Descuentos individuales:",
     [order, preferredCurrency]
+  );
+
+  const generalDiscountSummaryLabel = useMemo(
+    () => (order ? getGeneralDiscountSummaryLabel(order) : "Descuento general:"),
+    [order]
   );
 
   const handleValidateOrder = async () => {
@@ -1912,7 +1918,7 @@ export default function OrderDetailPage() {
                     )}
                     {order.generalDiscountAmount && order.generalDiscountAmount > 0 && (
                       <div className="flex justify-between text-red-600">
-                        <span>Descuento general:</span>
+                        <span>{generalDiscountSummaryLabel}</span>
                         {formattedTotals.generalDiscountAmount ? (
                           <FormattedCurrencyDisplay formatted={formattedTotals.generalDiscountAmount} />
                         ) : (
