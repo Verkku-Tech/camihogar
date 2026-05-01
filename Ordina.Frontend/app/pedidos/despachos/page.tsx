@@ -373,7 +373,7 @@ export default function DespachosPage() {
     return rows
   }, [filteredOrders])
 
-  const handleExportDispatchedCsv = useCallback(() => {
+  const handleExportDispatchedCsv = useCallback(async () => {
     const headers = [
       "Pedido",
       "Cliente",
@@ -385,43 +385,50 @@ export default function DespachosPage() {
       "Fecha entrega",
     ]
     const rows: string[][] = []
-    for (const order of filteredOrders) {
-      if (order.type !== "order") continue
-      for (const product of order.products) {
-        if (getProductDispatchStatus(product) !== "despachados") continue
-        rows.push([
-          order.orderNumber,
-          order.clientName,
-          order.vendorName ?? "",
-          product.name,
-          String(product.quantity),
-          String(product.total),
-          deliveryZoneLabel(order.deliveryZone),
-          product.deliveredAt
-            ? new Date(product.deliveredAt).toLocaleString("es-VE", {
-                dateStyle: "short",
-                timeStyle: "short",
-              })
-            : "",
-        ])
+    try {
+      for (const order of filteredOrders) {
+        if (order.type !== "order") continue
+        for (const product of order.products) {
+          if (getProductDispatchStatus(product) !== "despachados") continue
+          // Misma lógica que la tabla: total de línea está en Bs; se muestra según preferencia (p. ej. USD).
+          const precioVenta = await formatWithPreference(product.total, "Bs")
+          rows.push([
+            order.orderNumber,
+            order.clientName,
+            order.vendorName ?? "",
+            product.name,
+            String(product.quantity),
+            precioVenta,
+            deliveryZoneLabel(order.deliveryZone),
+            product.deliveredAt
+              ? new Date(product.deliveredAt).toLocaleString("es-VE", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                })
+              : "",
+          ])
+        }
       }
+      const lines = [headers.map(escapeCsvCell).join(",")]
+      for (const r of rows) {
+        lines.push(r.map(escapeCsvCell).join(","))
+      }
+      const csv = "\uFEFF" + lines.join("\r\n")
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `historial-despachados-${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      toast.success("Listado exportado (CSV)")
+    } catch (error) {
+      console.error("Error exportando CSV de despachados:", error)
+      toast.error("No se pudo generar el CSV")
     }
-    const lines = [headers.map(escapeCsvCell).join(",")]
-    for (const r of rows) {
-      lines.push(r.map(escapeCsvCell).join(","))
-    }
-    const csv = "\uFEFF" + lines.join("\r\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `historial-despachados-${new Date().toISOString().slice(0, 10)}.csv`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-    toast.success("Listado exportado (CSV)")
-  }, [filteredOrders])
+  }, [filteredOrders, formatWithPreference])
 
   // Paginación: por pedido (almacén / en ruta) o por fila entregada (despachados)
   const ordersPagination = usePagination({
@@ -799,7 +806,9 @@ export default function DespachosPage() {
                         variant="outline"
                         size="sm"
                         className="shrink-0"
-                        onClick={handleExportDispatchedCsv}
+                        onClick={() => {
+                          void handleExportDispatchedCsv()
+                        }}
                       >
                         <Download className="mr-2 h-4 w-4" />
                         Exportar CSV

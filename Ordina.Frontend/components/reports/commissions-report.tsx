@@ -17,6 +17,8 @@ import {
   getProducts,
   getSaleTypeCommissionRules,
   getCommissionSaleTypeLabelForOrder,
+  getProductCommissions,
+  getFamilyCommissionUsdPerUnitForProduct,
   type Order,
   type Category,
   type Product,
@@ -31,6 +33,8 @@ interface CommissionReportRow {
   descripcion: string
   cantidadArticulos: number
   tipoVenta: string
+  /** USD de comisión familia por unidad del producto (tier aplicado). */
+  comisionFamiliaUsdPorUnidad: number
   comisionVendedor: number
   comisionPostventa: number
   comisionReferido: number
@@ -82,11 +86,12 @@ export function CommissionsReport() {
 
       try {
         // 1. Cargar pedidos desde IndexedDB (fuente de verdad)
-        const [orders, categories, products, saleTypeRules] = await Promise.all([
+        const [orders, categories, products, saleTypeRules, productCommissions] = await Promise.all([
           getOrders(),
           getCategories(),
           getProducts(),
           getSaleTypeCommissionRules(),
+          getProductCommissions(),
         ])
 
         // 2. Filtrar pedidos por fecha
@@ -121,6 +126,11 @@ export function CommissionsReport() {
               products
             )
 
+            const comisionFamiliaUsdPorUnidad = getFamilyCommissionUsdPerUnitForProduct(
+              product,
+              productCommissions
+            )
+
             reportRows.push({
               fecha: order.createdAt,
               cliente: order.clientName,
@@ -129,6 +139,7 @@ export function CommissionsReport() {
               descripcion: productDesc,
               cantidadArticulos: product.quantity,
               tipoVenta,
+              comisionFamiliaUsdPorUnidad,
               comisionVendedor: agg.vendor,
               comisionPostventa: agg.postventa,
               comisionReferido: agg.referrer,
@@ -223,11 +234,12 @@ export function CommissionsReport() {
 
     try {
       // Calcular datos desde IndexedDB (frontend-first)
-      const [orders, categories, products, saleTypeRules] = await Promise.all([
+      const [orders, categories, products, saleTypeRules, productCommissions] = await Promise.all([
         getOrders(),
         getCategories(),
         getProducts(),
         getSaleTypeCommissionRules(),
+        getProductCommissions(),
       ])
 
       const startDateObj = new Date(startDate)
@@ -259,6 +271,11 @@ export function CommissionsReport() {
             products
           )
 
+          const comisionFamiliaUsdPorUnidad = getFamilyCommissionUsdPerUnitForProduct(
+            product,
+            productCommissions
+          )
+
           const shared = agg.referrer > 0 || agg.postventa > 0
           commissionData.push({
             fecha: order.createdAt,
@@ -268,13 +285,14 @@ export function CommissionsReport() {
             descripcion: productDesc,
             cantidadArticulos: product.quantity,
             tipoVenta,
+            comisionFamiliaUsdPorUnidad,
             comision: agg.vendor,
             vendedorSecundario: agg.referrer > 0 ? order.referrerName ?? null : null,
             comisionSecundaria: agg.referrer > 0 ? agg.referrer : null,
             vendedorPostventa: agg.postventa > 0 ? order.postventaName?.trim() || "Post venta" : null,
             comisionPostventa: agg.postventa > 0 ? agg.postventa : null,
             sueldoBase: 0,
-            tasaComisionBase: 0,
+            tasaComisionBase: comisionFamiliaUsdPorUnidad,
             tasaAplicadaVendedor: 0,
             tasaAplicadaReferido: null,
             tasaAplicadaPostventa: null,
@@ -481,6 +499,7 @@ export function CommissionsReport() {
                       <TableHead>Descripción</TableHead>
                       <TableHead className="text-center">Cant.</TableHead>
                       <TableHead>Tipo venta</TableHead>
+                      <TableHead className="text-right">USD/u familia</TableHead>
                       <TableHead className="text-right">Com. vendedor</TableHead>
                       <TableHead className="text-right">Post venta</TableHead>
                       <TableHead className="text-right">Referido</TableHead>
@@ -498,6 +517,11 @@ export function CommissionsReport() {
                         <TableCell className="max-w-[240px]">{row.descripcion}</TableCell>
                         <TableCell className="text-center">{row.cantidadArticulos}</TableCell>
                         <TableCell className="max-w-[120px] truncate">{row.tipoVenta}</TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {row.comisionFamiliaUsdPorUnidad > 0
+                            ? row.comisionFamiliaUsdPorUnidad.toFixed(2)
+                            : "—"}
+                        </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatCommissionUsd(row.comisionVendedor)}
                         </TableCell>
@@ -515,7 +539,7 @@ export function CommissionsReport() {
                     ))}
                     {reportData.length > 0 && (
                       <TableRow className="font-bold bg-muted/50">
-                        <TableCell colSpan={7} className="text-right">
+                        <TableCell colSpan={8} className="text-right">
                           Totales (USD):
                         </TableCell>
                         <TableCell className="text-right">

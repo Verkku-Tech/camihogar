@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { ProtectedRoute } from "@/components/auth/protected-route"
@@ -30,6 +30,7 @@ import {
   type Category,
   type OrderProduct,
 } from "@/lib/storage"
+import { getGeneralDiscountSummaryLabel } from "@/lib/product-discount-ui"
 import { formatCurrency, type ExchangeRate } from "@/lib/currency-utils"
 import { useCurrency } from "@/contexts/currency-context"
 import type { AttributeValue } from "@/lib/storage"
@@ -237,6 +238,11 @@ export default function BudgetDetailPage() {
   const [formattedProductDiscounts, setFormattedProductDiscounts] = useState<
     Record<string, { primary: string; secondary?: string }>
   >({})
+
+  const generalDiscountSummaryLabel = useMemo(
+    () => (budget ? getGeneralDiscountSummaryLabel(budget) : "Descuento general:"),
+    [budget],
+  )
 
   useEffect(() => {
     const loadBudget = async () => {
@@ -693,7 +699,7 @@ export default function BudgetDetailPage() {
                     )}
                     {budget.generalDiscountAmount && budget.generalDiscountAmount > 0 && (
                       <div className="flex justify-between text-red-600">
-                        <span>Descuento general:</span>
+                        <span>{generalDiscountSummaryLabel}</span>
                         {formattedTotals.generalDiscountAmount ? (
                           <FormattedCurrencyDisplay formatted={formattedTotals.generalDiscountAmount} />
                         ) : (

@@ -5,13 +5,15 @@ namespace Ordina.Database.Repositories;
 public interface ISaleTypeCommissionRuleRepository
 {
     Task<SaleTypeCommissionRule?> GetByIdAsync(string id);
-    Task<SaleTypeCommissionRule?> GetBySaleTypeAsync(string saleType);
+    Task<SaleTypeCommissionRule?> GetBySaleTypeAndTierAsync(string saleType, decimal familyCommissionUsdPerUnit);
+    Task<IReadOnlyList<SaleTypeCommissionRule>> GetAllBySaleTypeAsync(string saleType);
     Task<IEnumerable<SaleTypeCommissionRule>> GetAllAsync();
     Task<SaleTypeCommissionRule> CreateAsync(SaleTypeCommissionRule rule);
     Task<SaleTypeCommissionRule> UpdateAsync(SaleTypeCommissionRule rule);
-    Task<SaleTypeCommissionRule> UpsertBySaleTypeAsync(SaleTypeCommissionRule rule);
+    Task<SaleTypeCommissionRule> UpsertBySaleTypeAndTierAsync(SaleTypeCommissionRule rule);
     Task<bool> DeleteAsync(string id);
-    Task<bool> DeleteBySaleTypeAsync(string saleType);
+    /// <summary>Elimina todas las variantes por nivel de un tipo de venta.</summary>
+    Task<long> DeleteAllBySaleTypeAsync(string saleType);
     Task<bool> ExistsAsync(string id);
     /// <param name="forceReset">Si es true, elimina todas las reglas existentes antes de sembrar los valores por defecto.</param>
     Task SeedDefaultRulesAsync(bool forceReset = false);

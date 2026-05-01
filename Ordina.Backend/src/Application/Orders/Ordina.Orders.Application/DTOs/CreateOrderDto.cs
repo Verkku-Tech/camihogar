@@ -36,6 +36,12 @@ public class CreateOrderDto
     public decimal? SubtotalBeforeDiscounts { get; set; }
     public decimal? ProductDiscountTotal { get; set; }
     public decimal? GeneralDiscountAmount { get; set; }
+
+    /// <summary>monto | porcentaje. Opcional; si falta y hay monto, el cliente puede inferir solo monto.</summary>
+    public string? GeneralDiscountType { get; set; }
+
+    /// <summary>Si <see cref="GeneralDiscountType"/> es porcentaje, el % capturado (ej. 10).</summary>
+    public decimal? GeneralDiscountPercent { get; set; }
     
     /// <summary>Obligatorio para pedidos (<see cref="Type"/> Order). Opcional para presupuestos (Budget).</summary>
     public string? PaymentType { get; set; }

@@ -32,6 +32,7 @@ import {
   type ProductImage,
   type Account,
 } from "@/lib/storage";
+import { buildGeneralDiscountPersistPayload } from "@/lib/general-discount-meta";
 import { apiClient, type ConfirmOrderDto, type OrderProductDto } from "@/lib/api-client";
 import { Currency } from "@/lib/currency-utils";
 import {
@@ -509,6 +510,7 @@ export function EditOrderDialog({
           orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
         generalDiscountAmount:
           orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+        ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
         deliveryCost: orderForm.deliveryCost,
@@ -724,6 +726,7 @@ export function EditOrderDialog({
           orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
         generalDiscountAmount:
           orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+        ...buildGeneralDiscountPersistPayload(orderForm),
         taxAmount: orderForm.taxAmount,
         deliveryCost: orderForm.deliveryCost,
         total: orderForm.total,
@@ -884,6 +887,7 @@ export function EditOrderDialog({
             orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
           generalDiscountAmount:
             orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+          ...buildGeneralDiscountPersistPayload(orderForm),
           productMarkups: orderForm.productMarkups,
           createSupplierOrder: orderForm.createSupplierOrder,
           postventaId: order.postventaId,
@@ -936,6 +940,7 @@ export function EditOrderDialog({
           orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
         generalDiscountAmount:
           orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+        ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
         deliveryCost: orderForm.deliveryCost,

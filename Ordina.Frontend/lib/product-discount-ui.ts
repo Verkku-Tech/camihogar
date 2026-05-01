@@ -128,7 +128,7 @@ export function getLineDiscountDisplayMode(
   return { mode: "monto" };
 }
 
-function formatPercentForDisplay(percent: number): string {
+export function formatPercentForDisplay(percent: number): string {
   if (Number.isInteger(percent)) return String(percent);
   return percent.toLocaleString("es-VE", {
     minimumFractionDigits: 0,
@@ -172,4 +172,25 @@ export function getIndividualDiscountsSummaryLabel(
   const allMonto = parts.every((p) => p.mode === "monto");
   if (allMonto) return "Descuentos individuales:";
   return "Descuentos individuales (monto y %):";
+}
+
+/** Etiqueta de la fila «Descuento general» en resumen financiero (pedido/presupuesto). */
+export function getGeneralDiscountSummaryLabel(order: {
+  generalDiscountAmount?: number;
+  generalDiscountType?: string;
+  generalDiscountPercent?: number;
+}): string {
+  if (!order.generalDiscountAmount || order.generalDiscountAmount <= 0) {
+    return "Descuento general:";
+  }
+  if (
+    order.generalDiscountType === "porcentaje" &&
+    order.generalDiscountPercent != null &&
+    Number.isFinite(order.generalDiscountPercent) &&
+    order.generalDiscountPercent > 0 &&
+    order.generalDiscountPercent <= 100
+  ) {
+    return `Descuento general (${formatPercentForDisplay(order.generalDiscountPercent)}%):`;
+  }
+  return "Descuento general:";
 }

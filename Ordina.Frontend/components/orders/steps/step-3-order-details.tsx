@@ -38,6 +38,7 @@ import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import { toast } from "sonner";
 import { type ProductImage } from "@/lib/storage";
 import { PAYMENT_BALANCE_EPSILON_BS } from "@/lib/order-payments";
+import { formatPercentForDisplay } from "@/lib/product-discount-ui";
 import { ImageUploader } from "../ImageUploader";
 import {
   PAYMENT_CONDITIONS,
@@ -65,13 +66,6 @@ function parsePercentInput(raw: string): number {
   const n = parseLocalePositiveNumber(raw);
   if (n === null) return 0;
   return Math.max(0, Math.min(n, 100));
-}
-
-/** Porcentaje mostrable a partir del descuento en Bs guardado en el formulario. */
-function percentStringFromBsDiscount(total: number, discountBs: number): string {
-  if (total <= 0 || discountBs <= 0) return "";
-  const p = Math.round((discountBs / total) * 10000) / 100;
-  return String(p);
 }
 
 /** `<input type="date" />` solo acepta yyyy-MM-dd; el API suele devolver ISO completo. */
@@ -127,16 +121,11 @@ export function Step3OrderDetails({
     }
     if (generalPctFocusedRef.current) return;
     setGeneralPctDraft(
-      percentStringFromBsDiscount(
-        orderForm.totalBeforeGeneralDiscount,
-        orderForm.generalDiscount
-      )
+      orderForm.generalDiscount > 0
+        ? formatPercentForDisplay(orderForm.generalDiscount)
+        : ""
     );
-  }, [
-    orderForm.generalDiscountType,
-    orderForm.generalDiscount,
-    orderForm.totalBeforeGeneralDiscount,
-  ]);
+  }, [orderForm.generalDiscountType, orderForm.generalDiscount]);
 
   const porcentajeEquivalentPreviewBs = useMemo(() => {
     if (orderForm.generalDiscountType !== "porcentaje") return 0;
@@ -147,7 +136,8 @@ export function Step3OrderDetails({
       const pct = parsePercentInput(trimmed);
       return Math.min((t * pct) / 100, t);
     }
-    return orderForm.generalDiscount;
+    const p = Math.min(Math.max(orderForm.generalDiscount, 0), 100);
+    return (t * p) / 100;
   }, [
     orderForm.generalDiscountType,
     orderForm.generalDiscount,
@@ -157,12 +147,12 @@ export function Step3OrderDetails({
 
   const applyPercentDraftFromBlur = () => {
     generalPctFocusedRef.current = false;
-    const t = orderForm.totalBeforeGeneralDiscount;
     const pct = parsePercentInput(generalPctDraft);
     orderForm.handleGeneralDiscountChange(pct);
     const pctClamped = Math.max(0, Math.min(pct, 100));
-    const discountBs = t > 0 ? (t * pctClamped) / 100 : 0;
-    setGeneralPctDraft(percentStringFromBsDiscount(t, discountBs));
+    setGeneralPctDraft(
+      pctClamped > 0 ? formatPercentForDisplay(pctClamped) : ""
+    );
   };
 
   const casheaOneLineOnly =

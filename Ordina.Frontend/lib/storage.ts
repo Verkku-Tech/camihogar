@@ -1635,6 +1635,8 @@ export interface Order {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
+  generalDiscountType?: "monto" | "porcentaje";
+  generalDiscountPercent?: number;
   paymentType: "directo" | "apartado" | "mixto"; // Mantener para compatibilidad
   paymentMode?: "simple" | "mixto"; // Nuevo campo
   paymentMethod: string;
@@ -1925,6 +1927,11 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   subtotalBeforeDiscounts: dto.subtotalBeforeDiscounts,
   productDiscountTotal: dto.productDiscountTotal,
   generalDiscountAmount: dto.generalDiscountAmount,
+  generalDiscountType:
+    dto.generalDiscountType === "porcentaje" || dto.generalDiscountType === "monto"
+      ? dto.generalDiscountType
+      : undefined,
+  generalDiscountPercent: dto.generalDiscountPercent,
   paymentType: dto.paymentType as "directo" | "apartado" | "mixto",
   paymentMethod: dto.paymentMethod,
   paymentCondition: paymentConditionFromOrderDto(dto),
@@ -2108,6 +2115,8 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
   productDiscountTotal: order.productDiscountTotal,
   generalDiscountAmount: order.generalDiscountAmount,
+  generalDiscountType: order.generalDiscountType,
+  generalDiscountPercent: order.generalDiscountPercent,
   paymentType: order.paymentType,
   paymentMethod: order.paymentMethod,
   paymentCondition: order.paymentCondition,
@@ -2249,6 +2258,8 @@ export function orderToConvertBudgetDto(
     subtotalBeforeDiscounts: c.subtotalBeforeDiscounts,
     productDiscountTotal: c.productDiscountTotal,
     generalDiscountAmount: c.generalDiscountAmount,
+    generalDiscountType: c.generalDiscountType,
+    generalDiscountPercent: c.generalDiscountPercent,
     productMarkups: c.productMarkups,
     createSupplierOrder: c.createSupplierOrder,
     postventaId: c.postventaId,
@@ -2632,6 +2643,8 @@ export const updateOrder = async (
             subtotalBeforeDiscounts: updatedOrder.subtotalBeforeDiscounts !== existingOrder.subtotalBeforeDiscounts ? updatedOrder.subtotalBeforeDiscounts : undefined,
             productDiscountTotal: updatedOrder.productDiscountTotal !== existingOrder.productDiscountTotal ? updatedOrder.productDiscountTotal : undefined,
             generalDiscountAmount: updatedOrder.generalDiscountAmount !== existingOrder.generalDiscountAmount ? updatedOrder.generalDiscountAmount : undefined,
+            generalDiscountType: updatedOrder.generalDiscountType !== existingOrder.generalDiscountType ? updatedOrder.generalDiscountType : undefined,
+            generalDiscountPercent: updatedOrder.generalDiscountPercent !== existingOrder.generalDiscountPercent ? updatedOrder.generalDiscountPercent : undefined,
             paymentType: updatedOrder.paymentType !== existingOrder.paymentType ? updatedOrder.paymentType : undefined,
             paymentMethod: updatedOrder.paymentMethod !== existingOrder.paymentMethod ? updatedOrder.paymentMethod : undefined,
             paymentCondition: updatedOrder.paymentCondition !== existingOrder.paymentCondition ? updatedOrder.paymentCondition : undefined,
@@ -3072,6 +3085,8 @@ export interface UnifiedOrder {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
+  generalDiscountType?: "monto" | "porcentaje";
+  generalDiscountPercent?: number;
   deliveryAddress?: string;
   hasDelivery: boolean;
   status: string;
@@ -3139,6 +3154,8 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
       productDiscountTotal: order.productDiscountTotal,
       generalDiscountAmount: order.generalDiscountAmount,
+      generalDiscountType: order.generalDiscountType,
+      generalDiscountPercent: order.generalDiscountPercent,
       deliveryAddress: order.deliveryAddress,
       hasDelivery: order.hasDelivery,
       status: order.status,
@@ -3180,6 +3197,8 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       subtotalBeforeDiscounts: budget.subtotalBeforeDiscounts,
       productDiscountTotal: budget.productDiscountTotal,
       generalDiscountAmount: budget.generalDiscountAmount,
+      generalDiscountType: budget.generalDiscountType,
+      generalDiscountPercent: budget.generalDiscountPercent,
       deliveryAddress: budget.deliveryAddress,
       hasDelivery: budget.hasDelivery,
       status: budget.status,
@@ -3488,6 +3507,8 @@ export interface Budget {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
+  generalDiscountType?: "monto" | "porcentaje";
+  generalDiscountPercent?: number;
   deliveryAddress?: string;
   hasDelivery: boolean;
   status: "Presupuesto" | "Aprobado" | "Rechazado" | "Vencido" | "Convertido";
@@ -3534,6 +3555,8 @@ function orderMappedToBudget(
     subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
     productDiscountTotal: order.productDiscountTotal,
     generalDiscountAmount: order.generalDiscountAmount,
+    generalDiscountType: order.generalDiscountType,
+    generalDiscountPercent: order.generalDiscountPercent,
     deliveryAddress: order.deliveryAddress,
     hasDelivery: order.hasDelivery,
     status: order.status as Budget["status"],
@@ -5125,6 +5148,8 @@ export interface SaleTypeCommissionRule {
   id: string;
   saleType: string;
   saleTypeLabel: string;
+  /** USD de comisión familia por unidad (2.5, 5 o 7.5). */
+  familyCommissionUsdPerUnit: number;
   vendorRate: number; // Porcentaje que gana el vendedor de tienda
   referrerRate: number; // Porcentaje que gana el referido online
   /** % de la comisión de familia para post venta (ENCARGO / SA). */
@@ -5186,7 +5211,28 @@ export const seedDefaultSaleTypeRules = async (
 
 // ===== COMMISSION CALCULATION FUNCTIONS =====
 // Alineado con ReportService.CalculateProductCommission (backend): USD por unidad × cantidad;
-// distribución por tipo de venta = % de esa comisión de familia. Fallback legacy si comisión familia = 0.
+// distribución por tipo de venta + nivel USD/u (2.5 / 5 / 7.5) = % de esa comisión de familia. Fallback legacy si comisión familia = 0.
+
+export const FAMILY_COMMISSION_USD_TIERS = [2.5, 5, 7.5] as const;
+
+/** Elige la regla de reparto según tipo de venta y USD/u de comisión familia del producto (paridad con SaleTypeCommissionTierResolver en backend). */
+export function pickSaleTypeCommissionRule(
+  rules: SaleTypeCommissionRule[],
+  saleType: string,
+  commissionUsdPerUnit: number,
+): SaleTypeCommissionRule | undefined {
+  const st = ((saleType || "").trim() || "entrega").toLowerCase();
+  const eps = 0.0001;
+  const matchedTier = FAMILY_COMMISSION_USD_TIERS.find((t) => Math.abs(commissionUsdPerUnit - t) < eps);
+  const tier = matchedTier ?? 2.5;
+  const byType = rules.filter((r) => r.saleType.toLowerCase() === st);
+  if (byType.length === 0) return undefined;
+  const exact = byType.find((r) => Math.abs((r.familyCommissionUsdPerUnit ?? 0) - tier) < eps);
+  if (exact) return exact;
+  return [...byType].sort(
+    (a, b) => (a.familyCommissionUsdPerUnit ?? 0) - (b.familyCommissionUsdPerUnit ?? 0)
+  )[0];
+}
 
 export type CommissionCalculationContext = {
   productCommissions: ProductCommission[];
@@ -5219,15 +5265,18 @@ export const getCommissionSaleTypeLabelForOrder = (
   rules: SaleTypeCommissionRule[]
 ): string => {
   const code = getOrderSaleTypeCodeForCommission(order);
-  const rule = rules.find((r) => r.saleType.toLowerCase() === code.toLowerCase());
+  const same = rules
+    .filter((r) => r.saleType.toLowerCase() === code.toLowerCase())
+    .sort((a, b) => (a.familyCommissionUsdPerUnit ?? 0) - (b.familyCommissionUsdPerUnit ?? 0));
+  const rule = same[0];
   if (rule?.saleTypeLabel?.trim()) return rule.saleTypeLabel.trim();
   return SALE_TYPE_CODE_LABELS[code] ?? code;
 };
 
-const findCategoryCommissionRate = (
+export function getFamilyCommissionUsdPerUnitForProduct(
   product: OrderProduct,
   productCommissions: ProductCommission[]
-): number => {
+): number {
   const cat = product.category?.trim() ?? "";
   if (!cat) return 0;
   const catLower = cat.toLowerCase();
@@ -5238,7 +5287,7 @@ const findCategoryCommissionRate = (
       c.categoryId?.trim().toLowerCase() === catLower
   );
   return found?.commissionValue ?? 0;
-};
+}
 
 const legacyCommissionForSeller = (
   sellerId: string,
@@ -5282,7 +5331,7 @@ export const computeProductCommissionSplit = (
   const hasReferrer = !!referrerId;
   const isSharedSale = hasReferrer && !isExclusiveVendor;
 
-  const baseRate = findCategoryCommissionRate(product, ctx.productCommissions);
+  const baseRate = getFamilyCommissionUsdPerUnitForProduct(product, ctx.productCommissions);
   const qty = Math.max(product.quantity || 1, 1);
   const familyCommission = baseRate > 0 ? baseRate * qty : 0;
 
@@ -5325,9 +5374,7 @@ export const computeProductCommissionSplit = (
 
   if (isSharedSale) {
     const saleType = getOrderSaleTypeCodeForCommission(order);
-    const rule = ctx.saleTypeRules.find(
-      (r) => r.saleType.toLowerCase() === saleType.toLowerCase()
-    );
+    const rule = pickSaleTypeCommissionRule(ctx.saleTypeRules, saleType, baseRate);
     if (rule) {
       const pv = rule.postventaRate ?? 0;
       return {

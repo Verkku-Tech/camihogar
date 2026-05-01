@@ -20,6 +20,8 @@ public class OrderResponseDto
     public decimal? SubtotalBeforeDiscounts { get; set; }
     public decimal? ProductDiscountTotal { get; set; }
     public decimal? GeneralDiscountAmount { get; set; }
+    public string? GeneralDiscountType { get; set; }
+    public decimal? GeneralDiscountPercent { get; set; }
     public string PaymentType { get; set; } = string.Empty;
     public string PaymentMethod { get; set; } = string.Empty;
     public string? PaymentCondition { get; set; }

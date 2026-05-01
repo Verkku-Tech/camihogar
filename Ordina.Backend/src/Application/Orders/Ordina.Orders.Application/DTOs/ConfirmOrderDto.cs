@@ -42,6 +42,8 @@ public class ConfirmOrderDto
     public decimal? SubtotalBeforeDiscounts { get; set; }
     public decimal? ProductDiscountTotal { get; set; }
     public decimal? GeneralDiscountAmount { get; set; }
+    public string? GeneralDiscountType { get; set; }
+    public decimal? GeneralDiscountPercent { get; set; }
 
     public Dictionary<string, decimal>? ProductMarkups { get; set; }
     public bool? CreateSupplierOrder { get; set; }

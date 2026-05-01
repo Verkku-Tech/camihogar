@@ -8,7 +8,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Download, Wifi, WifiOff, Loader2 } from "lucide-react"
 import { getOrders, getAccounts, type Order, type PartialPayment, type Account } from "@/lib/storage"
-import { getActivePaymentsForReport } from "@/lib/order-payments"
+import {
+  getActivePaymentsForReport,
+  CASHEA_FINANCED_METHOD_LABEL,
+} from "@/lib/order-payments"
 import { toast } from "sonner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { apiClient } from "@/lib/api-client"
@@ -310,12 +313,7 @@ export function PaymentsReport() {
           }
         })
 
-        const mappedFiltered = mappedData.filter((row) => {
-          const o = orders.find((ord) => ord.id === row.orderId)
-          if (!o) return true
-          return o.status !== "Generado" && o.status !== "Generada"
-        })
-        setReportData(mappedFiltered)
+        setReportData(mappedData)
       } catch (error) {
         console.error("Error loading report from backend:", error)
         // Fallback a datos locales
@@ -384,6 +382,13 @@ export function PaymentsReport() {
 
         if (activePayments.length > 0) {
           activePayments.forEach((payment, index) => {
+            if (
+              payment.paymentDetails?.casheaFinancedPortion ||
+              payment.method === CASHEA_FINANCED_METHOD_LABEL
+            ) {
+              return
+            }
+
             const paymentDate = new Date(payment.date)
 
             if (startDateObj && paymentDate < startDateObj) return

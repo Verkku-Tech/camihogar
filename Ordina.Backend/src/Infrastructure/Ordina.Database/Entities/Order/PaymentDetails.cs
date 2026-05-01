@@ -72,4 +72,8 @@ public class PaymentDetails
     // Estado Conciliación
     [BsonElement("isConciliated")]
     public bool IsConciliated { get; set; } = false;
+
+    /// <summary>Línea sintética Cashea: saldo por financiación (no cobro en caja). Misma clave que el front.</summary>
+    [BsonElement("casheaFinancedPortion")]
+    public bool CasheaFinancedPortion { get; set; }
 }
