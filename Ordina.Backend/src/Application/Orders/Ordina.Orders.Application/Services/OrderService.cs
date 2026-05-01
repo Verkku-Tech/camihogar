@@ -1220,6 +1220,41 @@ public class OrderService : IOrderService
     }
 
     /// <summary>
+    /// Alinea tipo/% con el monto: sin descuento limpia metadatos; si dice «porcentaje» pero el % no es válido (p. ej. bug antiguo que guardaba Bs como %), fuerza «monto».
+    /// </summary>
+    private static void NormalizeGeneralDiscountFields(Order order)
+    {
+        var amt = order.GeneralDiscountAmount ?? 0m;
+        if (amt <= 0m)
+        {
+            order.GeneralDiscountAmount = null;
+            order.GeneralDiscountType = null;
+            order.GeneralDiscountPercent = null;
+            return;
+        }
+
+        var t = order.GeneralDiscountType?.Trim().ToLowerInvariant();
+        if (t == "porcentaje")
+        {
+            var p = order.GeneralDiscountPercent;
+            if (p is null || p <= 0m || p > 100m)
+            {
+                order.GeneralDiscountType = "monto";
+                order.GeneralDiscountPercent = null;
+            }
+            else
+            {
+                order.GeneralDiscountPercent = decimal.Round(p.Value, 4, MidpointRounding.AwayFromZero);
+            }
+        }
+        else
+        {
+            order.GeneralDiscountType = "monto";
+            order.GeneralDiscountPercent = null;
+        }
+    }
+
+    /// <summary>
     /// Convierte un Dictionary que puede contener JsonElement a tipos nativos compatibles con MongoDB
     /// </summary>
     private static Dictionary<string, object>? ConvertAttributesFromJsonElement(Dictionary<string, object>? attributes)
