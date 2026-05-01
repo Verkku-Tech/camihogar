@@ -195,6 +195,8 @@ public class OrderService : IOrderService
                 SubtotalBeforeDiscounts = createDto.SubtotalBeforeDiscounts,
                 ProductDiscountTotal = createDto.ProductDiscountTotal,
                 GeneralDiscountAmount = createDto.GeneralDiscountAmount,
+                GeneralDiscountType = createDto.GeneralDiscountType,
+                GeneralDiscountPercent = createDto.GeneralDiscountPercent,
                 PaymentType = paymentType,
                 PaymentMethod = paymentMethod,
                 PaymentCondition = createDto.PaymentCondition,
@@ -220,6 +222,8 @@ public class OrderService : IOrderService
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
+
+            NormalizeGeneralDiscountFields(order);
 
             RecalculateOrderStatus(order);
             var createdOrder = await CreateOrderAndAuditAsync(order, typeForCount, prefix, userId, userName);
@@ -321,6 +325,8 @@ public class OrderService : IOrderService
             SubtotalBeforeDiscounts = confirmDto.SubtotalBeforeDiscounts ?? pcf.SubtotalBeforeDiscounts,
             ProductDiscountTotal = confirmDto.ProductDiscountTotal ?? pcf.ProductDiscountTotal,
             GeneralDiscountAmount = confirmDto.GeneralDiscountAmount ?? pcf.GeneralDiscountAmount,
+            GeneralDiscountType = confirmDto.GeneralDiscountType ?? pcf.GeneralDiscountType,
+            GeneralDiscountPercent = confirmDto.GeneralDiscountPercent ?? pcf.GeneralDiscountPercent,
             PaymentType = confirmDto.PaymentType,
             PaymentMethod = paymentMethodResolved,
             PaymentCondition = confirmDto.PaymentCondition,
@@ -424,6 +430,8 @@ public class OrderService : IOrderService
             SubtotalBeforeDiscounts = dto.SubtotalBeforeDiscounts ?? budget.SubtotalBeforeDiscounts,
             ProductDiscountTotal = dto.ProductDiscountTotal ?? budget.ProductDiscountTotal,
             GeneralDiscountAmount = dto.GeneralDiscountAmount ?? budget.GeneralDiscountAmount,
+            GeneralDiscountType = dto.GeneralDiscountType ?? budget.GeneralDiscountType,
+            GeneralDiscountPercent = dto.GeneralDiscountPercent ?? budget.GeneralDiscountPercent,
             PaymentType = dto.PaymentType,
             PaymentMethod = paymentMethodResolved,
             PaymentCondition = dto.PaymentCondition,
@@ -513,7 +521,25 @@ public class OrderService : IOrderService
             if (updateDto.ProductDiscountTotal.HasValue)
                 existingOrder.ProductDiscountTotal = updateDto.ProductDiscountTotal;
             if (updateDto.GeneralDiscountAmount.HasValue)
+            {
                 existingOrder.GeneralDiscountAmount = updateDto.GeneralDiscountAmount;
+                if ((existingOrder.GeneralDiscountAmount ?? 0m) <= 0m)
+                {
+                    existingOrder.GeneralDiscountType = null;
+                    existingOrder.GeneralDiscountPercent = null;
+                }
+                else if (!string.IsNullOrWhiteSpace(updateDto.GeneralDiscountType))
+                {
+                    var t = updateDto.GeneralDiscountType.Trim().ToLowerInvariant();
+                    if (t is "porcentaje" or "monto")
+                    {
+                        existingOrder.GeneralDiscountType = t;
+                        existingOrder.GeneralDiscountPercent = t == "porcentaje" && updateDto.GeneralDiscountPercent.HasValue
+                            ? updateDto.GeneralDiscountPercent
+                            : null;
+                    }
+                }
+            }
             if (!string.IsNullOrEmpty(updateDto.PaymentType))
                 existingOrder.PaymentType = updateDto.PaymentType;
             if (!string.IsNullOrEmpty(updateDto.PaymentMethod))
@@ -814,6 +840,8 @@ public class OrderService : IOrderService
             SubtotalBeforeDiscounts = order.SubtotalBeforeDiscounts,
             ProductDiscountTotal = order.ProductDiscountTotal,
             GeneralDiscountAmount = order.GeneralDiscountAmount,
+            GeneralDiscountType = order.GeneralDiscountType,
+            GeneralDiscountPercent = order.GeneralDiscountPercent,
             PaymentType = order.PaymentType,
             PaymentMethod = order.PaymentMethod,
             PaymentCondition = order.PaymentCondition,

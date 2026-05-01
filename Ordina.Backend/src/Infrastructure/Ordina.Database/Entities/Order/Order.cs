@@ -67,6 +67,15 @@ public class Order
     [BsonRepresentation(BsonType.Decimal128)]
     public decimal? GeneralDiscountAmount { get; set; }
 
+    /// <summary>monto | porcentaje (misma convención que el front). Solo metadatos para UI/edición.</summary>
+    [BsonElement("generalDiscountType")]
+    public string? GeneralDiscountType { get; set; }
+
+    /// <summary>Cuando el tipo es porcentaje, el valor tecleado (ej. 10).</summary>
+    [BsonElement("generalDiscountPercent")]
+    [BsonRepresentation(BsonType.Decimal128)]
+    public decimal? GeneralDiscountPercent { get; set; }
+
     [BsonElement("paymentType")]
     public string PaymentType { get; set; } = string.Empty; // "directo", "apartado", "mixto"
 

@@ -114,6 +114,8 @@ export function ConfirmOrderDialog({
   const [deliveryZone, setDeliveryZone] = useState<string>("");
   const [deliveryCost, setDeliveryCost] = useState(0);
   const [generalDiscountAmount, setGeneralDiscountAmount] = useState(0);
+  const [generalDiscountType, setGeneralDiscountType] = useState<string | undefined>();
+  const [generalDiscountPercent, setGeneralDiscountPercent] = useState<number | undefined>();
   const [taxEnabled, setTaxEnabled] = useState(true);
   const [observations, setObservations] = useState("");
   const [hasDelivery, setHasDelivery] = useState(false);
@@ -148,6 +150,8 @@ export function ConfirmOrderDialog({
     setDeliveryZone("");
     setDeliveryCost(0);
     setGeneralDiscountAmount(0);
+    setGeneralDiscountType(undefined);
+    setGeneralDiscountPercent(undefined);
     setTaxEnabled(true);
     setObservations("");
     setHasDelivery(false);
@@ -219,6 +223,8 @@ export function ConfirmOrderDialog({
         setDeliveryZone(dto.deliveryZone ?? "");
         setDeliveryCost(dto.deliveryCost ?? 0);
         setGeneralDiscountAmount(dto.generalDiscountAmount ?? 0);
+        setGeneralDiscountType(dto.generalDiscountType ?? undefined);
+        setGeneralDiscountPercent(dto.generalDiscountPercent ?? undefined);
         setTaxEnabled((dto.taxAmount ?? 0) > 0.001);
         setObservations(dto.observations ?? "");
         setHasDelivery(dto.hasDelivery);
@@ -379,6 +385,12 @@ export function ConfirmOrderDialog({
       deliveryCost,
       total,
       generalDiscountAmount: generalDiscountAmount > 0 ? generalDiscountAmount : undefined,
+      ...(generalDiscountAmount > 0 &&
+      generalDiscountType === "porcentaje" &&
+      generalDiscountPercent != null &&
+      Number.isFinite(generalDiscountPercent)
+        ? { generalDiscountType: "porcentaje" as const, generalDiscountPercent }
+        : {}),
       productMarkups,
       createSupplierOrder,
       postventaId,

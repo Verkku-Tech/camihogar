@@ -500,8 +500,17 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
 
       // 7. Descuentos y observaciones
       if (initialOrder.generalDiscountAmount && initialOrder.generalDiscountAmount > 0) {
-        setGeneralDiscount(initialOrder.generalDiscountAmount);
-        setGeneralDiscountType("monto");
+        if (
+          initialOrder.generalDiscountType === "porcentaje" &&
+          initialOrder.generalDiscountPercent != null &&
+          Number.isFinite(initialOrder.generalDiscountPercent)
+        ) {
+          setGeneralDiscountType("porcentaje");
+          setGeneralDiscount(initialOrder.generalDiscountPercent);
+        } else {
+          setGeneralDiscount(initialOrder.generalDiscountAmount);
+          setGeneralDiscountType("monto");
+        }
       }
       setGeneralObservations(initialOrder.observations || "");
       setCreateSupplierOrder(initialOrder.createSupplierOrder || false);

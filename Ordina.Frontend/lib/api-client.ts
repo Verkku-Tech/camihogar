@@ -1967,6 +1967,8 @@ export interface OrderResponseDto {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
+  generalDiscountType?: string;
+  generalDiscountPercent?: number;
   paymentType: string;
   paymentMethod: string;
   paymentCondition?: string;
@@ -2041,6 +2043,8 @@ export interface ConvertBudgetToOrderDto {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
+  generalDiscountType?: string;
+  generalDiscountPercent?: number;
   productMarkups?: { [key: string]: number };
   createSupplierOrder?: boolean;
   postventaId?: string;
@@ -2073,6 +2077,8 @@ export interface ConfirmOrderDto {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
+  generalDiscountType?: string;
+  generalDiscountPercent?: number;
   productMarkups?: { [key: string]: number };
   createSupplierOrder?: boolean;
   postventaId?: string;
@@ -2146,6 +2152,8 @@ export interface CreateOrderDto {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
+  generalDiscountType?: string;
+  generalDiscountPercent?: number;
   paymentType: string;
   paymentMethod: string;
   paymentCondition?: string;
@@ -2206,6 +2214,8 @@ export interface UpdateOrderDto {
   subtotalBeforeDiscounts?: number;
   productDiscountTotal?: number;
   generalDiscountAmount?: number;
+  generalDiscountType?: string;
+  generalDiscountPercent?: number;
   paymentType?: string;
   paymentMethod?: string;
   paymentCondition?: string;
