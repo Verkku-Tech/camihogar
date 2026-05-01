@@ -1027,7 +1027,8 @@ public class OrderService : IOrderService
             Email = paymentDetails.Email,
             Wallet = paymentDetails.Wallet,
             Envia = paymentDetails.Envia,
-            IsConciliated = paymentDetails.IsConciliated
+            IsConciliated = paymentDetails.IsConciliated,
+            CasheaFinancedPortion = paymentDetails.CasheaFinancedPortion
         };
     }
 
@@ -1054,7 +1055,8 @@ public class OrderService : IOrderService
             Email = dto.Email,
             Wallet = dto.Wallet,
             Envia = dto.Envia,
-            IsConciliated = dto.IsConciliated
+            IsConciliated = dto.IsConciliated,
+            CasheaFinancedPortion = dto.CasheaFinancedPortion
         };
     }
 

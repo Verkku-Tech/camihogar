@@ -25,5 +25,8 @@ public class PaymentDetailsDto
     public string? Envia { get; set; }
     // Estado Conciliación
     public bool IsConciliated { get; set; }
+
+    /// <summary>Financiación Cashea (no es cobro en tienda).</summary>
+    public bool CasheaFinancedPortion { get; set; }
 }
 
