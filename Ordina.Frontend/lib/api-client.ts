@@ -1353,9 +1353,9 @@ export class ApiClient {
 
   async getSaleTypeCommissionRule(
     saleType: string,
-  ): Promise<SaleTypeCommissionRuleDto> {
-    return this.request<SaleTypeCommissionRuleDto>(
-      `/api/CommissionSettings/SaleTypeRules/${saleType}`,
+  ): Promise<SaleTypeCommissionRuleDto[]> {
+    return this.request<SaleTypeCommissionRuleDto[]>(
+      `/api/CommissionSettings/SaleTypeRules/${encodeURIComponent(saleType)}`,
     );
   }
 
@@ -1521,6 +1521,8 @@ export interface SaleTypeCommissionRuleDto {
   id: string;
   saleType: string;
   saleTypeLabel: string;
+  /** USD de comisión familia por unidad (2.5, 5 o 7.5). */
+  familyCommissionUsdPerUnit: number;
   vendorRate: number;
   referrerRate: number;
   postventaRate?: number;
@@ -1531,9 +1533,9 @@ export interface SaleTypeCommissionRuleDto {
 export interface CreateSaleTypeCommissionRuleDto {
   saleType: string;
   saleTypeLabel: string;
+  familyCommissionUsdPerUnit: number;
   vendorRate: number;
   referrerRate: number;
-  /** Opcional por compatibilidad; el backend asume 0 si falta. */
   postventaRate?: number;
 }
 
