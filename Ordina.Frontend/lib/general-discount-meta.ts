@@ -13,9 +13,10 @@ export function buildGeneralDiscountPersistPayload(orderForm: {
     return {};
   }
   if (orderForm.generalDiscountType === "porcentaje" && orderForm.generalDiscount > 0) {
+    const clamped = Math.min(100, Math.max(0, orderForm.generalDiscount));
     return {
       generalDiscountType: "porcentaje",
-      generalDiscountPercent: orderForm.generalDiscount,
+      generalDiscountPercent: clamped,
     };
   }
   return { generalDiscountType: "monto" };

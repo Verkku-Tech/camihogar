@@ -186,7 +186,9 @@ export function getGeneralDiscountSummaryLabel(order: {
   if (
     order.generalDiscountType === "porcentaje" &&
     order.generalDiscountPercent != null &&
-    Number.isFinite(order.generalDiscountPercent)
+    Number.isFinite(order.generalDiscountPercent) &&
+    order.generalDiscountPercent > 0 &&
+    order.generalDiscountPercent <= 100
   ) {
     return `Descuento general (${formatPercentForDisplay(order.generalDiscountPercent)}%):`;
   }

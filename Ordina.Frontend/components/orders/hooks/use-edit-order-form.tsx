@@ -500,13 +500,16 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
 
       // 7. Descuentos y observaciones
       if (initialOrder.generalDiscountAmount && initialOrder.generalDiscountAmount > 0) {
-        if (
+        const pct = initialOrder.generalDiscountPercent;
+        const pctValid =
           initialOrder.generalDiscountType === "porcentaje" &&
-          initialOrder.generalDiscountPercent != null &&
-          Number.isFinite(initialOrder.generalDiscountPercent)
-        ) {
+          pct != null &&
+          Number.isFinite(pct) &&
+          pct > 0 &&
+          pct <= 100;
+        if (pctValid) {
           setGeneralDiscountType("porcentaje");
-          setGeneralDiscount(initialOrder.generalDiscountPercent);
+          setGeneralDiscount(pct);
         } else {
           setGeneralDiscount(initialOrder.generalDiscountAmount);
           setGeneralDiscountType("monto");
@@ -703,10 +706,13 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
   const subtotal = subtotalAfterProductDiscounts;
   const taxAmount = taxEnabled ? subtotal * 0.16 : 0; // Impuesto condicional (16% o 0%)
   const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
-  const generalDiscountAmount = Math.min(
-    Math.max(generalDiscount, 0),
-    totalBeforeGeneralDiscount
-  );
+  const generalDiscountAmount = useMemo(() => {
+    if (generalDiscountType === "porcentaje") {
+      const p = Math.min(Math.max(generalDiscount, 0), 100);
+      return (totalBeforeGeneralDiscount * p) / 100;
+    }
+    return Math.min(Math.max(generalDiscount, 0), totalBeforeGeneralDiscount);
+  }, [generalDiscountType, generalDiscount, totalBeforeGeneralDiscount]);
   const total = Math.max(totalBeforeGeneralDiscount - generalDiscountAmount, 0);
 
   const orderSnapshotForCreditRates = useMemo(() => {
@@ -1006,26 +1012,19 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
 
   const handleGeneralDiscountChange = useCallback(
     (value: number) => {
-      let discountAmount: number;
-
       if (generalDiscountType === "porcentaje") {
-        const percentage = Math.max(0, Math.min(value, 100));
-        discountAmount = (totalBeforeGeneralDiscount * percentage) / 100;
-      } else {
-        discountAmount = Math.max(0, Math.min(value, totalBeforeGeneralDiscount));
+        setGeneralDiscount(Math.max(0, Math.min(value, 100)));
+        return;
       }
-
-      setGeneralDiscount(discountAmount);
+      setGeneralDiscount(Math.max(0, Math.min(value, totalBeforeGeneralDiscount)));
     },
     [generalDiscountType, totalBeforeGeneralDiscount]
   );
 
-  const handleGeneralDiscountTypeChange = useCallback(
-    (type: "monto" | "porcentaje") => {
-      setGeneralDiscountType(type);
-    },
-    []
-  );
+  const handleGeneralDiscountTypeChange = useCallback((type: "monto" | "porcentaje") => {
+    setGeneralDiscountType(type);
+    setGeneralDiscount(0);
+  }, []);
 
   const step1SellerReady = !!(formData.vendor || formData.referrer);
 
@@ -1175,12 +1174,16 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     }
   }, [hasDelivery, selectedClient, formData.deliveryAddress]);
 
-  // Limitar descuento general
+  // Limitar descuento general (Bs en monto; 0–100 en porcentaje)
   useEffect(() => {
-    setGeneralDiscount((prev) =>
-      Math.min(Math.max(prev, 0), totalBeforeGeneralDiscount)
-    );
-  }, [totalBeforeGeneralDiscount]);
+    setGeneralDiscount((prev) => {
+      const lo = Math.max(prev, 0);
+      if (generalDiscountType === "porcentaje") {
+        return Math.min(lo, 100);
+      }
+      return Math.min(lo, totalBeforeGeneralDiscount);
+    });
+  }, [totalBeforeGeneralDiscount, generalDiscountType]);
 
   return {
     currentStep,
