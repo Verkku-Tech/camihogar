@@ -97,6 +97,9 @@ public class ReportService : IReportService
         "Zelle",
     }, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Misma cadena que CASHEA_FINANCED_METHOD_LABEL en el front (order-payments.ts).</summary>
+    private const string CasheaFinancedMethodLabel = "Cashea (financiación)";
+
     private readonly IOrderRepository _orderRepository;
     private readonly IProviderRepository _providerRepository;
     private readonly ICategoryRepository _categoryRepository;
@@ -892,6 +895,9 @@ public class ReportService : IReportService
                 {
                     var payment = activePayments[i];
 
+                    if (IsCasheaFinancingStubForReport(payment))
+                        continue;
+
                     // Filtrar por rango de fechas del pago
                     if (startDate.HasValue && payment.Date < startDate.Value) continue;
                     if (endDate.HasValue && payment.Date > endDate.Value.AddDays(1).AddSeconds(-1)) continue;
@@ -993,6 +999,11 @@ public class ReportService : IReportService
             return (order.MixedPayments, "mixed");
         return (new List<PartialPayment>(), string.Empty);
     }
+
+    /// <summary>Abono sintético Cashea por financiación: no debe aparecer en reporte de conciliación.</summary>
+    private static bool IsCasheaFinancingStubForReport(PartialPayment payment) =>
+        payment.PaymentDetails?.CasheaFinancedPortion == true ||
+        string.Equals(payment.Method, CasheaFinancedMethodLabel, StringComparison.Ordinal);
 
     private static bool IsBolivaresCurrency(string? monedaOriginal) =>
         string.Equals(monedaOriginal?.Trim(), "Bs", StringComparison.OrdinalIgnoreCase);
