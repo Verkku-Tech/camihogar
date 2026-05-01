@@ -9,6 +9,7 @@ using Ordina.Database.Entities.Category;
 using Ordina.Database.Entities.Commission;
 using Ordina.Database.Entities.User;
 using Ordina.Database.Repositories;
+using Ordina.Orders.Application.Commission;
 using Ordina.Orders.Application.DTOs;
 
 namespace Ordina.Orders.Application.Services;
@@ -1187,6 +1188,7 @@ public class ReportService : IReportService
                 Descripcion = row.Descripcion,
                 CantidadArticulos = row.CantidadArticulos,
                 TipoVenta = row.TipoVenta,
+                ComisionFamiliaUsdPorUnidad = row.TasaComisionBase,
                 Comision = row.Comision,
                 VendedorSecundario = row.VendedorSecundario,
                 ComisionSecundaria = row.ComisionSecundaria,
@@ -1235,17 +1237,18 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 4, "Pedido");
                 sl.SetCellValue(1, 5, "Cant. Artículos");
                 sl.SetCellValue(1, 6, "Tipo de venta");
-                sl.SetCellValue(1, 7, "Comisión Vendedor");
-                sl.SetCellValue(1, 8, "Total Comisión + Sueldo");
-                sl.SetCellValue(1, 9, "Comisión Post venta");
-                sl.SetCellValue(1, 10, "Comisión Referido");
+                sl.SetCellValue(1, 7, "Comisión familia USD/u");
+                sl.SetCellValue(1, 8, "Comisión Vendedor");
+                sl.SetCellValue(1, 9, "Total Comisión + Sueldo");
+                sl.SetCellValue(1, 10, "Comisión Post venta");
+                sl.SetCellValue(1, 11, "Comisión Referido");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 10; col++)
+                for (int col = 1; col <= 11; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -1260,10 +1263,13 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 4, item.Pedido);
                     sl.SetCellValue(row, 5, item.CantidadArticulos);
                     sl.SetCellValue(row, 6, item.TipoVenta);
-                    sl.SetCellValue(row, 7, (double)item.Comision);
-                    sl.SetCellValue(row, 8, (double)item.TotalComisionMasSueldo);
-                    sl.SetCellValue(row, 9, item.ComisionPostventa.HasValue ? (double)item.ComisionPostventa.Value : 0);
-                    sl.SetCellValue(row, 10, item.ComisionSecundaria.HasValue ? (double)item.ComisionSecundaria.Value : 0);
+                    sl.SetCellValue(row, 7, (double)(item.ComisionFamiliaUsdPorUnidad != 0m
+                        ? item.ComisionFamiliaUsdPorUnidad
+                        : item.TasaComisionBase));
+                    sl.SetCellValue(row, 8, (double)item.Comision);
+                    sl.SetCellValue(row, 9, (double)item.TotalComisionMasSueldo);
+                    sl.SetCellValue(row, 10, item.ComisionPostventa.HasValue ? (double)item.ComisionPostventa.Value : 0);
+                    sl.SetCellValue(row, 11, item.ComisionSecundaria.HasValue ? (double)item.ComisionSecundaria.Value : 0);
                     row++;
                 }
 
@@ -1274,10 +1280,11 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(4, 15);  // Pedido
                 sl.SetColumnWidth(5, 15);  // Cant. Artículos
                 sl.SetColumnWidth(6, 28);  // Tipo de venta
-                sl.SetColumnWidth(7, 18);  // Comisión Vendedor
-                sl.SetColumnWidth(8, 22);  // Total Comisión + Sueldo
-                sl.SetColumnWidth(9, 18);  // Post venta
-                sl.SetColumnWidth(10, 18); // Referido
+                sl.SetColumnWidth(7, 16);  // USD/u familia
+                sl.SetColumnWidth(8, 18);  // Comisión Vendedor
+                sl.SetColumnWidth(9, 22);  // Total Comisión + Sueldo
+                sl.SetColumnWidth(10, 18);  // Post venta
+                sl.SetColumnWidth(11, 18); // Referido
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
@@ -1324,6 +1331,7 @@ public class ReportService : IReportService
                 Descripcion = row.Descripcion,
                 CantidadArticulos = row.CantidadArticulos,
                 TipoVenta = row.TipoVenta,
+                ComisionFamiliaUsdPorUnidad = row.TasaComisionBase,
                 Comision = row.Comision,
                 VendedorSecundario = row.VendedorSecundario,
                 ComisionSecundaria = row.ComisionSecundaria,
@@ -1479,25 +1487,22 @@ public class ReportService : IReportService
 
         if (isSharedSale && !isExclusiveVendor)
         {
-            // VENTA COMPARTIDA: reparto como % de la comisión de familia (USD × unidad)
+            // VENTA COMPARTIDA: reparto como % de la comisión de familia (USD × unidad), regla por tipo de venta + tier USD/u
             var saleType = DetermineSaleType(order);
-            var rule = saleTypeRules.FirstOrDefault(r => 
-                r.SaleType.Equals(saleType, StringComparison.OrdinalIgnoreCase));
-            
+            var rule = SaleTypeCommissionTierResolver.PickRule(saleTypeRules, saleType, baseCommissionRate, _logger);
+
             if (rule != null)
             {
                 var vendorCommission = familyCommission * (rule.VendorRate / 100);
                 var referrerCommission = familyCommission * (rule.ReferrerRate / 100);
                 var postventaCommission = familyCommission * (rule.PostventaRate / 100);
-                
+
                 return (vendorCommission, referrerCommission, postventaCommission, baseCommissionRate, rule.VendorRate, rule.ReferrerRate, rule.PostventaRate);
             }
-            else
-            {
-                _logger.LogWarning("No se encontró regla de distribución para el tipo de venta '{SaleType}'. Dividiendo 50/50.", saleType);
-                var halfCommission = familyCommission / 2;
-                return (halfCommission, halfCommission, 0m, baseCommissionRate, 50m, 50m, 0m);
-            }
+
+            _logger.LogWarning("No se encontró regla de distribución para el tipo de venta '{SaleType}'. Dividiendo 50/50.", saleType);
+            var halfCommission = familyCommission / 2;
+            return (halfCommission, halfCommission, 0m, baseCommissionRate, 50m, 50m, 0m);
         }
         else
         {
@@ -1525,8 +1530,10 @@ public class ReportService : IReportService
     private string GetCommissionSaleTypeLabel(Order order, IEnumerable<SaleTypeCommissionRule> rules)
     {
         var code = DetermineSaleType(order);
-        var rule = rules.FirstOrDefault(r =>
-            r.SaleType.Equals(code, StringComparison.OrdinalIgnoreCase));
+        var rule = rules
+            .Where(r => r.SaleType.Equals(code, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(r => r.FamilyCommissionUsdPerUnit)
+            .FirstOrDefault();
         if (rule != null && !string.IsNullOrWhiteSpace(rule.SaleTypeLabel))
             return rule.SaleTypeLabel.Trim();
 

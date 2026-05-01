@@ -11,6 +11,9 @@ public class CommissionReportRowDto
     public int CantidadArticulos { get; set; }
     /// <summary>Tipo de venta (saleType/deliveryType) que determina la regla de distribución de comisión.</summary>
     public string TipoVenta { get; set; } = string.Empty;
+
+    /// <summary>USD de comisión familia por unidad del producto (2.5, 5, 7.5); mismo criterio que el tier de reglas.</summary>
+    public decimal ComisionFamiliaUsdPorUnidad { get; set; }
     
     // Comisión del vendedor principal
     public decimal Comision { get; set; }

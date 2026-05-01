@@ -43,6 +43,10 @@ function normalizeCategoryKey(s: string): string {
 
 type EditedRule = { vendorRate: number; referrerRate: number; postventaRate: number };
 
+function ruleRowKey(rule: Pick<SaleTypeCommissionRule, "saleType" | "familyCommissionUsdPerUnit">): string {
+  return `${rule.saleType}:${rule.familyCommissionUsdPerUnit}`;
+}
+
 export function CommissionsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryCommissionValues, setCategoryCommissionValues] = useState<Record<string, number>>({});
@@ -87,7 +91,12 @@ export function CommissionsPage() {
       const loadedUsers = await getUsers();
 
       setCategories(loadedCategories);
-      setSaleTypeRules(loadedRules);
+      const sortedRules = [...loadedRules].sort((a, b) => {
+        const cmp = a.saleType.localeCompare(b.saleType);
+        if (cmp !== 0) return cmp;
+        return (a.familyCommissionUsdPerUnit ?? 0) - (b.familyCommissionUsdPerUnit ?? 0);
+      });
+      setSaleTypeRules(sortedRules);
       setUsers(loadedUsers.filter((u) => u.status === "active"));
 
       if (errors.length) {
@@ -106,8 +115,8 @@ export function CommissionsPage() {
       setCategoryCommissionValues(commissionValues);
 
       const rulesMap: Record<string, EditedRule> = {};
-      loadedRules.forEach((rule) => {
-        rulesMap[rule.saleType] = {
+      sortedRules.forEach((rule) => {
+        rulesMap[ruleRowKey(rule)] = {
           vendorRate: rule.vendorRate,
           referrerRate: rule.referrerRate,
           postventaRate: rule.postventaRate ?? 0,
@@ -163,17 +172,13 @@ export function CommissionsPage() {
     }
   };
 
-  const handleRuleChange = (
-    saleType: string,
-    field: keyof EditedRule,
-    value: number
-  ) => {
+  const handleRuleChange = (rowKey: string, field: keyof EditedRule, value: number) => {
     setEditedRules((prev) => ({
       ...prev,
-      [saleType]: {
-        vendorRate: prev[saleType]?.vendorRate ?? 0,
-        referrerRate: prev[saleType]?.referrerRate ?? 0,
-        postventaRate: prev[saleType]?.postventaRate ?? 0,
+      [rowKey]: {
+        vendorRate: prev[rowKey]?.vendorRate ?? 0,
+        referrerRate: prev[rowKey]?.referrerRate ?? 0,
+        postventaRate: prev[rowKey]?.postventaRate ?? 0,
         [field]: value,
       },
     }));
@@ -182,13 +187,32 @@ export function CommissionsPage() {
   const handleSaveSaleTypeRules = async () => {
     setIsSaving(true);
     try {
-      const rulesToSave = saleTypeRules.map((rule) => ({
-        saleType: rule.saleType,
-        saleTypeLabel: rule.saleTypeLabel,
-        vendorRate: editedRules[rule.saleType]?.vendorRate ?? rule.vendorRate,
-        referrerRate: editedRules[rule.saleType]?.referrerRate ?? rule.referrerRate,
-        postventaRate: editedRules[rule.saleType]?.postventaRate ?? rule.postventaRate ?? 0,
-      }));
+      for (const rule of saleTypeRules) {
+        const key = ruleRowKey(rule);
+        const v = editedRules[key]?.vendorRate ?? rule.vendorRate;
+        const r = editedRules[key]?.referrerRate ?? rule.referrerRate;
+        const p = editedRules[key]?.postventaRate ?? rule.postventaRate ?? 0;
+        const sum = v + r + p;
+        if (Math.abs(sum - 100) > 0.02) {
+          toast.error(
+            `Los porcentajes deben sumar 100% (${rule.saleTypeLabel} · ${rule.familyCommissionUsdPerUnit} USD/u). Suma actual: ${sum}%`
+          );
+          setIsSaving(false);
+          return;
+        }
+      }
+
+      const rulesToSave = saleTypeRules.map((rule) => {
+        const key = ruleRowKey(rule);
+        return {
+          saleType: rule.saleType,
+          saleTypeLabel: rule.saleTypeLabel,
+          familyCommissionUsdPerUnit: rule.familyCommissionUsdPerUnit,
+          vendorRate: editedRules[key]?.vendorRate ?? rule.vendorRate,
+          referrerRate: editedRules[key]?.referrerRate ?? rule.referrerRate,
+          postventaRate: editedRules[key]?.postventaRate ?? rule.postventaRate ?? 0,
+        };
+      });
 
       await batchUpsertSaleTypeCommissionRules(rulesToSave);
       toast.success("Reglas de distribución guardadas exitosamente");
@@ -379,9 +403,10 @@ export function CommissionsPage() {
                 Distribución de Comisiones por Tipo de Venta
               </CardTitle>
               <CardDescription>
-                Cada porcentaje se aplica sobre la comisión en USD de la familia del producto (no sobre el precio del
-                pedido). ENCARGO y Sistema de Apartado incluyen reparto a post venta. Use &quot;Restaurar&quot; solo si
-                desea reemplazar todas las reglas por los valores estándar.
+                Por cada tipo de venta hay tres filas (comisión familia 2.5, 5 y 7.5 USD por unidad). Cada
+                porcentaje se aplica sobre la comisión en USD de la familia del producto (no sobre el precio del
+                pedido); vendedor + post venta + referido deben sumar 100%. Use &quot;Restaurar&quot; solo si desea
+                reemplazar todas las reglas por los valores estándar.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -400,6 +425,7 @@ export function CommissionsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Tipo de Venta</TableHead>
+                        <TableHead className="text-center">USD/u familia</TableHead>
                         <TableHead className="text-center">Vendedor tienda (% comisión familia)</TableHead>
                         <TableHead className="text-center">Post venta (% comisión familia)</TableHead>
                         <TableHead className="text-center">Referido online (% comisión familia)</TableHead>
@@ -408,15 +434,19 @@ export function CommissionsPage() {
                     </TableHeader>
                     <TableBody>
                       {saleTypeRules.map((rule) => {
-                        const vendorRate = editedRules[rule.saleType]?.vendorRate ?? rule.vendorRate;
-                        const referrerRate = editedRules[rule.saleType]?.referrerRate ?? rule.referrerRate;
+                        const rk = ruleRowKey(rule);
+                        const vendorRate = editedRules[rk]?.vendorRate ?? rule.vendorRate;
+                        const referrerRate = editedRules[rk]?.referrerRate ?? rule.referrerRate;
                         const postventaRate =
-                          editedRules[rule.saleType]?.postventaRate ?? rule.postventaRate ?? 0;
+                          editedRules[rk]?.postventaRate ?? rule.postventaRate ?? 0;
                         const total = vendorRate + referrerRate + postventaRate;
 
                         return (
-                          <TableRow key={rule.saleType}>
+                          <TableRow key={rule.id}>
                             <TableCell className="font-medium">{rule.saleTypeLabel}</TableCell>
+                            <TableCell className="text-center tabular-nums">
+                              {rule.familyCommissionUsdPerUnit}
+                            </TableCell>
                             <TableCell className="text-center">
                               <Input
                                 type="number"
@@ -427,7 +457,7 @@ export function CommissionsPage() {
                                 value={vendorRate}
                                 onChange={(e) =>
                                   handleRuleChange(
-                                    rule.saleType,
+                                    rk,
                                     "vendorRate",
                                     parseFloat(e.target.value) || 0
                                   )
@@ -444,7 +474,7 @@ export function CommissionsPage() {
                                 value={postventaRate}
                                 onChange={(e) =>
                                   handleRuleChange(
-                                    rule.saleType,
+                                    rk,
                                     "postventaRate",
                                     parseFloat(e.target.value) || 0
                                   )
@@ -461,7 +491,7 @@ export function CommissionsPage() {
                                 value={referrerRate}
                                 onChange={(e) =>
                                   handleRuleChange(
-                                    rule.saleType,
+                                    rk,
                                     "referrerRate",
                                     parseFloat(e.target.value) || 0
                                   )
@@ -469,7 +499,9 @@ export function CommissionsPage() {
                               />
                             </TableCell>
                             <TableCell className="text-center">
-                              <Badge variant={total > 0 ? "default" : "secondary"}>{total}%</Badge>
+                              <Badge variant={Math.abs(total - 100) < 0.02 ? "default" : "destructive"}>
+                                {total}%
+                              </Badge>
                             </TableCell>
                           </TableRow>
                         );

@@ -19,6 +19,11 @@ public class SaleTypeCommissionRule
     [BsonElement("saleTypeLabel")]
     public string SaleTypeLabel { get; set; } = string.Empty; // "Entrega", "Encargo", etc. (para display)
 
+    /// <summary>USD de comisión familia por unidad (2.5, 5 o 7.5). 0 = documento legacy sin migrar.</summary>
+    [BsonElement("familyCommissionUsdPerUnit")]
+    [BsonRepresentation(BsonType.Decimal128)]
+    public decimal FamilyCommissionUsdPerUnit { get; set; }
+
     [BsonElement("vendorRate")]
     [BsonRepresentation(BsonType.Decimal128)]
     public decimal VendorRate { get; set; } // 2.5, 2, 1.5, etc. (porcentaje que gana el vendedor de tienda)

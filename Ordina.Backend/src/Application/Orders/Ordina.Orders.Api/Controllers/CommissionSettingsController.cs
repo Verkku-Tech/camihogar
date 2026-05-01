@@ -208,8 +208,24 @@ public class CommissionSettingsController : ControllerBase
 
     #region Sale Type Commission Rules (Reglas de distribución por tipo de venta)
 
+    private static bool IsAllowedFamilyCommissionTier(decimal v) =>
+        v == 2.5m || v == 5m || v == 7.5m;
+
+    private static SaleTypeCommissionRuleDto MapSaleTypeRuleDto(SaleTypeCommissionRule r) => new()
+    {
+        Id = r.Id,
+        SaleType = r.SaleType,
+        SaleTypeLabel = r.SaleTypeLabel,
+        FamilyCommissionUsdPerUnit = r.FamilyCommissionUsdPerUnit,
+        VendorRate = r.VendorRate,
+        ReferrerRate = r.ReferrerRate,
+        PostventaRate = r.PostventaRate,
+        CreatedAt = r.CreatedAt,
+        UpdatedAt = r.UpdatedAt
+    };
+
     /// <summary>
-    /// Obtiene todas las reglas de distribución por tipo de venta
+    /// Obtiene todas las reglas de distribución por tipo de venta (incluye una fila por nivel 2.5 / 5 / 7.5 USD/u).
     /// </summary>
     [HttpGet("SaleTypeRules")]
     [ProducesResponseType(typeof(IEnumerable<SaleTypeCommissionRuleDto>), StatusCodes.Status200OK)]
@@ -218,18 +234,7 @@ public class CommissionSettingsController : ControllerBase
         try
         {
             var rules = await _saleTypeCommissionRuleRepository.GetAllAsync();
-            var dtos = rules.Select(r => new SaleTypeCommissionRuleDto
-            {
-                Id = r.Id,
-                SaleType = r.SaleType,
-                SaleTypeLabel = r.SaleTypeLabel,
-                VendorRate = r.VendorRate,
-                ReferrerRate = r.ReferrerRate,
-                PostventaRate = r.PostventaRate,
-                CreatedAt = r.CreatedAt,
-                UpdatedAt = r.UpdatedAt
-            });
-            return Ok(dtos);
+            return Ok(rules.Select(MapSaleTypeRuleDto));
         }
         catch (Exception ex)
         {
@@ -239,32 +244,22 @@ public class CommissionSettingsController : ControllerBase
     }
 
     /// <summary>
-    /// Obtiene una regla específica por tipo de venta
+    /// Obtiene todas las variantes por nivel (2.5, 5, 7.5 USD/u) de un tipo de venta.
     /// </summary>
     [HttpGet("SaleTypeRules/{saleType}")]
-    [ProducesResponseType(typeof(SaleTypeCommissionRuleDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(IEnumerable<SaleTypeCommissionRuleDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<SaleTypeCommissionRuleDto>> GetSaleTypeRule(string saleType)
+    public async Task<ActionResult<IEnumerable<SaleTypeCommissionRuleDto>>> GetSaleTypeRules(string saleType)
     {
         try
         {
-            var rule = await _saleTypeCommissionRuleRepository.GetBySaleTypeAsync(saleType);
-            if (rule == null)
+            var list = await _saleTypeCommissionRuleRepository.GetAllBySaleTypeAsync(saleType);
+            if (list.Count == 0)
             {
                 return NotFound(new { message = $"No se encontró regla para el tipo de venta {saleType}" });
             }
 
-            return Ok(new SaleTypeCommissionRuleDto
-            {
-                Id = rule.Id,
-                SaleType = rule.SaleType,
-                SaleTypeLabel = rule.SaleTypeLabel,
-                VendorRate = rule.VendorRate,
-                ReferrerRate = rule.ReferrerRate,
-                PostventaRate = rule.PostventaRate,
-                CreatedAt = rule.CreatedAt,
-                UpdatedAt = rule.UpdatedAt
-            });
+            return Ok(list.Select(MapSaleTypeRuleDto));
         }
         catch (Exception ex)
         {
@@ -274,7 +269,7 @@ public class CommissionSettingsController : ControllerBase
     }
 
     /// <summary>
-    /// Crea o actualiza una regla de distribución (upsert)
+    /// Crea o actualiza una regla de distribución (upsert por tipo de venta + USD/u familia).
     /// </summary>
     [HttpPost("SaleTypeRules")]
     [ProducesResponseType(typeof(SaleTypeCommissionRuleDto), StatusCodes.Status200OK)]
@@ -288,28 +283,24 @@ public class CommissionSettingsController : ControllerBase
                 return BadRequest(new { message = "El tipo de venta es requerido" });
             }
 
+            if (!IsAllowedFamilyCommissionTier(dto.FamilyCommissionUsdPerUnit))
+            {
+                return BadRequest(new { message = "familyCommissionUsdPerUnit debe ser 2.5, 5 o 7.5" });
+            }
+
             var rule = new SaleTypeCommissionRule
             {
-                SaleType = dto.SaleType,
+                SaleType = dto.SaleType.Trim(),
                 SaleTypeLabel = dto.SaleTypeLabel,
+                FamilyCommissionUsdPerUnit = dto.FamilyCommissionUsdPerUnit,
                 VendorRate = dto.VendorRate,
                 ReferrerRate = dto.ReferrerRate,
                 PostventaRate = dto.PostventaRate
             };
 
-            var result = await _saleTypeCommissionRuleRepository.UpsertBySaleTypeAsync(rule);
+            var result = await _saleTypeCommissionRuleRepository.UpsertBySaleTypeAndTierAsync(rule);
 
-            return Ok(new SaleTypeCommissionRuleDto
-            {
-                Id = result.Id,
-                SaleType = result.SaleType,
-                SaleTypeLabel = result.SaleTypeLabel,
-                VendorRate = result.VendorRate,
-                ReferrerRate = result.ReferrerRate,
-                PostventaRate = result.PostventaRate,
-                CreatedAt = result.CreatedAt,
-                UpdatedAt = result.UpdatedAt
-            });
+            return Ok(MapSaleTypeRuleDto(result));
         }
         catch (Exception ex)
         {
@@ -319,7 +310,7 @@ public class CommissionSettingsController : ControllerBase
     }
 
     /// <summary>
-    /// Actualiza múltiples reglas en lote
+    /// Actualiza múltiples reglas en lote (upsert por tipo de venta + USD/u familia).
     /// </summary>
     [HttpPost("SaleTypeRules/Batch")]
     [ProducesResponseType(typeof(IEnumerable<SaleTypeCommissionRuleDto>), StatusCodes.Status200OK)]
@@ -334,27 +325,23 @@ public class CommissionSettingsController : ControllerBase
                 if (string.IsNullOrWhiteSpace(dto.SaleType))
                     continue;
 
+                if (!IsAllowedFamilyCommissionTier(dto.FamilyCommissionUsdPerUnit))
+                {
+                    return BadRequest(new { message = $"familyCommissionUsdPerUnit inválido para {dto.SaleType}" });
+                }
+
                 var rule = new SaleTypeCommissionRule
                 {
-                    SaleType = dto.SaleType,
+                    SaleType = dto.SaleType.Trim(),
                     SaleTypeLabel = dto.SaleTypeLabel,
+                    FamilyCommissionUsdPerUnit = dto.FamilyCommissionUsdPerUnit,
                     VendorRate = dto.VendorRate,
                     ReferrerRate = dto.ReferrerRate,
                     PostventaRate = dto.PostventaRate
                 };
 
-                var result = await _saleTypeCommissionRuleRepository.UpsertBySaleTypeAsync(rule);
-                results.Add(new SaleTypeCommissionRuleDto
-                {
-                    Id = result.Id,
-                    SaleType = result.SaleType,
-                    SaleTypeLabel = result.SaleTypeLabel,
-                    VendorRate = result.VendorRate,
-                    ReferrerRate = result.ReferrerRate,
-                    PostventaRate = result.PostventaRate,
-                    CreatedAt = result.CreatedAt,
-                    UpdatedAt = result.UpdatedAt
-                });
+                var result = await _saleTypeCommissionRuleRepository.UpsertBySaleTypeAndTierAsync(rule);
+                results.Add(MapSaleTypeRuleDto(result));
             }
 
             return Ok(results);
@@ -367,7 +354,7 @@ public class CommissionSettingsController : ControllerBase
     }
 
     /// <summary>
-    /// Elimina una regla de distribución
+    /// Elimina todas las variantes por nivel de un tipo de venta.
     /// </summary>
     [HttpDelete("SaleTypeRules/{saleType}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -376,8 +363,8 @@ public class CommissionSettingsController : ControllerBase
     {
         try
         {
-            var deleted = await _saleTypeCommissionRuleRepository.DeleteBySaleTypeAsync(saleType);
-            if (!deleted)
+            var deleted = await _saleTypeCommissionRuleRepository.DeleteAllBySaleTypeAsync(saleType);
+            if (deleted == 0)
             {
                 return NotFound(new { message = $"No se encontró regla para el tipo de venta {saleType}" });
             }
@@ -401,20 +388,8 @@ public class CommissionSettingsController : ControllerBase
         {
             await _saleTypeCommissionRuleRepository.SeedDefaultRulesAsync(force);
             var rules = await _saleTypeCommissionRuleRepository.GetAllAsync();
-            
-            var dtos = rules.Select(r => new SaleTypeCommissionRuleDto
-            {
-                Id = r.Id,
-                SaleType = r.SaleType,
-                SaleTypeLabel = r.SaleTypeLabel,
-                VendorRate = r.VendorRate,
-                ReferrerRate = r.ReferrerRate,
-                PostventaRate = r.PostventaRate,
-                CreatedAt = r.CreatedAt,
-                UpdatedAt = r.UpdatedAt
-            });
-            
-            return Ok(dtos);
+
+            return Ok(rules.Select(MapSaleTypeRuleDto));
         }
         catch (Exception ex)
         {
