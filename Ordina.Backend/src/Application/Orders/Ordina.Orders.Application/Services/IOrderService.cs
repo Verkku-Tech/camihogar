@@ -22,7 +22,13 @@ public interface IOrderService
     Task<OrderResponseDto> CreateOrderAsync(CreateOrderDto createDto, string userId, string userName);
     Task<OrderResponseDto> ConfirmPendingOrderAsync(string pendingOrderId, ConfirmOrderDto confirmDto, string userId, string userName);
     Task<OrderResponseDto> ConvertBudgetToOrderAsync(string budgetId, ConvertBudgetToOrderDto dto, string userId, string userName);
-    Task<OrderResponseDto> UpdateOrderAsync(string id, UpdateOrderDto updateDto, string userId, string userName);
+    Task<OrderResponseDto> UpdateOrderAsync(
+        string id,
+        UpdateOrderDto updateDto,
+        string userId,
+        string userName,
+        string? callerRole = null,
+        bool callerHasDispatchUpdate = false);
     Task<OrderResponseDto> ValidateOrderItemAsync(string id, string itemId, string userId, string userName);
     Task<bool> DeleteOrderAsync(string id, string userId, string userName);
     Task<bool> OrderExistsAsync(string id);

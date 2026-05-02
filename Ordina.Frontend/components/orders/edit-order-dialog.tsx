@@ -119,16 +119,6 @@ export const PAYMENT_CONDITIONS = [
   { value: "todo_pago", label: "Todo Pago" },
 ] as const;
 
-export const PURCHASE_TYPES = [
-  { value: "delivery_express", label: "Delivery Express" },
-  { value: "encargo", label: "Encargo" },
-  { value: "encargo_entrega", label: "Encargo/Entrega" },
-  { value: "entrega", label: "Entrega" },
-  { value: "retiro_almacen", label: "Retiro x Almacén" },
-  { value: "retiro_tienda", label: "Retiro x Tienda" },
-  { value: "sistema_apartado", label: "SA (Sistema de Apartado)" },
-] as const;
-
 export const DELIVERY_TYPES = [
   { value: "entrega_programada", label: "Entrega programada" },
   { value: "delivery_express", label: "Delivery Express" },

@@ -28,6 +28,44 @@ public class OrderService : IOrderService
         _logger = logger;
     }
 
+    private static bool IsAdministratorOrSuperAdministrator(string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role)) return false;
+        return string.Equals(role, "Super Administrator", StringComparison.Ordinal)
+            || string.Equals(role, "Administrator", StringComparison.Ordinal);
+    }
+
+    private static string NormalizeDispatchField(string? value) => (value ?? "").Trim();
+
+    /// <summary>
+    /// Detecta cambios en ubicación / logística de líneas que corresponden a despacho (ruta, entrega, devolución a almacén).
+    /// </summary>
+    private static bool DispatchLogisticsWouldChange(Order existing, UpdateOrderDto dto)
+    {
+        if (dto.Products == null) return false;
+        foreach (var p in dto.Products)
+        {
+            var ex = existing.Products.FirstOrDefault(x => x.Id == p.Id);
+            if (ex == null) continue;
+            if (!string.Equals(
+                    NormalizeDispatchField(ex.LocationStatus),
+                    NormalizeDispatchField(p.LocationStatus),
+                    StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (!string.Equals(
+                    NormalizeDispatchField(ex.LogisticStatus),
+                    NormalizeDispatchField(p.LogisticStatus),
+                    StringComparison.OrdinalIgnoreCase))
+                return true;
+            var exDel = ex.DeliveredAt.HasValue;
+            var dtoDel = p.DeliveredAt.HasValue;
+            if (exDel != dtoDel) return true;
+            if (exDel && dtoDel && ex.DeliveredAt!.Value != p.DeliveredAt!.Value) return true;
+        }
+
+        return false;
+    }
+
     public async Task<IEnumerable<OrderResponseDto>> GetAllOrdersAsync()
     {
         try
@@ -503,7 +541,13 @@ public class OrderService : IOrderService
         return MapToDto(created);
     }
 
-    public async Task<OrderResponseDto> UpdateOrderAsync(string id, UpdateOrderDto updateDto, string userId, string userName)
+    public async Task<OrderResponseDto> UpdateOrderAsync(
+        string id,
+        UpdateOrderDto updateDto,
+        string userId,
+        string userName,
+        string? callerRole = null,
+        bool callerHasDispatchUpdate = false)
     {
         try
         {
@@ -516,6 +560,14 @@ public class OrderService : IOrderService
             if (existingOrder == null)
             {
                 throw new KeyNotFoundException($"Pedido con ID {id} no encontrado");
+            }
+
+            if (DispatchLogisticsWouldChange(existingOrder, updateDto) &&
+                !IsAdministratorOrSuperAdministrator(callerRole) &&
+                !callerHasDispatchUpdate)
+            {
+                throw new UnauthorizedAccessException(
+                    "No autorizado a modificar la logística de despacho (ubicación o estado de entrega de productos).");
             }
 
             var oldSnapshot = OrderDeepClone.Clone(existingOrder);
