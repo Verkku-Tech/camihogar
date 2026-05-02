@@ -1,9 +1,9 @@
-import { PURCHASE_TYPES } from "@/components/orders/constants"
 import {
   getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_BS,
   type PartialMixedPaymentsSource,
 } from "@/lib/order-payments"
+import { getSaleTypeLabel } from "@/components/orders/constants"
 
 const WAREHOUSE_STATUSES = new Set(["En Almacén", "Almacén"])
 
@@ -55,5 +55,6 @@ export function isSaWarehouseHighlight(order: {
 
 export function purchaseTypeLabel(saleType?: string): string | undefined {
   if (!saleType) return undefined
-  return PURCHASE_TYPES.find((t) => t.value === saleType)?.label
+  const label = getSaleTypeLabel(saleType)
+  return label || undefined
 }

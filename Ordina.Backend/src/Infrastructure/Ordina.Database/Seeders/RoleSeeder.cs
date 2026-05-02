@@ -77,7 +77,8 @@ public static class RoleSeeder
                     Permissions.Settings.ManageAlerts,
                     Permissions.Budgets.Create, Permissions.Budgets.Update, Permissions.Budgets.ConvertToOrder, Permissions.Budgets.Close,
                     Permissions.Orders.Read, Permissions.Orders.Create, Permissions.Orders.Update, Permissions.Orders.Export,
-                    Permissions.Dispatch.Read, Permissions.Dispatch.Create, Permissions.Dispatch.Update
+                    // Solo lectura de despachos; mutación (A ruta / Entregar / Devolver) solo Administrador / Super Administrador (UI + API).
+                    Permissions.Dispatch.Read,
                 },
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -86,6 +87,9 @@ public static class RoleSeeder
 
         // Nota: solo InsertOne cuando el rol no existe. Entornos con roles ya en Mongo deben asignar
         // budgets.convert_to_order en Configuración > Roles o vía migración del array Permissions.
+        //
+        // Online Seller: si el rol ya existía con dispatch.create/update, quitarlos manualmente en Mongo
+        // (colección Roles, documento Name = "Online Seller") para alinear permisos con el código actual.
 
         foreach (var roleEntry in rolesKeyed)
         {

@@ -28,6 +28,7 @@ import { getUnifiedOrders, getCategories, updateOrder, type UnifiedOrder, type O
 import { isSistemaApartado } from "@/lib/order-sa"
 import { useCurrency } from "@/contexts/currency-context"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/auth-context"
 import { DELIVERY_TYPES, DELIVERY_ZONES } from "@/components/orders/new-order-dialog"
 import {
   Select,
@@ -168,6 +169,9 @@ function AttributesGrid({ pairs, productName }: AttributesGridProps) {
 }
 
 export default function DespachosPage() {
+  const { user } = useAuth()
+  const canMutateDispatchStatus =
+    user?.role === "Super Administrator" || user?.role === "Administrator"
   const { formatWithPreference, preferredCurrency, exchangeRates } = useCurrency()
   const router = useRouter()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
@@ -550,12 +554,20 @@ export default function DespachosPage() {
   }
 
   const handleActionClick = (order: UnifiedOrder, action: ActionType) => {
+    if (!canMutateDispatchStatus) {
+      toast.error("Solo administradores pueden modificar el despacho.")
+      return
+    }
     setOrderToActOn(order)
     setActionType(action)
     setIsActionDialogOpen(true)
   }
 
   const handleBulkActionClick = (action: ActionType) => {
+    if (!canMutateDispatchStatus) {
+      toast.error("Solo administradores pueden modificar el despacho.")
+      return
+    }
     if (selectedOrders.size === 0) {
       toast.error(`Selecciona al menos un producto para aplicar la acción`)
       return
@@ -566,6 +578,11 @@ export default function DespachosPage() {
 
   // Ejecuta la acción en BDD de un solo pedido
   const handleExecuteAction = async () => {
+    if (!canMutateDispatchStatus) {
+      toast.error("Solo administradores pueden modificar el despacho.")
+      setIsActionDialogOpen(false)
+      return
+    }
     if (!orderToActOn || !actionType) return
 
     try {
@@ -639,6 +656,11 @@ export default function DespachosPage() {
   }
 
   const handleExecuteBulkAction = async () => {
+    if (!canMutateDispatchStatus) {
+      toast.error("Solo administradores pueden modificar el despacho.")
+      setIsBulkActionDialogOpen(false)
+      return
+    }
     if (selectedOrders.size === 0 || !actionType) return
 
     try {
@@ -816,12 +838,12 @@ export default function DespachosPage() {
                     )}
                     
                     {/* Botones de acción masiva */}
-                    {selectedOrders.size > 0 && activeTab === "por_despachar" && (
+                    {canMutateDispatchStatus && selectedOrders.size > 0 && activeTab === "por_despachar" && (
                       <Button onClick={() => handleBulkActionClick("to_dispatch")} className="w-full sm:w-auto mt-4 sm:mt-0">
                         <Truck className="mr-2 h-4 w-4" /> Despachar Seleccionados ({selectedOrders.size})
                       </Button>
                     )}
-                    {selectedOrders.size > 0 && activeTab === "en_despacho" && (
+                    {canMutateDispatchStatus && selectedOrders.size > 0 && activeTab === "en_despacho" && (
                       <div className="flex gap-2 w-full sm:w-auto mt-4 sm:mt-0">
                         <Button onClick={() => handleBulkActionClick("to_delivered")} className="bg-green-600 hover:bg-green-700">
                           <CheckCircle className="mr-2 h-4 w-4" /> Entregar ({selectedOrders.size})
@@ -925,9 +947,10 @@ export default function DespachosPage() {
                     ) : (
                       <div className="space-y-4">
                         {/* Cabecera para selección de todos */}
-                        {filteredOrders.some((o) =>
-                          o.products.some((p) => getProductDispatchStatus(p) === activeTab),
-                        ) && (
+                        {canMutateDispatchStatus &&
+                          filteredOrders.some((o) =>
+                            o.products.some((p) => getProductDispatchStatus(p) === activeTab),
+                          ) && (
                           <div className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground border-b pb-2 mb-2">
                             <Checkbox
                               checked={allSelected}
@@ -984,7 +1007,7 @@ export default function DespachosPage() {
                                 ) : undefined
                               }
                               selectControl={
-                                activeProducts.length > 0
+                                canMutateDispatchStatus && activeProducts.length > 0
                                   ? {
                                       checked: isSelected
                                         ? true
@@ -1023,7 +1046,7 @@ export default function DespachosPage() {
                                   </Button>
 
                                   {/* Botón Acción por Orden */}
-                                  {activeTab === "por_despachar" && activeProducts.length > 0 && (
+                                  {activeTab === "por_despachar" && activeProducts.length > 0 && canMutateDispatchStatus && (
                                     <Button
                                       variant="ghost"
                                       size="sm"
@@ -1033,7 +1056,7 @@ export default function DespachosPage() {
                                       <Truck className="w-3 h-3 mr-1" /> A Ruta
                                     </Button>
                                   )}
-                                  {activeTab === "en_despacho" && activeProducts.length > 0 && (
+                                  {activeTab === "en_despacho" && activeProducts.length > 0 && canMutateDispatchStatus && (
                                     <>
                                       <Button
                                         variant="ghost"
@@ -1077,15 +1100,25 @@ export default function DespachosPage() {
                                       <HoverCard key={product.id} openDelay={200} closeDelay={100}>
                                         <HoverCardTrigger asChild>
                                           <TableRow
-                                            className="hover:bg-muted/50 cursor-pointer"
-                                            onClick={() => handleToggleProduct(order.id, product.id)}
+                                            className={
+                                              canMutateDispatchStatus
+                                                ? "hover:bg-muted/50 cursor-pointer"
+                                                : "hover:bg-muted/50"
+                                            }
+                                            onClick={
+                                              canMutateDispatchStatus
+                                                ? () => handleToggleProduct(order.id, product.id)
+                                                : undefined
+                                            }
                                           >
                                             <TableCell className="w-[50px]">
-                                              <Checkbox
-                                                checked={isProductSelected}
-                                                onCheckedChange={() => handleToggleProduct(order.id, product.id)}
-                                                onClick={(e) => e.stopPropagation()}
-                                              />
+                                              {canMutateDispatchStatus ? (
+                                                <Checkbox
+                                                  checked={isProductSelected}
+                                                  onCheckedChange={() => handleToggleProduct(order.id, product.id)}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                />
+                                              ) : null}
                                             </TableCell>
                                             <TableCell className="font-medium">
                                               <div className="flex flex-col">

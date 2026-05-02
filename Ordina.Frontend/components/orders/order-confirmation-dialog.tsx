@@ -45,6 +45,7 @@ import {
   type Currency,
   convertFromBs,
 } from "@/lib/currency-utils";
+import { getSaleTypeLabel } from "@/components/orders/constants";
 import { useCurrency } from "@/contexts/currency-context";
 import {
   getCategories,
@@ -935,21 +936,7 @@ export function OrderConfirmationDialog({
                         Tipo de Venta:
                       </span>
                       <p className="font-medium">
-                        {orderData.saleType === "encargo"
-                          ? "Encargo"
-                          : orderData.saleType === "encargo_entrega"
-                          ? "Encargo/Entrega"
-                          : orderData.saleType === "entrega"
-                          ? "Entrega"
-                          : orderData.saleType === "delivery_express"
-                          ? "Delivery Express"
-                          : orderData.saleType === "retiro_almacen"
-                          ? "Retiro x Almacén"
-                          : orderData.saleType === "retiro_tienda"
-                          ? "Retiro x Tienda"
-                          : orderData.saleType === "sistema_apartado"
-                          ? "Sistema de Apartado"
-                          : orderData.saleType}
+                        {getSaleTypeLabel(orderData.saleType)}
                       </p>
                     </div>
                   )}

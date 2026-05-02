@@ -12,6 +12,7 @@ import { apiClient } from "@/lib/api-client"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
+import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility"
 
 interface OrdersTableProps {
   limit?: number
@@ -53,11 +54,23 @@ const getStatusColor = (status: string) => {
   }
 }
 
-function filterAndSortGeneratedOrders(allOrders: Order[], limit: number) {
-  return allOrders
+function filterAndSortGeneratedOrders(
+  allOrders: Order[],
+  limit: number,
+  userRole: string | undefined,
+  onlineSellerUserId: string | undefined,
+) {
+  let list = allOrders
     .filter((o) => o.status === "Generado" || o.status === "Generada")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, limit)
+  if (userRole === "Online Seller") {
+    if (!onlineSellerUserId?.trim()) {
+      list = []
+    } else {
+      list = list.filter((o) => isOrderVisibleToOnlineSeller(o, onlineSellerUserId))
+    }
+  }
+  return list.slice(0, limit)
 }
 
 export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) {
@@ -72,12 +85,14 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
 
   const reloadGeneratedOrders = useCallback(async () => {
     const allOrders = await getOrders()
-    setOrders(filterAndSortGeneratedOrders(allOrders, limit))
-  }, [limit])
+    setOrders(filterAndSortGeneratedOrders(allOrders, limit, user?.role, user?.id))
+  }, [limit, user?.role, user?.id])
 
   useEffect(() => {
     if (prefetchedOrders !== undefined) {
-      setOrders(filterAndSortGeneratedOrders(prefetchedOrders, limit))
+      setOrders(
+        filterAndSortGeneratedOrders(prefetchedOrders, limit, user?.role, user?.id),
+      )
       setIsLoading(false)
       return
     }
@@ -92,7 +107,7 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
     }
 
     void loadOrders()
-  }, [prefetchedOrders, limit, reloadGeneratedOrders])
+  }, [prefetchedOrders, limit, reloadGeneratedOrders, user?.role, user?.id])
 
   useEffect(() => {
     const formatAmounts = async () => {

@@ -47,6 +47,7 @@ import {
   isSaWarehouseHighlight,
   purchaseTypeLabel,
 } from "@/lib/order-sa"
+import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility"
 
 /** yyyy-MM-dd en calendario local (alineado con toLocaleDateString de la tabla). */
 function toLocalDateKey(iso: string): string {
@@ -194,6 +195,15 @@ export default function PedidosPage() {
   }
 
   const filteredOrders = orders.filter((order) => {
+    if (
+      user?.role === "Online Seller" &&
+      order.type === "order"
+    ) {
+      const uid = user?.id?.trim()
+      if (!uid) return false
+      if (!isOrderVisibleToOnlineSeller(order, uid)) return false
+    }
+
     // Filtro de búsqueda general (existente)
     const on = (order.orderNumber ?? "").toLowerCase()
     const matchesSearch =

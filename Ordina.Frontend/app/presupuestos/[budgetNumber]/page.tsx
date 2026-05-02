@@ -697,19 +697,6 @@ export default function BudgetDetailPage() {
                         )}
                       </div>
                     )}
-                    {budget.generalDiscountAmount && budget.generalDiscountAmount > 0 && (
-                      <div className="flex justify-between text-red-600">
-                        <span>{generalDiscountSummaryLabel}</span>
-                        {formattedTotals.generalDiscountAmount ? (
-                          <FormattedCurrencyDisplay formatted={formattedTotals.generalDiscountAmount} />
-                        ) : (
-                          <CurrencyDisplay 
-                            amountInBs={budget.generalDiscountAmount} 
-                            exchangeRates={localExchangeRates}
-                          />
-                        )}
-                      </div>
-                    )}
                     <Separator />
                     <div className="flex justify-between">
                       <span>Subtotal después de descuentos:</span>
@@ -733,6 +720,19 @@ export default function BudgetDetailPage() {
                         />
                       )}
                     </div>
+                    {budget.generalDiscountAmount && budget.generalDiscountAmount > 0 && (
+                      <div className="flex justify-between text-red-600">
+                        <span>{generalDiscountSummaryLabel}</span>
+                        {formattedTotals.generalDiscountAmount ? (
+                          <FormattedCurrencyDisplay formatted={formattedTotals.generalDiscountAmount} />
+                        ) : (
+                          <CurrencyDisplay 
+                            amountInBs={budget.generalDiscountAmount} 
+                            exchangeRates={localExchangeRates}
+                          />
+                        )}
+                      </div>
+                    )}
                     {budget.deliveryCost > 0 && (
                       <div className="flex justify-between">
                         <span>Servicios Adicionales:</span>

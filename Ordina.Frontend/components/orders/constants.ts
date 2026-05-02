@@ -44,16 +44,29 @@ export const PAYMENT_CONDITIONS = [
   { value: "todo_pago", label: "Todo Pago" },
 ] as const;
 
-// Constantes para Tipo de Venta
+// Constantes para Tipo de Venta (opciones del formulario; valores legacy siguen en `Order` / API)
 export const PURCHASE_TYPES = [
-  { value: "delivery_express", label: "Delivery Express" },
   { value: "encargo", label: "Encargo" },
   { value: "encargo_entrega", label: "Encargo/Entrega" },
   { value: "entrega", label: "Entrega" },
-  { value: "retiro_almacen", label: "Retiro x Almacén" },
-  { value: "retiro_tienda", label: "Retiro x Tienda" },
   { value: "sistema_apartado", label: "SA (Sistema de Apartado)" },
 ] as const;
+
+export type PurchaseTypeUiValue = (typeof PURCHASE_TYPES)[number]["value"];
+
+const SALE_TYPE_LEGACY_LABELS: Record<string, string> = {
+  delivery_express: "Delivery Express",
+  retiro_almacen: "Retiro x Almacén",
+  retiro_tienda: "Retiro x Tienda",
+};
+
+/** Etiqueta para detalle / PDF / listados; incluye tipos ya no seleccionables en el formulario. */
+export function getSaleTypeLabel(saleType: string | undefined | null): string {
+  if (!saleType) return "";
+  const fromList = PURCHASE_TYPES.find((t) => t.value === saleType)?.label;
+  if (fromList) return fromList;
+  return SALE_TYPE_LEGACY_LABELS[saleType] ?? saleType;
+}
 
 // Constantes para Tipo de Entrega
 export const DELIVERY_TYPES = [

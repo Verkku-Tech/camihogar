@@ -43,6 +43,7 @@ import { ImageUploader } from "../ImageUploader";
 import {
   PAYMENT_CONDITIONS,
   PURCHASE_TYPES,
+  type PurchaseTypeUiValue,
   DELIVERY_TYPES,
   DELIVERY_ZONES,
   paymentMethods,
@@ -1019,17 +1020,7 @@ export function Step3OrderDetails({
                   <Select
                     value={orderForm.saleType}
                     onValueChange={(value) =>
-                      orderForm.setSaleType(
-                        value as
-                        | "encargo"
-                        | "entrega"
-                        | "delivery_express"
-                        | "encargo_entrega"
-                        | "retiro_almacen"
-                        | "retiro_tienda"
-                        | "sistema_apartado"
-                        | ""
-                      )
+                      orderForm.setSaleType(value as PurchaseTypeUiValue)
                     }
                   >
                     <SelectTrigger id="orderForm.saleType">

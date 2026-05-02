@@ -1153,7 +1153,11 @@ public class ReportService : IReportService
                 if (!string.IsNullOrWhiteSpace(acc.Code)) return acc.Code;
             }
         }
-        
+
+        // Tarjeta de débito/crédito y similares: el front solo persiste `bank` (sin accountNumber ni accountId).
+        if (!string.IsNullOrWhiteSpace(paymentDetails.Bank))
+            return paymentDetails.Bank.Trim();
+
         return "-";
     }
 
