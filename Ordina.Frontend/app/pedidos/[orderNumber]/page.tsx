@@ -34,7 +34,8 @@ import {
   type Category,
   type OrderProduct,
 } from "@/lib/storage";
-import { PAYMENT_CONDITIONS, PURCHASE_TYPES } from "@/components/orders/new-order-dialog";
+import { PAYMENT_CONDITIONS } from "@/components/orders/new-order-dialog";
+import { getSaleTypeLabel } from "@/components/orders/constants";
 import {
   formatCurrency,
   type Currency,
@@ -45,6 +46,10 @@ import { useCurrency } from "@/contexts/currency-context";
 import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
 import { apiClient } from "@/lib/api-client";
+import {
+  buildOnlineSellerVendorIdSet,
+  isOrderVisibleToOnlineSeller,
+} from "@/lib/order-online-seller-visibility";
 import {
   sumPaymentsInStoreBs,
   CASHEA_FINANCED_METHOD_LABEL,
@@ -669,6 +674,23 @@ export default function OrderDetailPage() {
           return;
         }
 
+        if (user?.role === "Online Seller") {
+          try {
+            const usersList = await apiClient.getUsers();
+            const onlineIds = buildOnlineSellerVendorIdSet(usersList);
+            if (!isOrderVisibleToOnlineSeller(foundOrder, onlineIds)) {
+              toast.error("No tienes permiso para ver este pedido.");
+              router.push("/pedidos");
+              return;
+            }
+          } catch (e) {
+            console.error(e);
+            toast.error("No se pudo verificar el acceso al pedido.");
+            router.push("/pedidos");
+            return;
+          }
+        }
+
         setOrder(foundOrder);
 
         // Cargar información completa del cliente
@@ -778,7 +800,7 @@ export default function OrderDetailPage() {
     if (orderNumber) {
       loadOrder();
     }
-  }, [orderNumber, router]);
+  }, [orderNumber, router, user?.role]);
 
   // Función para formatear con la moneda seleccionada localmente
   // IMPORTANTE: Siempre usa las tasas del día del pedido, no tasas actuales
@@ -1437,9 +1459,7 @@ export default function OrderDetailPage() {
                           Tipo de Venta
                         </p>
                         <p className="font-medium">
-                          {PURCHASE_TYPES.find(
-                            (pt) => pt.value === order.saleType
-                          )?.label || order.saleType}
+                          {getSaleTypeLabel(order.saleType)}
                         </p>
                       </div>
                     )}
@@ -1916,19 +1936,6 @@ export default function OrderDetailPage() {
                         )}
                       </div>
                     )}
-                    {order.generalDiscountAmount && order.generalDiscountAmount > 0 && (
-                      <div className="flex justify-between text-red-600">
-                        <span>{generalDiscountSummaryLabel}</span>
-                        {formattedTotals.generalDiscountAmount ? (
-                          <FormattedCurrencyDisplay formatted={formattedTotals.generalDiscountAmount} />
-                        ) : (
-                          <CurrencyDisplay
-                            amountInBs={order.generalDiscountAmount}
-                            exchangeRates={localExchangeRates}
-                          />
-                        )}
-                      </div>
-                    )}
                     <Separator />
                     <div className="flex justify-between">
                       <span>Subtotal después de descuentos:</span>
@@ -1952,6 +1959,19 @@ export default function OrderDetailPage() {
                         />
                       )}
                     </div>
+                    {order.generalDiscountAmount && order.generalDiscountAmount > 0 && (
+                      <div className="flex justify-between text-red-600">
+                        <span>{generalDiscountSummaryLabel}</span>
+                        {formattedTotals.generalDiscountAmount ? (
+                          <FormattedCurrencyDisplay formatted={formattedTotals.generalDiscountAmount} />
+                        ) : (
+                          <CurrencyDisplay
+                            amountInBs={order.generalDiscountAmount}
+                            exchangeRates={localExchangeRates}
+                          />
+                        )}
+                      </div>
+                    )}
                     {order.deliveryCost > 0 && (
                       <div className="flex justify-between">
                         <span>Servicios Adicionales:</span>

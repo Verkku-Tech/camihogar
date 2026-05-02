@@ -12,11 +12,14 @@ import { apiClient } from "@/lib/api-client"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
+import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility"
 
 interface OrdersTableProps {
   limit?: number
   /** Si el padre ya sincronizó pedidos, evita otro getOrders al montar. */
   prefetchedOrders?: Order[]
+  /** Si el usuario es Online Seller, conjunto de vendorId permitidos (usuarios rol Online Seller). */
+  onlineSellerVendorIds?: Set<string>
 }
 
 const getStatusColor = (status: string) => {
@@ -53,14 +56,22 @@ const getStatusColor = (status: string) => {
   }
 }
 
-function filterAndSortGeneratedOrders(allOrders: Order[], limit: number) {
-  return allOrders
+function filterAndSortGeneratedOrders(
+  allOrders: Order[],
+  limit: number,
+  userRole: string | undefined,
+  onlineSellerVendorIds: Set<string> | undefined,
+) {
+  let list = allOrders
     .filter((o) => o.status === "Generado" || o.status === "Generada")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, limit)
+  if (userRole === "Online Seller" && onlineSellerVendorIds) {
+    list = list.filter((o) => isOrderVisibleToOnlineSeller(o, onlineSellerVendorIds))
+  }
+  return list.slice(0, limit)
 }
 
-export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) {
+export function OrdersTable({ limit = 10, prefetchedOrders, onlineSellerVendorIds }: OrdersTableProps) {
   const router = useRouter()
   const { user } = useAuth()
   const canValidateOrders =
@@ -72,12 +83,14 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
 
   const reloadGeneratedOrders = useCallback(async () => {
     const allOrders = await getOrders()
-    setOrders(filterAndSortGeneratedOrders(allOrders, limit))
-  }, [limit])
+    setOrders(filterAndSortGeneratedOrders(allOrders, limit, user?.role, onlineSellerVendorIds))
+  }, [limit, user?.role, onlineSellerVendorIds])
 
   useEffect(() => {
     if (prefetchedOrders !== undefined) {
-      setOrders(filterAndSortGeneratedOrders(prefetchedOrders, limit))
+      setOrders(
+        filterAndSortGeneratedOrders(prefetchedOrders, limit, user?.role, onlineSellerVendorIds),
+      )
       setIsLoading(false)
       return
     }
@@ -92,7 +105,7 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
     }
 
     void loadOrders()
-  }, [prefetchedOrders, limit, reloadGeneratedOrders])
+  }, [prefetchedOrders, limit, reloadGeneratedOrders, user?.role, onlineSellerVendorIds])
 
   useEffect(() => {
     const formatAmounts = async () => {

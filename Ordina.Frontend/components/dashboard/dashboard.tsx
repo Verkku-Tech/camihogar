@@ -14,11 +14,17 @@ import { Loader2, Plus } from "lucide-react"
 import { calculateDashboardMetrics, DashboardMetrics, getOrders, type Order } from "@/lib/storage"
 import { Card, CardContent } from "@/components/ui/card"
 import { NewOrderDialog } from "@/components/orders/new-order-dialog"
+import { useAuth } from "@/contexts/auth-context"
+import { apiClient } from "@/lib/api-client"
+import { buildOnlineSellerVendorIdSet } from "@/lib/order-online-seller-visibility"
 
 type Period = "day" | "week" | "month" | "year"
 type Tab = "presupuestos" | "pedidos" | "fabricacion" | "despachos" | "sa-vencidos"
 
 export function Dashboard() {
+  const { user } = useAuth()
+  const canViewFinancialDashboard =
+    user?.role === "Super Administrator" || user?.role === "Administrator"
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [period, setPeriod] = useState<Period>("day")
   const [activeTab, setActiveTab] = useState<Tab>("pedidos")
@@ -27,6 +33,8 @@ export function Dashboard() {
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
   /** null = aún no cargado; evita múltiples getOrders en cabecera/tabla/métricas. */
   const [sharedOrders, setSharedOrders] = useState<Order[] | null>(null)
+  /** Solo para filtro de tab Pedidos cuando el usuario es Online Seller. */
+  const [onlineSellerVendorIds, setOnlineSellerVendorIds] = useState<Set<string> | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -46,6 +54,32 @@ export function Dashboard() {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+    const loadOnlineVendorIds = async () => {
+      if (user?.role !== "Online Seller") {
+        setOnlineSellerVendorIds(null)
+        return
+      }
+      try {
+        const usersList = await apiClient.getUsers()
+        if (!cancelled) setOnlineSellerVendorIds(buildOnlineSellerVendorIdSet(usersList))
+      } catch (e) {
+        console.error("Error cargando vendedores online para filtro:", e)
+        if (!cancelled) setOnlineSellerVendorIds(new Set())
+      }
+    }
+    void loadOnlineVendorIds()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.role])
+
+  useEffect(() => {
+    if (!canViewFinancialDashboard) {
+      setMetrics(null)
+      setIsLoadingMetrics(false)
+      return
+    }
     if (sharedOrders === null) {
       setIsLoadingMetrics(true)
       return
@@ -63,7 +97,7 @@ export function Dashboard() {
     }
 
     void loadMetrics()
-  }, [period, sharedOrders])
+  }, [period, sharedOrders, canViewFinancialDashboard])
 
   const handlePeriodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value as Period
@@ -104,22 +138,26 @@ export function Dashboard() {
               <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
               <p className="text-muted-foreground mt-1">Últimos Pedidos</p>
             </div>
-            <div className="flex items-center gap-4 mt-4 sm:mt-0">
-              <select
-                value={period}
-                onChange={handlePeriodChange}
-                className="px-3 py-2 border border-border rounded-md bg-background text-foreground"
-              >
-                <option value="day">Hoy</option>
-                <option value="week">Última Semana</option>
-                <option value="month">Último Mes</option>
-                <option value="year">Último Año</option>
-              </select>
-            </div>
+            {canViewFinancialDashboard && (
+              <div className="flex items-center gap-4 mt-4 sm:mt-0">
+                <select
+                  value={period}
+                  onChange={handlePeriodChange}
+                  className="px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                >
+                  <option value="day">Hoy</option>
+                  <option value="week">Última Semana</option>
+                  <option value="month">Último Mes</option>
+                  <option value="year">Último Año</option>
+                </select>
+              </div>
+            )}
           </div>
 
-          {/* Metrics Cards */}
-          {metrics && <MetricsCards metrics={metrics} isLoading={isLoadingMetrics} />}
+          {/* Metrics Cards: solo Administrador / Super Administrador */}
+          {canViewFinancialDashboard && metrics && (
+            <MetricsCards metrics={metrics} isLoading={isLoadingMetrics} />
+          )}
 
           {/* Orders Section */}
           <div className="mt-8">
@@ -189,8 +227,22 @@ export function Dashboard() {
                     Cargando pedidos…
                   </CardContent>
                 </Card>
+              ) : user?.role === "Online Seller" && onlineSellerVendorIds === null ? (
+                <Card>
+                  <CardContent className="flex items-center gap-2 p-6 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                    Preparando vista de pedidos…
+                  </CardContent>
+                </Card>
               ) : (
-                <OrdersTable prefetchedOrders={sharedOrders} />
+                <OrdersTable
+                  prefetchedOrders={sharedOrders}
+                  onlineSellerVendorIds={
+                    user?.role === "Online Seller"
+                      ? onlineSellerVendorIds ?? undefined
+                      : undefined
+                  }
+                />
               ))}
             {activeTab === "presupuestos" && <BudgetsTable />}
             {activeTab === "fabricacion" && <ManufacturingProductsTable />}

@@ -384,8 +384,16 @@ public class OrdersController : ControllerBase
             }
 
             var (userId, userName) = GetActor(User);
-            var order = await _orderService.UpdateOrderAsync(id, updateDto, userId, userName);
+            var callerRole = User.FindFirstValue(ClaimTypes.Role);
+            var hasDispatchUpdate = UserHasPermission(User, "dispatch.update");
+            var order = await _orderService.UpdateOrderAsync(
+                id, updateDto, userId, userName, callerRole, hasDispatchUpdate);
             return Ok(order);
+        }
+        catch (UnauthorizedAccessException uaex)
+        {
+            _logger.LogWarning(uaex, "Actualización de pedido {OrderId} denegada por permisos de despacho", id);
+            return Forbid();
         }
         catch (ArgumentException ex)
         {
