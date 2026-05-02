@@ -15,14 +15,13 @@ import { calculateDashboardMetrics, DashboardMetrics, getOrders, type Order } fr
 import { Card, CardContent } from "@/components/ui/card"
 import { NewOrderDialog } from "@/components/orders/new-order-dialog"
 import { useAuth } from "@/contexts/auth-context"
-import { apiClient } from "@/lib/api-client"
-import { buildOnlineSellerVendorIdSet } from "@/lib/order-online-seller-visibility"
 
 type Period = "day" | "week" | "month" | "year"
 type Tab = "presupuestos" | "pedidos" | "fabricacion" | "despachos" | "sa-vencidos"
 
 export function Dashboard() {
   const { user } = useAuth()
+  const isOnlineSeller = user?.role === "Online Seller"
   const canViewFinancialDashboard =
     user?.role === "Super Administrator" || user?.role === "Administrator"
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -33,8 +32,6 @@ export function Dashboard() {
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
   /** null = aún no cargado; evita múltiples getOrders en cabecera/tabla/métricas. */
   const [sharedOrders, setSharedOrders] = useState<Order[] | null>(null)
-  /** Solo para filtro de tab Pedidos cuando el usuario es Online Seller. */
-  const [onlineSellerVendorIds, setOnlineSellerVendorIds] = useState<Set<string> | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -54,25 +51,10 @@ export function Dashboard() {
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-    const loadOnlineVendorIds = async () => {
-      if (user?.role !== "Online Seller") {
-        setOnlineSellerVendorIds(null)
-        return
-      }
-      try {
-        const usersList = await apiClient.getUsers()
-        if (!cancelled) setOnlineSellerVendorIds(buildOnlineSellerVendorIdSet(usersList))
-      } catch (e) {
-        console.error("Error cargando vendedores online para filtro:", e)
-        if (!cancelled) setOnlineSellerVendorIds(new Set())
-      }
+    if (isOnlineSeller) {
+      setActiveTab("pedidos")
     }
-    void loadOnlineVendorIds()
-    return () => {
-      cancelled = true
-    }
-  }, [user?.role])
+  }, [isOnlineSeller])
 
   useEffect(() => {
     if (!canViewFinancialDashboard) {
@@ -103,14 +85,6 @@ export function Dashboard() {
     const value = e.target.value as Period
     setPeriod(value)
   }
-
-  const EmptyState = ({ message }: { message: string }) => (
-    <Card>
-      <CardContent className="p-6">
-        <p className="text-center text-muted-foreground">{message}</p>
-      </CardContent>
-    </Card>
-  )
 
   return (
     <div className="flex h-screen bg-background">
@@ -163,51 +137,59 @@ export function Dashboard() {
           <div className="mt-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
               <div className="flex items-center space-x-1 mb-4 sm:mb-0">
-                <button
-                  onClick={() => setActiveTab("presupuestos")}
-                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "presupuestos"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
-                >
-                  Presupuestos
-                </button>
-                <button
-                  onClick={() => setActiveTab("pedidos")}
-                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "pedidos"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
-                >
-                  Pedidos
-                </button>
-                <button
-                  onClick={() => setActiveTab("fabricacion")}
-                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "fabricacion"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
-                >
-                  Fabricación
-                </button>
-                <button
-                  onClick={() => setActiveTab("despachos")}
-                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "despachos"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
-                >
-                  Notas de Despacho
-                </button>
-                <button
-                  onClick={() => setActiveTab("sa-vencidos")}
-                  className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "sa-vencidos"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
-                >
-                  SA Vencidos
-                </button>
+                {isOnlineSeller ? (
+                  <span className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground">
+                    Pedidos
+                  </span>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setActiveTab("presupuestos")}
+                      className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "presupuestos"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        }`}
+                    >
+                      Presupuestos
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("pedidos")}
+                      className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "pedidos"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        }`}
+                    >
+                      Pedidos
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("fabricacion")}
+                      className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "fabricacion"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        }`}
+                    >
+                      Fabricación
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("despachos")}
+                      className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "despachos"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        }`}
+                    >
+                      Notas de Despacho
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("sa-vencidos")}
+                      className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "sa-vencidos"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                        }`}
+                    >
+                      SA Vencidos
+                    </button>
+                  </>
+                )}
               </div>
               <Button
                 className="bg-green-600 hover:bg-green-700 text-white"
@@ -227,27 +209,13 @@ export function Dashboard() {
                     Cargando pedidos…
                   </CardContent>
                 </Card>
-              ) : user?.role === "Online Seller" && onlineSellerVendorIds === null ? (
-                <Card>
-                  <CardContent className="flex items-center gap-2 p-6 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                    Preparando vista de pedidos…
-                  </CardContent>
-                </Card>
               ) : (
-                <OrdersTable
-                  prefetchedOrders={sharedOrders}
-                  onlineSellerVendorIds={
-                    user?.role === "Online Seller"
-                      ? onlineSellerVendorIds ?? undefined
-                      : undefined
-                  }
-                />
+                <OrdersTable prefetchedOrders={sharedOrders} />
               ))}
-            {activeTab === "presupuestos" && <BudgetsTable />}
-            {activeTab === "fabricacion" && <ManufacturingProductsTable />}
-            {activeTab === "despachos" && <DispatchesTable />}
-            {activeTab === "sa-vencidos" && <ExpiredLayawaysTable />}
+            {!isOnlineSeller && activeTab === "presupuestos" && <BudgetsTable />}
+            {!isOnlineSeller && activeTab === "fabricacion" && <ManufacturingProductsTable />}
+            {!isOnlineSeller && activeTab === "despachos" && <DispatchesTable />}
+            {!isOnlineSeller && activeTab === "sa-vencidos" && <ExpiredLayawaysTable />}
           </div>
         </main>
       </div>

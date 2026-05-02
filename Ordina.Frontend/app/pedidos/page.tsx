@@ -47,11 +47,7 @@ import {
   isSaWarehouseHighlight,
   purchaseTypeLabel,
 } from "@/lib/order-sa"
-import { apiClient } from "@/lib/api-client"
-import {
-  buildOnlineSellerVendorIdSet,
-  isOrderVisibleToOnlineSeller,
-} from "@/lib/order-online-seller-visibility"
+import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility"
 
 /** yyyy-MM-dd en calendario local (alineado con toLocaleDateString de la tabla). */
 function toLocalDateKey(iso: string): string {
@@ -119,10 +115,6 @@ export default function PedidosPage() {
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [clientById, setClientById] = useState<Map<string, Client>>(new Map())
-  /** IDs de usuarios con rol Online Seller (para filtrar listado si el usuario actual es Online Seller). */
-  const [onlineSellerVendorIds, setOnlineSellerVendorIds] = useState<Set<string> | undefined>(
-    undefined,
-  )
 
   useEffect(() => {
     const loadClients = async () => {
@@ -144,17 +136,6 @@ export default function PedidosPage() {
     const loadOrders = async () => {
       try {
         setIsLoading(true)
-        if (user?.role === "Online Seller") {
-          try {
-            const usersList = await apiClient.getUsers()
-            setOnlineSellerVendorIds(buildOnlineSellerVendorIdSet(usersList))
-          } catch (e) {
-            console.error("Error cargando vendedores online:", e)
-            setOnlineSellerVendorIds(new Set())
-          }
-        } else {
-          setOnlineSellerVendorIds(undefined)
-        }
         const loadedOrders = await getUnifiedOrders()
         setOrders(loadedOrders)
       } catch (error) {
@@ -165,7 +146,7 @@ export default function PedidosPage() {
     }
 
     loadOrders()
-  }, [user?.role])
+  }, [])
 
   // Totales: USD (y Bs) con tasa del día del pedido; fallback a tasa activa solo si no hay tasa guardada
   useEffect(() => {
@@ -216,11 +197,11 @@ export default function PedidosPage() {
   const filteredOrders = orders.filter((order) => {
     if (
       user?.role === "Online Seller" &&
-      onlineSellerVendorIds &&
-      order.type === "order" &&
-      !isOrderVisibleToOnlineSeller(order, onlineSellerVendorIds)
+      order.type === "order"
     ) {
-      return false
+      const uid = user?.id?.trim()
+      if (!uid) return false
+      if (!isOrderVisibleToOnlineSeller(order, uid)) return false
     }
 
     // Filtro de búsqueda general (existente)

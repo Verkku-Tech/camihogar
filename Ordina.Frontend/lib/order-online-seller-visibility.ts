@@ -1,7 +1,7 @@
 /**
  * Visibilidad de pedidos para el rol "Online Seller":
- * - Pedidos cuyo vendor es un usuario con rol Online Seller, o
- * - Pedidos con referidor (presupuesto / venta referida), aunque el vendor sea tienda.
+ * - Pedidos donde el usuario es el vendedor (vendorId), o
+ * - Pedidos donde el usuario es el referidor (p. ej. presupuesto referido montado en tienda).
  */
 
 export type OrderLikeForOnlineVisibility = {
@@ -9,22 +9,21 @@ export type OrderLikeForOnlineVisibility = {
   referrerId?: string | null
 }
 
-export function buildOnlineSellerVendorIdSet(
-  users: ReadonlyArray<{ id: string; role?: string | null }>,
-): Set<string> {
-  const set = new Set<string>()
-  for (const u of users) {
-    if (u.id && u.role === "Online Seller") set.add(u.id)
-  }
-  return set
+function normId(value: string): string {
+  return value.trim()
 }
 
+/**
+ * @param currentUserId ID del usuario autenticado (Online Seller).
+ */
 export function isOrderVisibleToOnlineSeller(
   order: OrderLikeForOnlineVisibility,
-  onlineSellerVendorIds: Set<string>,
+  currentUserId: string,
 ): boolean {
+  const uid = normId(currentUserId)
+  if (!uid) return false
+  if (normId(order.vendorId) === uid) return true
   const ref = order.referrerId?.trim()
-  if (ref) return true
-  if (onlineSellerVendorIds.has(order.vendorId)) return true
+  if (ref && ref === uid) return true
   return false
 }
