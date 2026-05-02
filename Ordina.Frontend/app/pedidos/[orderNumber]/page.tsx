@@ -46,10 +46,7 @@ import { useCurrency } from "@/contexts/currency-context";
 import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
 import { apiClient } from "@/lib/api-client";
-import {
-  buildOnlineSellerVendorIdSet,
-  isOrderVisibleToOnlineSeller,
-} from "@/lib/order-online-seller-visibility";
+import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility";
 import {
   sumPaymentsInStoreBs,
   CASHEA_FINANCED_METHOD_LABEL,
@@ -675,17 +672,9 @@ export default function OrderDetailPage() {
         }
 
         if (user?.role === "Online Seller") {
-          try {
-            const usersList = await apiClient.getUsers();
-            const onlineIds = buildOnlineSellerVendorIdSet(usersList);
-            if (!isOrderVisibleToOnlineSeller(foundOrder, onlineIds)) {
-              toast.error("No tienes permiso para ver este pedido.");
-              router.push("/pedidos");
-              return;
-            }
-          } catch (e) {
-            console.error(e);
-            toast.error("No se pudo verificar el acceso al pedido.");
+          const uid = user?.id?.trim();
+          if (!uid || !isOrderVisibleToOnlineSeller(foundOrder, uid)) {
+            toast.error("No tienes permiso para ver este pedido.");
             router.push("/pedidos");
             return;
           }
@@ -800,7 +789,7 @@ export default function OrderDetailPage() {
     if (orderNumber) {
       loadOrder();
     }
-  }, [orderNumber, router, user?.role]);
+  }, [orderNumber, router, user?.role, user?.id]);
 
   // Función para formatear con la moneda seleccionada localmente
   // IMPORTANTE: Siempre usa las tasas del día del pedido, no tasas actuales
