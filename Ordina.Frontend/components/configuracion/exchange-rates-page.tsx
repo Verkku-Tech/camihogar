@@ -33,6 +33,7 @@ import { ExchangeRate } from "@/lib/currency-utils";
 import { ApiClient } from "@/lib/api-client";
 import { useCurrency } from "@/contexts/currency-context";
 import { Switch } from "@/components/ui/switch";
+import { ScrappingExchangeRates } from "@/app/api/scrapping/route";
 
 const HISTORY_DAYS = 30;
 
@@ -64,6 +65,26 @@ export function ExchangeRatesPage() {
     effectiveDate: new Date().toISOString().split("T")[0],
   });
 
+  const [scrappingExchangeRates, setScrappingExchangeRates] =
+    useState<ScrappingExchangeRates | null>(null);
+
+  const fetchRates = async () => {
+    setTimeout(async () => {
+      try {
+        const response = await fetch("/api/scrapping");
+        const data = await response.json();
+        setScrappingExchangeRates(data);
+        console.log("RESPUESTA del Banco Central de Venezuela", data);
+      } catch (error) {
+        console.error("Error al obtener las tasas:", `${error}`);
+      }
+    }, 50);
+  };
+
+  useEffect(() => {
+    fetchRates();
+  }, []);
+
   useEffect(() => {
     loadRates();
   }, []);
@@ -72,10 +93,10 @@ export function ExchangeRatesPage() {
   const formatExchangeRate = (rate: number): string => {
     // Convertir a string y eliminar ceros innecesarios al final
     const rateStr = rate.toString();
-    if (rateStr.includes('.')) {
+    if (rateStr.includes(".")) {
       // Eliminar ceros finales después del punto decimal, pero mantener el punto si hay dígitos antes
       // Ejemplo: "347.26310000" -> "347.2631", "347.0" -> "347"
-      return rateStr.replace(/\.?0+$/, '');
+      return rateStr.replace(/\.?0+$/, "");
     }
     return rateStr;
   };
@@ -88,10 +109,14 @@ export function ExchangeRatesPage() {
         client.getExchangeRateHistory(HISTORY_DAYS),
       ]);
       const activeRates = Array.isArray(activeRaw)
-        ? activeRaw.map((r) => normalizeExchangeRateRow(r as Record<string, unknown>))
+        ? activeRaw.map((r) =>
+            normalizeExchangeRateRow(r as Record<string, unknown>),
+          )
         : [];
       const history = Array.isArray(historyRaw)
-        ? historyRaw.map((r) => normalizeExchangeRateRow(r as Record<string, unknown>))
+        ? historyRaw.map((r) =>
+            normalizeExchangeRateRow(r as Record<string, unknown>),
+          )
         : [];
       setRates(activeRates);
       setRateHistory(history);
@@ -111,7 +136,7 @@ export function ExchangeRatesPage() {
       await client.setExchangeRate({
         fromCurrency: "Bs",
         toCurrency: formData.toCurrency,
-        rate: parseFloat(formData.rate)
+        rate: parseFloat(formData.rate),
       });
 
       // Activar automáticamente el modo de visualización para la nueva moneda
@@ -127,27 +152,29 @@ export function ExchangeRatesPage() {
         rate: "",
         effectiveDate: new Date().toISOString().split("T")[0],
       });
-      toast.success("Tasa de cambio creada exitosamente. Moneda de visualización activada automáticamente.");
+      toast.success(
+        "Tasa de cambio creada exitosamente. Moneda de visualización activada automáticamente.",
+      );
     } catch (error: any) {
       console.error("Error saving exchange rate:", error);
-      const errorMessage = error.message || "Error al guardar la tasa de cambio";
+      const errorMessage =
+        error.message || "Error al guardar la tasa de cambio";
       toast.error(errorMessage);
     }
   };
 
-
-
   const handleCurrencyToggle = async (
     currency: "USD" | "EUR",
-    checked: boolean
+    checked: boolean,
   ) => {
     try {
       if (checked) {
         // Activar esta moneda (desactiva automáticamente Bolívar)
         await setPreferredCurrency(currency);
         toast.success(
-          `Moneda de visualización cambiada a ${currency === "USD" ? "Dólares" : "Euros"
-          }`
+          `Moneda de visualización cambiada a ${
+            currency === "USD" ? "Dólares" : "Euros"
+          }`,
         );
       } else {
         // Desactivar esta moneda (vuelve a Bolívar por defecto)
@@ -191,9 +218,10 @@ export function ExchangeRatesPage() {
                   No hay tasas de cambio configuradas
                 </h3>
                 <p className="text-sm text-amber-700 dark:text-amber-300">
-                  Es necesario crear al menos una tasa de cambio (USD o EUR) para poder
-                  realizar conversiones de moneda en pedidos y presupuestos.
-                  Las tasas se marcan como activas automáticamente al crearlas.
+                  Es necesario crear al menos una tasa de cambio (USD o EUR)
+                  para poder realizar conversiones de moneda en pedidos y
+                  presupuestos. Las tasas se marcan como activas automáticamente
+                  al crearlas.
                 </p>
               </div>
             </div>
@@ -337,8 +365,9 @@ export function ExchangeRatesPage() {
             <p className="text-sm text-muted-foreground text-center">
               {preferredCurrency === "Bs"
                 ? "La moneda de visualización actual es Bolívares (por defecto). Activa un checkbox para cambiar."
-                : `La moneda de visualización actual es ${preferredCurrency === "USD" ? "Dólares" : "Euros"
-                }. Desactiva todos los checkboxes para volver a Bolívares.`}
+                : `La moneda de visualización actual es ${
+                    preferredCurrency === "USD" ? "Dólares" : "Euros"
+                  }. Desactiva todos los checkboxes para volver a Bolívares.`}
             </p>
           </CardContent>
         )}
@@ -352,8 +381,9 @@ export function ExchangeRatesPage() {
             Historial de tasas
           </CardTitle>
           <CardDescription>
-            Registros de los últimos {HISTORY_DAYS} días (incluye tasas reemplazadas al agregar una
-            nueva). La tasa vigente para pedidos cerrados sigue guardada en cada pedido.
+            Registros de los últimos {HISTORY_DAYS} días (incluye tasas
+            reemplazadas al agregar una nueva). La tasa vigente para pedidos
+            cerrados sigue guardada en cada pedido.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -389,7 +419,9 @@ export function ExchangeRatesPage() {
                     </TableCell>
                     <TableCell>
                       {rate.isActive ? (
-                        <Badge className="bg-emerald-600 hover:bg-emerald-600">Activa</Badge>
+                        <Badge className="bg-emerald-600 hover:bg-emerald-600">
+                          Activa
+                        </Badge>
                       ) : (
                         <Badge variant="secondary">Inactiva</Badge>
                       )}

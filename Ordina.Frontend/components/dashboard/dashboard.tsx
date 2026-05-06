@@ -1,90 +1,193 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Sidebar } from "./sidebar"
-import { DashboardHeader } from "./dashboard-header"
-import { MetricsCards } from "./metrics-cards"
-import { OrdersTable } from "./orders-table"
-import { ManufacturingProductsTable } from "./manufacturing-products-table"
-import { BudgetsTable } from "./budgets-table"
-import { DispatchesTable } from "./dispatches-table"
-import { ExpiredLayawaysTable } from "./expired-layaways-table"
-import { Button } from "@/components/ui/button"
-import { Loader2, Plus } from "lucide-react"
-import { calculateDashboardMetrics, DashboardMetrics, getOrders, type Order } from "@/lib/storage"
-import { Card, CardContent } from "@/components/ui/card"
-import { NewOrderDialog } from "@/components/orders/new-order-dialog"
-import { useAuth } from "@/contexts/auth-context"
+import { useState, useEffect } from "react";
+import { Sidebar } from "./sidebar";
+import { DashboardHeader } from "./dashboard-header";
+import { MetricsCards } from "./metrics-cards";
+import { OrdersTable } from "./orders-table";
+import { ManufacturingProductsTable } from "./manufacturing-products-table";
+import { BudgetsTable } from "./budgets-table";
+import { DispatchesTable } from "./dispatches-table";
+import { ExpiredLayawaysTable } from "./expired-layaways-table";
+import { Button } from "@/components/ui/button";
+import { Loader2, Plus } from "lucide-react";
+import {
+  calculateDashboardMetrics,
+  DashboardMetrics,
+  getOrders,
+  type Order,
+} from "@/lib/storage";
+import { Card, CardContent } from "@/components/ui/card";
+import { NewOrderDialog } from "@/components/orders/new-order-dialog";
+import { useAuth } from "@/contexts/auth-context";
+import { ApiClient } from "@/lib/api-client";
 
-type Period = "day" | "week" | "month" | "year"
-type Tab = "presupuestos" | "pedidos" | "fabricacion" | "despachos" | "sa-vencidos"
+type Period = "day" | "week" | "month" | "year";
+type Tab =
+  | "presupuestos"
+  | "pedidos"
+  | "fabricacion"
+  | "despachos"
+  | "sa-vencidos";
 
 export function Dashboard() {
-  const { user } = useAuth()
-  const isOnlineSeller = user?.role === "Online Seller"
+  const { user } = useAuth();
+  const isOnlineSeller = user?.role === "Online Seller";
   const canViewFinancialDashboard =
-    user?.role === "Super Administrator" || user?.role === "Administrator"
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [period, setPeriod] = useState<Period>("day")
-  const [activeTab, setActiveTab] = useState<Tab>("pedidos")
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null)
-  const [isLoadingMetrics, setIsLoadingMetrics] = useState(true)
-  const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
+    user?.role === "Super Administrator" || user?.role === "Administrator";
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [period, setPeriod] = useState<Period>("day");
+  const [activeTab, setActiveTab] = useState<Tab>("pedidos");
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(true);
+  const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
+
   /** null = aún no cargado; evita múltiples getOrders en cabecera/tabla/métricas. */
-  const [sharedOrders, setSharedOrders] = useState<Order[] | null>(null)
+  const [sharedOrders, setSharedOrders] = useState<Order[] | null>(null);
+
+  const run = async (ac: AbortController, cancelled: boolean) => {
+    try {
+      const response = await fetch("/api/scrapping", { signal: ac.signal });
+      if (cancelled) return;
+
+      const data = await response.json();
+      if (cancelled) return;
+
+      const client = new ApiClient();
+      const active = await client.getActiveExchangeRates();
+      if (cancelled) return;
+
+      console.log("Valor activo", active);
+
+      if (active.length > 0) {
+        const items = active.filter((i) => i.isActive === true);
+
+        for (const i of items) {
+          if (cancelled) return;
+
+          const effectiveDate = new Date(i.effectiveDate)
+            .toISOString()
+            .slice(0, 10);
+          const lastUpdated = new Date(data.lastUpdated)
+            .toISOString()
+            .slice(0, 10);
+
+          if (effectiveDate === lastUpdated) continue;
+
+          if (i.toCurrency === "USD" && data.dolar) {
+            await client.setExchangeRate({
+              fromCurrency: "Bs",
+              toCurrency: "USD",
+              rate: Number(data.dolar.toFixed(4)),
+            });
+          } else if (i.toCurrency === "EUR" && data.euro) {
+            await client.setExchangeRate({
+              fromCurrency: "Bs",
+              toCurrency: "EUR",
+              rate: Number(data.euro.toFixed(4)),
+            });
+          }
+
+          if (cancelled) return;
+        }
+      } else {
+        if (cancelled) return;
+
+        if (data.dolar) {
+          await client.setExchangeRate({
+            fromCurrency: "Bs",
+            toCurrency: "USD",
+            rate: Number(data.dolar.toFixed(4)),
+          });
+        }
+        if (cancelled) return;
+
+        if (data.euro) {
+          await client.setExchangeRate({
+            fromCurrency: "Bs",
+            toCurrency: "EUR",
+            rate: Number(data.euro.toFixed(4)),
+          });
+        }
+      }
+
+      if (!cancelled) {
+        console.log("RESPUESTA del Banco Central de Venezuela", data);
+      }
+    } catch (error) {
+      if (cancelled) return;
+      if (error instanceof Error && error.name === "AbortError") return;
+      console.error("Error al obtener las tasas:", `${error}`);
+    }
+  };
 
   useEffect(() => {
-    let cancelled = false
+    const ac = new AbortController();
+    let cancelled = false;
+
+    void run(ac, cancelled);
+
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     const load = async () => {
       try {
-        const list = await getOrders()
-        if (!cancelled) setSharedOrders(list)
+        const list = await getOrders();
+        if (!cancelled) setSharedOrders(list);
       } catch (error) {
-        console.error("Error loading orders for dashboard:", error)
-        if (!cancelled) setSharedOrders([])
+        console.error("Error loading orders for dashboard:", error);
+        if (!cancelled) setSharedOrders([]);
       }
-    }
-    void load()
+    };
+    void load();
     return () => {
-      cancelled = true
-    }
-  }, [])
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (isOnlineSeller) {
-      setActiveTab("pedidos")
+      setActiveTab("pedidos");
     }
-  }, [isOnlineSeller])
+  }, [isOnlineSeller]);
 
   useEffect(() => {
     if (!canViewFinancialDashboard) {
-      setMetrics(null)
-      setIsLoadingMetrics(false)
-      return
+      setMetrics(null);
+      setIsLoadingMetrics(false);
+      return;
     }
     if (sharedOrders === null) {
-      setIsLoadingMetrics(true)
-      return
+      setIsLoadingMetrics(true);
+      return;
     }
     const loadMetrics = async () => {
-      setIsLoadingMetrics(true)
+      setIsLoadingMetrics(true);
       try {
-        const calculatedMetrics = await calculateDashboardMetrics(period, sharedOrders)
-        setMetrics(calculatedMetrics)
+        const calculatedMetrics = await calculateDashboardMetrics(
+          period,
+          sharedOrders,
+        );
+        setMetrics(calculatedMetrics);
       } catch (error) {
-        console.error("Error loading dashboard metrics:", error)
+        console.error("Error loading dashboard metrics:", error);
       } finally {
-        setIsLoadingMetrics(false)
+        setIsLoadingMetrics(false);
       }
-    }
+    };
 
-    void loadMetrics()
-  }, [period, sharedOrders, canViewFinancialDashboard])
+    void loadMetrics();
+  }, [period, sharedOrders, canViewFinancialDashboard]);
 
   const handlePeriodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value as Period
-    setPeriod(value)
-  }
+    const value = e.target.value as Period;
+    setPeriod(value);
+  };
 
   return (
     <div className="flex h-screen bg-background">
@@ -145,46 +248,51 @@ export function Dashboard() {
                   <>
                     <button
                       onClick={() => setActiveTab("presupuestos")}
-                      className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "presupuestos"
+                      className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                        activeTab === "presupuestos"
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                        }`}
+                      }`}
                     >
                       Presupuestos
                     </button>
                     <button
                       onClick={() => setActiveTab("pedidos")}
-                      className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "pedidos"
+                      className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                        activeTab === "pedidos"
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                        }`}
+                      }`}
                     >
                       Pedidos
                     </button>
                     <button
                       onClick={() => setActiveTab("fabricacion")}
-                      className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "fabricacion"
+                      className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                        activeTab === "fabricacion"
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                        }`}
+                      }`}
                     >
                       Fabricación
                     </button>
                     <button
                       onClick={() => setActiveTab("despachos")}
-                      className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "despachos"
+                      className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                        activeTab === "despachos"
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                        }`}
+                      }`}
                     >
                       Notas de Despacho
                     </button>
                     <button
                       onClick={() => setActiveTab("sa-vencidos")}
-                      className={`px-4 py-2 text-sm rounded-md transition-colors ${activeTab === "sa-vencidos"
+                      className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                        activeTab === "sa-vencidos"
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                        }`}
+                      }`}
                     >
                       SA Vencidos
                     </button>
@@ -212,10 +320,18 @@ export function Dashboard() {
               ) : (
                 <OrdersTable prefetchedOrders={sharedOrders} />
               ))}
-            {!isOnlineSeller && activeTab === "presupuestos" && <BudgetsTable />}
-            {!isOnlineSeller && activeTab === "fabricacion" && <ManufacturingProductsTable />}
-            {!isOnlineSeller && activeTab === "despachos" && <DispatchesTable />}
-            {!isOnlineSeller && activeTab === "sa-vencidos" && <ExpiredLayawaysTable />}
+            {!isOnlineSeller && activeTab === "presupuestos" && (
+              <BudgetsTable />
+            )}
+            {!isOnlineSeller && activeTab === "fabricacion" && (
+              <ManufacturingProductsTable />
+            )}
+            {!isOnlineSeller && activeTab === "despachos" && (
+              <DispatchesTable />
+            )}
+            {!isOnlineSeller && activeTab === "sa-vencidos" && (
+              <ExpiredLayawaysTable />
+            )}
           </div>
         </main>
       </div>
@@ -223,5 +339,5 @@ export function Dashboard() {
       {/* New Order Dialog */}
       <NewOrderDialog open={isNewOrderOpen} onOpenChange={setIsNewOrderOpen} />
     </div>
-  )
+  );
 }
