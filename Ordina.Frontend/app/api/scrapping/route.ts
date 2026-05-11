@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
 import * as cheerio from "cheerio";
 
 export type ScrappingExchangeRates = {
@@ -13,23 +11,28 @@ export type ScrappingExchangeRates = {
  * GET /api/scrapping
  *
  * Obtiene las tasas oficial USD y EUR publicadas por el BCV (bancentralvenezuela)
- * cargando https://www.bcv.org.ve/ con Puppeteer (JavaScript ejecutado como en el navegador)
+ * cargando https://www.bcv.org.ve/ con fetch nativo de Node.js
  * y extrayendo el texto de los nodos #dolar y #euro del HTML para devolverlos como JSON.
  */
-const execAsync = promisify(exec);
 export async function GET() {
   // Valores por defecto si algo falla o aún no se ha parseado bien
 
   try {
-    // Ejecutamos curl exactamente como en la terminal
-    // El flag -s es para "silencioso" (sin barra de progreso)
-    const { stdout: html, stderr } = await execAsync(
-      'curl -s -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" https://www.bcv.org.ve/',
-    );
+    const response = await fetch("https://www.bcv.org.ve/", {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "es-VE,es;q=0.9,en;q=0.8",
+      },
+    });
 
-    if (stderr) {
-      console.warn("curl stderr:", stderr);
+    if (!response.ok) {
+      throw new Error(`HTTP error al contactar BCV: ${response.status}`);
     }
+
+    const html = await response.text();
 
     // Cargamos el HTML obtenido con cheerio
     const $ = cheerio.load(html);
@@ -60,7 +63,7 @@ export async function GET() {
       error: null,
     });
   } catch (error) {
-    console.error("Error en scraping con curl:", error);
+    console.error("Error en scraping con fetch:", error);
     return NextResponse.json(
       {
         dolar: null,
