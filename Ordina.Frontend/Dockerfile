@@ -31,9 +31,6 @@ RUN pnpm build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Instalar curl
-RUN apk add --no-cache curl
-
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
