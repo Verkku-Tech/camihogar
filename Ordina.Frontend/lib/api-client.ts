@@ -15,7 +15,7 @@ export interface PagedResult<T> {
   pageSize: number;
   totalPages: number;
 }
-
+//texto sin importancia
 export interface ClientResponseDto {
   id: string;
   nombreRazonSocial: string;
