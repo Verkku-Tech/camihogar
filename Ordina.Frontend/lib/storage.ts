@@ -32,8 +32,15 @@ import type {
   UpdateStoreDto,
 } from "./api-client";
 import { syncManager } from "./sync-manager";
-import { getOrderPendingTotal, PAYMENT_BALANCE_EPSILON_BS } from "./order-payments";
-import { getDaysSinceOrder, getLayawayDaysPastWindow, SA_LAYAWAY_DAYS } from "./order-sa";
+import {
+  getOrderPendingTotal,
+  PAYMENT_BALANCE_EPSILON_BS,
+} from "./order-payments";
+import {
+  getDaysSinceOrder,
+  getLayawayDaysPastWindow,
+  SA_LAYAWAY_DAYS,
+} from "./order-sa";
 
 export interface AttributeValue {
   id: string;
@@ -108,7 +115,9 @@ interface CategoryDB {
 const categoryToDB = (category: Category, backendId?: string): CategoryDB => ({
   ...category,
   id: category.id.toString(),
-  ...(backendId || category.backendId ? { backendId: backendId ?? category.backendId } : {}),
+  ...(backendId || category.backendId
+    ? { backendId: backendId ?? category.backendId }
+    : {}),
 });
 
 const categoryFromDB = (categoryDB: CategoryDB): Category => ({
@@ -133,7 +142,7 @@ export const backendIdToNumber = (backendId: string): number => {
   let hash = 0;
   for (let i = 0; i < backendId.length; i++) {
     const char = backendId.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convertir a 32 bits
   }
 
@@ -144,7 +153,9 @@ export const backendIdToNumber = (backendId: string): number => {
   return hashValue > 1000000 ? hashValue : hashValue + 1000000;
 };
 
-function attributeValueProductIdForBackend(val: AttributeValue): string | undefined {
+function attributeValueProductIdForBackend(
+  val: AttributeValue,
+): string | undefined {
   const b = val.productBackendId?.trim();
   if (b) return b;
   if (val.productId != null) return String(val.productId);
@@ -169,7 +180,9 @@ function mapAttributeValueFromBackendDto(val: {
     label: val.label,
     isDefault: val.isDefault,
     priceAdjustment: val.priceAdjustment,
-    priceAdjustmentCurrency: val.priceAdjustmentCurrency as Currency | undefined,
+    priceAdjustmentCurrency: val.priceAdjustmentCurrency as
+      | Currency
+      | undefined,
     productBackendId: rawStr || undefined,
     productId: rawStr
       ? isMongo24
@@ -185,7 +198,7 @@ function mapAttributeValueFromBackendDto(val: {
 export function resolveProductFromAttributeValue(
   val: AttributeValue,
   productsMap: Map<number, Product>,
-  allProducts: Product[]
+  allProducts: Product[],
 ): Product | undefined {
   const rawBackend = val.productBackendId?.trim();
   if (rawBackend) {
@@ -204,7 +217,7 @@ export function resolveProductFromAttributeValue(
   const label = val.label?.trim().toLowerCase();
   if (label) {
     const matches = allProducts.filter(
-      (p) => p.name.trim().toLowerCase() === label
+      (p) => p.name.trim().toLowerCase() === label,
     );
     if (matches.length === 1) return matches[0];
   }
@@ -213,7 +226,7 @@ export function resolveProductFromAttributeValue(
 
 // Helper functions para mapear entre frontend y backend
 const categoryToBackendDto = (
-  category: Omit<Category, "id">
+  category: Omit<Category, "id">,
 ): CreateCategoryDto => ({
   name: category.name,
   description: category.description,
@@ -226,18 +239,18 @@ const categoryToBackendDto = (
       valueType: attr.valueType,
       values: Array.isArray(attr.values)
         ? attr.values.map((val) =>
-          typeof val === "string"
-            ? { label: val }
-            : {
-              label: val.label,
-              isDefault: val.isDefault,
-              priceAdjustment: val.priceAdjustment,
-              priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-              ...(attributeValueProductIdForBackend(val)
-                ? { productId: attributeValueProductIdForBackend(val)! }
-                : {}),
-            }
-        )
+            typeof val === "string"
+              ? { label: val }
+              : {
+                  label: val.label,
+                  isDefault: val.isDefault,
+                  priceAdjustment: val.priceAdjustment,
+                  priceAdjustmentCurrency: val.priceAdjustmentCurrency,
+                  ...(attributeValueProductIdForBackend(val)
+                    ? { productId: attributeValueProductIdForBackend(val)! }
+                    : {}),
+                },
+          )
         : [],
     };
 
@@ -263,7 +276,12 @@ const categoryToBackendDto = (
 
       // Log para debugging
       if (attr.maxValue === undefined || attr.maxValue === null) {
-        console.warn("⚠️ Atributo numérico sin maxValue:", attr.title, "valueType:", attr.valueType);
+        console.warn(
+          "⚠️ Atributo numérico sin maxValue:",
+          attr.title,
+          "valueType:",
+          attr.valueType,
+        );
       }
     } else {
       // Para otros tipos, incluir solo si existen
@@ -384,13 +402,17 @@ export const bootSync = async (): Promise<void> => {
   }
   try {
     await clearAllIndexedDBDataStores({ preserveOrderCaches: true });
-    console.log("bootSync: IndexedDB (datos) limpiado (orders/budgets conservados)");
+    console.log(
+      "bootSync: IndexedDB (datos) limpiado (orders/budgets conservados)",
+    );
   } catch (e) {
     console.warn("bootSync: error al limpiar IndexedDB", e);
   }
 };
 
-const repopulateCategoriesCache = async (categories: Category[]): Promise<void> => {
+const repopulateCategoriesCache = async (
+  categories: Category[],
+): Promise<void> => {
   try {
     await db.clearStore("categories");
     for (const c of categories) {
@@ -412,7 +434,7 @@ export const getCategories = async (): Promise<Category[]> => {
       } catch (error) {
         console.warn(
           "⚠️ Error cargando categorías del backend, usando IndexedDB:",
-          error
+          error,
         );
         const localCategoriesDB = await db.getAll<CategoryDB>("categories");
         return localCategoriesDB.map(categoryFromDB);
@@ -428,7 +450,7 @@ export const getCategories = async (): Promise<Category[]> => {
 };
 
 export const getCategory = async (
-  id: number
+  id: number,
 ): Promise<Category | undefined> => {
   try {
     if (isOnline()) {
@@ -451,7 +473,7 @@ export const getCategory = async (
 // Helper para resolver el ObjectId del backend de una categoría por nombre
 // Esta función se usa durante la sincronización para resolver categoryId correctamente
 export const resolveCategoryBackendId = async (
-  categoryName: string
+  categoryName: string,
 ): Promise<string | null> => {
   if (!isOnline()) {
     return null;
@@ -461,7 +483,7 @@ export const resolveCategoryBackendId = async (
     // Buscar directamente en el backend
     const backendCategories = await apiClient.getCategories();
     const backendCategory = backendCategories.find(
-      (c) => c.name === categoryName
+      (c) => c.name === categoryName,
     );
 
     if (backendCategory) {
@@ -480,7 +502,10 @@ export const resolveCategoryBackendId = async (
 
       // Actualizar la categoría local con el ID del backend
       const updatedLocalCategory = categoryFromBackendDto(syncedCategory);
-      await db.update("categories", categoryToDB(updatedLocalCategory, updatedLocalCategory.backendId));
+      await db.update(
+        "categories",
+        categoryToDB(updatedLocalCategory, updatedLocalCategory.backendId),
+      );
 
       return syncedCategory.id;
     }
@@ -493,25 +518,33 @@ export const resolveCategoryBackendId = async (
 };
 
 export const addCategory = async (
-  category: Omit<Category, "id">
+  category: Omit<Category, "id">,
 ): Promise<Category> => {
   // Validación del nombre
   const trimmedName = category.name.trim();
   if (trimmedName.length < 2) {
-    throw new Error("El nombre de la categoría debe tener al menos 2 caracteres");
+    throw new Error(
+      "El nombre de la categoría debe tener al menos 2 caracteres",
+    );
   }
   if (trimmedName.length > 200) {
-    throw new Error("El nombre de la categoría no puede exceder 200 caracteres");
+    throw new Error(
+      "El nombre de la categoría no puede exceder 200 caracteres",
+    );
   }
 
   // Validación de atributos
   for (const attr of category.attributes) {
     const trimmedTitle = attr.title.trim();
     if (trimmedTitle.length < 2) {
-      throw new Error(`El título del atributo "${attr.title || '(sin título)'}" debe tener al menos 2 caracteres`);
+      throw new Error(
+        `El título del atributo "${attr.title || "(sin título)"}" debe tener al menos 2 caracteres`,
+      );
     }
     if (trimmedTitle.length > 200) {
-      throw new Error(`El título del atributo "${attr.title}" no puede exceder 200 caracteres`);
+      throw new Error(
+        `El título del atributo "${attr.title}" no puede exceder 200 caracteres`,
+      );
     }
   }
 
@@ -522,21 +555,23 @@ export const addCategory = async (
   if (isOnline()) {
     try {
       const createDto = categoryToBackendDto(category);
-      console.log("📤 Enviando categoría al backend:", JSON.stringify(createDto, null, 2));
+      console.log(
+        "📤 Enviando categoría al backend:",
+        JSON.stringify(createDto, null, 2),
+      );
       const backendCategory = await apiClient.createCategory(createDto);
       newCategory = categoryFromBackendDto(backendCategory);
 
-      console.log(
-        "✅ Categoría guardada en backend:",
-        newCategory.name
-      );
+      console.log("✅ Categoría guardada en backend:", newCategory.name);
       syncedToBackend = true;
       return newCategory;
     } catch (error: any) {
       // Si la creación falla por conflicto, obtener la categoría existente y actualizar localmente
       if (error?.message?.includes("Ya existe una categoría con el nombre")) {
         try {
-          const existingCategory = await apiClient.getCategoryByName(category.name);
+          const existingCategory = await apiClient.getCategoryByName(
+            category.name,
+          );
           if (existingCategory) {
             newCategory = categoryFromBackendDto(existingCategory);
             newCategory = { ...newCategory, ...category };
@@ -545,13 +580,16 @@ export const addCategory = async (
           }
         } catch (getError) {
           // Si falla obtenerla, continuar con creación local
-          console.warn("⚠️ Error obteniendo categoría existente del backend:", getError);
+          console.warn(
+            "⚠️ Error obteniendo categoría existente del backend:",
+            getError,
+          );
         }
       }
 
       console.warn(
         "⚠️ Error guardando categoría en backend, guardando localmente:",
-        error
+        error,
       );
       // Continuar para guardar localmente y encolar para sincronización
     }
@@ -565,7 +603,10 @@ export const addCategory = async (
     const newId = Math.max(...localCategories.map((c) => c.id), 0) + 1;
     newCategory = { ...category, id: newId };
 
-    await db.add("categories", categoryToDB(newCategory, newCategory.backendId));
+    await db.add(
+      "categories",
+      categoryToDB(newCategory, newCategory.backendId),
+    );
     console.log("✅ Categoría guardada en IndexedDB:", newCategory.name);
 
     // Encolar para sincronización si NO se sincronizó con el backend
@@ -573,7 +614,10 @@ export const addCategory = async (
     if (!syncedToBackend) {
       try {
         const createDto = categoryToBackendDto(newCategory);
-        console.log("📤 Encolando categoría para sincronización:", JSON.stringify(createDto, null, 2));
+        console.log(
+          "📤 Encolando categoría para sincronización:",
+          JSON.stringify(createDto, null, 2),
+        );
         await syncManager.addToQueue({
           type: "create",
           entity: "category",
@@ -582,12 +626,12 @@ export const addCategory = async (
         });
         console.log(
           "✅ Categoría encolada para sincronización:",
-          newCategory.name
+          newCategory.name,
         );
       } catch (error) {
         console.warn(
           "⚠️ Error encolando categoría para sincronización:",
-          error
+          error,
         );
         // No lanzar error, la categoría ya está guardada localmente
       }
@@ -602,7 +646,7 @@ export const addCategory = async (
 
 export const updateCategory = async (
   id: number,
-  updates: Partial<Category>
+  updates: Partial<Category>,
 ): Promise<Category> => {
   const existingCategory = await getCategory(id);
   if (!existingCategory) {
@@ -613,10 +657,14 @@ export const updateCategory = async (
   if (updates.name !== undefined) {
     const trimmedName = updates.name.trim();
     if (trimmedName.length < 2) {
-      throw new Error("El nombre de la categoría debe tener al menos 2 caracteres");
+      throw new Error(
+        "El nombre de la categoría debe tener al menos 2 caracteres",
+      );
     }
     if (trimmedName.length > 200) {
-      throw new Error("El nombre de la categoría no puede exceder 200 caracteres");
+      throw new Error(
+        "El nombre de la categoría no puede exceder 200 caracteres",
+      );
     }
   }
 
@@ -625,10 +673,14 @@ export const updateCategory = async (
     for (const attr of updates.attributes) {
       const trimmedTitle = attr.title.trim();
       if (trimmedTitle.length < 2) {
-        throw new Error(`El título del atributo "${attr.title || '(sin título)'}" debe tener al menos 2 caracteres`);
+        throw new Error(
+          `El título del atributo "${attr.title || "(sin título)"}" debe tener al menos 2 caracteres`,
+        );
       }
       if (trimmedTitle.length > 200) {
-        throw new Error(`El título del atributo "${attr.title}" no puede exceder 200 caracteres`);
+        throw new Error(
+          `El título del atributo "${attr.title}" no puede exceder 200 caracteres`,
+        );
       }
     }
   }
@@ -649,7 +701,7 @@ export const updateCategory = async (
       if (!backendCategoryId) {
         try {
           const backendCategory = await apiClient.getCategoryByName(
-            existingCategory.name
+            existingCategory.name,
           );
           if (backendCategory) {
             backendCategoryId = backendCategory.id;
@@ -658,7 +710,7 @@ export const updateCategory = async (
           }
         } catch (error) {
           console.warn(
-            "⚠️ Categoría no encontrada en backend por nombre, actualizando solo localmente"
+            "⚠️ Categoría no encontrada en backend por nombre, actualizando solo localmente",
           );
         }
       }
@@ -680,75 +732,81 @@ export const updateCategory = async (
               : undefined,
           maxDiscountCurrency:
             updatedCategory.maxDiscountCurrency !==
-              existingCategory.maxDiscountCurrency
+            existingCategory.maxDiscountCurrency
               ? updatedCategory.maxDiscountCurrency
               : undefined,
           attributes:
             updatedCategory.attributes !== existingCategory.attributes
               ? updatedCategory.attributes.map((attr) => {
-                const attrDto: any = {
-                  id: attr.id.toString(),
-                  title: attr.title,
-                  description: attr.description,
-                  valueType: attr.valueType,
-                  maxSelections: attr.maxSelections,
-                  required: attr.required,
-                  values: Array.isArray(attr.values)
-                    ? attr.values.map((val) =>
-                      typeof val === "string"
-                        ? { label: val }
-                        : {
-                          id: val.id,
-                          label: val.label,
-                          isDefault: val.isDefault,
-                          priceAdjustment: val.priceAdjustment,
-                          priceAdjustmentCurrency:
-                            val.priceAdjustmentCurrency,
-                          ...(attributeValueProductIdForBackend(val)
-                            ? {
-                                productId: attributeValueProductIdForBackend(val)!,
-                              }
-                            : {}),
-                        }
-                    )
-                    : [],
-                };
+                  const attrDto: any = {
+                    id: attr.id.toString(),
+                    title: attr.title,
+                    description: attr.description,
+                    valueType: attr.valueType,
+                    maxSelections: attr.maxSelections,
+                    required: attr.required,
+                    values: Array.isArray(attr.values)
+                      ? attr.values.map((val) =>
+                          typeof val === "string"
+                            ? { label: val }
+                            : {
+                                id: val.id,
+                                label: val.label,
+                                isDefault: val.isDefault,
+                                priceAdjustment: val.priceAdjustment,
+                                priceAdjustmentCurrency:
+                                  val.priceAdjustmentCurrency,
+                                ...(attributeValueProductIdForBackend(val)
+                                  ? {
+                                      productId:
+                                        attributeValueProductIdForBackend(val)!,
+                                    }
+                                  : {}),
+                              },
+                        )
+                      : [],
+                  };
 
-                // Para atributos de tipo "Number", siempre incluir minValue y maxValue
-                if (attr.valueType === "Number") {
-                  attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
-                  attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
-                } else {
-                  // Para otros tipos, incluir solo si existen
-                  if (attr.minValue !== undefined) {
-                    attrDto.minValue = attr.minValue;
+                  // Para atributos de tipo "Number", siempre incluir minValue y maxValue
+                  if (attr.valueType === "Number") {
+                    attrDto.minValue =
+                      attr.minValue !== undefined ? attr.minValue : null;
+                    attrDto.maxValue =
+                      attr.maxValue !== undefined ? attr.maxValue : null;
+                  } else {
+                    // Para otros tipos, incluir solo si existen
+                    if (attr.minValue !== undefined) {
+                      attrDto.minValue = attr.minValue;
+                    }
+                    if (attr.maxValue !== undefined) {
+                      attrDto.maxValue = attr.maxValue;
+                    }
                   }
-                  if (attr.maxValue !== undefined) {
-                    attrDto.maxValue = attr.maxValue;
-                  }
-                }
 
-                return attrDto;
-              })
+                  return attrDto;
+                })
               : undefined,
         };
 
-        console.log("📤 Sending update to backend:", JSON.stringify(updateDto, null, 2)); // Debug info
+        console.log(
+          "📤 Sending update to backend:",
+          JSON.stringify(updateDto, null, 2),
+        ); // Debug info
         const backendCategory = await apiClient.updateCategory(
           backendCategoryId,
-          updateDto
+          updateDto,
         );
         const syncedCategory = categoryFromBackendDto(backendCategory);
 
         console.log(
           "✅ Categoría actualizada en backend:",
-          syncedCategory.name
+          syncedCategory.name,
         );
         return syncedCategory;
       } else {
         // La categoría no existe en el backend, actualizar localmente y encolar para sincronización
         console.log(
-          "⚠️ Categoría no existe en backend, actualizando localmente y encolando para sincronización"
+          "⚠️ Categoría no existe en backend, actualizando localmente y encolando para sincronización",
         );
         // Continuar para guardar localmente y encolar
       }
@@ -756,7 +814,9 @@ export const updateCategory = async (
       // Manejar error 409 específicamente
       if (error?.message?.includes("Ya existe una categoría con el nombre")) {
         try {
-          const backendCategory = await apiClient.getCategoryByName(updatedCategory.name);
+          const backendCategory = await apiClient.getCategoryByName(
+            updatedCategory.name,
+          );
           if (backendCategory) {
             // Actualizar con el ID correcto y reintentar
             updatedCategory.backendId = backendCategory.id;
@@ -777,61 +837,69 @@ export const updateCategory = async (
                   : undefined,
               maxDiscountCurrency:
                 updatedCategory.maxDiscountCurrency !==
-                  existingCategory.maxDiscountCurrency
+                existingCategory.maxDiscountCurrency
                   ? updatedCategory.maxDiscountCurrency
                   : undefined,
               attributes:
                 updatedCategory.attributes !== existingCategory.attributes
                   ? updatedCategory.attributes.map((attr) => {
-                    const attrDto: any = {
-                      id: attr.id.toString(),
-                      title: attr.title,
-                      description: attr.description,
-                      valueType: attr.valueType,
-                      maxSelections: attr.maxSelections,
-                      values: Array.isArray(attr.values)
-                        ? attr.values.map((val) =>
-                          typeof val === "string"
-                            ? { label: val }
-                            : {
-                              id: val.id,
-                              label: val.label,
-                              isDefault: val.isDefault,
-                              priceAdjustment: val.priceAdjustment,
-                              priceAdjustmentCurrency:
-                                val.priceAdjustmentCurrency,
-                              ...(attributeValueProductIdForBackend(val)
-                                ? {
-                                    productId: attributeValueProductIdForBackend(val)!,
-                                  }
-                                : {}),
-                            }
-                        )
-                        : [],
-                    };
-                    // Siempre incluir required (por defecto true si no existe)
-                    attrDto.required = attr.required !== undefined ? attr.required : true;
-                    if (attr.valueType === "Number") {
-                      attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
-                      attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
-                    } else {
-                      if (attr.minValue !== undefined) {
-                        attrDto.minValue = attr.minValue;
+                      const attrDto: any = {
+                        id: attr.id.toString(),
+                        title: attr.title,
+                        description: attr.description,
+                        valueType: attr.valueType,
+                        maxSelections: attr.maxSelections,
+                        values: Array.isArray(attr.values)
+                          ? attr.values.map((val) =>
+                              typeof val === "string"
+                                ? { label: val }
+                                : {
+                                    id: val.id,
+                                    label: val.label,
+                                    isDefault: val.isDefault,
+                                    priceAdjustment: val.priceAdjustment,
+                                    priceAdjustmentCurrency:
+                                      val.priceAdjustmentCurrency,
+                                    ...(attributeValueProductIdForBackend(val)
+                                      ? {
+                                          productId:
+                                            attributeValueProductIdForBackend(
+                                              val,
+                                            )!,
+                                        }
+                                      : {}),
+                                  },
+                            )
+                          : [],
+                      };
+                      // Siempre incluir required (por defecto true si no existe)
+                      attrDto.required =
+                        attr.required !== undefined ? attr.required : true;
+                      if (attr.valueType === "Number") {
+                        attrDto.minValue =
+                          attr.minValue !== undefined ? attr.minValue : null;
+                        attrDto.maxValue =
+                          attr.maxValue !== undefined ? attr.maxValue : null;
+                      } else {
+                        if (attr.minValue !== undefined) {
+                          attrDto.minValue = attr.minValue;
+                        }
+                        if (attr.maxValue !== undefined) {
+                          attrDto.maxValue = attr.maxValue;
+                        }
                       }
-                      if (attr.maxValue !== undefined) {
-                        attrDto.maxValue = attr.maxValue;
-                      }
-                    }
-                    return attrDto;
-                  })
+                      return attrDto;
+                    })
                   : undefined,
             };
 
             const backendCategoryUpdated = await apiClient.updateCategory(
               backendCategoryId,
-              retryUpdateDto
+              retryUpdateDto,
             );
-            const syncedCategory = categoryFromBackendDto(backendCategoryUpdated);
+            const syncedCategory = categoryFromBackendDto(
+              backendCategoryUpdated,
+            );
             return syncedCategory;
           }
         } catch (retryError) {
@@ -841,7 +909,7 @@ export const updateCategory = async (
 
       console.warn(
         "⚠️ Error actualizando categoría en backend, guardando localmente:",
-        error
+        error,
       );
       // Continuar para guardar localmente
     }
@@ -849,7 +917,10 @@ export const updateCategory = async (
 
   // Guardar en IndexedDB
   try {
-    await db.update("categories", categoryToDB(updatedCategory, updatedCategory.backendId));
+    await db.update(
+      "categories",
+      categoryToDB(updatedCategory, updatedCategory.backendId),
+    );
 
     // Encolar para sincronización si la categoría no está en el backend o estamos offline
     const shouldEnqueue = !isOnline() || !backendCategoryId;
@@ -869,31 +940,35 @@ export const updateCategory = async (
               maxSelections: attr.maxSelections,
               values: Array.isArray(attr.values)
                 ? attr.values.map((val) =>
-                  typeof val === "string"
-                    ? { label: val }
-                    : {
-                      id: val.id,
-                      label: val.label,
-                      isDefault: val.isDefault,
-                      priceAdjustment: val.priceAdjustment,
-                      priceAdjustmentCurrency: val.priceAdjustmentCurrency,
-                      ...(attributeValueProductIdForBackend(val)
-                        ? {
-                            productId: attributeValueProductIdForBackend(val)!,
-                          }
-                        : {}),
-                    }
-                )
+                    typeof val === "string"
+                      ? { label: val }
+                      : {
+                          id: val.id,
+                          label: val.label,
+                          isDefault: val.isDefault,
+                          priceAdjustment: val.priceAdjustment,
+                          priceAdjustmentCurrency: val.priceAdjustmentCurrency,
+                          ...(attributeValueProductIdForBackend(val)
+                            ? {
+                                productId:
+                                  attributeValueProductIdForBackend(val)!,
+                              }
+                            : {}),
+                        },
+                  )
                 : [],
             };
 
             // Siempre incluir required (por defecto true si no existe)
-            attrDto.required = attr.required !== undefined ? attr.required : true;
+            attrDto.required =
+              attr.required !== undefined ? attr.required : true;
 
             // Para atributos de tipo "Number", siempre incluir minValue y maxValue
             if (attr.valueType === "Number") {
-              attrDto.minValue = attr.minValue !== undefined ? attr.minValue : null;
-              attrDto.maxValue = attr.maxValue !== undefined ? attr.maxValue : null;
+              attrDto.minValue =
+                attr.minValue !== undefined ? attr.minValue : null;
+              attrDto.maxValue =
+                attr.maxValue !== undefined ? attr.maxValue : null;
             } else {
               // Para otros tipos, incluir solo si existen
               if (attr.minValue !== undefined) {
@@ -915,7 +990,10 @@ export const updateCategory = async (
         });
         console.log("✅ Categoría encolada para sincronización");
       } catch (error) {
-        console.warn("⚠️ Error encolando categoría para sincronización:", error);
+        console.warn(
+          "⚠️ Error encolando categoría para sincronización:",
+          error,
+        );
       }
     }
 
@@ -940,7 +1018,7 @@ export const deleteCategory = async (id: number): Promise<void> => {
       let backendCategoryId: string | null = null;
       try {
         const backendCategory = await apiClient.getCategoryByName(
-          localCategory.name
+          localCategory.name,
         );
         if (backendCategory) {
           backendCategoryId = backendCategory.id;
@@ -948,7 +1026,7 @@ export const deleteCategory = async (id: number): Promise<void> => {
       } catch (error) {
         // La categoría no existe en el backend, solo eliminar localmente
         console.warn(
-          "⚠️ Categoría no encontrada en backend por nombre, eliminando solo localmente"
+          "⚠️ Categoría no encontrada en backend por nombre, eliminando solo localmente",
         );
       }
 
@@ -965,7 +1043,7 @@ export const deleteCategory = async (id: number): Promise<void> => {
     } catch (error) {
       console.warn(
         "⚠️ Error eliminando categoría del backend, eliminando localmente:",
-        error
+        error,
       );
       // Continuar para eliminar localmente
     }
@@ -1021,7 +1099,7 @@ const productFromDB = (productDB: ProductDB): Product => ({
 
 // Helper functions para mapear productos entre frontend y backend
 const productToBackendDto = async (
-  product: Product | Omit<Product, "id">
+  product: Product | Omit<Product, "id">,
 ): Promise<CreateProductDto> => {
   // El backend ahora resuelve automáticamente la categoría por nombre si CategoryId no es válido
   // Solo intentamos obtener el ID si estamos online, pero no es crítico
@@ -1032,7 +1110,7 @@ const productToBackendDto = async (
     try {
       const backendCategories = await apiClient.getCategories();
       const backendCategory = backendCategories.find(
-        (c) => c.name === categoryName
+        (c) => c.name === categoryName,
       );
       if (backendCategory) {
         categoryId = backendCategory.id;
@@ -1071,7 +1149,9 @@ const productFromBackendDto = (dto: ProductResponseDto): Product => ({
 });
 
 /** Misma regla que productFromBackendDto: nunca parseInt(ObjectId). */
-export const productListItemDtoToProduct = (dto: ProductListItemDto): Product => ({
+export const productListItemDtoToProduct = (
+  dto: ProductListItemDto,
+): Product => ({
   id: backendIdToNumber(dto.id),
   backendId: dto.id,
   name: dto.name,
@@ -1105,7 +1185,7 @@ export const getProducts = async (_forceSync = false): Promise<Product[]> => {
       } catch (error) {
         console.warn(
           "⚠️ Error cargando productos del backend, usando IndexedDB:",
-          error
+          error,
         );
         const localProductsDB = await db.getAll<ProductDB>("products");
         return localProductsDB.map(productFromDB);
@@ -1146,7 +1226,7 @@ export const getProduct = async (id: number): Promise<Product | undefined> => {
 };
 
 export const getProductByBackendId = async (
-  backendId: string
+  backendId: string,
 ): Promise<Product | undefined> => {
   const trimmed = backendId?.trim();
   if (!trimmed) return undefined;
@@ -1158,7 +1238,10 @@ export const getProductByBackendId = async (
         await db.put("products", productToDB(p));
         return p;
       } catch (error) {
-        console.warn("getProductByBackendId: API falló, usando IndexedDB", error);
+        console.warn(
+          "getProductByBackendId: API falló, usando IndexedDB",
+          error,
+        );
       }
     }
     const productsDB = await db.getAll<ProductDB>("products");
@@ -1174,7 +1257,7 @@ export const getProductByBackendId = async (
 /** orderProduct.id suele ser ObjectId string; evitar Number.parseInt sobre hex. */
 export function resolveCatalogProductFromOrderProductId(
   orderProductId: string,
-  allProducts: Product[]
+  allProducts: Product[],
 ): Product | undefined {
   const trimmed = orderProductId?.trim() ?? "";
   if (!trimmed) return undefined;
@@ -1192,7 +1275,7 @@ export function resolveCatalogProductFromOrderProductId(
 }
 
 export const getProductsByCategory = async (
-  category: string
+  category: string,
 ): Promise<Product[]> => {
   try {
     const all = await getProducts();
@@ -1204,7 +1287,7 @@ export const getProductsByCategory = async (
 };
 
 export const getProductsByStatus = async (
-  status: string
+  status: string,
 ): Promise<Product[]> => {
   try {
     const all = await getProducts();
@@ -1216,7 +1299,7 @@ export const getProductsByStatus = async (
 };
 
 export const addProduct = async (
-  product: Omit<Product, "id">
+  product: Omit<Product, "id">,
 ): Promise<Product> => {
   let newProduct: Product;
   let syncedToBackend = false;
@@ -1228,16 +1311,13 @@ export const addProduct = async (
       const backendProduct = await apiClient.createProduct(createDto);
       newProduct = productFromBackendDto(backendProduct);
 
-      console.log(
-        "✅ Producto guardado en backend:",
-        newProduct.name
-      );
+      console.log("✅ Producto guardado en backend:", newProduct.name);
       syncedToBackend = true;
       return newProduct;
     } catch (error) {
       console.warn(
         "⚠️ Error guardando producto en backend, guardando localmente:",
-        error
+        error,
       );
       // Continuar para guardar localmente y encolar para sincronización
     }
@@ -1267,7 +1347,7 @@ export const addProduct = async (
         });
         console.log(
           "✅ Producto encolado para sincronización:",
-          newProduct.name
+          newProduct.name,
         );
       } catch (error) {
         console.warn("⚠️ Error encolando producto para sincronización:", error);
@@ -1284,7 +1364,7 @@ export const addProduct = async (
 
 export const updateProduct = async (
   id: number,
-  updates: Partial<Product>
+  updates: Partial<Product>,
 ): Promise<Product> => {
   let existingProduct = await getProduct(id);
   if (!existingProduct && updates.backendId) {
@@ -1338,7 +1418,9 @@ export const updateProduct = async (
       }
 
       // Solo incluir attributes si realmente cambiaron
-      const attributesChanged = JSON.stringify(updatedProduct.attributes || {}) !== JSON.stringify(existingProduct.attributes || {});
+      const attributesChanged =
+        JSON.stringify(updatedProduct.attributes || {}) !==
+        JSON.stringify(existingProduct.attributes || {});
       if (attributesChanged) {
         updateDto.attributes = updatedProduct.attributes;
       }
@@ -1352,7 +1434,7 @@ export const updateProduct = async (
       // Buscar el producto en el backend por SKU para obtener su ObjectId
       try {
         const backendProduct = await apiClient.getProductBySku(
-          existingProduct.sku
+          existingProduct.sku,
         );
         if (backendProduct) {
           backendProductId = backendProduct.id;
@@ -1360,7 +1442,7 @@ export const updateProduct = async (
       } catch (error) {
         // El producto no existe en el backend todavía
         console.warn(
-          "⚠️ Producto no encontrado en backend por SKU, actualizando solo localmente"
+          "⚠️ Producto no encontrado en backend por SKU, actualizando solo localmente",
         );
       }
 
@@ -1369,7 +1451,8 @@ export const updateProduct = async (
         // Siempre incluir la categoría y resolver el categoryId del backend
         const categoryName = updateDto.category || updatedProduct.category;
         if (categoryName) {
-          const backendCategoryId = await resolveCategoryBackendId(categoryName);
+          const backendCategoryId =
+            await resolveCategoryBackendId(categoryName);
           if (backendCategoryId) {
             updateDto.categoryId = backendCategoryId;
           }
@@ -1387,26 +1470,23 @@ export const updateProduct = async (
 
         const backendProduct = await apiClient.updateProduct(
           backendProductId,
-          updateDto
+          updateDto,
         );
         const syncedProduct = productFromBackendDto(backendProduct);
 
-        console.log(
-          "✅ Producto actualizado en backend:",
-          syncedProduct.name
-        );
+        console.log("✅ Producto actualizado en backend:", syncedProduct.name);
         return syncedProduct;
       } else {
         // El producto no existe en el backend, actualizar localmente y encolar para sincronización
         console.log(
-          "⚠️ Producto no existe en backend, actualizando localmente y encolando para sincronización"
+          "⚠️ Producto no existe en backend, actualizando localmente y encolando para sincronización",
         );
         // Continuar para guardar localmente y encolar
       }
     } catch (error) {
       console.warn(
         "⚠️ Error actualizando producto en backend, guardando localmente:",
-        error
+        error,
       );
       // Continuar para guardar localmente
     }
@@ -1462,14 +1542,16 @@ export const deleteProduct = async (id: number): Promise<void> => {
       // Buscar el producto en el backend por SKU para obtener su ObjectId
       let backendProductId: string | null = null;
       try {
-        const backendProduct = await apiClient.getProductBySku(localProduct.sku);
+        const backendProduct = await apiClient.getProductBySku(
+          localProduct.sku,
+        );
         if (backendProduct) {
           backendProductId = backendProduct.id;
         }
       } catch (error) {
         // El producto no existe en el backend, solo eliminar localmente
         console.warn(
-          "⚠️ Producto no encontrado en backend por SKU, eliminando solo localmente"
+          "⚠️ Producto no encontrado en backend por SKU, eliminando solo localmente",
         );
       }
 
@@ -1486,7 +1568,7 @@ export const deleteProduct = async (id: number): Promise<void> => {
     } catch (error) {
       console.warn(
         "⚠️ Error eliminando producto del backend, eliminando localmente:",
-        error
+        error,
       );
       // Continuar para eliminar localmente
     }
@@ -1562,7 +1644,12 @@ export interface OrderProduct {
   refabricatedAt?: string; // Fecha de última refabricación (ISO string)
   refabricationHistory?: RefabricationRecord[]; // Historial de refabricaciones
   // Estado de ubicación del producto
-  locationStatus?: "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | "EN DESPACHO" | "DESPACHADO"; // Estado de ubicación
+  locationStatus?:
+    | "DISPONIBILIDAD INMEDIATA"
+    | "EN TIENDA"
+    | "FABRICACION"
+    | "EN DESPACHO"
+    | "DESPACHADO"; // Estado de ubicación
   logisticStatus?: string; // "Generado", "Fabricándose", "En Almacén", "En Ruta", "Completado"
   /** ISO UTC cuando el ítem se marcó entregado/despachado */
   deliveredAt?: string;
@@ -1641,10 +1728,33 @@ export interface Order {
   paymentMode?: "simple" | "mixto"; // Nuevo campo
   paymentMethod: string;
   // Nuevos campos opcionales para compatibilidad hacia atrás
-  paymentCondition?: "cashea" | "pagara_en_tienda" | "pago_a_entrega" | "pago_parcial" | "todo_pago";
-  saleType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado";
-  deliveryType?: "entrega_programada" | "delivery_express" | "retiro_tienda" | "retiro_almacen";
-  deliveryZone?: "caracas" | "g_g" | "san_antonio_los_teques" | "caucagua_higuerote" | "la_guaira" | "charallave_cua" | "interior_pais";
+  paymentCondition?:
+    | "cashea"
+    | "pagara_en_tienda"
+    | "pago_a_entrega"
+    | "pago_parcial"
+    | "todo_pago";
+  saleType?:
+    | "delivery_express"
+    | "encargo"
+    | "encargo_entrega"
+    | "entrega"
+    | "retiro_almacen"
+    | "retiro_tienda"
+    | "sistema_apartado";
+  deliveryType?:
+    | "entrega_programada"
+    | "delivery_express"
+    | "retiro_tienda"
+    | "retiro_almacen";
+  deliveryZone?:
+    | "caracas"
+    | "g_g"
+    | "san_antonio_los_teques"
+    | "caucagua_higuerote"
+    | "la_guaira"
+    | "charallave_cua"
+    | "interior_pais";
   paymentDetails?: {
     // Pago Móvil
     pagomovilReference?: string;
@@ -1716,6 +1826,7 @@ export interface Order {
   productMarkups?: Record<string, number>;
   createSupplierOrder?: boolean;
   observations?: string; // Observaciones generales del pedido
+  dispatchObservations?: string; // Observaciones generales del despacho
   type?: string;
   baseCurrency?: "Bs" | "USD" | "EUR"; // Moneda base para visualización del pedido
   exchangeRatesAtCreation?: {
@@ -1788,11 +1899,11 @@ export interface User {
   username: string;
   email: string;
   role:
-  | "Super Administrator"
-  | "Administrator"
-  | "Supervisor"
-  | "Store Seller"
-  | "Online Seller";
+    | "Super Administrator"
+    | "Administrator"
+    | "Supervisor"
+    | "Store Seller"
+    | "Online Seller";
   name: string;
   status: "active" | "inactive";
   createdAt?: string;
@@ -1812,7 +1923,9 @@ export interface Vendor {
 // ===== ORDERS STORAGE (IndexedDB) =====
 
 /** Presupuestos del API (Type=Budget / PRE-*) no deben mezclarse en el store `orders` ni duplicarse en listados unificados. */
-function isBackendBudgetOrder(order: Pick<Order, "type" | "status" | "orderNumber">): boolean {
+function isBackendBudgetOrder(
+  order: Pick<Order, "type" | "status" | "orderNumber">,
+): boolean {
   const t = (order.type || "").trim().toLowerCase();
   if (t === "budget") return true;
   const num = (order.orderNumber || "").toUpperCase();
@@ -1821,7 +1934,9 @@ function isBackendBudgetOrder(order: Pick<Order, "type" | "status" | "orderNumbe
 }
 
 /** Pedidos por confirmar (PCF): solo historial por cliente / flujo de confirmación, no listado principal de pedidos. */
-function isBackendPendingConfirmationOrder(order: Pick<Order, "type" | "orderNumber">): boolean {
+function isBackendPendingConfirmationOrder(
+  order: Pick<Order, "type" | "orderNumber">,
+): boolean {
   const t = (order.type || "").trim();
   if (t === "PendingConfirmation") return true;
   const num = (order.orderNumber || "").toUpperCase();
@@ -1832,7 +1947,7 @@ function isBackendPendingConfirmationOrder(order: Pick<Order, "type" | "orderNum
 // Helper functions para mapear orders entre frontend y backend
 /** Si el API no envía paymentCondition pero el método es Cashea (pedidos legacy), se trata como cashea. */
 function paymentConditionFromOrderDto(
-  dto: OrderResponseDto
+  dto: OrderResponseDto,
 ): Order["paymentCondition"] | undefined {
   const raw = dto.paymentCondition?.trim();
   if (raw) return raw as Order["paymentCondition"];
@@ -1873,12 +1988,20 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       uploadedAt: img.uploadedAt,
       size: img.size,
     })),
-    availabilityStatus: p.availabilityStatus as "disponible" | "no_disponible" | undefined,
+    availabilityStatus: p.availabilityStatus as
+      | "disponible"
+      | "no_disponible"
+      | undefined,
     manufacturingStatus: (() => {
       const s = p.manufacturingStatus?.trim().toLowerCase();
       if (!s) return undefined;
       if (s === "fabricado") return "almacen_no_fabricado" as const; // legacy
-      if (s === "almacen_no_fabricado" || s === "debe_fabricar" || s === "fabricando") return s as "debe_fabricar" | "fabricando" | "almacen_no_fabricado";
+      if (
+        s === "almacen_no_fabricado" ||
+        s === "debe_fabricar" ||
+        s === "fabricando"
+      )
+        return s as "debe_fabricar" | "fabricando" | "almacen_no_fabricado";
       return undefined;
     })(),
     manufacturingProviderId: p.manufacturingProviderId,
@@ -1888,11 +2011,20 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     manufacturingNotes: p.manufacturingNotes,
     locationStatus: (() => {
       // Normalizar valores antiguos a nuevos
-      if (p.locationStatus === "en_tienda") return "EN TIENDA" as const
-      if (p.locationStatus === "mandar_a_fabricar") return "FABRICACION" as const
-      if (p.locationStatus === "SIN DEFINIR") return "DISPONIBILIDAD INMEDIATA" as const
-      if (!p.locationStatus || p.locationStatus === "") return "DISPONIBILIDAD INMEDIATA" as const
-      return (p.locationStatus as "DISPONIBILIDAD INMEDIATA" | "EN TIENDA" | "FABRICACION" | undefined) ?? "DISPONIBILIDAD INMEDIATA"
+      if (p.locationStatus === "en_tienda") return "EN TIENDA" as const;
+      if (p.locationStatus === "mandar_a_fabricar")
+        return "FABRICACION" as const;
+      if (p.locationStatus === "SIN DEFINIR")
+        return "DISPONIBILIDAD INMEDIATA" as const;
+      if (!p.locationStatus || p.locationStatus === "")
+        return "DISPONIBILIDAD INMEDIATA" as const;
+      return (
+        (p.locationStatus as
+          | "DISPONIBILIDAD INMEDIATA"
+          | "EN TIENDA"
+          | "FABRICACION"
+          | undefined) ?? "DISPONIBILIDAD INMEDIATA"
+      );
     })(),
     logisticStatus: p.logisticStatus,
     deliveredAt:
@@ -1913,11 +2045,18 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
           ? r.date
           : r.date != null
             ? new Date(r.date as string | number | Date).toISOString()
-            : (r as { Date?: string }).Date ?? "",
-      previousProviderId: r.previousProviderId ?? (r as { PreviousProviderId?: string }).PreviousProviderId,
-      previousProviderName: r.previousProviderName ?? (r as { PreviousProviderName?: string }).PreviousProviderName,
-      newProviderId: r.newProviderId ?? (r as { NewProviderId?: string }).NewProviderId,
-      newProviderName: r.newProviderName ?? (r as { NewProviderName?: string }).NewProviderName,
+            : ((r as { Date?: string }).Date ?? ""),
+      previousProviderId:
+        r.previousProviderId ??
+        (r as { PreviousProviderId?: string }).PreviousProviderId,
+      previousProviderName:
+        r.previousProviderName ??
+        (r as { PreviousProviderName?: string }).PreviousProviderName,
+      newProviderId:
+        r.newProviderId ?? (r as { NewProviderId?: string }).NewProviderId,
+      newProviderName:
+        r.newProviderName ??
+        (r as { NewProviderName?: string }).NewProviderName,
     })),
   })),
   subtotal: dto.subtotal,
@@ -1928,35 +2067,38 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   productDiscountTotal: dto.productDiscountTotal,
   generalDiscountAmount: dto.generalDiscountAmount,
   generalDiscountType:
-    dto.generalDiscountType === "porcentaje" || dto.generalDiscountType === "monto"
+    dto.generalDiscountType === "porcentaje" ||
+    dto.generalDiscountType === "monto"
       ? dto.generalDiscountType
       : undefined,
   generalDiscountPercent: dto.generalDiscountPercent,
   paymentType: dto.paymentType as "directo" | "apartado" | "mixto",
   paymentMethod: dto.paymentMethod,
   paymentCondition: paymentConditionFromOrderDto(dto),
-  paymentDetails: dto.paymentDetails ? {
-    pagomovilReference: dto.paymentDetails.pagomovilReference,
-    pagomovilBank: dto.paymentDetails.pagomovilBank,
-    pagomovilPhone: dto.paymentDetails.pagomovilPhone,
-    pagomovilDate: dto.paymentDetails.pagomovilDate,
-    transferenciaBank: dto.paymentDetails.transferenciaBank,
-    transferenciaReference: dto.paymentDetails.transferenciaReference,
-    transferenciaDate: dto.paymentDetails.transferenciaDate,
-    cashAmount: dto.paymentDetails.cashAmount,
-    cashCurrency: dto.paymentDetails.cashCurrency,
-    cashReceived: dto.paymentDetails.cashReceived,
-    exchangeRate: dto.paymentDetails.exchangeRate,
-    originalAmount: dto.paymentDetails.originalAmount,
-    originalCurrency: dto.paymentDetails.originalCurrency,
-    accountId: dto.paymentDetails.accountId,
-    accountNumber: dto.paymentDetails.accountNumber,
-    bank: dto.paymentDetails.bank,
-    email: dto.paymentDetails.email,
-    wallet: dto.paymentDetails.wallet,
-    envia: dto.paymentDetails.envia,
-    isConciliated: dto.paymentDetails.isConciliated,
-  } : undefined,
+  paymentDetails: dto.paymentDetails
+    ? {
+        pagomovilReference: dto.paymentDetails.pagomovilReference,
+        pagomovilBank: dto.paymentDetails.pagomovilBank,
+        pagomovilPhone: dto.paymentDetails.pagomovilPhone,
+        pagomovilDate: dto.paymentDetails.pagomovilDate,
+        transferenciaBank: dto.paymentDetails.transferenciaBank,
+        transferenciaReference: dto.paymentDetails.transferenciaReference,
+        transferenciaDate: dto.paymentDetails.transferenciaDate,
+        cashAmount: dto.paymentDetails.cashAmount,
+        cashCurrency: dto.paymentDetails.cashCurrency,
+        cashReceived: dto.paymentDetails.cashReceived,
+        exchangeRate: dto.paymentDetails.exchangeRate,
+        originalAmount: dto.paymentDetails.originalAmount,
+        originalCurrency: dto.paymentDetails.originalCurrency,
+        accountId: dto.paymentDetails.accountId,
+        accountNumber: dto.paymentDetails.accountNumber,
+        bank: dto.paymentDetails.bank,
+        email: dto.paymentDetails.email,
+        wallet: dto.paymentDetails.wallet,
+        envia: dto.paymentDetails.envia,
+        isConciliated: dto.paymentDetails.isConciliated,
+      }
+    : undefined,
   partialPayments: dto.partialPayments?.map((p) => ({
     id: p.id,
     amount: p.amount,
@@ -1971,28 +2113,30 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       uploadedAt: img.uploadedAt,
       size: img.size,
     })),
-    paymentDetails: p.paymentDetails ? {
-      pagomovilReference: p.paymentDetails.pagomovilReference,
-      pagomovilBank: p.paymentDetails.pagomovilBank,
-      pagomovilPhone: p.paymentDetails.pagomovilPhone,
-      pagomovilDate: p.paymentDetails.pagomovilDate,
-      transferenciaBank: p.paymentDetails.transferenciaBank,
-      transferenciaReference: p.paymentDetails.transferenciaReference,
-      transferenciaDate: p.paymentDetails.transferenciaDate,
-      cashAmount: p.paymentDetails.cashAmount,
-      cashCurrency: p.paymentDetails.cashCurrency,
-      cashReceived: p.paymentDetails.cashReceived,
-      exchangeRate: p.paymentDetails.exchangeRate,
-      originalAmount: p.paymentDetails.originalAmount,
-      originalCurrency: p.paymentDetails.originalCurrency,
-      accountId: p.paymentDetails.accountId,
-      accountNumber: p.paymentDetails.accountNumber,
-      bank: p.paymentDetails.bank,
-      email: p.paymentDetails.email,
-      wallet: p.paymentDetails.wallet,
-      envia: p.paymentDetails.envia,
-      isConciliated: p.paymentDetails.isConciliated,
-    } : undefined,
+    paymentDetails: p.paymentDetails
+      ? {
+          pagomovilReference: p.paymentDetails.pagomovilReference,
+          pagomovilBank: p.paymentDetails.pagomovilBank,
+          pagomovilPhone: p.paymentDetails.pagomovilPhone,
+          pagomovilDate: p.paymentDetails.pagomovilDate,
+          transferenciaBank: p.paymentDetails.transferenciaBank,
+          transferenciaReference: p.paymentDetails.transferenciaReference,
+          transferenciaDate: p.paymentDetails.transferenciaDate,
+          cashAmount: p.paymentDetails.cashAmount,
+          cashCurrency: p.paymentDetails.cashCurrency,
+          cashReceived: p.paymentDetails.cashReceived,
+          exchangeRate: p.paymentDetails.exchangeRate,
+          originalAmount: p.paymentDetails.originalAmount,
+          originalCurrency: p.paymentDetails.originalCurrency,
+          accountId: p.paymentDetails.accountId,
+          accountNumber: p.paymentDetails.accountNumber,
+          bank: p.paymentDetails.bank,
+          email: p.paymentDetails.email,
+          wallet: p.paymentDetails.wallet,
+          envia: p.paymentDetails.envia,
+          isConciliated: p.paymentDetails.isConciliated,
+        }
+      : undefined,
   })),
   mixedPayments: dto.mixedPayments?.map((p) => ({
     id: p.id,
@@ -2008,28 +2152,30 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
       uploadedAt: img.uploadedAt,
       size: img.size,
     })),
-    paymentDetails: p.paymentDetails ? {
-      pagomovilReference: p.paymentDetails.pagomovilReference,
-      pagomovilBank: p.paymentDetails.pagomovilBank,
-      pagomovilPhone: p.paymentDetails.pagomovilPhone,
-      pagomovilDate: p.paymentDetails.pagomovilDate,
-      transferenciaBank: p.paymentDetails.transferenciaBank,
-      transferenciaReference: p.paymentDetails.transferenciaReference,
-      transferenciaDate: p.paymentDetails.transferenciaDate,
-      cashAmount: p.paymentDetails.cashAmount,
-      cashCurrency: p.paymentDetails.cashCurrency,
-      cashReceived: p.paymentDetails.cashReceived,
-      exchangeRate: p.paymentDetails.exchangeRate,
-      originalAmount: p.paymentDetails.originalAmount,
-      originalCurrency: p.paymentDetails.originalCurrency,
-      accountId: p.paymentDetails.accountId,
-      accountNumber: p.paymentDetails.accountNumber,
-      bank: p.paymentDetails.bank,
-      email: p.paymentDetails.email,
-      wallet: p.paymentDetails.wallet,
-      envia: p.paymentDetails.envia,
-      isConciliated: p.paymentDetails.isConciliated,
-    } : undefined,
+    paymentDetails: p.paymentDetails
+      ? {
+          pagomovilReference: p.paymentDetails.pagomovilReference,
+          pagomovilBank: p.paymentDetails.pagomovilBank,
+          pagomovilPhone: p.paymentDetails.pagomovilPhone,
+          pagomovilDate: p.paymentDetails.pagomovilDate,
+          transferenciaBank: p.paymentDetails.transferenciaBank,
+          transferenciaReference: p.paymentDetails.transferenciaReference,
+          transferenciaDate: p.paymentDetails.transferenciaDate,
+          cashAmount: p.paymentDetails.cashAmount,
+          cashCurrency: p.paymentDetails.cashCurrency,
+          cashReceived: p.paymentDetails.cashReceived,
+          exchangeRate: p.paymentDetails.exchangeRate,
+          originalAmount: p.paymentDetails.originalAmount,
+          originalCurrency: p.paymentDetails.originalCurrency,
+          accountId: p.paymentDetails.accountId,
+          accountNumber: p.paymentDetails.accountNumber,
+          bank: p.paymentDetails.bank,
+          email: p.paymentDetails.email,
+          wallet: p.paymentDetails.wallet,
+          envia: p.paymentDetails.envia,
+          isConciliated: p.paymentDetails.isConciliated,
+        }
+      : undefined,
   })),
   deliveryAddress: dto.deliveryAddress,
   hasDelivery: dto.hasDelivery,
@@ -2039,12 +2185,13 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   productMarkups: dto.productMarkups,
   createSupplierOrder: dto.createSupplierOrder,
   observations: dto.observations,
+  dispatchObservations: dto.dispatchObservations,
   saleType: dto.saleType as Order["saleType"],
   deliveryType: dto.deliveryType as Order["deliveryType"],
   deliveryZone: dto.deliveryZone as Order["deliveryZone"],
   deliveryServices: dto.deliveryServices,
   exchangeRatesAtCreation: normalizeExchangeRatesAtCreation(
-    dto.exchangeRatesAtCreation
+    dto.exchangeRatesAtCreation,
   ),
   baseCurrency: dto.baseCurrency,
   dispatchDate: dto.dispatchDate,
@@ -2056,7 +2203,9 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   type: dto.type ?? (dto as unknown as { Type?: string }).Type ?? "Order",
 });
 
-export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">): CreateOrderDto => ({
+export const orderToBackendDto = (
+  order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">,
+): CreateOrderDto => ({
   clientId: order.clientId,
   clientName: order.clientName,
   vendorId: order.vendorId,
@@ -2120,28 +2269,30 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   paymentType: order.paymentType,
   paymentMethod: order.paymentMethod,
   paymentCondition: order.paymentCondition,
-  paymentDetails: order.paymentDetails ? {
-    pagomovilReference: order.paymentDetails.pagomovilReference,
-    pagomovilBank: order.paymentDetails.pagomovilBank,
-    pagomovilPhone: order.paymentDetails.pagomovilPhone,
-    pagomovilDate: order.paymentDetails.pagomovilDate,
-    transferenciaBank: order.paymentDetails.transferenciaBank,
-    transferenciaReference: order.paymentDetails.transferenciaReference,
-    transferenciaDate: order.paymentDetails.transferenciaDate,
-    cashAmount: order.paymentDetails.cashAmount,
-    cashCurrency: order.paymentDetails.cashCurrency,
-    cashReceived: order.paymentDetails.cashReceived,
-    exchangeRate: order.paymentDetails.exchangeRate,
-    originalAmount: order.paymentDetails.originalAmount,
-    originalCurrency: order.paymentDetails.originalCurrency,
-    accountId: order.paymentDetails.accountId,
-    accountNumber: order.paymentDetails.accountNumber,
-    bank: order.paymentDetails.bank,
-    email: order.paymentDetails.email,
-    wallet: order.paymentDetails.wallet,
-    envia: order.paymentDetails.envia,
-    isConciliated: order.paymentDetails.isConciliated,
-  } : undefined,
+  paymentDetails: order.paymentDetails
+    ? {
+        pagomovilReference: order.paymentDetails.pagomovilReference,
+        pagomovilBank: order.paymentDetails.pagomovilBank,
+        pagomovilPhone: order.paymentDetails.pagomovilPhone,
+        pagomovilDate: order.paymentDetails.pagomovilDate,
+        transferenciaBank: order.paymentDetails.transferenciaBank,
+        transferenciaReference: order.paymentDetails.transferenciaReference,
+        transferenciaDate: order.paymentDetails.transferenciaDate,
+        cashAmount: order.paymentDetails.cashAmount,
+        cashCurrency: order.paymentDetails.cashCurrency,
+        cashReceived: order.paymentDetails.cashReceived,
+        exchangeRate: order.paymentDetails.exchangeRate,
+        originalAmount: order.paymentDetails.originalAmount,
+        originalCurrency: order.paymentDetails.originalCurrency,
+        accountId: order.paymentDetails.accountId,
+        accountNumber: order.paymentDetails.accountNumber,
+        bank: order.paymentDetails.bank,
+        email: order.paymentDetails.email,
+        wallet: order.paymentDetails.wallet,
+        envia: order.paymentDetails.envia,
+        isConciliated: order.paymentDetails.isConciliated,
+      }
+    : undefined,
   partialPayments: order.partialPayments?.map((p) => ({
     id: p.id,
     amount: p.amount,
@@ -2155,28 +2306,30 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
       uploadedAt: img.uploadedAt,
       size: img.size,
     })),
-    paymentDetails: p.paymentDetails ? {
-      pagomovilReference: p.paymentDetails.pagomovilReference,
-      pagomovilBank: p.paymentDetails.pagomovilBank,
-      pagomovilPhone: p.paymentDetails.pagomovilPhone,
-      pagomovilDate: p.paymentDetails.pagomovilDate,
-      transferenciaBank: p.paymentDetails.transferenciaBank,
-      transferenciaReference: p.paymentDetails.transferenciaReference,
-      transferenciaDate: p.paymentDetails.transferenciaDate,
-      cashAmount: p.paymentDetails.cashAmount,
-      cashCurrency: p.paymentDetails.cashCurrency,
-      cashReceived: p.paymentDetails.cashReceived,
-      exchangeRate: p.paymentDetails.exchangeRate,
-      originalAmount: p.paymentDetails.originalAmount,
-      originalCurrency: p.paymentDetails.originalCurrency,
-      accountId: p.paymentDetails.accountId,
-      accountNumber: p.paymentDetails.accountNumber,
-      bank: p.paymentDetails.bank,
-      email: p.paymentDetails.email,
-      wallet: p.paymentDetails.wallet,
-      envia: p.paymentDetails.envia,
-      isConciliated: p.paymentDetails.isConciliated,
-    } : undefined,
+    paymentDetails: p.paymentDetails
+      ? {
+          pagomovilReference: p.paymentDetails.pagomovilReference,
+          pagomovilBank: p.paymentDetails.pagomovilBank,
+          pagomovilPhone: p.paymentDetails.pagomovilPhone,
+          pagomovilDate: p.paymentDetails.pagomovilDate,
+          transferenciaBank: p.paymentDetails.transferenciaBank,
+          transferenciaReference: p.paymentDetails.transferenciaReference,
+          transferenciaDate: p.paymentDetails.transferenciaDate,
+          cashAmount: p.paymentDetails.cashAmount,
+          cashCurrency: p.paymentDetails.cashCurrency,
+          cashReceived: p.paymentDetails.cashReceived,
+          exchangeRate: p.paymentDetails.exchangeRate,
+          originalAmount: p.paymentDetails.originalAmount,
+          originalCurrency: p.paymentDetails.originalCurrency,
+          accountId: p.paymentDetails.accountId,
+          accountNumber: p.paymentDetails.accountNumber,
+          bank: p.paymentDetails.bank,
+          email: p.paymentDetails.email,
+          wallet: p.paymentDetails.wallet,
+          envia: p.paymentDetails.envia,
+          isConciliated: p.paymentDetails.isConciliated,
+        }
+      : undefined,
   })),
   mixedPayments: order.mixedPayments?.map((p) => ({
     id: p.id,
@@ -2191,28 +2344,30 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
       uploadedAt: img.uploadedAt,
       size: img.size,
     })),
-    paymentDetails: p.paymentDetails ? {
-      pagomovilReference: p.paymentDetails.pagomovilReference,
-      pagomovilBank: p.paymentDetails.pagomovilBank,
-      pagomovilPhone: p.paymentDetails.pagomovilPhone,
-      pagomovilDate: p.paymentDetails.pagomovilDate,
-      transferenciaBank: p.paymentDetails.transferenciaBank,
-      transferenciaReference: p.paymentDetails.transferenciaReference,
-      transferenciaDate: p.paymentDetails.transferenciaDate,
-      cashAmount: p.paymentDetails.cashAmount,
-      cashCurrency: p.paymentDetails.cashCurrency,
-      cashReceived: p.paymentDetails.cashReceived,
-      exchangeRate: p.paymentDetails.exchangeRate,
-      originalAmount: p.paymentDetails.originalAmount,
-      originalCurrency: p.paymentDetails.originalCurrency,
-      accountId: p.paymentDetails.accountId,
-      accountNumber: p.paymentDetails.accountNumber,
-      bank: p.paymentDetails.bank,
-      email: p.paymentDetails.email,
-      wallet: p.paymentDetails.wallet,
-      envia: p.paymentDetails.envia,
-      isConciliated: p.paymentDetails.isConciliated,
-    } : undefined,
+    paymentDetails: p.paymentDetails
+      ? {
+          pagomovilReference: p.paymentDetails.pagomovilReference,
+          pagomovilBank: p.paymentDetails.pagomovilBank,
+          pagomovilPhone: p.paymentDetails.pagomovilPhone,
+          pagomovilDate: p.paymentDetails.pagomovilDate,
+          transferenciaBank: p.paymentDetails.transferenciaBank,
+          transferenciaReference: p.paymentDetails.transferenciaReference,
+          transferenciaDate: p.paymentDetails.transferenciaDate,
+          cashAmount: p.paymentDetails.cashAmount,
+          cashCurrency: p.paymentDetails.cashCurrency,
+          cashReceived: p.paymentDetails.cashReceived,
+          exchangeRate: p.paymentDetails.exchangeRate,
+          originalAmount: p.paymentDetails.originalAmount,
+          originalCurrency: p.paymentDetails.originalCurrency,
+          accountId: p.paymentDetails.accountId,
+          accountNumber: p.paymentDetails.accountNumber,
+          bank: p.paymentDetails.bank,
+          email: p.paymentDetails.email,
+          wallet: p.paymentDetails.wallet,
+          envia: p.paymentDetails.envia,
+          isConciliated: p.paymentDetails.isConciliated,
+        }
+      : undefined,
   })),
   deliveryAddress: order.deliveryAddress,
   hasDelivery: order.hasDelivery,
@@ -2220,6 +2375,7 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
   productMarkups: order.productMarkups,
   createSupplierOrder: order.createSupplierOrder,
   observations: order.observations,
+  dispatchObservations: order.dispatchObservations,
   saleType: order.saleType,
   deliveryType: order.deliveryType,
   deliveryZone: order.deliveryZone,
@@ -2233,7 +2389,7 @@ export const orderToBackendDto = (order: Omit<Order, "id" | "orderNumber" | "cre
 
 /** Body para POST /api/Orders/{id}/convert-to-order (el servidor toma cliente/vendedor del presupuesto). */
 export function orderToConvertBudgetDto(
-  order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">
+  order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">,
 ): ConvertBudgetToOrderDto {
   const c = orderToBackendDto(order);
   return {
@@ -2251,6 +2407,7 @@ export function orderToConvertBudgetDto(
     hasDelivery: c.hasDelivery,
     deliveryServices: c.deliveryServices,
     observations: c.observations,
+    dispatchObservations: c.dispatchObservations,
     subtotal: c.subtotal,
     taxAmount: c.taxAmount,
     deliveryCost: c.deliveryCost,
@@ -2271,7 +2428,7 @@ export function orderToConvertBudgetDto(
 /** Tras convertir presupuesto en API: nuevo ORD en `orders` y quitar el PRE de `budgets`. */
 export async function persistConvertedBudgetLocally(
   budgetId: string,
-  dto: OrderResponseDto
+  dto: OrderResponseDto,
 ): Promise<Order> {
   const localOrder = orderFromBackendDto(dto);
   try {
@@ -2300,7 +2457,7 @@ export type GetOrdersOptions = {
 let inflightOrdersSync: Promise<Order[]> | null = null;
 
 export const getOrders = async (
-  optionsOrForceFull?: boolean | GetOrdersOptions
+  optionsOrForceFull?: boolean | GetOrdersOptions,
 ): Promise<Order[]> => {
   try {
     const localOrders = await db.getAll<Order>("orders");
@@ -2328,7 +2485,7 @@ export const getOrders = async (
           hasMore = response.hasNextPage;
           page++;
           console.log(
-            `Pedidos página ${page - 1}: ${mappedOrders.length} (acumulado: ${allOrders.length}/${response.totalCount})`
+            `Pedidos página ${page - 1}: ${mappedOrders.length} (acumulado: ${allOrders.length}/${response.totalCount})`,
           );
         }
 
@@ -2343,7 +2500,10 @@ export const getOrders = async (
           try {
             await db.put("budgets", orderMappedToBudget(order));
           } catch (err) {
-            console.warn(`Error guardando presupuesto ${order.orderNumber} en IndexedDB:`, err);
+            console.warn(
+              `Error guardando presupuesto ${order.orderNumber} en IndexedDB:`,
+              err,
+            );
           }
         }
 
@@ -2357,17 +2517,23 @@ export const getOrders = async (
           try {
             await db.put("orders", order);
           } catch (err) {
-            console.warn(`Error guardando orden ${order.orderNumber} en IndexedDB:`, err);
+            console.warn(
+              `Error guardando orden ${order.orderNumber} en IndexedDB:`,
+              err,
+            );
           }
         }
 
         const merged = [...ordersOnly, ...localOnly];
         console.log(
-          `Órdenes (sin presupuestos en store orders): ${ordersOnly.length} del servidor + ${localOnly.length} solo locales = ${merged.length}`
+          `Órdenes (sin presupuestos en store orders): ${ordersOnly.length} del servidor + ${localOnly.length} solo locales = ${merged.length}`,
         );
         return merged;
       } catch (error) {
-        console.warn("Error obteniendo órdenes del servidor, usando IndexedDB:", error);
+        console.warn(
+          "Error obteniendo órdenes del servidor, usando IndexedDB:",
+          error,
+        );
         return localForMerge;
       } finally {
         inflightOrdersSync = null;
@@ -2386,7 +2552,7 @@ export const getOrders = async (
  * Sin conexión o si falla el API: último dato local por orderNumber.
  */
 export const getOrderByOrderNumberPreferBackend = async (
-  orderNumber: string
+  orderNumber: string,
 ): Promise<Order | undefined> => {
   const localFallback = async (): Promise<Order | undefined> => {
     const orders = await db.getAll<Order>("orders");
@@ -2405,7 +2571,7 @@ export const getOrderByOrderNumberPreferBackend = async (
   } catch (error) {
     console.warn(
       `⚠️ No se pudo obtener el pedido ${orderNumber} desde el backend, usando IndexedDB:`,
-      error
+      error,
     );
     return localFallback();
   }
@@ -2486,7 +2652,7 @@ function nextOfflineOrderNumber(existingOrders: Order[]): string {
 }
 
 export const addOrder = async (
-  order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">
+  order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">,
 ): Promise<Order> => {
   let newOrder: Order;
   let syncedToBackend = false;
@@ -2504,7 +2670,7 @@ export const addOrder = async (
     } catch (error) {
       console.warn(
         "⚠️ Error guardando pedido en backend, guardando localmente:",
-        error
+        error,
       );
       // Continuar para guardar localmente y encolar para sincronización
     }
@@ -2524,6 +2690,19 @@ export const addOrder = async (
       status: order.status || "Generado", // Estado inicial para pedidos normales
     };
 
+    // DEBUG: Verificar imágenes antes de guardar
+    newOrder.products.forEach((p, idx) => {
+      if (p.images && p.images.length > 0) {
+        console.log(
+          `💾 Guardando pedido: Producto ${idx} (${p.name}) tiene ${p.images.length} imágenes`,
+        );
+      } else {
+        console.log(
+          `⚠️ Guardando pedido: Producto ${idx} (${p.name}) NO tiene imágenes`,
+        );
+      }
+    });
+
     await db.add("orders", newOrder);
     console.log("✅ Pedido guardado en IndexedDB:", newOrder.orderNumber);
 
@@ -2537,7 +2716,10 @@ export const addOrder = async (
           entityId: newOrder.id,
           data: createDto,
         });
-        console.log("✅ Pedido encolado para sincronización:", newOrder.orderNumber);
+        console.log(
+          "✅ Pedido encolado para sincronización:",
+          newOrder.orderNumber,
+        );
       } catch (error) {
         console.warn("⚠️ Error encolando pedido para sincronización:", error);
         // No lanzar error, el pedido ya está guardado localmente
@@ -2553,7 +2735,7 @@ export const addOrder = async (
 
 export const updateOrder = async (
   id: string,
-  updates: Partial<Order>
+  updates: Partial<Order>,
 ): Promise<Order> => {
   try {
     const existingOrder = await getOrder(id);
@@ -2573,178 +2755,282 @@ export const updateOrder = async (
         // Buscar el pedido en el backend por orderNumber para obtener su ObjectId
         let backendOrderId: string | null = null;
         try {
-          const backendOrder = await apiClient.getOrderByOrderNumber(existingOrder.orderNumber);
+          const backendOrder = await apiClient.getOrderByOrderNumber(
+            existingOrder.orderNumber,
+          );
           if (backendOrder) {
             backendOrderId = backendOrder.id;
           }
         } catch (error) {
           // El pedido no existe en el backend todavía
           console.warn(
-            "⚠️ Pedido no encontrado en backend por orderNumber, actualizando solo localmente"
+            "⚠️ Pedido no encontrado en backend por orderNumber, actualizando solo localmente",
           );
         }
 
         // Si encontramos el pedido en el backend, actualizarlo
         if (backendOrderId) {
           const updateDto: UpdateOrderDto = {
-            clientId: updatedOrder.clientId !== existingOrder.clientId ? updatedOrder.clientId : undefined,
-            clientName: updatedOrder.clientName !== existingOrder.clientName ? updatedOrder.clientName : undefined,
-            vendorId: updatedOrder.vendorId !== existingOrder.vendorId ? updatedOrder.vendorId : undefined,
-            vendorName: updatedOrder.vendorName !== existingOrder.vendorName ? updatedOrder.vendorName : undefined,
-            referrerId: updatedOrder.referrerId !== existingOrder.referrerId ? updatedOrder.referrerId : undefined,
-            referrerName: updatedOrder.referrerName !== existingOrder.referrerName ? updatedOrder.referrerName : undefined,
-            products: updatedOrder.products !== existingOrder.products ? updatedOrder.products.map((p) => ({
-              id: p.id,
-              name: p.name,
-              price: p.price,
-              quantity: p.quantity,
-              total: p.total,
-              category: p.category,
-              stock: p.stock,
-              attributes: p.attributes,
-              discount: p.discount,
-              observations: p.observations,
-              images: p.images?.map((img) => ({
-                id: img.id,
-                base64: img.base64,
-                filename: img.filename,
-                type: img.type,
-                uploadedAt: img.uploadedAt,
-                size: img.size,
-              })),
-              availabilityStatus: p.availabilityStatus,
-              manufacturingStatus: p.manufacturingStatus,
-              manufacturingProviderId: p.manufacturingProviderId,
-              manufacturingProviderName: p.manufacturingProviderName,
-              manufacturingStartedAt: p.manufacturingStartedAt,
-              manufacturingCompletedAt: p.manufacturingCompletedAt,
-              manufacturingNotes: p.manufacturingNotes,
-              locationStatus: p.locationStatus,
-              logisticStatus: p.logisticStatus,
-              deliveredAt: p.deliveredAt,
-              surchargeEnabled: p.surchargeEnabled,
-              surchargeAmount: p.surchargeAmount,
-              surchargeReason: p.surchargeReason,
-              refabricationReason: p.refabricationReason,
-              refabricatedAt: p.refabricatedAt,
-              refabricationHistory: p.refabricationHistory?.map((r) => ({
-                reason: r.reason,
-                date: r.date,
-                previousProviderId: r.previousProviderId,
-                previousProviderName: r.previousProviderName,
-                newProviderId: r.newProviderId,
-                newProviderName: r.newProviderName,
-              })),
-            })) : undefined,
-            subtotal: updatedOrder.subtotal !== existingOrder.subtotal ? updatedOrder.subtotal : undefined,
-            taxAmount: updatedOrder.taxAmount !== existingOrder.taxAmount ? updatedOrder.taxAmount : undefined,
-            deliveryCost: updatedOrder.deliveryCost !== existingOrder.deliveryCost ? updatedOrder.deliveryCost : undefined,
-            total: updatedOrder.total !== existingOrder.total ? updatedOrder.total : undefined,
-            subtotalBeforeDiscounts: updatedOrder.subtotalBeforeDiscounts !== existingOrder.subtotalBeforeDiscounts ? updatedOrder.subtotalBeforeDiscounts : undefined,
-            productDiscountTotal: updatedOrder.productDiscountTotal !== existingOrder.productDiscountTotal ? updatedOrder.productDiscountTotal : undefined,
-            generalDiscountAmount: updatedOrder.generalDiscountAmount !== existingOrder.generalDiscountAmount ? updatedOrder.generalDiscountAmount : undefined,
-            generalDiscountType: updatedOrder.generalDiscountType !== existingOrder.generalDiscountType ? updatedOrder.generalDiscountType : undefined,
-            generalDiscountPercent: updatedOrder.generalDiscountPercent !== existingOrder.generalDiscountPercent ? updatedOrder.generalDiscountPercent : undefined,
-            paymentType: updatedOrder.paymentType !== existingOrder.paymentType ? updatedOrder.paymentType : undefined,
-            paymentMethod: updatedOrder.paymentMethod !== existingOrder.paymentMethod ? updatedOrder.paymentMethod : undefined,
-            paymentCondition: updatedOrder.paymentCondition !== existingOrder.paymentCondition ? updatedOrder.paymentCondition : undefined,
-            partialPayments: updatedOrder.partialPayments !== existingOrder.partialPayments ? updatedOrder.partialPayments?.map((p) => ({
-              id: p.id,
-              amount: p.amount,
-              method: p.method,
-              date: p.date,
-              images: p.images?.map((img) => ({
-                id: img.id,
-                base64: img.base64,
-                filename: img.filename,
-                type: img.type,
-                uploadedAt: img.uploadedAt,
-                size: img.size,
-              })),
-              paymentDetails: p.paymentDetails ? {
-                pagomovilReference: p.paymentDetails.pagomovilReference,
-                pagomovilBank: p.paymentDetails.pagomovilBank,
-                pagomovilPhone: p.paymentDetails.pagomovilPhone,
-                pagomovilDate: p.paymentDetails.pagomovilDate,
-                transferenciaBank: p.paymentDetails.transferenciaBank,
-                transferenciaReference: p.paymentDetails.transferenciaReference,
-                transferenciaDate: p.paymentDetails.transferenciaDate,
-                cashAmount: p.paymentDetails.cashAmount,
-                cashCurrency: p.paymentDetails.cashCurrency,
-                cashReceived: p.paymentDetails.cashReceived,
-                exchangeRate: p.paymentDetails.exchangeRate,
-                originalAmount: p.paymentDetails.originalAmount,
-                originalCurrency: p.paymentDetails.originalCurrency,
-                accountId: p.paymentDetails.accountId,
-                accountNumber: p.paymentDetails.accountNumber,
-                bank: p.paymentDetails.bank,
-                email: p.paymentDetails.email,
-                wallet: p.paymentDetails.wallet,
-                envia: p.paymentDetails.envia,
-                isConciliated: p.paymentDetails.isConciliated,
-              } : undefined,
-            })) : undefined,
-            mixedPayments: updatedOrder.mixedPayments !== existingOrder.mixedPayments ? updatedOrder.mixedPayments?.map((p) => ({
-              id: p.id,
-              amount: p.amount,
-              method: p.method,
-              date: p.date,
-              images: p.images?.map((img) => ({
-                id: img.id,
-                base64: img.base64,
-                filename: img.filename,
-                type: img.type,
-                uploadedAt: img.uploadedAt,
-                size: img.size,
-              })),
-              paymentDetails: p.paymentDetails ? {
-                pagomovilReference: p.paymentDetails.pagomovilReference,
-                pagomovilBank: p.paymentDetails.pagomovilBank,
-                pagomovilPhone: p.paymentDetails.pagomovilPhone,
-                pagomovilDate: p.paymentDetails.pagomovilDate,
-                transferenciaBank: p.paymentDetails.transferenciaBank,
-                transferenciaReference: p.paymentDetails.transferenciaReference,
-                transferenciaDate: p.paymentDetails.transferenciaDate,
-                cashAmount: p.paymentDetails.cashAmount,
-                cashCurrency: p.paymentDetails.cashCurrency,
-                cashReceived: p.paymentDetails.cashReceived,
-                exchangeRate: p.paymentDetails.exchangeRate,
-                originalAmount: p.paymentDetails.originalAmount,
-                originalCurrency: p.paymentDetails.originalCurrency,
-                accountId: p.paymentDetails.accountId,
-                accountNumber: p.paymentDetails.accountNumber,
-                bank: p.paymentDetails.bank,
-                email: p.paymentDetails.email,
-                wallet: p.paymentDetails.wallet,
-                envia: p.paymentDetails.envia,
-                isConciliated: p.paymentDetails.isConciliated,
-              } : undefined,
-            })) : undefined,
-            deliveryAddress: updatedOrder.deliveryAddress !== existingOrder.deliveryAddress ? updatedOrder.deliveryAddress : undefined,
-            hasDelivery: updatedOrder.hasDelivery !== existingOrder.hasDelivery ? updatedOrder.hasDelivery : undefined,
+            clientId:
+              updatedOrder.clientId !== existingOrder.clientId
+                ? updatedOrder.clientId
+                : undefined,
+            clientName:
+              updatedOrder.clientName !== existingOrder.clientName
+                ? updatedOrder.clientName
+                : undefined,
+            vendorId:
+              updatedOrder.vendorId !== existingOrder.vendorId
+                ? updatedOrder.vendorId
+                : undefined,
+            vendorName:
+              updatedOrder.vendorName !== existingOrder.vendorName
+                ? updatedOrder.vendorName
+                : undefined,
+            referrerId:
+              updatedOrder.referrerId !== existingOrder.referrerId
+                ? updatedOrder.referrerId
+                : undefined,
+            referrerName:
+              updatedOrder.referrerName !== existingOrder.referrerName
+                ? updatedOrder.referrerName
+                : undefined,
+            products:
+              updatedOrder.products !== existingOrder.products
+                ? updatedOrder.products.map((p) => ({
+                    id: p.id,
+                    name: p.name,
+                    price: p.price,
+                    quantity: p.quantity,
+                    total: p.total,
+                    category: p.category,
+                    stock: p.stock,
+                    attributes: p.attributes,
+                    discount: p.discount,
+                    observations: p.observations,
+                    images: p.images?.map((img) => ({
+                      id: img.id,
+                      base64: img.base64,
+                      filename: img.filename,
+                      type: img.type,
+                      uploadedAt: img.uploadedAt,
+                      size: img.size,
+                    })),
+                    availabilityStatus: p.availabilityStatus,
+                    manufacturingStatus: p.manufacturingStatus,
+                    manufacturingProviderId: p.manufacturingProviderId,
+                    manufacturingProviderName: p.manufacturingProviderName,
+                    manufacturingStartedAt: p.manufacturingStartedAt,
+                    manufacturingCompletedAt: p.manufacturingCompletedAt,
+                    manufacturingNotes: p.manufacturingNotes,
+                    locationStatus: p.locationStatus,
+                    logisticStatus: p.logisticStatus,
+                    deliveredAt: p.deliveredAt,
+                    surchargeEnabled: p.surchargeEnabled,
+                    surchargeAmount: p.surchargeAmount,
+                    surchargeReason: p.surchargeReason,
+                    refabricationReason: p.refabricationReason,
+                    refabricatedAt: p.refabricatedAt,
+                    refabricationHistory: p.refabricationHistory?.map((r) => ({
+                      reason: r.reason,
+                      date: r.date,
+                      previousProviderId: r.previousProviderId,
+                      previousProviderName: r.previousProviderName,
+                      newProviderId: r.newProviderId,
+                      newProviderName: r.newProviderName,
+                    })),
+                  }))
+                : undefined,
+            subtotal:
+              updatedOrder.subtotal !== existingOrder.subtotal
+                ? updatedOrder.subtotal
+                : undefined,
+            taxAmount:
+              updatedOrder.taxAmount !== existingOrder.taxAmount
+                ? updatedOrder.taxAmount
+                : undefined,
+            deliveryCost:
+              updatedOrder.deliveryCost !== existingOrder.deliveryCost
+                ? updatedOrder.deliveryCost
+                : undefined,
+            total:
+              updatedOrder.total !== existingOrder.total
+                ? updatedOrder.total
+                : undefined,
+            subtotalBeforeDiscounts:
+              updatedOrder.subtotalBeforeDiscounts !==
+              existingOrder.subtotalBeforeDiscounts
+                ? updatedOrder.subtotalBeforeDiscounts
+                : undefined,
+            productDiscountTotal:
+              updatedOrder.productDiscountTotal !==
+              existingOrder.productDiscountTotal
+                ? updatedOrder.productDiscountTotal
+                : undefined,
+            generalDiscountAmount:
+              updatedOrder.generalDiscountAmount !==
+              existingOrder.generalDiscountAmount
+                ? updatedOrder.generalDiscountAmount
+                : undefined,
+            generalDiscountType:
+              updatedOrder.generalDiscountType !==
+              existingOrder.generalDiscountType
+                ? updatedOrder.generalDiscountType
+                : undefined,
+            generalDiscountPercent:
+              updatedOrder.generalDiscountPercent !==
+              existingOrder.generalDiscountPercent
+                ? updatedOrder.generalDiscountPercent
+                : undefined,
+            paymentType:
+              updatedOrder.paymentType !== existingOrder.paymentType
+                ? updatedOrder.paymentType
+                : undefined,
+            paymentMethod:
+              updatedOrder.paymentMethod !== existingOrder.paymentMethod
+                ? updatedOrder.paymentMethod
+                : undefined,
+            paymentCondition:
+              updatedOrder.paymentCondition !== existingOrder.paymentCondition
+                ? updatedOrder.paymentCondition
+                : undefined,
+            partialPayments:
+              updatedOrder.partialPayments !== existingOrder.partialPayments
+                ? updatedOrder.partialPayments?.map((p) => ({
+                    id: p.id,
+                    amount: p.amount,
+                    method: p.method,
+                    date: p.date,
+                    images: p.images?.map((img) => ({
+                      id: img.id,
+                      base64: img.base64,
+                      filename: img.filename,
+                      type: img.type,
+                      uploadedAt: img.uploadedAt,
+                      size: img.size,
+                    })),
+                    paymentDetails: p.paymentDetails
+                      ? {
+                          pagomovilReference:
+                            p.paymentDetails.pagomovilReference,
+                          pagomovilBank: p.paymentDetails.pagomovilBank,
+                          pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                          pagomovilDate: p.paymentDetails.pagomovilDate,
+                          transferenciaBank: p.paymentDetails.transferenciaBank,
+                          transferenciaReference:
+                            p.paymentDetails.transferenciaReference,
+                          transferenciaDate: p.paymentDetails.transferenciaDate,
+                          cashAmount: p.paymentDetails.cashAmount,
+                          cashCurrency: p.paymentDetails.cashCurrency,
+                          cashReceived: p.paymentDetails.cashReceived,
+                          exchangeRate: p.paymentDetails.exchangeRate,
+                          originalAmount: p.paymentDetails.originalAmount,
+                          originalCurrency: p.paymentDetails.originalCurrency,
+                          accountId: p.paymentDetails.accountId,
+                          accountNumber: p.paymentDetails.accountNumber,
+                          bank: p.paymentDetails.bank,
+                          email: p.paymentDetails.email,
+                          wallet: p.paymentDetails.wallet,
+                          envia: p.paymentDetails.envia,
+                          isConciliated: p.paymentDetails.isConciliated,
+                        }
+                      : undefined,
+                  }))
+                : undefined,
+            mixedPayments:
+              updatedOrder.mixedPayments !== existingOrder.mixedPayments
+                ? updatedOrder.mixedPayments?.map((p) => ({
+                    id: p.id,
+                    amount: p.amount,
+                    method: p.method,
+                    date: p.date,
+                    images: p.images?.map((img) => ({
+                      id: img.id,
+                      base64: img.base64,
+                      filename: img.filename,
+                      type: img.type,
+                      uploadedAt: img.uploadedAt,
+                      size: img.size,
+                    })),
+                    paymentDetails: p.paymentDetails
+                      ? {
+                          pagomovilReference:
+                            p.paymentDetails.pagomovilReference,
+                          pagomovilBank: p.paymentDetails.pagomovilBank,
+                          pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                          pagomovilDate: p.paymentDetails.pagomovilDate,
+                          transferenciaBank: p.paymentDetails.transferenciaBank,
+                          transferenciaReference:
+                            p.paymentDetails.transferenciaReference,
+                          transferenciaDate: p.paymentDetails.transferenciaDate,
+                          cashAmount: p.paymentDetails.cashAmount,
+                          cashCurrency: p.paymentDetails.cashCurrency,
+                          cashReceived: p.paymentDetails.cashReceived,
+                          exchangeRate: p.paymentDetails.exchangeRate,
+                          originalAmount: p.paymentDetails.originalAmount,
+                          originalCurrency: p.paymentDetails.originalCurrency,
+                          accountId: p.paymentDetails.accountId,
+                          accountNumber: p.paymentDetails.accountNumber,
+                          bank: p.paymentDetails.bank,
+                          email: p.paymentDetails.email,
+                          wallet: p.paymentDetails.wallet,
+                          envia: p.paymentDetails.envia,
+                          isConciliated: p.paymentDetails.isConciliated,
+                        }
+                      : undefined,
+                  }))
+                : undefined,
+            deliveryAddress:
+              updatedOrder.deliveryAddress !== existingOrder.deliveryAddress
+                ? updatedOrder.deliveryAddress
+                : undefined,
+            hasDelivery:
+              updatedOrder.hasDelivery !== existingOrder.hasDelivery
+                ? updatedOrder.hasDelivery
+                : undefined,
             deliveryServices:
-              JSON.stringify(updatedOrder.deliveryServices) !== JSON.stringify(existingOrder.deliveryServices)
+              JSON.stringify(updatedOrder.deliveryServices) !==
+              JSON.stringify(existingOrder.deliveryServices)
                 ? updatedOrder.deliveryServices
                 : undefined,
-            status: updatedOrder.status !== existingOrder.status ? updatedOrder.status : undefined,
-            observations: updatedOrder.observations !== existingOrder.observations ? updatedOrder.observations : undefined,
+            status:
+              updatedOrder.status !== existingOrder.status
+                ? updatedOrder.status
+                : undefined,
+            observations:
+              updatedOrder.observations !== existingOrder.observations
+                ? updatedOrder.observations
+                : undefined,
+            dispatchObservations:
+              updatedOrder.dispatchObservations !==
+              existingOrder.dispatchObservations
+                ? updatedOrder.dispatchObservations
+                : undefined,
             paymentDetails:
-              JSON.stringify(updatedOrder.paymentDetails) !== JSON.stringify(existingOrder.paymentDetails)
+              JSON.stringify(updatedOrder.paymentDetails) !==
+              JSON.stringify(existingOrder.paymentDetails)
                 ? updatedOrder.paymentDetails
                   ? {
-                      pagomovilReference: updatedOrder.paymentDetails.pagomovilReference,
+                      pagomovilReference:
+                        updatedOrder.paymentDetails.pagomovilReference,
                       pagomovilBank: updatedOrder.paymentDetails.pagomovilBank,
-                      pagomovilPhone: updatedOrder.paymentDetails.pagomovilPhone,
+                      pagomovilPhone:
+                        updatedOrder.paymentDetails.pagomovilPhone,
                       pagomovilDate: updatedOrder.paymentDetails.pagomovilDate,
-                      transferenciaBank: updatedOrder.paymentDetails.transferenciaBank,
-                      transferenciaReference: updatedOrder.paymentDetails.transferenciaReference,
-                      transferenciaDate: updatedOrder.paymentDetails.transferenciaDate,
+                      transferenciaBank:
+                        updatedOrder.paymentDetails.transferenciaBank,
+                      transferenciaReference:
+                        updatedOrder.paymentDetails.transferenciaReference,
+                      transferenciaDate:
+                        updatedOrder.paymentDetails.transferenciaDate,
                       cashAmount: updatedOrder.paymentDetails.cashAmount,
                       cashCurrency: updatedOrder.paymentDetails.cashCurrency,
                       cashReceived: updatedOrder.paymentDetails.cashReceived,
                       exchangeRate: updatedOrder.paymentDetails.exchangeRate,
-                      originalAmount: updatedOrder.paymentDetails.originalAmount,
-                      originalCurrency: updatedOrder.paymentDetails.originalCurrency,
+                      originalAmount:
+                        updatedOrder.paymentDetails.originalAmount,
+                      originalCurrency:
+                        updatedOrder.paymentDetails.originalCurrency,
                       accountId: updatedOrder.paymentDetails.accountId,
                       accountNumber: updatedOrder.paymentDetails.accountNumber,
                       bank: updatedOrder.paymentDetails.bank,
@@ -2755,18 +3041,38 @@ export const updateOrder = async (
                     }
                   : undefined
                 : undefined,
-            type: updatedOrder.type !== existingOrder.type ? updatedOrder.type : undefined,
-            saleType: updatedOrder.saleType !== existingOrder.saleType ? updatedOrder.saleType : undefined,
-            deliveryType: updatedOrder.deliveryType !== existingOrder.deliveryType ? updatedOrder.deliveryType : undefined,
-            deliveryZone: updatedOrder.deliveryZone !== existingOrder.deliveryZone ? updatedOrder.deliveryZone : undefined,
-            postventaId: updatedOrder.postventaId !== existingOrder.postventaId ? updatedOrder.postventaId : undefined,
-            postventaName: updatedOrder.postventaName !== existingOrder.postventaName ? updatedOrder.postventaName : undefined,
+            type:
+              updatedOrder.type !== existingOrder.type
+                ? updatedOrder.type
+                : undefined,
+            saleType:
+              updatedOrder.saleType !== existingOrder.saleType
+                ? updatedOrder.saleType
+                : undefined,
+            deliveryType:
+              updatedOrder.deliveryType !== existingOrder.deliveryType
+                ? updatedOrder.deliveryType
+                : undefined,
+            deliveryZone:
+              updatedOrder.deliveryZone !== existingOrder.deliveryZone
+                ? updatedOrder.deliveryZone
+                : undefined,
+            postventaId:
+              updatedOrder.postventaId !== existingOrder.postventaId
+                ? updatedOrder.postventaId
+                : undefined,
+            postventaName:
+              updatedOrder.postventaName !== existingOrder.postventaName
+                ? updatedOrder.postventaName
+                : undefined,
             productMarkups:
-              JSON.stringify(updatedOrder.productMarkups) !== JSON.stringify(existingOrder.productMarkups)
+              JSON.stringify(updatedOrder.productMarkups) !==
+              JSON.stringify(existingOrder.productMarkups)
                 ? updatedOrder.productMarkups
                 : undefined,
             createSupplierOrder:
-              updatedOrder.createSupplierOrder !== existingOrder.createSupplierOrder
+              updatedOrder.createSupplierOrder !==
+              existingOrder.createSupplierOrder
                 ? updatedOrder.createSupplierOrder
                 : undefined,
             exchangeRatesAtCreation:
@@ -2775,34 +3081,41 @@ export const updateOrder = async (
                 ? updatedOrder.exchangeRatesAtCreation
                 : undefined,
             appliedStoreCreditUsd:
-              (updatedOrder.appliedStoreCreditUsd ?? 0) !== (existingOrder.appliedStoreCreditUsd ?? 0)
-                ? updatedOrder.appliedStoreCreditUsd ?? 0
+              (updatedOrder.appliedStoreCreditUsd ?? 0) !==
+              (existingOrder.appliedStoreCreditUsd ?? 0)
+                ? (updatedOrder.appliedStoreCreditUsd ?? 0)
                 : undefined,
           };
 
           // Remover campos undefined
-          Object.keys(updateDto).forEach(key => {
+          Object.keys(updateDto).forEach((key) => {
             if (updateDto[key as keyof UpdateOrderDto] === undefined) {
               delete updateDto[key as keyof UpdateOrderDto];
             }
           });
 
-          const backendOrder = await apiClient.updateOrder(backendOrderId, updateDto);
+          const backendOrder = await apiClient.updateOrder(
+            backendOrderId,
+            updateDto,
+          );
           const syncedOrder = orderFromBackendDto(backendOrder);
 
-          console.log("✅ Pedido actualizado en backend:", syncedOrder.orderNumber);
+          console.log(
+            "✅ Pedido actualizado en backend:",
+            syncedOrder.orderNumber,
+          );
           return syncedOrder;
         } else {
           // El pedido no existe en el backend, actualizar localmente y encolar para sincronización
           console.log(
-            "⚠️ Pedido no existe en backend, actualizando localmente y encolando para sincronización"
+            "⚠️ Pedido no existe en backend, actualizando localmente y encolando para sincronización",
           );
           // Continuar para guardar localmente y encolar
         }
       } catch (error) {
         console.warn(
           "⚠️ Error actualizando pedido en backend, guardando localmente:",
-          error
+          error,
         );
         // Continuar para guardar localmente
       }
@@ -2812,7 +3125,13 @@ export const updateOrder = async (
     await db.update("orders", updatedOrder);
 
     // Encolar para sincronización si el pedido no está en el backend o estamos offline
-    if (!isOnline() || !(await apiClient.getOrderByOrderNumber(existingOrder.orderNumber).then(() => true).catch(() => false))) {
+    if (
+      !isOnline() ||
+      !(await apiClient
+        .getOrderByOrderNumber(existingOrder.orderNumber)
+        .then(() => true)
+        .catch(() => false))
+    ) {
       try {
         const updateDto: UpdateOrderDto = {
           products: updatedOrder.products.map((p) => ({
@@ -2871,28 +3190,31 @@ export const updateOrder = async (
               uploadedAt: img.uploadedAt,
               size: img.size,
             })),
-            paymentDetails: p.paymentDetails ? {
-              pagomovilReference: p.paymentDetails.pagomovilReference,
-              pagomovilBank: p.paymentDetails.pagomovilBank,
-              pagomovilPhone: p.paymentDetails.pagomovilPhone,
-              pagomovilDate: p.paymentDetails.pagomovilDate,
-              transferenciaBank: p.paymentDetails.transferenciaBank,
-              transferenciaReference: p.paymentDetails.transferenciaReference,
-              transferenciaDate: p.paymentDetails.transferenciaDate,
-              cashAmount: p.paymentDetails.cashAmount,
-              cashCurrency: p.paymentDetails.cashCurrency,
-              cashReceived: p.paymentDetails.cashReceived,
-              exchangeRate: p.paymentDetails.exchangeRate,
-              originalAmount: p.paymentDetails.originalAmount,
-              originalCurrency: p.paymentDetails.originalCurrency,
-              accountId: p.paymentDetails.accountId,
-              accountNumber: p.paymentDetails.accountNumber,
-              bank: p.paymentDetails.bank,
-              email: p.paymentDetails.email,
-              wallet: p.paymentDetails.wallet,
-              envia: p.paymentDetails.envia,
-              isConciliated: p.paymentDetails.isConciliated,
-            } : undefined,
+            paymentDetails: p.paymentDetails
+              ? {
+                  pagomovilReference: p.paymentDetails.pagomovilReference,
+                  pagomovilBank: p.paymentDetails.pagomovilBank,
+                  pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                  pagomovilDate: p.paymentDetails.pagomovilDate,
+                  transferenciaBank: p.paymentDetails.transferenciaBank,
+                  transferenciaReference:
+                    p.paymentDetails.transferenciaReference,
+                  transferenciaDate: p.paymentDetails.transferenciaDate,
+                  cashAmount: p.paymentDetails.cashAmount,
+                  cashCurrency: p.paymentDetails.cashCurrency,
+                  cashReceived: p.paymentDetails.cashReceived,
+                  exchangeRate: p.paymentDetails.exchangeRate,
+                  originalAmount: p.paymentDetails.originalAmount,
+                  originalCurrency: p.paymentDetails.originalCurrency,
+                  accountId: p.paymentDetails.accountId,
+                  accountNumber: p.paymentDetails.accountNumber,
+                  bank: p.paymentDetails.bank,
+                  email: p.paymentDetails.email,
+                  wallet: p.paymentDetails.wallet,
+                  envia: p.paymentDetails.envia,
+                  isConciliated: p.paymentDetails.isConciliated,
+                }
+              : undefined,
           })),
           mixedPayments: updatedOrder.mixedPayments?.map((p) => ({
             id: p.id,
@@ -2907,41 +3229,48 @@ export const updateOrder = async (
               uploadedAt: img.uploadedAt,
               size: img.size,
             })),
-            paymentDetails: p.paymentDetails ? {
-              pagomovilReference: p.paymentDetails.pagomovilReference,
-              pagomovilBank: p.paymentDetails.pagomovilBank,
-              pagomovilPhone: p.paymentDetails.pagomovilPhone,
-              pagomovilDate: p.paymentDetails.pagomovilDate,
-              transferenciaBank: p.paymentDetails.transferenciaBank,
-              transferenciaReference: p.paymentDetails.transferenciaReference,
-              transferenciaDate: p.paymentDetails.transferenciaDate,
-              cashAmount: p.paymentDetails.cashAmount,
-              cashCurrency: p.paymentDetails.cashCurrency,
-              cashReceived: p.paymentDetails.cashReceived,
-              exchangeRate: p.paymentDetails.exchangeRate,
-              originalAmount: p.paymentDetails.originalAmount,
-              originalCurrency: p.paymentDetails.originalCurrency,
-              accountId: p.paymentDetails.accountId,
-              accountNumber: p.paymentDetails.accountNumber,
-              bank: p.paymentDetails.bank,
-              email: p.paymentDetails.email,
-              wallet: p.paymentDetails.wallet,
-              envia: p.paymentDetails.envia,
-              isConciliated: p.paymentDetails.isConciliated,
-            } : undefined,
+            paymentDetails: p.paymentDetails
+              ? {
+                  pagomovilReference: p.paymentDetails.pagomovilReference,
+                  pagomovilBank: p.paymentDetails.pagomovilBank,
+                  pagomovilPhone: p.paymentDetails.pagomovilPhone,
+                  pagomovilDate: p.paymentDetails.pagomovilDate,
+                  transferenciaBank: p.paymentDetails.transferenciaBank,
+                  transferenciaReference:
+                    p.paymentDetails.transferenciaReference,
+                  transferenciaDate: p.paymentDetails.transferenciaDate,
+                  cashAmount: p.paymentDetails.cashAmount,
+                  cashCurrency: p.paymentDetails.cashCurrency,
+                  cashReceived: p.paymentDetails.cashReceived,
+                  exchangeRate: p.paymentDetails.exchangeRate,
+                  originalAmount: p.paymentDetails.originalAmount,
+                  originalCurrency: p.paymentDetails.originalCurrency,
+                  accountId: p.paymentDetails.accountId,
+                  accountNumber: p.paymentDetails.accountNumber,
+                  bank: p.paymentDetails.bank,
+                  email: p.paymentDetails.email,
+                  wallet: p.paymentDetails.wallet,
+                  envia: p.paymentDetails.envia,
+                  isConciliated: p.paymentDetails.isConciliated,
+                }
+              : undefined,
           })),
           paymentType: updatedOrder.paymentType,
           paymentMethod: updatedOrder.paymentMethod,
           paymentCondition: updatedOrder.paymentCondition,
           paymentDetails: updatedOrder.paymentDetails
             ? {
-                pagomovilReference: updatedOrder.paymentDetails.pagomovilReference,
+                pagomovilReference:
+                  updatedOrder.paymentDetails.pagomovilReference,
                 pagomovilBank: updatedOrder.paymentDetails.pagomovilBank,
                 pagomovilPhone: updatedOrder.paymentDetails.pagomovilPhone,
                 pagomovilDate: updatedOrder.paymentDetails.pagomovilDate,
-                transferenciaBank: updatedOrder.paymentDetails.transferenciaBank,
-                transferenciaReference: updatedOrder.paymentDetails.transferenciaReference,
-                transferenciaDate: updatedOrder.paymentDetails.transferenciaDate,
+                transferenciaBank:
+                  updatedOrder.paymentDetails.transferenciaBank,
+                transferenciaReference:
+                  updatedOrder.paymentDetails.transferenciaReference,
+                transferenciaDate:
+                  updatedOrder.paymentDetails.transferenciaDate,
                 cashAmount: updatedOrder.paymentDetails.cashAmount,
                 cashCurrency: updatedOrder.paymentDetails.cashCurrency,
                 cashReceived: updatedOrder.paymentDetails.cashReceived,
@@ -3008,27 +3337,32 @@ export const deleteOrder = async (id: string): Promise<void> => {
         // Buscar el pedido en el backend por orderNumber para obtener su ObjectId
         let backendOrderId: string | null = null;
         try {
-          const backendOrder = await apiClient.getOrderByOrderNumber(existingOrder.orderNumber);
+          const backendOrder = await apiClient.getOrderByOrderNumber(
+            existingOrder.orderNumber,
+          );
           if (backendOrder) {
             backendOrderId = backendOrder.id;
           }
         } catch (error) {
           // El pedido no existe en el backend
           console.warn(
-            "⚠️ Pedido no encontrado en backend por orderNumber, eliminando solo localmente"
+            "⚠️ Pedido no encontrado en backend por orderNumber, eliminando solo localmente",
           );
         }
 
         // Si encontramos el pedido en el backend, eliminarlo
         if (backendOrderId) {
           await apiClient.deleteOrder(backendOrderId);
-          console.log("✅ Pedido eliminado del backend:", existingOrder.orderNumber);
+          console.log(
+            "✅ Pedido eliminado del backend:",
+            existingOrder.orderNumber,
+          );
           deletedFromBackend = true;
         }
       } catch (error) {
         console.warn(
           "⚠️ Error eliminando pedido en backend, eliminando localmente y encolando:",
-          error
+          error,
         );
         // Si hay un error, necesitamos encolar para sincronización
         shouldEnqueue = true;
@@ -3051,9 +3385,15 @@ export const deleteOrder = async (id: string): Promise<void> => {
           entityId: id,
           data: null, // Para delete no necesitamos datos
         });
-        console.log("✅ Eliminación de pedido encolada para sincronización:", existingOrder.orderNumber);
+        console.log(
+          "✅ Eliminación de pedido encolada para sincronización:",
+          existingOrder.orderNumber,
+        );
       } catch (error) {
-        console.warn("⚠️ Error encolando eliminación de pedido para sincronización:", error);
+        console.warn(
+          "⚠️ Error encolando eliminación de pedido para sincronización:",
+          error,
+        );
         // No lanzar error, el pedido ya fue eliminado localmente
       }
     }
@@ -3102,9 +3442,27 @@ export interface UnifiedOrder {
   expiresAt?: string; // Solo para presupuestos
   validForDays?: number; // Solo para presupuestos
   paymentMethod?: string; // Solo para pedidos
-  saleType?: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado";
-  deliveryType?: "entrega_programada" | "delivery_express" | "retiro_tienda" | "retiro_almacen";
-  deliveryZone?: "caracas" | "g_g" | "san_antonio_los_teques" | "caucagua_higuerote" | "la_guaira" | "charallave_cua" | "interior_pais";
+  saleType?:
+    | "delivery_express"
+    | "encargo"
+    | "encargo_entrega"
+    | "entrega"
+    | "retiro_almacen"
+    | "retiro_tienda"
+    | "sistema_apartado";
+  deliveryType?:
+    | "entrega_programada"
+    | "delivery_express"
+    | "retiro_tienda"
+    | "retiro_almacen";
+  deliveryZone?:
+    | "caracas"
+    | "g_g"
+    | "san_antonio_los_teques"
+    | "caucagua_higuerote"
+    | "la_guaira"
+    | "charallave_cua"
+    | "interior_pais";
   deliveryServices?: Order["deliveryServices"];
   dispatchDate?: string; // Fecha de despacho
   completedAt?: string; // Fecha de completado
@@ -3162,6 +3520,7 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       observations: order.observations,
+      dispatchObservations: order.dispatchObservations,
       baseCurrency: order.baseCurrency,
       exchangeRatesAtCreation: order.exchangeRatesAtCreation,
       type: "order",
@@ -3214,7 +3573,8 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
 
     // Combinar y ordenar por fecha de creación (más recientes primero)
     const allUnified = [...unifiedOrders, ...unifiedBudgets].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
 
     return allUnified;
@@ -3246,8 +3606,8 @@ export interface DashboardMetrics {
   averageOrderValue: number;
   // Nuevas métricas
   totalSalesCount: number; // Total de ventas (cantidad de facturas/notas de despachos)
-  totalInvoiced: number;   // Total facturado (base imponible)
-  totalCollected: number;  // Total cobrado (ingresos reales en el periodo)
+  totalInvoiced: number; // Total facturado (base imponible)
+  totalCollected: number; // Total cobrado (ingresos reales en el periodo)
   expiredLayawaysCount: number; // Cantidad de apartados vencidos
   expiredLayawaysAmount: number; // Monto deuda de apartados vencidos
 }
@@ -3255,7 +3615,7 @@ export interface DashboardMetrics {
 export const calculateDashboardMetrics = async (
   period: "day" | "week" | "month" | "year" = "week",
   /** Si se pasa, no se vuelve a llamar a getOrders (p. ej. Dashboard con carga unificada). */
-  existingOrders?: Order[]
+  existingOrders?: Order[],
 ): Promise<DashboardMetrics> => {
   const orders = existingOrders ?? (await getOrders());
 
@@ -3284,7 +3644,7 @@ export const calculateDashboardMetrics = async (
 
   // Filtrar órdenes creadas en el periodo (para ventas y facturación)
   const periodOrders = orders.filter(
-    (order) => new Date(order.createdAt) >= periodStart
+    (order) => new Date(order.createdAt) >= periodStart,
   );
 
   // Calcular período anterior para comparar cambios
@@ -3308,53 +3668,74 @@ export const calculateDashboardMetrics = async (
   // Tomar cantidad de clientes facturados (Notas de despacho)
   // Asumimos que "Por despachar" y "Completada" son las que tienen nota de despacho
   const completedOrders = periodOrders.filter(
-    (order) => order.status === "Por despachar" || order.status === "Completada"
+    (order) =>
+      order.status === "Por despachar" || order.status === "Completada",
   ).length;
 
   const previousCompletedOrders = previousPeriodOrders.filter(
-    (order) => order.status === "Por despachar" || order.status === "Completada"
+    (order) =>
+      order.status === "Por despachar" || order.status === "Completada",
   ).length;
 
   const completedOrdersChange =
     previousCompletedOrders > 0
       ? Math.round(
-        ((completedOrders - previousCompletedOrders) /
-          previousCompletedOrders) *
-        100
-      )
+          ((completedOrders - previousCompletedOrders) /
+            previousCompletedOrders) *
+            100,
+        )
       : 0;
 
   // 2. Total Facturado (Base Imponible)
   // Suma del Subtotal de las ventas del periodo
   const totalInvoiced = periodOrders
-    .filter((order) => order.status === "Por despachar" || order.status === "Completada" || order.status === "Generado" || order.status === "Generada" || order.status === "Fabricación")
+    .filter(
+      (order) =>
+        order.status === "Por despachar" ||
+        order.status === "Completada" ||
+        order.status === "Generado" ||
+        order.status === "Generada" ||
+        order.status === "Fabricación",
+    )
     // Nota: Incluimos estados activos para facturación, ajustar según requerimiento exacto de "Facturado"
     // Si "Facturado" es estrictamente nota de despacho, solo usar "Por despachar" y "Completada"
     // El requerimiento dice "Total de ventas... Notas de despacho", asumiremos consistencia.
     // Sin embargo, para "Facturado" a veces se considera todo lo vendido.
     // Vamos a alinear con "Total de ventas" (Notas de despacho) para consistencia
-    .filter((order) => order.status === "Por despachar" || order.status === "Completada")
+    .filter(
+      (order) =>
+        order.status === "Por despachar" || order.status === "Completada",
+    )
     .reduce((sum, order) => sum + (order.subtotal || 0), 0);
 
   // 3. Total Cobrado (Ingresos reales en el periodo)
   // Debe incluir todo lo ingresado por nuevas ventas y abonos, independientemente de la fecha de la orden
   const totalCollected = orders.reduce((total, order) => {
-    const paymentsInPeriod = order.partialPayments?.filter(payment => {
-      const paymentDate = new Date(payment.date);
-      return paymentDate >= periodStart && paymentDate <= now;
-    }) || [];
+    const paymentsInPeriod =
+      order.partialPayments?.filter((payment) => {
+        const paymentDate = new Date(payment.date);
+        return paymentDate >= periodStart && paymentDate <= now;
+      }) || [];
 
-    const sumPayments = paymentsInPeriod.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const sumPayments = paymentsInPeriod.reduce(
+      (sum, p) => sum + (p.amount || 0),
+      0,
+    );
     return total + sumPayments;
   }, 0);
 
   // 4. Abonos por recaudar (Deuda actual general de órdenes activas)
   const pendingPayments = orders.reduce((total, order) => {
-    if (order.status === "Generado" || order.status === "Generada" || order.status === "Fabricación" || order.status === "Por despachar") {
+    if (
+      order.status === "Generado" ||
+      order.status === "Generada" ||
+      order.status === "Fabricación" ||
+      order.status === "Por despachar"
+    ) {
       const paidAmount =
         order.partialPayments?.reduce(
           (sum, payment) => sum + (payment.amount || 0),
-          0
+          0,
         ) || 0;
       return total + Math.max(0, order.total - paidAmount);
     }
@@ -3363,26 +3744,31 @@ export const calculateDashboardMetrics = async (
 
   const previousPendingPayments = previousPeriodOrders.reduce(
     (total, order) => {
-      if (order.status === "Generado" || order.status === "Generada" || order.status === "Fabricación" || order.status === "Por despachar") {
+      if (
+        order.status === "Generado" ||
+        order.status === "Generada" ||
+        order.status === "Fabricación" ||
+        order.status === "Por despachar"
+      ) {
         const paidAmount =
           order.partialPayments?.reduce(
             (sum, payment) => sum + (payment.amount || 0),
-            0
+            0,
           ) || 0;
         return total + Math.max(0, order.total - paidAmount);
       }
       return total;
     },
-    0
+    0,
   );
 
   const pendingPaymentsChange =
     previousPendingPayments > 0
       ? Math.round(
-        ((pendingPayments - previousPendingPayments) /
-          previousPendingPayments) *
-        100
-      )
+          ((pendingPayments - previousPendingPayments) /
+            previousPendingPayments) *
+            100,
+        )
       : 0;
 
   // 5. Sistemas de Apartado (SA) vencidos: deuda con partial/mixed, y más de 90 días desde el pedido
@@ -3412,7 +3798,10 @@ export const calculateDashboardMetrics = async (
 
   // Productos por fabricar (Métrica): excluir pedidos SA con saldo (alineado con cola de fabricación)
   const productsToManufacture = orders.reduce((count, order) => {
-    if (order.saleType === "sistema_apartado" && getOrderPendingTotal(order) > PAYMENT_BALANCE_EPSILON_BS) {
+    if (
+      order.saleType === "sistema_apartado" &&
+      getOrderPendingTotal(order) > PAYMENT_BALANCE_EPSILON_BS
+    ) {
       return count;
     }
     return (
@@ -3421,7 +3810,8 @@ export const calculateDashboardMetrics = async (
         if (product.locationStatus !== "FABRICACION") {
           return false;
         }
-        const manufacturingStatus = product.manufacturingStatus || "debe_fabricar";
+        const manufacturingStatus =
+          product.manufacturingStatus || "debe_fabricar";
         return manufacturingStatus !== "almacen_no_fabricado";
       }).length
     );
@@ -3429,7 +3819,10 @@ export const calculateDashboardMetrics = async (
 
   // Promedio de pedidos completados (Por despachar o Completada) - Métrica existente
   const completedOrdersTotal = periodOrders
-    .filter((order) => order.status === "Por despachar" || order.status === "Completada")
+    .filter(
+      (order) =>
+        order.status === "Por despachar" || order.status === "Completada",
+    )
     .reduce((sum, order) => sum + order.total, 0);
   const averageOrderValue =
     completedOrders > 0 ? completedOrdersTotal / completedOrders : 0;
@@ -3447,7 +3840,7 @@ export const calculateDashboardMetrics = async (
     totalInvoiced,
     totalCollected,
     expiredLayawaysCount,
-    expiredLayawaysAmount
+    expiredLayawaysAmount,
   };
 };
 
@@ -3455,7 +3848,9 @@ export const calculateDashboardMetrics = async (
  * Sistemas de Apartado (SA) vencidos: deuda pendiente, más de 90 días desde el pedido.
  * `daysExpired` = días de mora sobre el plazo (después del día 90).
  */
-export const getExpiredLayaways = async (): Promise<Array<Order & { daysExpired: number; pendingAmount: number }>> => {
+export const getExpiredLayaways = async (): Promise<
+  Array<Order & { daysExpired: number; pendingAmount: number }>
+> => {
   const orders = await getOrders();
   const now = new Date();
 
@@ -3480,7 +3875,7 @@ export const getExpiredLayaways = async (): Promise<Array<Order & { daysExpired:
       return {
         ...order,
         daysExpired,
-        pendingAmount
+        pendingAmount,
       };
     })
     .sort((a, b) => b.daysExpired - a.daysExpired);
@@ -3578,15 +3973,17 @@ export const getBudgets = async (): Promise<Budget[]> => {
     // Si hay conexión, intentar sincronizar con backend
     if (isOnline()) {
       try {
-        const backendBudgets = (await apiClient.getOrdersByStatus("Presupuesto")).map((dto) =>
-          orderMappedToBudget(orderFromBackendDto(dto)),
-        );
+        const backendBudgets = (
+          await apiClient.getOrdersByStatus("Presupuesto")
+        ).map((dto) => orderMappedToBudget(orderFromBackendDto(dto)));
         // Server-first: el API por estado es la fuente de verdad cuando responde
         for (const budget of backendBudgets) {
           await db.put("budgets", budget as Budget);
         }
         const merged = await db.getAll<Budget>("budgets");
-        console.log(`✅ Presupuestos sincronizados (API): ${backendBudgets.length} del servidor, ${merged.length} en IndexedDB`);
+        console.log(
+          `✅ Presupuestos sincronizados (API): ${backendBudgets.length} del servidor, ${merged.length} en IndexedDB`,
+        );
         return merged;
       } catch (error) {
         console.warn("Error cargando presupuestos del backend:", error);
@@ -3595,7 +3992,9 @@ export const getBudgets = async (): Promise<Budget[]> => {
       }
     }
 
-    console.log(`✅ Presupuestos cargados desde IndexedDB: ${localBudgets.length}`);
+    console.log(
+      `✅ Presupuestos cargados desde IndexedDB: ${localBudgets.length}`,
+    );
     return localBudgets;
   } catch (error) {
     console.error("Error loading budgets from IndexedDB:", error);
@@ -3612,7 +4011,9 @@ export const getBudget = async (id: string): Promise<Budget | undefined> => {
   }
 };
 
-export const getBudgetByNumber = async (budgetNumber: string): Promise<Budget | undefined> => {
+export const getBudgetByNumber = async (
+  budgetNumber: string,
+): Promise<Budget | undefined> => {
   try {
     const budgets = await getBudgets();
     return budgets.find((b) => b.budgetNumber === budgetNumber);
@@ -3622,7 +4023,9 @@ export const getBudgetByNumber = async (budgetNumber: string): Promise<Budget | 
   }
 };
 
-export const getBudgetsByClient = async (clientId: string): Promise<Budget[]> => {
+export const getBudgetsByClient = async (
+  clientId: string,
+): Promise<Budget[]> => {
   try {
     return await db.getByIndex<Budget>("budgets", "clientId", clientId);
   } catch (error) {
@@ -3641,9 +4044,12 @@ export const getBudgetsByStatus = async (status: string): Promise<Budget[]> => {
 };
 
 export const addBudget = async (
-  budget: Omit<Budget, "id" | "budgetNumber" | "createdAt" | "expiresAt" | "status"> & {
+  budget: Omit<
+    Budget,
+    "id" | "budgetNumber" | "createdAt" | "expiresAt" | "status"
+  > & {
     validForDays?: number;
-  }
+  },
 ): Promise<Budget> => {
   let newBudget: Budget;
   let syncedToBackend = false;
@@ -3673,11 +4079,17 @@ export const addBudget = async (
         console.warn("No se pudo cachear presupuesto en IndexedDB:", e);
       }
 
-      console.log("✅ Presupuesto guardado en backend:", newBudget.budgetNumber);
+      console.log(
+        "✅ Presupuesto guardado en backend:",
+        newBudget.budgetNumber,
+      );
       syncedToBackend = true;
       return newBudget;
     } catch (error) {
-      console.warn("⚠️ Error guardando presupuesto en backend, guardando localmente:", error);
+      console.warn(
+        "⚠️ Error guardando presupuesto en backend, guardando localmente:",
+        error,
+      );
     }
   }
 
@@ -3696,7 +4108,10 @@ export const addBudget = async (
     };
 
     await db.add("budgets", newBudget);
-    console.log("✅ Presupuesto guardado en IndexedDB:", newBudget.budgetNumber);
+    console.log(
+      "✅ Presupuesto guardado en IndexedDB:",
+      newBudget.budgetNumber,
+    );
 
     if (!syncedToBackend) {
       try {
@@ -3744,7 +4159,10 @@ export const addPendingConfirmationOrder = async (
   return mapped;
 };
 
-export const updateBudget = async (id: string, updates: Partial<Budget>): Promise<Budget> => {
+export const updateBudget = async (
+  id: string,
+  updates: Partial<Budget>,
+): Promise<Budget> => {
   try {
     const existingBudget = await getBudget(id);
     if (!existingBudget) {
@@ -3779,7 +4197,10 @@ export const deleteBudget = async (id: string): Promise<void> => {
           if (dto?.id) backendId = dto.id;
         }
         await apiClient.deleteOrder(backendId);
-        console.log("✅ Presupuesto eliminado del backend:", budgetNumber ?? id);
+        console.log(
+          "✅ Presupuesto eliminado del backend:",
+          budgetNumber ?? id,
+        );
       } catch (error) {
         console.warn(
           "⚠️ Error eliminando presupuesto en backend (se limpia IndexedDB):",
@@ -3814,7 +4235,8 @@ export const clientFromBackendDto = (dto: ClientResponseDto): Client => ({
   telefono: dto.telefono,
   telefono2: dto.telefono2,
   email: dto.email,
-  tipoCliente: (dto.tipoCliente?.toLowerCase() as Client["tipoCliente"]) || "particular",
+  tipoCliente:
+    (dto.tipoCliente?.toLowerCase() as Client["tipoCliente"]) || "particular",
   estado: (dto.estado?.toLowerCase() as Client["estado"]) || "activo",
   fechaCreacion: dto.fechaCreacion,
   tieneNotasDespacho: dto.tieneNotasDespacho,
@@ -3848,7 +4270,10 @@ export const getClients = async (): Promise<Client[]> => {
           void repopulateClientsCache(list);
           return list;
         } catch (error) {
-          console.warn("Error obteniendo clientes del backend, usando IndexedDB:", error);
+          console.warn(
+            "Error obteniendo clientes del backend, usando IndexedDB:",
+            error,
+          );
           return await db.getAll<Client>("clients");
         } finally {
           inflightClientsSync = null;
@@ -3883,7 +4308,7 @@ export const getClient = async (id: string): Promise<Client | undefined> => {
 };
 
 export const addClient = async (
-  client: Omit<Client, "id" | "fechaCreacion" | "tieneNotasDespacho">
+  client: Omit<Client, "id" | "fechaCreacion" | "tieneNotasDespacho">,
 ): Promise<Client> => {
   try {
     const newClient: Client = {
@@ -3897,7 +4322,7 @@ export const addClient = async (
     await db.add("clients", newClient);
     console.log(
       "✅ Cliente guardado en IndexedDB:",
-      newClient.nombreRazonSocial
+      newClient.nombreRazonSocial,
     );
     return newClient;
   } catch (error) {
@@ -3908,7 +4333,7 @@ export const addClient = async (
 
 export const updateClient = async (
   id: string,
-  updates: Partial<Client>
+  updates: Partial<Client>,
 ): Promise<Client> => {
   try {
     const existingClient = await getClient(id);
@@ -3943,7 +4368,8 @@ export const deleteClient = async (id: string): Promise<void> => {
 // Helper functions para mapear providers entre frontend y backend
 export const providerFromBackendDto = (dto: ProviderResponseDto): Provider => {
   // Manejar tanto camelCase como PascalCase (por si el backend serializa diferente)
-  const razonSocial = (dto as any).razonSocial || (dto as any).RazonSocial || "";
+  const razonSocial =
+    (dto as any).razonSocial || (dto as any).RazonSocial || "";
   const rif = (dto as any).rif || (dto as any).Rif || "";
   const nombre = (dto as any).nombre || (dto as any).Nombre || "";
   const email = (dto as any).email || (dto as any).Email || "";
@@ -3952,7 +4378,10 @@ export const providerFromBackendDto = (dto: ProviderResponseDto): Provider => {
   const contacto = (dto as any).contacto || (dto as any).Contacto || "";
   const tipo = (dto as any).tipo || (dto as any).Tipo || "";
   const estado = (dto as any).estado || (dto as any).Estado || "activo";
-  const createdAt = (dto as any).createdAt || (dto as any).CreatedAt || new Date().toISOString();
+  const createdAt =
+    (dto as any).createdAt ||
+    (dto as any).CreatedAt ||
+    new Date().toISOString();
 
   return {
     id: dto.id,
@@ -3968,7 +4397,9 @@ export const providerFromBackendDto = (dto: ProviderResponseDto): Provider => {
   };
 };
 
-export const providerToCreateDto = (provider: Omit<Provider, "id" | "fechaCreacion">): CreateProviderDto => ({
+export const providerToCreateDto = (
+  provider: Omit<Provider, "id" | "fechaCreacion">,
+): CreateProviderDto => ({
   rif: provider.rif,
   nombre: provider.razonSocial, // El backend espera "nombre" y "razonSocial", usamos razonSocial para ambos
   razonSocial: provider.razonSocial,
@@ -3980,7 +4411,9 @@ export const providerToCreateDto = (provider: Omit<Provider, "id" | "fechaCreaci
   estado: provider.estado === "activo" ? "Activo" : "Inactivo", // Backend usa PascalCase
 });
 
-export const providerToUpdateDto = (updates: Partial<Provider>): UpdateProviderDto => {
+export const providerToUpdateDto = (
+  updates: Partial<Provider>,
+): UpdateProviderDto => {
   const dto: UpdateProviderDto = {};
   if (updates.rif !== undefined) dto.rif = updates.rif;
   if (updates.razonSocial !== undefined) {
@@ -3998,7 +4431,9 @@ export const providerToUpdateDto = (updates: Partial<Provider>): UpdateProviderD
   return dto;
 };
 
-const repopulateProvidersCache = async (providers: Provider[]): Promise<void> => {
+const repopulateProvidersCache = async (
+  providers: Provider[],
+): Promise<void> => {
   try {
     await db.clearStore("providers");
     for (const p of providers) {
@@ -4018,7 +4453,10 @@ export const getProviders = async (): Promise<Provider[]> => {
         void repopulateProvidersCache(list);
         return list;
       } catch (error) {
-        console.warn("Error obteniendo proveedores del backend, usando IndexedDB:", error);
+        console.warn(
+          "Error obteniendo proveedores del backend, usando IndexedDB:",
+          error,
+        );
         return await db.getAll<Provider>("providers");
       }
     }
@@ -4030,7 +4468,7 @@ export const getProviders = async (): Promise<Provider[]> => {
 };
 
 export const getProvider = async (
-  id: string
+  id: string,
 ): Promise<Provider | undefined> => {
   try {
     if (isOnline()) {
@@ -4051,7 +4489,7 @@ export const getProvider = async (
 };
 
 export const addProvider = async (
-  provider: Omit<Provider, "id" | "fechaCreacion">
+  provider: Omit<Provider, "id" | "fechaCreacion">,
 ): Promise<Provider> => {
   try {
     const newProvider: Provider = {
@@ -4071,7 +4509,7 @@ export const addProvider = async (
 
 export const updateProvider = async (
   id: string,
-  updates: Partial<Provider>
+  updates: Partial<Provider>,
 ): Promise<Provider> => {
   try {
     const existingProvider = await getProvider(id);
@@ -4121,7 +4559,9 @@ export const syncProvidersFromBackend = async (): Promise<Provider[]> => {
       }
     }
 
-    console.log(`✅ ${providers.length} proveedores sincronizados desde el backend`);
+    console.log(
+      `✅ ${providers.length} proveedores sincronizados desde el backend`,
+    );
     return providers;
   } catch (error) {
     console.error("Error syncing providers from backend:", error);
@@ -4198,7 +4638,10 @@ export const getAccounts = async (): Promise<Account[]> => {
         void repopulateAccountsCache(list);
         return list;
       } catch (error) {
-        console.warn("Error cargando cuentas del backend, usando IndexedDB:", error);
+        console.warn(
+          "Error cargando cuentas del backend, usando IndexedDB:",
+          error,
+        );
         return await db.getAll<Account>("accounts");
       }
     }
@@ -4229,7 +4672,7 @@ export const getAccount = async (id: string): Promise<Account | undefined> => {
 };
 
 export const addAccount = async (
-  account: Omit<Account, "id" | "createdAt" | "updatedAt">
+  account: Omit<Account, "id" | "createdAt" | "updatedAt">,
 ): Promise<Account> => {
   try {
     // Primero intentar crear en backend si hay conexión
@@ -4250,7 +4693,10 @@ export const addAccount = async (
         console.log("✅ Cuenta creada en backend:", newAccount.label);
         return newAccount;
       } catch (error) {
-        console.warn("⚠️ Error creando cuenta en backend, guardando solo localmente:", error);
+        console.warn(
+          "⚠️ Error creando cuenta en backend, guardando solo localmente:",
+          error,
+        );
         // Continuar guardando localmente
       }
     }
@@ -4276,7 +4722,7 @@ export const addAccount = async (
 
 export const updateAccount = async (
   id: string,
-  updates: Partial<Account>
+  updates: Partial<Account>,
 ): Promise<Account> => {
   try {
     const existingAccount = await getAccount(id);
@@ -4304,7 +4750,10 @@ export const updateAccount = async (
         console.log("✅ Cuenta actualizada en backend:", updatedAccount.label);
         return updatedAccount;
       } catch (error) {
-        console.warn("⚠️ Error actualizando cuenta en backend, actualizando solo localmente:", error);
+        console.warn(
+          "⚠️ Error actualizando cuenta en backend, actualizando solo localmente:",
+          error,
+        );
         // Continuar actualizando localmente
       }
     }
@@ -4345,7 +4794,9 @@ export const deleteAccount = async (id: string): Promise<void> => {
 };
 
 // Funciones de conversión para Stores
-export const storeToBackendDto = (store: Omit<Store, "id" | "createdAt" | "updatedAt">): CreateStoreDto => ({
+export const storeToBackendDto = (
+  store: Omit<Store, "id" | "createdAt" | "updatedAt">,
+): CreateStoreDto => ({
   name: store.name,
   code: store.code,
   address: store.address,
@@ -4390,7 +4841,10 @@ export const getStores = async (): Promise<Store[]> => {
       void repopulateStoresCache(list);
       return list;
     } catch (error) {
-      console.warn("Error al obtener tiendas del backend, usando IndexedDB:", error);
+      console.warn(
+        "Error al obtener tiendas del backend, usando IndexedDB:",
+        error,
+      );
       return await db.getAll<Store>("stores");
     }
   } catch (error) {
@@ -4400,7 +4854,7 @@ export const getStores = async (): Promise<Store[]> => {
 };
 
 export const addStore = async (
-  store: Omit<Store, "id" | "createdAt" | "updatedAt">
+  store: Omit<Store, "id" | "createdAt" | "updatedAt">,
 ): Promise<Store> => {
   try {
     // Crear en backend primero
@@ -4411,7 +4865,10 @@ export const addStore = async (
     console.log("✅ Tienda creada en backend:", createdStore.name);
     return createdStore;
   } catch (error) {
-    console.error("Error creando tienda en backend, guardando solo en IndexedDB:", error);
+    console.error(
+      "Error creando tienda en backend, guardando solo en IndexedDB:",
+      error,
+    );
     // Fallback a IndexedDB
     const now = new Date().toISOString();
     const newStore: Store = {
@@ -4429,7 +4886,7 @@ export const addStore = async (
 
 export const updateStore = async (
   id: string,
-  updates: Partial<Store>
+  updates: Partial<Store>,
 ): Promise<Store> => {
   try {
     // Actualizar en backend primero
@@ -4448,7 +4905,10 @@ export const updateStore = async (
     console.log("✅ Tienda actualizada en backend:", updatedStore.name);
     return updatedStore;
   } catch (error) {
-    console.error("Error actualizando tienda en backend, actualizando solo en IndexedDB:", error);
+    console.error(
+      "Error actualizando tienda en backend, actualizando solo en IndexedDB:",
+      error,
+    );
     // Fallback a IndexedDB
     const existingStore = await db.get<Store>("stores", id);
     if (!existingStore) {
@@ -4476,7 +4936,10 @@ export const deleteStore = async (id: string): Promise<void> => {
     await db.remove("stores", id);
     console.log("✅ Tienda eliminada de backend e IndexedDB");
   } catch (error) {
-    console.error("Error eliminando tienda del backend, eliminando solo de IndexedDB:", error);
+    console.error(
+      "Error eliminando tienda del backend, eliminando solo de IndexedDB:",
+      error,
+    );
     // Fallback a IndexedDB
     await db.remove("stores", id);
     console.log("✅ Tienda eliminada de IndexedDB");
@@ -4512,7 +4975,7 @@ export const calculateProductTotalWithAttributes = (
   category: Category | undefined,
   exchangeRates?: { USD?: any; EUR?: any },
   allProducts: Product[] = [],
-  categories: Category[] = []
+  categories: Category[] = [],
 ): number => {
   if (!productAttributes || !category || !category.attributes) {
     return basePrice * quantity;
@@ -4524,7 +4987,7 @@ export const calculateProductTotalWithAttributes = (
   Object.entries(productAttributes).forEach(([attrKey, selectedValue]) => {
     // Buscar el atributo en la categoría
     const categoryAttribute = category.attributes.find(
-      (attr) => attr.id.toString() === attrKey || attr.title === attrKey
+      (attr) => attr.id.toString() === attrKey || attr.title === attrKey,
     );
 
     if (!categoryAttribute || !categoryAttribute.values) {
@@ -4534,7 +4997,7 @@ export const calculateProductTotalWithAttributes = (
     // Función helper para convertir ajuste a Bs
     const convertAdjustment = (
       adjustment: number,
-      currency?: string
+      currency?: string,
     ): number => {
       if (!currency || currency === "Bs") return adjustment;
       if (currency === "USD" && exchangeRates?.USD?.rate) {
@@ -4549,16 +5012,28 @@ export const calculateProductTotalWithAttributes = (
     // Manejar atributos de tipo "Product"
     if (categoryAttribute.valueType === "Product") {
       const processProductPrice = (productId: any) => {
-        const productIdNum = typeof productId === "number" ? productId : parseInt(productId);
-        
+        const productIdNum =
+          typeof productId === "number" ? productId : parseInt(productId);
+
         // Intentar buscar el producto real para sumar su precio base y sus propios atributos
-        const foundProduct = allProducts.find(p => p.id === productIdNum || p.backendId === productId.toString());
+        const foundProduct = allProducts.find(
+          (p) => p.id === productIdNum || p.backendId === productId.toString(),
+        );
         if (foundProduct) {
           // Convertir precio del producto a Bs
           let pPrice = foundProduct.price;
-          if (foundProduct.priceCurrency && foundProduct.priceCurrency !== "Bs" && exchangeRates) {
-            if (foundProduct.priceCurrency === "USD" && exchangeRates.USD?.rate) pPrice *= exchangeRates.USD.rate;
-            else if (foundProduct.priceCurrency === "EUR" && exchangeRates.EUR?.rate) pPrice *= exchangeRates.EUR.rate;
+          if (
+            foundProduct.priceCurrency &&
+            foundProduct.priceCurrency !== "Bs" &&
+            exchangeRates
+          ) {
+            if (foundProduct.priceCurrency === "USD" && exchangeRates.USD?.rate)
+              pPrice *= exchangeRates.USD.rate;
+            else if (
+              foundProduct.priceCurrency === "EUR" &&
+              exchangeRates.EUR?.rate
+            )
+              pPrice *= exchangeRates.EUR.rate;
           }
           totalAdjustment += pPrice;
 
@@ -4566,9 +5041,18 @@ export const calculateProductTotalWithAttributes = (
           const subAttrKey = `${attrKey}_${foundProduct.id}`;
           const subAttrs = (productAttributes as any)[subAttrKey];
           if (subAttrs) {
-            const subCategory = categories.find(c => c.name === foundProduct.category);
+            const subCategory = categories.find(
+              (c) => c.name === foundProduct.category,
+            );
             if (subCategory) {
-              totalAdjustment += calculateProductUnitPriceWithAttributes(0, subAttrs, subCategory, exchangeRates, allProducts, categories);
+              totalAdjustment += calculateProductUnitPriceWithAttributes(
+                0,
+                subAttrs,
+                subCategory,
+                exchangeRates,
+                allProducts,
+                categories,
+              );
             }
           }
         }
@@ -4643,7 +5127,7 @@ export const calculateProductUnitPriceWithAttributes = (
   category: Category | undefined,
   exchangeRates?: { USD?: any; EUR?: any },
   allProducts: Product[] = [],
-  categories: Category[] = []
+  categories: Category[] = [],
 ): number => {
   if (!productAttributes || !category || !category.attributes) {
     return basePrice;
@@ -4665,7 +5149,7 @@ export const calculateProductUnitPriceWithAttributes = (
 
   Object.entries(productAttributes).forEach(([attrKey, selectedValue]) => {
     const categoryAttribute = category.attributes.find(
-      (attr) => attr.id.toString() === attrKey || attr.title === attrKey
+      (attr) => attr.id.toString() === attrKey || attr.title === attrKey,
     );
 
     if (!categoryAttribute || !categoryAttribute.values) {
@@ -4675,16 +5159,28 @@ export const calculateProductUnitPriceWithAttributes = (
     // Manejar atributos de tipo "Product"
     if (categoryAttribute.valueType === "Product") {
       const processProductPrice = (productId: any) => {
-        const productIdNum = typeof productId === "number" ? productId : parseInt(productId);
-        
+        const productIdNum =
+          typeof productId === "number" ? productId : parseInt(productId);
+
         // Intentar buscar el producto real para sumar su precio base y sus propios atributos
-        const foundProduct = allProducts.find(p => p.id === productIdNum || p.backendId === productId.toString());
+        const foundProduct = allProducts.find(
+          (p) => p.id === productIdNum || p.backendId === productId.toString(),
+        );
         if (foundProduct) {
           // Convertir precio del producto a Bs
           let pPrice = foundProduct.price;
-          if (foundProduct.priceCurrency && foundProduct.priceCurrency !== "Bs" && exchangeRates) {
-            if (foundProduct.priceCurrency === "USD" && exchangeRates.USD?.rate) pPrice *= exchangeRates.USD.rate;
-            else if (foundProduct.priceCurrency === "EUR" && exchangeRates.EUR?.rate) pPrice *= exchangeRates.EUR.rate;
+          if (
+            foundProduct.priceCurrency &&
+            foundProduct.priceCurrency !== "Bs" &&
+            exchangeRates
+          ) {
+            if (foundProduct.priceCurrency === "USD" && exchangeRates.USD?.rate)
+              pPrice *= exchangeRates.USD.rate;
+            else if (
+              foundProduct.priceCurrency === "EUR" &&
+              exchangeRates.EUR?.rate
+            )
+              pPrice *= exchangeRates.EUR.rate;
           }
           totalAdjustment += pPrice;
 
@@ -4692,9 +5188,18 @@ export const calculateProductUnitPriceWithAttributes = (
           const subAttrKey = `${attrKey}_${foundProduct.id}`;
           const subAttrs = (productAttributes as any)[subAttrKey];
           if (subAttrs) {
-            const subCategory = categories.find(c => c.name === foundProduct.category);
+            const subCategory = categories.find(
+              (c) => c.name === foundProduct.category,
+            );
             if (subCategory) {
-              totalAdjustment += calculateProductUnitPriceWithAttributes(0, subAttrs, subCategory, exchangeRates, allProducts, categories);
+              totalAdjustment += calculateProductUnitPriceWithAttributes(
+                0,
+                subAttrs,
+                subCategory,
+                exchangeRates,
+                allProducts,
+                categories,
+              );
             }
           }
         }
@@ -4792,7 +5297,10 @@ export const getUsers = async (): Promise<User[]> => {
         void repopulateUsersCache(list);
         return list;
       } catch (error) {
-        console.warn("Error cargando usuarios del backend, usando IndexedDB:", error);
+        console.warn(
+          "Error cargando usuarios del backend, usando IndexedDB:",
+          error,
+        );
         return await db.getAll<User>("users");
       }
     }
@@ -4823,7 +5331,7 @@ export const getUser = async (id: string): Promise<User | undefined> => {
 };
 
 export const addUser = async (
-  user: Omit<User, "id" | "createdAt">
+  user: Omit<User, "id" | "createdAt">,
 ): Promise<User> => {
   try {
     const newUser: User = {
@@ -4843,7 +5351,7 @@ export const addUser = async (
 
 export const updateUser = async (
   id: string,
-  updates: Partial<User>
+  updates: Partial<User>,
 ): Promise<User> => {
   try {
     const existingUser = await getUser(id);
@@ -4909,7 +5417,7 @@ export const getVendors = async (): Promise<Vendor[]> => {
           ? "Vendedor de tienda"
           : raw === "Online Seller" || rl === "vendedor online"
             ? "Vendedor Online"
-            : user.role as string;
+            : (user.role as string);
       return {
         id: user.id,
         name: user.name,
@@ -4982,7 +5490,9 @@ export const getCommissions = async (): Promise<Commission[]> => {
   }
 };
 
-export const getCommission = async (id: string): Promise<Commission | undefined> => {
+export const getCommission = async (
+  id: string,
+): Promise<Commission | undefined> => {
   try {
     return await db.get<Commission>("commissions", id);
   } catch (error) {
@@ -4991,7 +5501,9 @@ export const getCommission = async (id: string): Promise<Commission | undefined>
   }
 };
 
-export const addCommission = async (commission: Omit<Commission, "id" | "createdAt" | "updatedAt">): Promise<Commission> => {
+export const addCommission = async (
+  commission: Omit<Commission, "id" | "createdAt" | "updatedAt">,
+): Promise<Commission> => {
   try {
     const newCommission: Commission = {
       ...commission,
@@ -5014,7 +5526,10 @@ export const addCommission = async (commission: Omit<Commission, "id" | "created
         data: newCommission,
       });
     } catch (syncError) {
-      console.warn("⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):", syncError);
+      console.warn(
+        "⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):",
+        syncError,
+      );
       // No fallar, IndexedDB es la fuente de verdad
     }
 
@@ -5025,7 +5540,10 @@ export const addCommission = async (commission: Omit<Commission, "id" | "created
   }
 };
 
-export const updateCommission = async (id: string, updates: Partial<Commission>): Promise<Commission> => {
+export const updateCommission = async (
+  id: string,
+  updates: Partial<Commission>,
+): Promise<Commission> => {
   try {
     const existing = await db.get<Commission>("commissions", id);
     if (!existing) {
@@ -5052,7 +5570,10 @@ export const updateCommission = async (id: string, updates: Partial<Commission>)
         data: updated,
       });
     } catch (syncError) {
-      console.warn("⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):", syncError);
+      console.warn(
+        "⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):",
+        syncError,
+      );
       // No fallar, IndexedDB es la fuente de verdad
     }
 
@@ -5079,7 +5600,10 @@ export const deleteCommission = async (id: string): Promise<void> => {
         data: { id },
       });
     } catch (syncError) {
-      console.warn("⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):", syncError);
+      console.warn(
+        "⚠️ No se pudo agregar a cola de sincronización (se sincronizará después):",
+        syncError,
+      );
       // No fallar, IndexedDB es la fuente de verdad
     }
   } catch (error) {
@@ -5112,7 +5636,7 @@ export const getProductCommissions = async (): Promise<ProductCommission[]> => {
 };
 
 export const upsertProductCommission = async (
-  data: Omit<ProductCommission, "id" | "createdAt" | "updatedAt">
+  data: Omit<ProductCommission, "id" | "createdAt" | "updatedAt">,
 ): Promise<ProductCommission> => {
   try {
     return await apiClient.upsertProductCommission(data);
@@ -5123,7 +5647,7 @@ export const upsertProductCommission = async (
 };
 
 export const batchUpsertProductCommissions = async (
-  data: Omit<ProductCommission, "id" | "createdAt" | "updatedAt">[]
+  data: Omit<ProductCommission, "id" | "createdAt" | "updatedAt">[],
 ): Promise<ProductCommission[]> => {
   try {
     return await apiClient.batchUpsertProductCommissions(data);
@@ -5133,7 +5657,9 @@ export const batchUpsertProductCommissions = async (
   }
 };
 
-export const deleteProductCommission = async (categoryId: string): Promise<void> => {
+export const deleteProductCommission = async (
+  categoryId: string,
+): Promise<void> => {
   try {
     await apiClient.deleteProductCommission(categoryId);
   } catch (error) {
@@ -5158,7 +5684,9 @@ export interface SaleTypeCommissionRule {
   updatedAt: string;
 }
 
-export const getSaleTypeCommissionRules = async (): Promise<SaleTypeCommissionRule[]> => {
+export const getSaleTypeCommissionRules = async (): Promise<
+  SaleTypeCommissionRule[]
+> => {
   try {
     return await apiClient.getSaleTypeCommissionRules();
   } catch (error) {
@@ -5168,7 +5696,7 @@ export const getSaleTypeCommissionRules = async (): Promise<SaleTypeCommissionRu
 };
 
 export const upsertSaleTypeCommissionRule = async (
-  data: Omit<SaleTypeCommissionRule, "id" | "createdAt" | "updatedAt">
+  data: Omit<SaleTypeCommissionRule, "id" | "createdAt" | "updatedAt">,
 ): Promise<SaleTypeCommissionRule> => {
   try {
     return await apiClient.upsertSaleTypeCommissionRule(data);
@@ -5179,7 +5707,7 @@ export const upsertSaleTypeCommissionRule = async (
 };
 
 export const batchUpsertSaleTypeCommissionRules = async (
-  data: Omit<SaleTypeCommissionRule, "id" | "createdAt" | "updatedAt">[]
+  data: Omit<SaleTypeCommissionRule, "id" | "createdAt" | "updatedAt">[],
 ): Promise<SaleTypeCommissionRule[]> => {
   try {
     return await apiClient.batchUpsertSaleTypeCommissionRules(data);
@@ -5189,7 +5717,9 @@ export const batchUpsertSaleTypeCommissionRules = async (
   }
 };
 
-export const deleteSaleTypeCommissionRule = async (saleType: string): Promise<void> => {
+export const deleteSaleTypeCommissionRule = async (
+  saleType: string,
+): Promise<void> => {
   try {
     await apiClient.deleteSaleTypeCommissionRule(saleType);
   } catch (error) {
@@ -5223,14 +5753,19 @@ export function pickSaleTypeCommissionRule(
 ): SaleTypeCommissionRule | undefined {
   const st = ((saleType || "").trim() || "entrega").toLowerCase();
   const eps = 0.0001;
-  const matchedTier = FAMILY_COMMISSION_USD_TIERS.find((t) => Math.abs(commissionUsdPerUnit - t) < eps);
+  const matchedTier = FAMILY_COMMISSION_USD_TIERS.find(
+    (t) => Math.abs(commissionUsdPerUnit - t) < eps,
+  );
   const tier = matchedTier ?? 2.5;
   const byType = rules.filter((r) => r.saleType.toLowerCase() === st);
   if (byType.length === 0) return undefined;
-  const exact = byType.find((r) => Math.abs((r.familyCommissionUsdPerUnit ?? 0) - tier) < eps);
+  const exact = byType.find(
+    (r) => Math.abs((r.familyCommissionUsdPerUnit ?? 0) - tier) < eps,
+  );
   if (exact) return exact;
   return [...byType].sort(
-    (a, b) => (a.familyCommissionUsdPerUnit ?? 0) - (b.familyCommissionUsdPerUnit ?? 0)
+    (a, b) =>
+      (a.familyCommissionUsdPerUnit ?? 0) - (b.familyCommissionUsdPerUnit ?? 0),
   )[0];
 }
 
@@ -5262,12 +5797,16 @@ const SALE_TYPE_CODE_LABELS: Record<string, string> = {
 /** Etiqueta legible del tipo de venta (misma clave que reparte comisión). */
 export const getCommissionSaleTypeLabelForOrder = (
   order: Order,
-  rules: SaleTypeCommissionRule[]
+  rules: SaleTypeCommissionRule[],
 ): string => {
   const code = getOrderSaleTypeCodeForCommission(order);
   const same = rules
     .filter((r) => r.saleType.toLowerCase() === code.toLowerCase())
-    .sort((a, b) => (a.familyCommissionUsdPerUnit ?? 0) - (b.familyCommissionUsdPerUnit ?? 0));
+    .sort(
+      (a, b) =>
+        (a.familyCommissionUsdPerUnit ?? 0) -
+        (b.familyCommissionUsdPerUnit ?? 0),
+    );
   const rule = same[0];
   if (rule?.saleTypeLabel?.trim()) return rule.saleTypeLabel.trim();
   return SALE_TYPE_CODE_LABELS[code] ?? code;
@@ -5275,7 +5814,7 @@ export const getCommissionSaleTypeLabelForOrder = (
 
 export function getFamilyCommissionUsdPerUnitForProduct(
   product: OrderProduct,
-  productCommissions: ProductCommission[]
+  productCommissions: ProductCommission[],
 ): number {
   const cat = product.category?.trim() ?? "";
   if (!cat) return 0;
@@ -5284,7 +5823,7 @@ export function getFamilyCommissionUsdPerUnitForProduct(
     (c) =>
       (c.categoryName && c.categoryName.trim().toLowerCase() === catLower) ||
       c.categoryId === cat ||
-      c.categoryId?.trim().toLowerCase() === catLower
+      c.categoryId?.trim().toLowerCase() === catLower,
   );
   return found?.commissionValue ?? 0;
 }
@@ -5293,16 +5832,16 @@ const legacyCommissionForSeller = (
   sellerId: string,
   product: OrderProduct,
   legacyCommissions: Commission[],
-  users: User[]
+  users: User[],
 ): number => {
   const user = users.find((u) => u.id === sellerId);
   if (!user) return 0;
   const commission =
     legacyCommissions.find(
-      (c) => c.commissionType === "user" && c.userId === sellerId
+      (c) => c.commissionType === "user" && c.userId === sellerId,
     ) ||
     legacyCommissions.find(
-      (c) => c.commissionType === "role" && c.role === user.role
+      (c) => c.commissionType === "role" && c.role === user.role,
     );
   if (!commission) return 0;
   const productTotal = product.total;
@@ -5323,7 +5862,7 @@ export type ProductCommissionSplit = {
 export const computeProductCommissionSplit = (
   order: Order,
   product: OrderProduct,
-  ctx: CommissionCalculationContext
+  ctx: CommissionCalculationContext,
 ): ProductCommissionSplit => {
   const mainVendor = ctx.users.find((u) => u.id === order.vendorId);
   const isExclusiveVendor = mainVendor?.exclusiveCommission === true;
@@ -5331,7 +5870,10 @@ export const computeProductCommissionSplit = (
   const hasReferrer = !!referrerId;
   const isSharedSale = hasReferrer && !isExclusiveVendor;
 
-  const baseRate = getFamilyCommissionUsdPerUnitForProduct(product, ctx.productCommissions);
+  const baseRate = getFamilyCommissionUsdPerUnitForProduct(
+    product,
+    ctx.productCommissions,
+  );
   const qty = Math.max(product.quantity || 1, 1);
   const familyCommission = baseRate > 0 ? baseRate * qty : 0;
 
@@ -5340,7 +5882,7 @@ export const computeProductCommissionSplit = (
       order.vendorId,
       product,
       ctx.legacyCommissions,
-      ctx.users
+      ctx.users,
     );
     if (!hasReferrer) {
       return {
@@ -5362,7 +5904,7 @@ export const computeProductCommissionSplit = (
       referrerId!,
       product,
       ctx.legacyCommissions,
-      ctx.users
+      ctx.users,
     );
     return {
       vendorCommission: vendorFull / 2,
@@ -5374,7 +5916,11 @@ export const computeProductCommissionSplit = (
 
   if (isSharedSale) {
     const saleType = getOrderSaleTypeCodeForCommission(order);
-    const rule = pickSaleTypeCommissionRule(ctx.saleTypeRules, saleType, baseRate);
+    const rule = pickSaleTypeCommissionRule(
+      ctx.saleTypeRules,
+      saleType,
+      baseRate,
+    );
     if (rule) {
       const pv = rule.postventaRate ?? 0;
       return {
@@ -5407,7 +5953,7 @@ export const computeProductCommissionSplit = (
 export const calculateProductCommission = async (
   product: OrderProduct,
   order: Order,
-  sellerId: string | null
+  sellerId: string | null,
 ): Promise<number> => {
   if (!sellerId) return 0;
   try {
@@ -5453,7 +5999,7 @@ export type OrderCommissionLine = {
 };
 
 export const calculateOrderCommissions = async (
-  order: Order
+  order: Order,
 ): Promise<OrderCommissionLine[]> => {
   const results: OrderCommissionLine[] = [];
 
@@ -5499,7 +6045,7 @@ export const calculateOrderCommissions = async (
         const pid = order.postventaId?.trim();
         results.push({
           sellerId: pid || "__postventa__",
-          sellerName: (order.postventaName?.trim() || "Post venta"),
+          sellerName: order.postventaName?.trim() || "Post venta",
           productId: product.id,
           productName: product.name,
           commission: split.postventaCommission,
@@ -5508,7 +6054,11 @@ export const calculateOrderCommissions = async (
         });
       }
 
-      if (split.isShared && order.referrerId && split.referrerCommission !== 0) {
+      if (
+        split.isShared &&
+        order.referrerId &&
+        split.referrerCommission !== 0
+      ) {
         results.push({
           sellerId: order.referrerId,
           sellerName: order.referrerName || "",
@@ -5586,7 +6136,7 @@ export const getVendor = async (id: string): Promise<Vendor | undefined> => {
 };
 
 export const addVendor = async (
-  vendor: Omit<Vendor, "id">
+  vendor: Omit<Vendor, "id">,
 ): Promise<Vendor> => {
   try {
     const newVendor: Vendor = {
@@ -5605,7 +6155,7 @@ export const addVendor = async (
 
 export const updateVendor = async (
   id: string,
-  updates: Partial<Vendor>
+  updates: Partial<Vendor>,
 ): Promise<Vendor> => {
   try {
     const existingVendor = await getVendor(id);
