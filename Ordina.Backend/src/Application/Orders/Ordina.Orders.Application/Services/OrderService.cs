@@ -102,7 +102,7 @@ public class OrderService : IOrderService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error al obtener pedidos paginados (page: {Page}, pageSize: {PageSize}, since: {Since})", 
+            _logger.LogError(ex, "Error al obtener pedidos paginados (page: {Page}, pageSize: {PageSize}, since: {Since})",
                 page, pageSize, since);
             throw;
         }
@@ -255,6 +255,7 @@ public class OrderService : IOrderService
                 ProductMarkups = createDto.ProductMarkups,
                 CreateSupplierOrder = createDto.CreateSupplierOrder,
                 Observations = createDto.Observations,
+                DispatchObservations = createDto.DispatchObservations,
                 SaleType = createDto.SaleType,
                 DeliveryType = createDto.DeliveryType,
                 DeliveryZone = createDto.DeliveryZone,
@@ -650,6 +651,8 @@ public class OrderService : IOrderService
                 existingOrder.CreateSupplierOrder = updateDto.CreateSupplierOrder;
             if (updateDto.Observations != null)
                 existingOrder.Observations = updateDto.Observations;
+            if (updateDto.DispatchObservations != null)
+                existingOrder.DispatchObservations = updateDto.DispatchObservations;
             if (!string.IsNullOrEmpty(updateDto.SaleType))
                 existingOrder.SaleType = updateDto.SaleType;
             if (!string.IsNullOrEmpty(updateDto.DeliveryType))
@@ -905,6 +908,7 @@ public class OrderService : IOrderService
             ProductMarkups = order.ProductMarkups,
             CreateSupplierOrder = order.CreateSupplierOrder,
             Observations = order.Observations,
+            DispatchObservations = order.DispatchObservations,
             SaleType = order.SaleType,
             DeliveryType = order.DeliveryType,
             DeliveryZone = order.DeliveryZone,
@@ -1063,8 +1067,8 @@ public class OrderService : IOrderService
     {
         return new OrderProduct
         {
-            Id = string.IsNullOrEmpty(dto.Id) || !ObjectId.TryParse(dto.Id, out _) 
-                ? ObjectId.GenerateNewId().ToString() 
+            Id = string.IsNullOrEmpty(dto.Id) || !ObjectId.TryParse(dto.Id, out _)
+                ? ObjectId.GenerateNewId().ToString()
                 : dto.Id,
             Name = dto.Name,
             Price = dto.Price,

@@ -33,7 +33,11 @@ import {
   type Account,
 } from "@/lib/storage";
 import { buildGeneralDiscountPersistPayload } from "@/lib/general-discount-meta";
-import { apiClient, type ConfirmOrderDto, type OrderProductDto } from "@/lib/api-client";
+import {
+  apiClient,
+  type ConfirmOrderDto,
+  type OrderProductDto,
+} from "@/lib/api-client";
 import { Currency } from "@/lib/currency-utils";
 import {
   normalizePaymentsForSave,
@@ -55,7 +59,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-function mapOrderProductsToConfirmDto(products: OrderProduct[]): OrderProductDto[] {
+function mapOrderProductsToConfirmDto(
+  products: OrderProduct[],
+): OrderProductDto[] {
   return products.map((p) => ({
     id: p.id,
     name: p.name,
@@ -169,8 +175,12 @@ export function EditOrderDialog({
   const [isProductSelectionOpen, setIsProductSelectionOpen] = useState(false);
   const [isProductEditOpen, setIsProductEditOpen] = useState(false);
   const [isRemoveProductOpen, setIsRemoveProductOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<OrderProduct | null>(null);
-  const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(null);
+  const [editingProduct, setEditingProduct] = useState<OrderProduct | null>(
+    null,
+  );
+  const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(
+    null,
+  );
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
   const [overpaymentPrompt, setOverpaymentPrompt] = useState<{
@@ -201,9 +211,13 @@ export function EditOrderDialog({
     orderForm.setSelectedProducts((products) =>
       products.map((p) =>
         p.id === updatedProduct.id
-          ? { ...updatedProduct, locationStatus: updatedProduct.locationStatus ?? "DISPONIBILIDAD INMEDIATA" }
-          : p
-      )
+          ? {
+              ...updatedProduct,
+              locationStatus:
+                updatedProduct.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+            }
+          : p,
+      ),
     );
     setIsProductEditOpen(false);
     setEditingProduct(null);
@@ -217,7 +231,7 @@ export function EditOrderDialog({
   const confirmRemoveProduct = () => {
     if (productToRemove) {
       orderForm.setSelectedProducts((products) =>
-        products.filter((p) => p.id !== productToRemove.id)
+        products.filter((p) => p.id !== productToRemove.id),
       );
       setProductToRemove(null);
       setIsRemoveProductOpen(false);
@@ -241,19 +255,19 @@ export function EditOrderDialog({
   const updatePayment = (
     id: string,
     field: keyof PartialPayment,
-    value: string | number | Currency
+    value: string | number | Currency,
   ) => {
     orderForm.setPayments((paymentsList) =>
       paymentsList.map((payment) =>
-        payment.id === id ? { ...payment, [field]: value } : payment
-      )
+        payment.id === id ? { ...payment, [field]: value } : payment,
+      ),
     );
   };
 
   const updatePaymentDetails = (
     id: string,
     field: string,
-    value: string | number | boolean | undefined
+    value: string | number | boolean | undefined,
   ) => {
     orderForm.setPayments((paymentsList) =>
       paymentsList.map((payment) => {
@@ -270,13 +284,15 @@ export function EditOrderDialog({
           };
         }
         return payment;
-      })
+      }),
     );
   };
 
   const getAccountsForPaymentMethod = (method: string): Account[] => {
     if (method === "Paypal") {
-      return orderForm.accounts.filter((acc) => acc.accountType === "Cuentas Digitales");
+      return orderForm.accounts.filter(
+        (acc) => acc.accountType === "Cuentas Digitales",
+      );
     } else if (
       [
         "Banesco Panamá",
@@ -288,13 +304,17 @@ export function EditOrderDialog({
       ].includes(method)
     ) {
       return orderForm.accounts.filter(
-        (acc) => acc.accountType === "Ahorro" || acc.accountType === "Corriente"
+        (acc) =>
+          acc.accountType === "Ahorro" || acc.accountType === "Corriente",
       );
     }
     return [];
   };
 
-  const saveAccountInfoToPayment = (paymentId: string, account: Account): void => {
+  const saveAccountInfoToPayment = (
+    paymentId: string,
+    account: Account,
+  ): void => {
     updatePaymentDetails(paymentId, "accountId", account.id);
 
     if (account.accountType === "Cuentas Digitales") {
@@ -304,7 +324,11 @@ export function EditOrderDialog({
       updatePaymentDetails(paymentId, "bank", undefined);
     } else {
       // Para cuentas tradicionales, usar el código como referencia y el label puede contener el banco
-      updatePaymentDetails(paymentId, "accountNumber", account.code || undefined);
+      updatePaymentDetails(
+        paymentId,
+        "accountNumber",
+        account.code || undefined,
+      );
       updatePaymentDetails(paymentId, "bank", account.label || undefined);
       updatePaymentDetails(paymentId, "email", undefined);
       updatePaymentDetails(paymentId, "wallet", undefined);
@@ -312,9 +336,15 @@ export function EditOrderDialog({
 
     // Si la etiqueta contiene información del banco, intentar extraerla para Pago Móvil/Transferencia
     const currentPayment = orderForm.payments.find((p) => p.id === paymentId);
-    if (account.label && (currentPayment?.method === "Pago Móvil" || currentPayment?.method === "Transferencia")) {
+    if (
+      account.label &&
+      (currentPayment?.method === "Pago Móvil" ||
+        currentPayment?.method === "Transferencia")
+    ) {
       // Intentar extraer el banco del label si es posible (ej: "Punto de Venta Banesco" -> "Banesco")
-      const bankMatch = account.label.match(/\b(Banesco|Mercantil|Venezuela|Provincial|BOD|100% Banco|Banco del Tesoro|Banco de Venezuela)\b/i);
+      const bankMatch = account.label.match(
+        /\b(Banesco|Mercantil|Venezuela|Provincial|BOD|100% Banco|Banco del Tesoro|Banco de Venezuela)\b/i,
+      );
       if (bankMatch) {
         const bankName = bankMatch[1];
         if (currentPayment?.method === "Pago Móvil") {
@@ -334,7 +364,7 @@ export function EditOrderDialog({
       return;
     }
     orderForm.setPayments((paymentsList) =>
-      paymentsList.filter((p) => p.id !== id)
+      paymentsList.filter((p) => p.id !== id),
     );
   };
 
@@ -347,12 +377,16 @@ export function EditOrderDialog({
       }
       const paymentCondition = order.paymentCondition ?? "pago_parcial";
       if (paymentCondition === "pago_a_entrega") {
-        toast.error("Este pedido es pago a la entrega; no se registran abonos aquí.");
+        toast.error(
+          "Este pedido es pago a la entrega; no se registran abonos aquí.",
+        );
         return;
       }
       if (paymentCondition === "cashea") {
         if (orderForm.payments.length !== 1) {
-          toast.error("Cashea: registre exactamente un pago inicial en tienda.");
+          toast.error(
+            "Cashea: registre exactamente un pago inicial en tienda.",
+          );
           return;
         }
       } else if (orderForm.payments.length === 0) {
@@ -377,30 +411,42 @@ export function EditOrderDialog({
         }
         if (payment.method === "Pago Móvil") {
           if (!payment.paymentDetails?.pagomovilReference) {
-            toast.error(`${paymentLabel} (Pago Móvil): Debe ingresar el número de referencia`);
+            toast.error(
+              `${paymentLabel} (Pago Móvil): Debe ingresar el número de referencia`,
+            );
             return;
           }
           if (!payment.paymentDetails?.accountId) {
-            toast.error(`${paymentLabel} (Pago Móvil): Debe seleccionar el banco receptor`);
+            toast.error(
+              `${paymentLabel} (Pago Móvil): Debe seleccionar el banco receptor`,
+            );
             return;
           }
         } else if (payment.method === "Transferencia") {
           if (!payment.paymentDetails?.transferenciaReference) {
-            toast.error(`${paymentLabel} (Transferencia): Debe ingresar el número de referencia`);
+            toast.error(
+              `${paymentLabel} (Transferencia): Debe ingresar el número de referencia`,
+            );
             return;
           }
           if (!payment.paymentDetails?.accountId) {
-            toast.error(`${paymentLabel} (Transferencia): Debe seleccionar el banco receptor`);
+            toast.error(
+              `${paymentLabel} (Transferencia): Debe seleccionar el banco receptor`,
+            );
             return;
           }
         } else if (payment.method === "Tarjeta de débito") {
           if (!payment.paymentDetails?.bank) {
-            toast.error(`${paymentLabel} (Tarjeta de débito): Debe seleccionar el banco`);
+            toast.error(
+              `${paymentLabel} (Tarjeta de débito): Debe seleccionar el banco`,
+            );
             return;
           }
         } else if (payment.method === "Tarjeta de Crédito") {
           if (!payment.paymentDetails?.bank) {
-            toast.error(`${paymentLabel} (Tarjeta de Crédito): Debe seleccionar el banco`);
+            toast.error(
+              `${paymentLabel} (Tarjeta de Crédito): Debe seleccionar el banco`,
+            );
             return;
           }
         } else if (payment.method === "Zelle") {
@@ -409,12 +455,14 @@ export function EditOrderDialog({
             return;
           }
         } else if (
-          (paymentMethodsRequiringReceivingAccount as readonly string[]).includes(
-            payment.method,
-          )
+          (
+            paymentMethodsRequiringReceivingAccount as readonly string[]
+          ).includes(payment.method)
         ) {
           if (!payment.paymentDetails?.accountId) {
-            toast.error(`${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`);
+            toast.error(
+              `${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`,
+            );
             return;
           }
         }
@@ -422,14 +470,19 @@ export function EditOrderDialog({
       if (paymentCondition === "cashea") {
         const p = orderForm.payments[0];
         if ((p.amount || 0) > orderForm.total + PAYMENT_BALANCE_EPSILON_BS) {
-          toast.error("El monto del pago inicial no puede superar el total del pedido.");
+          toast.error(
+            "El monto del pago inicial no puede superar el total del pedido.",
+          );
           return;
         }
       }
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (paymentCondition === "cashea") {
-        paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, orderForm.total);
+        paymentsNorm = buildCasheaPaymentsForSave(
+          paymentsNorm,
+          orderForm.total,
+        );
       }
       const multi = paymentsNorm.length > 1;
       const synced = await updateOrder(order.id, {
@@ -439,10 +492,11 @@ export function EditOrderDialog({
             ? "Cashea"
             : multi
               ? "Mixto"
-              : paymentsNorm[0]?.method ?? order.paymentMethod ?? "",
+              : (paymentsNorm[0]?.method ?? order.paymentMethod ?? ""),
         paymentDetails: !multi ? paymentsNorm[0]?.paymentDetails : undefined,
         mixedPayments: multi ? paymentsNorm : [],
-        ...(orderForm.appliedStoreCreditUsd !== (order.appliedStoreCreditUsd ?? 0)
+        ...(orderForm.appliedStoreCreditUsd !==
+        (order.appliedStoreCreditUsd ?? 0)
           ? { appliedStoreCreditUsd: orderForm.appliedStoreCreditUsd }
           : {}),
       });
@@ -461,8 +515,8 @@ export function EditOrderDialog({
       paymentsList.map((payment) =>
         payment.id === paymentId
           ? { ...payment, images: images.length > 0 ? images : undefined }
-          : payment
-      )
+          : payment,
+      ),
     );
   };
 
@@ -486,51 +540,68 @@ export function EditOrderDialog({
         clientName: orderForm.selectedClient.name,
         vendorId: orderForm.formData.vendor,
         vendorName:
-          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)?.name || "",
+          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)
+            ?.name || "",
         referrerId: orderForm.formData.referrer || undefined,
         referrerName: orderForm.formData.referrer
-          ? orderForm.mockReferrers.find((r) => r.id === orderForm.formData.referrer)?.name
+          ? orderForm.mockReferrers.find(
+              (r) => r.id === orderForm.formData.referrer,
+            )?.name
           : undefined,
         products: orderForm.selectedProducts.map((product) => ({
           ...product,
-          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          discount:
+            product.discount && product.discount > 0
+              ? product.discount
+              : undefined,
         })),
         subtotalBeforeDiscounts: orderForm.productSubtotal,
         productDiscountTotal:
-          orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
+          orderForm.productDiscountTotal > 0
+            ? orderForm.productDiscountTotal
+            : undefined,
         generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+          orderForm.generalDiscountAmount > 0
+            ? orderForm.generalDiscountAmount
+            : undefined,
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
         deliveryCost: orderForm.deliveryCost,
         total: orderForm.total,
         hasDelivery: orderForm.hasDelivery,
-        deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
+        deliveryAddress: orderForm.hasDelivery
+          ? orderForm.formData.deliveryAddress
+          : undefined,
         deliveryServices: orderForm.hasDelivery
           ? {
-            deliveryExpress: orderForm.deliveryServices.deliveryExpress?.enabled
-              ? {
-                enabled: true,
-                cost: orderForm.deliveryServices.deliveryExpress.cost,
-                currency: orderForm.deliveryServices.deliveryExpress.currency,
-              }
-              : undefined,
-            servicioAcarreo: orderForm.deliveryServices.servicioAcarreo?.enabled
-              ? {
-                enabled: true,
-                cost: orderForm.deliveryServices.servicioAcarreo.cost,
-                currency: orderForm.deliveryServices.servicioAcarreo.currency,
-              }
-              : undefined,
-            servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
-              ? {
-                enabled: true,
-                cost: orderForm.deliveryServices.servicioArmado.cost,
-                currency: orderForm.deliveryServices.servicioArmado.currency,
-              }
-              : undefined,
-          }
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.deliveryExpress.cost,
+                    currency:
+                      orderForm.deliveryServices.deliveryExpress.currency,
+                  }
+                : undefined,
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioAcarreo.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioAcarreo.currency,
+                  }
+                : undefined,
+              servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioArmado.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioArmado.currency,
+                  }
+                : undefined,
+            }
           : undefined,
         observations: orderForm.generalObservations.trim() || undefined,
         baseCurrency: preferredCurrency,
@@ -543,7 +614,9 @@ export function EditOrderDialog({
       onOpenChange(false);
     } catch (error) {
       console.error("Error creating budget:", error);
-      toast.error("Error al crear el presupuesto. Por favor intenta nuevamente.");
+      toast.error(
+        "Error al crear el presupuesto. Por favor intenta nuevamente.",
+      );
     }
   };
 
@@ -585,7 +658,9 @@ export function EditOrderDialog({
         // Sin líneas de pago en tienda
       } else if (orderForm.paymentCondition === "cashea") {
         if (orderForm.payments.length !== 1) {
-          toast.error("Cashea: registre exactamente un pago inicial en tienda.");
+          toast.error(
+            "Cashea: registre exactamente un pago inicial en tienda.",
+          );
           return;
         }
       } else if (orderForm.payments.length === 0) {
@@ -613,30 +688,42 @@ export function EditOrderDialog({
 
           if (payment.method === "Pago Móvil") {
             if (!payment.paymentDetails?.pagomovilReference) {
-              toast.error(`${paymentLabel} (Pago Móvil): Debe ingresar el número de referencia`);
+              toast.error(
+                `${paymentLabel} (Pago Móvil): Debe ingresar el número de referencia`,
+              );
               return;
             }
             if (!payment.paymentDetails?.accountId) {
-              toast.error(`${paymentLabel} (Pago Móvil): Debe seleccionar el banco receptor`);
+              toast.error(
+                `${paymentLabel} (Pago Móvil): Debe seleccionar el banco receptor`,
+              );
               return;
             }
           } else if (payment.method === "Transferencia") {
             if (!payment.paymentDetails?.transferenciaReference) {
-              toast.error(`${paymentLabel} (Transferencia): Debe ingresar el número de referencia`);
+              toast.error(
+                `${paymentLabel} (Transferencia): Debe ingresar el número de referencia`,
+              );
               return;
             }
             if (!payment.paymentDetails?.accountId) {
-              toast.error(`${paymentLabel} (Transferencia): Debe seleccionar el banco receptor`);
+              toast.error(
+                `${paymentLabel} (Transferencia): Debe seleccionar el banco receptor`,
+              );
               return;
             }
           } else if (payment.method === "Tarjeta de débito") {
             if (!payment.paymentDetails?.bank) {
-              toast.error(`${paymentLabel} (Tarjeta de débito): Debe seleccionar el banco`);
+              toast.error(
+                `${paymentLabel} (Tarjeta de débito): Debe seleccionar el banco`,
+              );
               return;
             }
           } else if (payment.method === "Tarjeta de Crédito") {
             if (!payment.paymentDetails?.bank) {
-              toast.error(`${paymentLabel} (Tarjeta de Crédito): Debe seleccionar el banco`);
+              toast.error(
+                `${paymentLabel} (Tarjeta de Crédito): Debe seleccionar el banco`,
+              );
               return;
             }
           } else if (payment.method === "Zelle") {
@@ -645,12 +732,14 @@ export function EditOrderDialog({
               return;
             }
           } else if (
-            (paymentMethodsRequiringReceivingAccount as readonly string[]).includes(
-              payment.method,
-            )
+            (
+              paymentMethodsRequiringReceivingAccount as readonly string[]
+            ).includes(payment.method)
           ) {
             if (!payment.paymentDetails?.accountId) {
-              toast.error(`${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`);
+              toast.error(
+                `${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`,
+              );
               return;
             }
           }
@@ -659,9 +748,13 @@ export function EditOrderDialog({
           const p = orderForm.payments[0];
           if (
             (p.amount || 0) >
-            orderForm.total - orderForm.appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS
+            orderForm.total -
+              orderForm.appliedCreditBsApprox +
+              PAYMENT_BALANCE_EPSILON_BS
           ) {
-            toast.error("El monto del pago inicial no puede superar el total del pedido.");
+            toast.error(
+              "El monto del pago inicial no puede superar el total del pedido.",
+            );
             return;
           }
         }
@@ -674,7 +767,9 @@ export function EditOrderDialog({
         orderForm.paymentCondition !== "todo_pago" &&
         !orderForm.isPaymentsValid
       ) {
-        toast.error("Los cobros no coinciden con el total del pedido (incluye crédito aplicado).");
+        toast.error(
+          "Los cobros no coinciden con el total del pedido (incluye crédito aplicado).",
+        );
         return;
       }
 
@@ -702,20 +797,30 @@ export function EditOrderDialog({
         clientRutId: orderForm.selectedClient.rutId,
         clientDireccion: orderForm.selectedClient.address,
         vendorName:
-          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)?.name || "",
+          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)
+            ?.name || "",
         referrerName: orderForm.formData.referrer
-          ? orderForm.mockReferrers.find((r) => r.id === orderForm.formData.referrer)?.name
+          ? orderForm.mockReferrers.find(
+              (r) => r.id === orderForm.formData.referrer,
+            )?.name
           : undefined,
         products: orderForm.selectedProducts.map((product) => ({
           ...product,
-          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          discount:
+            product.discount && product.discount > 0
+              ? product.discount
+              : undefined,
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
         subtotal: orderForm.subtotal,
         productDiscountTotal:
-          orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
+          orderForm.productDiscountTotal > 0
+            ? orderForm.productDiscountTotal
+            : undefined,
         generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+          orderForm.generalDiscountAmount > 0
+            ? orderForm.generalDiscountAmount
+            : undefined,
         ...buildGeneralDiscountPersistPayload(orderForm),
         taxAmount: orderForm.taxAmount,
         deliveryCost: orderForm.deliveryCost,
@@ -729,28 +834,33 @@ export function EditOrderDialog({
         deliveryAddress: orderForm.formData.deliveryAddress,
         deliveryServices: orderForm.hasDelivery
           ? {
-            deliveryExpress: orderForm.deliveryServices.deliveryExpress?.enabled
-              ? {
-                enabled: true,
-                cost: orderForm.deliveryServices.deliveryExpress.cost,
-                currency: orderForm.deliveryServices.deliveryExpress.currency,
-              }
-              : undefined,
-            servicioAcarreo: orderForm.deliveryServices.servicioAcarreo?.enabled
-              ? {
-                enabled: true,
-                cost: orderForm.deliveryServices.servicioAcarreo.cost,
-                currency: orderForm.deliveryServices.servicioAcarreo.currency,
-              }
-              : undefined,
-            servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
-              ? {
-                enabled: true,
-                cost: orderForm.deliveryServices.servicioArmado.cost,
-                currency: orderForm.deliveryServices.servicioArmado.currency,
-              }
-              : undefined,
-          }
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.deliveryExpress.cost,
+                    currency:
+                      orderForm.deliveryServices.deliveryExpress.currency,
+                  }
+                : undefined,
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioAcarreo.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioAcarreo.currency,
+                  }
+                : undefined,
+              servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioArmado.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioArmado.currency,
+                  }
+                : undefined,
+            }
           : undefined,
         observations: orderForm.generalObservations.trim() || undefined,
       };
@@ -773,7 +883,10 @@ export function EditOrderDialog({
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (orderForm.paymentCondition === "cashea") {
-        paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, orderForm.total);
+        paymentsNorm = buildCasheaPaymentsForSave(
+          paymentsNorm,
+          orderForm.total,
+        );
       }
       const multi = paymentsNorm.length > 1;
 
@@ -804,7 +917,10 @@ export function EditOrderDialog({
 
         const productsPrepared = orderForm.selectedProducts.map((product) => ({
           ...product,
-          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          discount:
+            product.discount && product.discount > 0
+              ? product.discount
+              : undefined,
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         }));
 
@@ -840,43 +956,57 @@ export function EditOrderDialog({
           saleType: orderForm.saleType || undefined,
           deliveryType: orderForm.deliveryType || undefined,
           deliveryZone: orderForm.deliveryZone || undefined,
-          deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
+          deliveryAddress: orderForm.hasDelivery
+            ? orderForm.formData.deliveryAddress
+            : undefined,
           hasDelivery: orderForm.hasDelivery,
           deliveryServices: orderForm.hasDelivery
             ? {
-                deliveryExpress: orderForm.deliveryServices.deliveryExpress?.enabled
+                deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                  ?.enabled
                   ? {
                       enabled: true,
                       cost: orderForm.deliveryServices.deliveryExpress.cost,
-                      currency: orderForm.deliveryServices.deliveryExpress.currency,
+                      currency:
+                        orderForm.deliveryServices.deliveryExpress.currency,
                     }
                   : undefined,
-                servicioAcarreo: orderForm.deliveryServices.servicioAcarreo?.enabled
+                servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                  ?.enabled
                   ? {
                       enabled: true,
                       cost: orderForm.deliveryServices.servicioAcarreo.cost,
-                      currency: orderForm.deliveryServices.servicioAcarreo.currency,
+                      currency:
+                        orderForm.deliveryServices.servicioAcarreo.currency,
                     }
                   : undefined,
-                servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
+                servicioArmado: orderForm.deliveryServices.servicioArmado
+                  ?.enabled
                   ? {
                       enabled: true,
                       cost: orderForm.deliveryServices.servicioArmado.cost,
-                      currency: orderForm.deliveryServices.servicioArmado.currency,
+                      currency:
+                        orderForm.deliveryServices.servicioArmado.currency,
                     }
                   : undefined,
               }
             : undefined,
           observations: orderForm.generalObservations.trim() || undefined,
+          dispatchObservations:
+            orderForm.dispatchObservations.trim() || undefined,
           subtotal: orderForm.subtotal,
           taxAmount: orderForm.taxAmount,
           deliveryCost: orderForm.deliveryCost,
           total: orderForm.total,
           subtotalBeforeDiscounts: orderForm.productSubtotal,
           productDiscountTotal:
-            orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
+            orderForm.productDiscountTotal > 0
+              ? orderForm.productDiscountTotal
+              : undefined,
           generalDiscountAmount:
-            orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+            orderForm.generalDiscountAmount > 0
+              ? orderForm.generalDiscountAmount
+              : undefined,
           ...buildGeneralDiscountPersistPayload(orderForm),
           productMarkups: orderForm.productMarkups,
           createSupplierOrder: orderForm.createSupplierOrder,
@@ -910,26 +1040,39 @@ export function EditOrderDialog({
         return;
       }
 
-      const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
+      const orderData: Omit<
+        Order,
+        "id" | "orderNumber" | "createdAt" | "updatedAt"
+      > = {
         clientId: orderForm.selectedClient.id,
         clientName: orderForm.selectedClient.name,
         vendorId: orderForm.formData.vendor,
         vendorName:
-          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)?.name || "",
+          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)
+            ?.name || "",
         referrerId: orderForm.formData.referrer || undefined,
         referrerName: orderForm.formData.referrer
-          ? orderForm.mockReferrers.find((r) => r.id === orderForm.formData.referrer)?.name
+          ? orderForm.mockReferrers.find(
+              (r) => r.id === orderForm.formData.referrer,
+            )?.name
           : undefined,
         products: orderForm.selectedProducts.map((product) => ({
           ...product,
-          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          discount:
+            product.discount && product.discount > 0
+              ? product.discount
+              : undefined,
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
         subtotalBeforeDiscounts: orderForm.productSubtotal,
         productDiscountTotal:
-          orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
+          orderForm.productDiscountTotal > 0
+            ? orderForm.productDiscountTotal
+            : undefined,
         generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+          orderForm.generalDiscountAmount > 0
+            ? orderForm.generalDiscountAmount
+            : undefined,
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
@@ -950,7 +1093,14 @@ export function EditOrderDialog({
           | "pago_a_entrega"
           | "pago_parcial"
           | "todo_pago",
-        saleType: orderForm.saleType as "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado",
+        saleType: orderForm.saleType as
+          | "delivery_express"
+          | "encargo"
+          | "encargo_entrega"
+          | "entrega"
+          | "retiro_almacen"
+          | "retiro_tienda"
+          | "sistema_apartado",
         deliveryType: orderForm.deliveryType as
           | "entrega_programada"
           | "delivery_express"
@@ -991,44 +1141,53 @@ export function EditOrderDialog({
             : multi
               ? paymentsNorm
               : undefined,
-        deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
+        deliveryAddress: orderForm.hasDelivery
+          ? orderForm.formData.deliveryAddress
+          : undefined,
         hasDelivery: orderForm.hasDelivery,
         deliveryServices: orderForm.hasDelivery
           ? {
-            deliveryExpress: orderForm.deliveryServices.deliveryExpress?.enabled
-              ? {
-                enabled: true,
-                cost: orderForm.deliveryServices.deliveryExpress.cost,
-                currency: orderForm.deliveryServices.deliveryExpress.currency,
-              }
-              : undefined,
-            servicioAcarreo: orderForm.deliveryServices.servicioAcarreo?.enabled
-              ? {
-                enabled: true,
-                cost: orderForm.deliveryServices.servicioAcarreo.cost,
-                currency: orderForm.deliveryServices.servicioAcarreo.currency,
-              }
-              : undefined,
-            servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
-              ? {
-                enabled: true,
-                cost: orderForm.deliveryServices.servicioArmado.cost,
-                currency: orderForm.deliveryServices.servicioArmado.currency,
-              }
-              : undefined,
-          }
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.deliveryExpress.cost,
+                    currency:
+                      orderForm.deliveryServices.deliveryExpress.currency,
+                  }
+                : undefined,
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioAcarreo.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioAcarreo.currency,
+                  }
+                : undefined,
+              servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioArmado.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioArmado.currency,
+                  }
+                : undefined,
+            }
           : undefined,
         status: "Generado",
         productMarkups: orderForm.productMarkups,
         createSupplierOrder: orderForm.createSupplierOrder,
         observations: orderForm.generalObservations.trim() || undefined,
+        dispatchObservations:
+          orderForm.dispatchObservations.trim() || undefined,
         baseCurrency: "Bs",
         exchangeRatesAtCreation: {
           USD: orderForm.exchangeRates.USD
             ? {
-              rate: orderForm.exchangeRates.USD.rate,
-              effectiveDate: orderForm.exchangeRates.USD.effectiveDate,
-            }
+                rate: orderForm.exchangeRates.USD.rate,
+                effectiveDate: orderForm.exchangeRates.USD.effectiveDate,
+              }
             : undefined,
           EUR: orderForm.exchangeRates.EUR
             ? {
@@ -1050,7 +1209,9 @@ export function EditOrderDialog({
         await persistConvertedBudgetLocally(order.id, created);
         setIsConfirmationOpen(false);
         onOpenChange(false);
-        toast.success(`Pedido ${created.orderNumber} creado desde el presupuesto.`);
+        toast.success(
+          `Pedido ${created.orderNumber} creado desde el presupuesto.`,
+        );
         orderForm.resetForm();
         setPendingOrderData(null);
         offerOverpaymentPromptOrReload(orderFromBackendDto(created));
@@ -1068,7 +1229,9 @@ export function EditOrderDialog({
       }
     } catch (error) {
       console.error("Error updating order:", error);
-      toast.error("Error al actualizar el pedido. Por favor intenta nuevamente.");
+      toast.error(
+        "Error al actualizar el pedido. Por favor intenta nuevamente.",
+      );
       setIsConfirmationOpen(false);
     }
   };
@@ -1095,8 +1258,12 @@ export function EditOrderDialog({
                 isConfirmingPcf &&
                 orderForm.currentStep === 1 &&
                 "Revisa vendedor, productos y cliente. El referidor no se puede cambiar en esta confirmación."}
-              {!isPaymentsOnly && orderForm.currentStep === 2 && "Define el estado de los productos"}
-              {!isPaymentsOnly && orderForm.currentStep === 3 && "Completa los detalles finales del pedido"}
+              {!isPaymentsOnly &&
+                orderForm.currentStep === 2 &&
+                "Define el estado de los productos"}
+              {!isPaymentsOnly &&
+                orderForm.currentStep === 3 &&
+                "Completa los detalles finales del pedido"}
             </DialogDescription>
           </DialogHeader>
 
@@ -1121,7 +1288,8 @@ export function EditOrderDialog({
               orderForm={orderForm}
               onSubmit={isPaymentsOnly ? handleSavePaymentsOnly : handleSubmit}
               addPayment={
-                orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1
+                orderForm.paymentCondition === "cashea" &&
+                orderForm.payments.length >= 1
                   ? undefined
                   : addPayment
               }
@@ -1184,12 +1352,15 @@ export function EditOrderDialog({
             <div className="flex flex-col gap-3 pt-4 border-t">
               {order?.paymentCondition === "cashea" && (
                 <p className="text-sm text-muted-foreground">
-                  Cashea: edite el pago inicial en tienda. Al guardar, el saldo restante se
-                  registrará como financiación Cashea.
+                  Cashea: edite el pago inicial en tienda. Al guardar, el saldo
+                  restante se registrará como financiación Cashea.
                 </p>
               )}
               <div className="flex justify-end">
-                <Button onClick={handleSavePaymentsOnly} className="w-full sm:w-auto">
+                <Button
+                  onClick={handleSavePaymentsOnly}
+                  className="w-full sm:w-auto"
+                >
                   Guardar pagos
                 </Button>
               </div>
@@ -1261,8 +1432,9 @@ export function EditOrderDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>Sobrepago detectado</AlertDialogTitle>
             <AlertDialogDescription>
-              Hay un excedente de USD {overpaymentPrompt?.amountUsd.toFixed(2)} respecto al total
-              del pedido. ¿Registrar ese monto como saldo a favor del cliente?
+              Hay un excedente de USD {overpaymentPrompt?.amountUsd.toFixed(2)}{" "}
+              respecto al total del pedido. ¿Registrar ese monto como saldo a
+              favor del cliente?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1278,10 +1450,15 @@ export function EditOrderDialog({
               onClick={async () => {
                 if (!overpaymentPrompt) return;
                 try {
-                  await apiClient.recordStoreCreditOverpayment(overpaymentPrompt.orderId);
+                  await apiClient.recordStoreCreditOverpayment(
+                    overpaymentPrompt.orderId,
+                  );
                   toast.success("Saldo a favor registrado (USD).");
                 } catch (e: unknown) {
-                  const msg = e instanceof Error ? e.message : "No se pudo registrar el crédito.";
+                  const msg =
+                    e instanceof Error
+                      ? e.message
+                      : "No se pudo registrar el crédito.";
                   toast.error(msg);
                 } finally {
                   setOverpaymentPrompt(null);
@@ -1297,4 +1474,3 @@ export function EditOrderDialog({
     </>
   );
 }
-

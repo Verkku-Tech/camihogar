@@ -17,53 +17,53 @@ namespace Ordina.Orders.Application.Services;
 public interface IReportService
 {
     Task<Stream> GenerateManufacturingReportAsync(
-        string status, 
-        string? manufacturerId = null, 
-        string? orderNumber = null, 
-        DateTime? startDate = null, 
+        string status,
+        string? manufacturerId = null,
+        string? orderNumber = null,
+        DateTime? startDate = null,
         DateTime? endDate = null,
         string? searchTerm = null);
-    
+
     Task<List<ManufacturingReportRowDto>> GetManufacturingReportDataAsync(
-        string status, 
-        string? manufacturerId = null, 
-        string? orderNumber = null, 
-        DateTime? startDate = null, 
+        string status,
+        string? manufacturerId = null,
+        string? orderNumber = null,
+        DateTime? startDate = null,
         DateTime? endDate = null,
         string? searchTerm = null);
-    
+
     Task<Stream> GeneratePaymentsReportAsync(
         DateTime? startDate = null,
         DateTime? endDate = null,
         string? paymentMethod = null,
         string? accountId = null);
-    
+
     Task<List<PaymentReportRowDto>> GetPaymentsReportDataAsync(
         DateTime? startDate = null,
         DateTime? endDate = null,
         string? paymentMethod = null,
         string? accountId = null);
-    
+
     Task<Stream> GenerateCommissionsReportAsync(
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
         string? team = null);
-    
+
     Task<Stream> GenerateCommissionsReportFromDataAsync(
         List<CommissionReportRowDto> reportData);
-    
+
     Task<List<CommissionReportRowDto>> GetCommissionsReportDataAsync(
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
         string? team = null);
-    
+
     Task<Stream> GenerateDispatchReportAsync(
         string? deliveryZone = null,
         DateTime? startDate = null,
         DateTime? endDate = null);
-    
+
     Task<List<DispatchReportRowDto>> GetDispatchReportDataAsync(
         string? deliveryZone = null,
         DateTime? startDate = null,
@@ -136,10 +136,10 @@ public class ReportService : IReportService
     }
 
     public async Task<List<ManufacturingReportRowDto>> GetManufacturingReportDataAsync(
-        string status, 
-        string? manufacturerId = null, 
-        string? orderNumber = null, 
-        DateTime? startDate = null, 
+        string status,
+        string? manufacturerId = null,
+        string? orderNumber = null,
+        DateTime? startDate = null,
         DateTime? endDate = null,
         string? searchTerm = null)
     {
@@ -153,16 +153,16 @@ public class ReportService : IReportService
         try
         {
             _logger.LogInformation("Obteniendo datos del reporte con estado: {Status}", status);
-            
+
             // Usar el método privado para obtener los datos filtrados
             var reportData = await GetFilteredReportDataAsync(
-                status, 
-                manufacturerId, 
-                orderNumber, 
-                startDate, 
-                endDate, 
+                status,
+                manufacturerId,
+                orderNumber,
+                startDate,
+                endDate,
                 searchTerm);
-            
+
             // Convertir a DTO
             return reportData.Select(row => new ManufacturingReportRowDto
             {
@@ -186,10 +186,10 @@ public class ReportService : IReportService
     }
 
     public async Task<Stream> GenerateManufacturingReportAsync(
-        string status, 
-        string? manufacturerId = null, 
-        string? orderNumber = null, 
-        DateTime? startDate = null, 
+        string status,
+        string? manufacturerId = null,
+        string? orderNumber = null,
+        DateTime? startDate = null,
         DateTime? endDate = null,
         string? searchTerm = null)
     {
@@ -203,14 +203,14 @@ public class ReportService : IReportService
         try
         {
             _logger.LogInformation("Iniciando generación de reporte con estado: {Status}", status);
-            
+
             // Obtener los datos filtrados usando el método privado común
             var reportData = await GetFilteredReportDataAsync(
-                status, 
-                manufacturerId, 
-                orderNumber, 
-                startDate, 
-                endDate, 
+                status,
+                manufacturerId,
+                orderNumber,
+                startDate,
+                endDate,
                 searchTerm);
 
             // 3. Ordenar por fecha (más reciente primero)
@@ -221,7 +221,7 @@ public class ReportService : IReportService
 
             // 5. Generar Excel con SpreadsheetLight
             var stream = new MemoryStream();
-            
+
             using (var sl = new SLDocument())
             {
                 // Headers en la fila 1
@@ -278,17 +278,17 @@ public class ReportService : IReportService
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
             }
-            
+
             // Asegurarse de que el stream esté al inicio después de que se cierre el SLDocument
             stream.Position = 0;
-            
+
             _logger.LogInformation("Reporte generado exitosamente. Filas: {RowCount}, Tamaño del stream: {StreamLength}", reportData.Count, stream.Length);
-            
+
             return stream;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error al generar reporte de fabricación. Status: {Status}, ManufacturerId: {ManufacturerId}, OrderNumber: {OrderNumber}", 
+            _logger.LogError(ex, "Error al generar reporte de fabricación. Status: {Status}, ManufacturerId: {ManufacturerId}, OrderNumber: {OrderNumber}",
                 status, manufacturerId, orderNumber);
             throw;
         }
@@ -296,11 +296,11 @@ public class ReportService : IReportService
 
     // Método privado común para obtener los datos filtrados del reporte
     private async Task<List<ManufacturingReportRow>> GetFilteredReportDataAsync(
-        string status, 
-        string? manufacturerId, 
-        string? orderNumber, 
-        DateTime? startDate, 
-        DateTime? endDate, 
+        string status,
+        string? manufacturerId,
+        string? orderNumber,
+        DateTime? startDate,
+        DateTime? endDate,
         string? searchTerm)
     {
         var normalizedStatus = NormalizeManufacturingStatus(status);
@@ -322,7 +322,7 @@ public class ReportService : IReportService
             }
 
             // Filtrar por número de pedido si se especifica
-            if (!string.IsNullOrWhiteSpace(orderNumber) && 
+            if (!string.IsNullOrWhiteSpace(orderNumber) &&
                 !(order.OrderNumber ?? "").Equals(orderNumber, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
@@ -390,7 +390,7 @@ public class ReportService : IReportService
                     {
                         var search = searchTerm.ToLowerInvariant();
                         var matchesProductName = (product.Name ?? "").ToLowerInvariant().Contains(search);
-                        
+
                         if (!matchesProductName)
                         {
                             continue;
@@ -423,10 +423,10 @@ public class ReportService : IReportService
                 }
                 catch (Exception ex)
                 {
-                     _logger.LogError(ex, "Error procesando producto en reporte. Orden: {OrderNumber}, Producto: {ProductName}", 
-                        order.OrderNumber ?? "Unknown", product.Name ?? "Unknown");
-                     // Continuar con el siguiente producto
-                     continue;
+                    _logger.LogError(ex, "Error procesando producto en reporte. Orden: {OrderNumber}, Producto: {ProductName}",
+                       order.OrderNumber ?? "Unknown", product.Name ?? "Unknown");
+                    // Continuar con el siguiente producto
+                    continue;
                 }
             }
         }
@@ -480,7 +480,7 @@ public class ReportService : IReportService
             category = await _categoryRepository.GetByNameAsync(product.Category);
         }
 
-        _logger.LogInformation("Formateando descripción para producto '{ProductName}' con categoría '{Category}'. Atributos encontrados: {AttributeCount}", 
+        _logger.LogInformation("Formateando descripción para producto '{ProductName}' con categoría '{Category}'. Atributos encontrados: {AttributeCount}",
             product.Name, product.Category, product.Attributes.Count);
 
         // 2. Procesar cada atributo guardado
@@ -502,10 +502,10 @@ public class ReportService : IReportService
             string attributeTitle = attributeKey;
             if (category != null)
             {
-                var categoryAttribute = category.Attributes?.FirstOrDefault(attr => 
+                var categoryAttribute = category.Attributes?.FirstOrDefault(attr =>
                     (!string.IsNullOrEmpty(attr.Title) && attr.Title.Equals(attributeKey, StringComparison.OrdinalIgnoreCase)) ||
                     (!string.IsNullOrEmpty(attr.Id) && attr.Id == attributeKey));
-                
+
                 if (categoryAttribute != null && !string.IsNullOrEmpty(categoryAttribute.Title))
                 {
                     attributeTitle = categoryAttribute.Title;
@@ -518,10 +518,10 @@ public class ReportService : IReportService
             if (category != null)
             {
                 // Buscar por título primero (clave actual), luego por ID (compatibilidad)
-                var categoryAttribute = category.Attributes?.FirstOrDefault(attr => 
+                var categoryAttribute = category.Attributes?.FirstOrDefault(attr =>
                     (!string.IsNullOrEmpty(attr.Title) && attr.Title.Equals(attributeKey, StringComparison.OrdinalIgnoreCase)) ||
                     (!string.IsNullOrEmpty(attr.Id) && attr.Id == attributeKey));
-                
+
                 // Solo resolver IDs para atributos tipo Product (que aún usan IDs)
                 if (categoryAttribute != null && categoryAttribute.ValueType == "Product")
                 {
@@ -544,11 +544,11 @@ public class ReportService : IReportService
             {
                 attributeStrings.Add($"{attributeTitle}: {valueLabel}");
             }
-            }
+        }
 
         // 6. Procesar atributos anidados de productos (formato: "attrId_productId")
         if (category != null)
-            {
+        {
             ProcessNestedProductAttributes(product.Attributes, category, attributeStrings);
         }
 
@@ -556,7 +556,7 @@ public class ReportService : IReportService
         if (attributeStrings.Count > 0)
         {
             parts.Add(string.Join(", ", attributeStrings));
-            _logger.LogInformation("Descripción formateada para '{ProductName}': '{Description}'", 
+            _logger.LogInformation("Descripción formateada para '{ProductName}': '{Description}'",
                 product.Name, string.Join(" | ", parts));
         }
 
@@ -579,10 +579,10 @@ public class ReportService : IReportService
                 case System.Text.Json.JsonValueKind.Number:
                     return jsonElement.GetRawText();
                 case System.Text.Json.JsonValueKind.Array:
-                    return string.Join(", ", 
+                    return string.Join(", ",
                         jsonElement.EnumerateArray()
-                            .Select(e => e.ValueKind == System.Text.Json.JsonValueKind.String 
-                                ? e.GetString() 
+                            .Select(e => e.ValueKind == System.Text.Json.JsonValueKind.String
+                                ? e.GetString()
                                 : e.GetRawText())
                             .Where(s => !string.IsNullOrEmpty(s)));
                 default:
@@ -593,7 +593,7 @@ public class ReportService : IReportService
         // Manejar arrays
         if (value is System.Collections.IEnumerable enumerable && !(value is string))
         {
-            return string.Join(", ", 
+            return string.Join(", ",
                 enumerable.Cast<object>()
                     .Select(v => v?.ToString() ?? "")
                     .Where(s => !string.IsNullOrEmpty(s)));
@@ -623,7 +623,7 @@ public class ReportService : IReportService
 
                 // Buscar el producto en los values del atributo
                 // Comparar por ProductId (string) o por Id (string)
-                var productValue = categoryAttribute.Values.FirstOrDefault(v => 
+                var productValue = categoryAttribute.Values.FirstOrDefault(v =>
                     (!string.IsNullOrEmpty(v.ProductId) && v.ProductId == productIdStr) ||
                     (!string.IsNullOrEmpty(v.Id) && v.Id == productIdStr));
 
@@ -647,7 +647,7 @@ public class ReportService : IReportService
             return FormatAttributeValue(attributeValue);
         }
 
-        var singleProductValue = categoryAttribute.Values.FirstOrDefault(v => 
+        var singleProductValue = categoryAttribute.Values.FirstOrDefault(v =>
             (!string.IsNullOrEmpty(v.ProductId) && v.ProductId == singleProductIdStr) ||
             (!string.IsNullOrEmpty(v.Id) && v.Id == singleProductIdStr));
 
@@ -656,8 +656,8 @@ public class ReportService : IReportService
 
     // Procesar atributos anidados de productos
     private void ProcessNestedProductAttributes(
-        Dictionary<string, object>? attributes, 
-        Category? category, 
+        Dictionary<string, object>? attributes,
+        Category? category,
         List<string> attributeStrings)
     {
         if (attributes == null || category == null)
@@ -673,7 +673,7 @@ public class ReportService : IReportService
             var productId = parts[1];
 
             // Buscar el atributo padre (buscar por título primero, luego por ID)
-            var parentAttribute = category.Attributes?.FirstOrDefault(attr => 
+            var parentAttribute = category.Attributes?.FirstOrDefault(attr =>
                 (!string.IsNullOrEmpty(attr.Title) && attr.Title.Equals(attrId, StringComparison.OrdinalIgnoreCase)) ||
                 (!string.IsNullOrEmpty(attr.Id) && attr.Id == attrId));
 
@@ -681,7 +681,7 @@ public class ReportService : IReportService
                 continue;
 
             // Buscar el producto en los values
-            var productValue = parentAttribute.Values?.FirstOrDefault(v => 
+            var productValue = parentAttribute.Values?.FirstOrDefault(v =>
                 (!string.IsNullOrEmpty(v.ProductId) && v.ProductId == productId) ||
                 (!string.IsNullOrEmpty(v.Id) && v.Id == productId));
 
@@ -735,13 +735,13 @@ public class ReportService : IReportService
         try
         {
             _logger.LogInformation("Obteniendo datos del reporte de pagos");
-            
+
             var reportData = await GetFilteredPaymentsDataAsync(
                 startDate,
                 endDate,
                 paymentMethod,
                 accountId);
-            
+
             return reportData.Select(row => new PaymentReportRowDto
             {
                 Fecha = row.Fecha,
@@ -776,7 +776,7 @@ public class ReportService : IReportService
         try
         {
             _logger.LogInformation("Iniciando generación de reporte de pagos");
-            
+
             var reportData = await GetFilteredPaymentsDataAsync(
                 startDate,
                 endDate,
@@ -791,7 +791,7 @@ public class ReportService : IReportService
 
             // Generar Excel con SpreadsheetLight
             var stream = new MemoryStream();
-            
+
             using (var sl = new SLDocument())
             {
                 // Headers en la fila 1
@@ -855,11 +855,11 @@ public class ReportService : IReportService
                 // Guardar en el stream
                 sl.SaveAs(stream);
             }
-            
+
             stream.Position = 0;
-            
+
             _logger.LogInformation("Reporte de pagos generado exitosamente. Filas: {RowCount}", reportData.Count);
-            
+
             return stream;
         }
         catch (Exception ex)
@@ -948,16 +948,16 @@ public class ReportService : IReportService
 
                 var referencia = GetPaymentReference(order.PaymentDetails, order.PaymentMethod);
                 var cuenta = await GetAccountDisplayAsync(order.PaymentDetails);
-                
+
                 // Usar originalAmount y originalCurrency si están disponibles
                 // Si no hay originalAmount, intentar usar CashReceived y CashCurrency para efectivo
-                var montoOriginal = order.PaymentDetails?.OriginalAmount ?? 
-                                   order.PaymentDetails?.CashReceived ?? 
+                var montoOriginal = order.PaymentDetails?.OriginalAmount ??
+                                   order.PaymentDetails?.CashReceived ??
                                    order.Total;
-                var monedaOriginal = order.PaymentDetails?.OriginalCurrency ?? 
-                                    order.PaymentDetails?.CashCurrency ?? 
+                var monedaOriginal = order.PaymentDetails?.OriginalCurrency ??
+                                    order.PaymentDetails?.CashCurrency ??
                                     "Bs";
-                
+
                 var montoBs = ComputeReportMontoBs(
                     order.PaymentMethod,
                     montoOriginal,
@@ -1038,17 +1038,17 @@ public class ReportService : IReportService
     {
         var referencia = GetPaymentReference(payment.PaymentDetails, payment.Method);
         var cuenta = await GetAccountDisplayAsync(payment.PaymentDetails);
-        
+
         // Usar originalAmount y originalCurrency si están disponibles
         // Si no hay originalAmount, intentar usar CashReceived y CashCurrency para efectivo
         // Si no hay ninguno, usar Amount (que siempre está en Bs) como último recurso
-        var montoOriginal = payment.PaymentDetails?.OriginalAmount ?? 
-                           payment.PaymentDetails?.CashReceived ?? 
+        var montoOriginal = payment.PaymentDetails?.OriginalAmount ??
+                           payment.PaymentDetails?.CashReceived ??
                            payment.Amount;
-        var monedaOriginal = payment.PaymentDetails?.OriginalCurrency ?? 
-                            payment.PaymentDetails?.CashCurrency ?? 
+        var monedaOriginal = payment.PaymentDetails?.OriginalCurrency ??
+                            payment.PaymentDetails?.CashCurrency ??
                             "Bs";
-        
+
         var montoBs = ComputeReportMontoBs(
             payment.Method,
             montoOriginal,
@@ -1126,19 +1126,19 @@ public class ReportService : IReportService
     private async Task<string> GetAccountDisplayAsync(PaymentDetails? paymentDetails)
     {
         if (paymentDetails == null) return "-";
-        
+
         if (!string.IsNullOrWhiteSpace(paymentDetails.Email))
         {
             return paymentDetails.Email;
         }
-        
-        if (!string.IsNullOrWhiteSpace(paymentDetails.AccountNumber) && 
+
+        if (!string.IsNullOrWhiteSpace(paymentDetails.AccountNumber) &&
             !string.IsNullOrWhiteSpace(paymentDetails.Bank))
         {
             var maskedNumber = MaskAccountNumber(paymentDetails.AccountNumber);
             return $"{maskedNumber} - {paymentDetails.Bank}";
         }
-        
+
         if (!string.IsNullOrWhiteSpace(paymentDetails.AccountId))
         {
             var acc = await _accountRepository.GetByIdAsync(paymentDetails.AccountId);
@@ -1167,7 +1167,7 @@ public class ReportService : IReportService
         {
             return accountNumber;
         }
-        
+
         var first4 = accountNumber.Substring(0, 4);
         var last4 = accountNumber.Substring(accountNumber.Length - 4);
         return $"{first4}****{last4}";
@@ -1186,7 +1186,7 @@ public class ReportService : IReportService
         try
         {
             _logger.LogInformation("Iniciando generación de reporte de comisiones");
-            
+
             var reportData = await GetFilteredCommissionsDataAsync(
                 startDate,
                 endDate,
@@ -1242,7 +1242,7 @@ public class ReportService : IReportService
 
             // Generar Excel con SpreadsheetLight
             var stream = new MemoryStream();
-            
+
             using (var sl = new SLDocument())
             {
                 // Headers en la fila 1 (según especificaciones del documento)
@@ -1324,7 +1324,7 @@ public class ReportService : IReportService
         try
         {
             _logger.LogInformation("Obteniendo datos del reporte de comisiones");
-            
+
             var reportData = await GetFilteredCommissionsDataAsync(
                 startDate,
                 endDate,
@@ -1406,14 +1406,14 @@ public class ReportService : IReportService
             foreach (var product in order.Products)
             {
                 var isSharedSale = !string.IsNullOrWhiteSpace(order.ReferrerId);
-                
+
                 // Calcular comisiones usando el nuevo sistema
-                var (vendorCommission, referrerCommission, postventaCommission, baseRate, appliedVendorRate, appliedReferrerRate, appliedPostventaRate) = 
+                var (vendorCommission, referrerCommission, postventaCommission, baseRate, appliedVendorRate, appliedReferrerRate, appliedPostventaRate) =
                     CalculateProductCommission(product, order, productCommissions, saleTypeRules, users, isExclusiveVendor);
 
                 if (vendorCommission == 0m && referrerCommission == 0m && postventaCommission == 0m)
                     continue;
-                
+
                 if (isSharedSale && !isExclusiveVendor)
                 {
                     var postventaLabel = string.IsNullOrWhiteSpace(order.PostventaName)
@@ -1473,7 +1473,7 @@ public class ReportService : IReportService
     /// Comisión por línea: USD por unidad (commissionValue) × cantidad.
     /// Venta compartida: vendorRate/referrerRate son % de esa comisión de familia, no del total del producto.
     /// </summary>
-    private (decimal vendorCommission, decimal referrerCommission, decimal postventaCommission, decimal baseRate, decimal appliedVendorRate, decimal appliedReferrerRate, decimal appliedPostventaRate) 
+    private (decimal vendorCommission, decimal referrerCommission, decimal postventaCommission, decimal baseRate, decimal appliedVendorRate, decimal appliedReferrerRate, decimal appliedPostventaRate)
         CalculateProductCommission(
             OrderProduct product,
             Order order,
@@ -1483,12 +1483,12 @@ public class ReportService : IReportService
             bool isExclusiveVendor)
     {
         // 1. Obtener comisión base de la categoría del producto
-        var categoryCommission = productCommissions.FirstOrDefault(c => 
-            c.CategoryName.Equals(product.Category, StringComparison.OrdinalIgnoreCase) || 
+        var categoryCommission = productCommissions.FirstOrDefault(c =>
+            c.CategoryName.Equals(product.Category, StringComparison.OrdinalIgnoreCase) ||
             c.CategoryId == product.Category);
-        
+
         var baseCommissionRate = categoryCommission?.CommissionValue ?? 0m;
-        
+
         if (baseCommissionRate == 0)
         {
             return (0m, 0m, 0m, 0m, 0m, 0m, 0m);
@@ -1496,7 +1496,7 @@ public class ReportService : IReportService
 
         var qty = Math.Max(product.Quantity, 1);
         var familyCommission = baseCommissionRate * qty;
-        
+
         // Verificar si es venta compartida
         var isSharedSale = !string.IsNullOrWhiteSpace(order.ReferrerId);
 
@@ -1534,10 +1534,10 @@ public class ReportService : IReportService
         // Priorizar saleType, luego deliveryType
         if (!string.IsNullOrWhiteSpace(order.SaleType))
             return order.SaleType;
-        
+
         if (!string.IsNullOrWhiteSpace(order.DeliveryType))
             return order.DeliveryType;
-        
+
         return "entrega"; // Default
     }
 
@@ -1607,7 +1607,7 @@ public class ReportService : IReportService
         try
         {
             _logger.LogInformation("Iniciando generación de reporte de despacho");
-            
+
             var reportData = await GetFilteredDispatchDataAsync(
                 deliveryZone,
                 startDate,
@@ -1617,7 +1617,7 @@ public class ReportService : IReportService
 
             // Generar Excel con SpreadsheetLight
             var stream = new MemoryStream();
-            
+
             using (var sl = new SLDocument())
             {
                 // Headers en la fila 1 (vista transportistas)
@@ -1701,7 +1701,7 @@ public class ReportService : IReportService
         try
         {
             _logger.LogInformation("Obteniendo datos del reporte de despacho");
-            
+
             var reportData = await GetFilteredDispatchDataAsync(
                 deliveryZone,
                 startDate,
@@ -1718,7 +1718,8 @@ public class ReportService : IReportService
                 Direccion = row.Direccion,
                 EstadoPago = row.EstadoPago,
                 ImporteTotal = row.ImporteTotal,
-                SaldoPendiente = row.SaldoPendiente
+                SaldoPendiente = row.SaldoPendiente,
+                DispatchObservations = row.DispatchObservations
             }).ToList();
         }
         catch (Exception ex)
@@ -1825,7 +1826,8 @@ public class ReportService : IReportService
                 Direccion = direccionReporte,
                 EstadoPago = estadoPago,
                 ImporteTotal = importeTotalUsd,
-                SaldoPendiente = saldoPendiente
+                SaldoPendiente = saldoPendiente,
+                DispatchObservations = order.DispatchObservations ?? ""
             });
         }
 
@@ -1839,16 +1841,16 @@ public class ReportService : IReportService
             // Calcular total pagado
             var totalPagado = CalculateTotalPaid(order);
             var total = order.Total;
-            
+
             if (total <= 0)
                 return "Pendiente";
-            
+
             if (totalPagado >= total)
                 return "Pagado";
-            
+
             if (totalPagado > 0)
                 return $"Parcial ({totalPagado:C})";
-            
+
             return "Pendiente";
         }
         catch (Exception ex)
@@ -1865,20 +1867,20 @@ public class ReportService : IReportService
             // Calcular total pagado en Bs
             var totalPagadoBs = CalculateTotalPaid(order);
             var totalBs = order.Total;
-            
+
             // Convertir a USD
             var totalPagadoUsd = totalPagadoBs / usdRate;
             var totalUsd = totalBs / usdRate;
-            
+
             if (totalUsd <= 0)
                 return "Pendiente";
-            
+
             if (totalPagadoUsd >= totalUsd)
                 return "Pagado";
-            
+
             if (totalPagadoUsd > 0)
                 return $"Parcial (${totalPagadoUsd:F2})";
-            
+
             return "Pendiente";
         }
         catch (Exception ex)
@@ -1891,19 +1893,19 @@ public class ReportService : IReportService
     private decimal GetUsdExchangeRate(Order order)
     {
         // PRIORIDAD 1: Usar la tasa guardada al crear el pedido (más confiable)
-        if (order.ExchangeRatesAtCreation?.Usd != null && 
+        if (order.ExchangeRatesAtCreation?.Usd != null &&
             order.ExchangeRatesAtCreation.Usd.Rate > 0)
         {
-            _logger.LogInformation("Usando tasa USD del día de creación del pedido {OrderNumber}: {Rate}", 
+            _logger.LogInformation("Usando tasa USD del día de creación del pedido {OrderNumber}: {Rate}",
                 order.OrderNumber, order.ExchangeRatesAtCreation.Usd.Rate);
             return order.ExchangeRatesAtCreation.Usd.Rate;
         }
 
         // PRIORIDAD 2: Intentar obtener de PaymentDetails del pedido principal
-        if (order.PaymentDetails?.ExchangeRate.HasValue == true && 
+        if (order.PaymentDetails?.ExchangeRate.HasValue == true &&
             order.PaymentDetails.ExchangeRate > 0)
         {
-            _logger.LogInformation("Usando tasa USD de PaymentDetails del pedido {OrderNumber}: {Rate}", 
+            _logger.LogInformation("Usando tasa USD de PaymentDetails del pedido {OrderNumber}: {Rate}",
                 order.OrderNumber, order.PaymentDetails.ExchangeRate.Value);
             return order.PaymentDetails.ExchangeRate.Value;
         }
@@ -2011,6 +2013,7 @@ public class ReportService : IReportService
         public string EstadoPago { get; set; } = string.Empty;
         public decimal ImporteTotal { get; set; }
         public decimal SaldoPendiente { get; set; }
+        public string DispatchObservations { get; set; } = string.Empty;
     }
 }
 

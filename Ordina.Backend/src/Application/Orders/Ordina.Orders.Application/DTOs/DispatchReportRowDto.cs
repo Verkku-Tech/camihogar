@@ -13,4 +13,5 @@ public class DispatchReportRowDto
     public decimal ImporteTotal { get; set; }
     /// <summary>Saldo por cobrar en tienda (USD), 0 si está pagado.</summary>
     public decimal SaldoPendiente { get; set; }
+    public string DispatchObservations { get; set; } = string.Empty;
 }

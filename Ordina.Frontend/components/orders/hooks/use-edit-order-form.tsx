@@ -88,25 +88,33 @@ export interface UseOrderFormReturn {
 
   // Estados adicionales
   paymentCondition:
-  | "cashea"
-  | "pagara_en_tienda"
-  | "pago_a_entrega"
-  | "pago_parcial"
-  | "todo_pago"
-  | "";
+    | "cashea"
+    | "pagara_en_tienda"
+    | "pago_a_entrega"
+    | "pago_parcial"
+    | "todo_pago"
+    | "";
   setPaymentCondition: (
-    condition: UseOrderFormReturn["paymentCondition"]
+    condition: UseOrderFormReturn["paymentCondition"],
   ) => void;
 
-  saleType: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado" | "";
+  saleType:
+    | "delivery_express"
+    | "encargo"
+    | "encargo_entrega"
+    | "entrega"
+    | "retiro_almacen"
+    | "retiro_tienda"
+    | "sistema_apartado"
+    | "";
   setSaleType: (type: UseOrderFormReturn["saleType"]) => void;
 
   deliveryType:
-  | "entrega_programada"
-  | "delivery_express"
-  | "retiro_tienda"
-  | "retiro_almacen"
-  | "";
+    | "entrega_programada"
+    | "delivery_express"
+    | "retiro_tienda"
+    | "retiro_almacen"
+    | "";
   setDeliveryType: (type: UseOrderFormReturn["deliveryType"]) => void;
 
   deliveryZone: string;
@@ -132,6 +140,9 @@ export interface UseOrderFormReturn {
 
   generalObservations: string;
   setGeneralObservations: (obs: string) => void;
+
+  dispatchObservations: string;
+  setDispatchObservations: (obs: string) => void;
 
   createSupplierOrder: boolean;
   setCreateSupplierOrder: (create: boolean) => void;
@@ -208,7 +219,7 @@ export interface UseOrderFormReturn {
   convertCurrencyValue: (
     value: number,
     fromCurrency: Currency,
-    toCurrency: Currency
+    toCurrency: Currency,
   ) => number | null;
   getDefaultCurrencyFromSelection: () => Currency;
   getCurrencyOrder: () => Currency[];
@@ -216,19 +227,22 @@ export interface UseOrderFormReturn {
   handleProductDiscountChange: (
     productId: string,
     value: number,
-    opts?: { inputCurrency?: Currency }
+    opts?: { inputCurrency?: Currency },
   ) => void;
   handleProductDiscountTypeChange: (
     productId: string,
-    type: "monto" | "porcentaje"
+    type: "monto" | "porcentaje",
   ) => void;
   handleGeneralDiscountChange: (value: number) => void;
   handleGeneralDiscountTypeChange: (type: "monto" | "porcentaje") => void;
   calculateDeliveryCost: () => number;
-  renderCurrencyCell: (amountInBs: number, className?: string) => React.ReactElement;
+  renderCurrencyCell: (
+    amountInBs: number,
+    className?: string,
+  ) => React.ReactElement;
   renderCurrencyCellNegative: (
     amountInBs: number,
-    className?: string
+    className?: string,
   ) => React.ReactElement;
 
   // Mock data (compatibilidad)
@@ -247,7 +261,10 @@ export interface UseOrderFormReturn {
   isOnlineSellerReferrer: boolean;
 }
 
-export function useEditOrderForm(open: boolean, initialOrder: Order | null = null): UseOrderFormReturn {
+export function useEditOrderForm(
+  open: boolean,
+  initialOrder: Order | null = null,
+): UseOrderFormReturn {
   const { preferredCurrency, formatWithPreference } = useCurrency();
   const [currentStep, setCurrentStep] = useState(1);
 
@@ -288,7 +305,14 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     | ""
   >("");
   const [saleType, setSaleType] = useState<
-    "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado" | ""
+    | "delivery_express"
+    | "encargo"
+    | "encargo_entrega"
+    | "entrega"
+    | "retiro_almacen"
+    | "retiro_tienda"
+    | "sistema_apartado"
+    | ""
   >("");
   const [deliveryType, setDeliveryType] = useState<
     | "entrega_programada"
@@ -306,7 +330,8 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
   });
   const [payments, setPayments] = useState<PartialPayment[]>([]);
   const [appliedStoreCreditUsd, setAppliedStoreCreditUsd] = useState(0);
-  const [clientStoreCreditBalanceUsd, setClientStoreCreditBalanceUsd] = useState<number | null>(null);
+  const [clientStoreCreditBalanceUsd, setClientStoreCreditBalanceUsd] =
+    useState<number | null>(null);
   const [generalDiscount, setGeneralDiscount] = useState(0);
   const [generalDiscountType, setGeneralDiscountType] = useState<
     "monto" | "porcentaje"
@@ -315,10 +340,11 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
   const [generalDiscountCurrency, setGeneralDiscountCurrency] =
     useState<Currency>(preferredCurrency);
   const [generalObservations, setGeneralObservations] = useState("");
+  const [dispatchObservations, setDispatchObservations] = useState("");
   const [createSupplierOrder, setCreateSupplierOrder] = useState(false);
-  const [productMarkups, setProductMarkups] = useState<
-    Record<string, number>
-  >({});
+  const [productMarkups, setProductMarkups] = useState<Record<string, number>>(
+    {},
+  );
   const [productDiscountTypes, setProductDiscountTypes] = useState<
     Record<string, "monto" | "porcentaje">
   >({});
@@ -344,7 +370,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         currencies.push(preferredCurrency);
       }
       return currencies;
-    }
+    },
   );
 
   // Datos cargados
@@ -444,12 +470,22 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         const hasDiscount = Number.isFinite(discountNum) && discountNum > 0;
         const hasStoredDiscountUi =
           p.attributes != null &&
-          (Object.prototype.hasOwnProperty.call(p.attributes, "discountUiType") ||
-            Object.prototype.hasOwnProperty.call(p.attributes, "discountUiPercent"));
+          (Object.prototype.hasOwnProperty.call(
+            p.attributes,
+            "discountUiType",
+          ) ||
+            Object.prototype.hasOwnProperty.call(
+              p.attributes,
+              "discountUiPercent",
+            ));
         if (!hasStoredDiscountUi && hasDiscount) {
           return {
             ...p,
-            attributes: mergeDiscountUiIntoAttributes(p.attributes, "monto", pref),
+            attributes: mergeDiscountUiIntoAttributes(
+              p.attributes,
+              "monto",
+              pref,
+            ),
           };
         }
         return p;
@@ -463,12 +499,14 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         paymentMethod: initialOrder.paymentMethod || "",
         deliveryAddress: initialOrder.deliveryAddress || "",
         firstPaymentAmount: 0,
-        pagomovilReference: initialOrder.paymentDetails?.pagomovilReference || "",
+        pagomovilReference:
+          initialOrder.paymentDetails?.pagomovilReference || "",
         pagomovilBank: initialOrder.paymentDetails?.pagomovilBank || "",
         pagomovilPhone: initialOrder.paymentDetails?.pagomovilPhone || "",
         pagomovilDate: initialOrder.paymentDetails?.pagomovilDate || "",
         transferenciaBank: initialOrder.paymentDetails?.transferenciaBank || "",
-        transferenciaReference: initialOrder.paymentDetails?.transferenciaReference || "",
+        transferenciaReference:
+          initialOrder.paymentDetails?.transferenciaReference || "",
         transferenciaDate: initialOrder.paymentDetails?.transferenciaDate || "",
         cashAmount: initialOrder.paymentDetails?.cashAmount || "",
       });
@@ -483,9 +521,21 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       // 5. Servicios de delivery
       if (initialOrder.deliveryServices) {
         setDeliveryServices({
-          deliveryExpress: initialOrder.deliveryServices.deliveryExpress || { enabled: false, cost: 0, currency: "USD" },
-          servicioAcarreo: initialOrder.deliveryServices.servicioAcarreo || { enabled: false, cost: undefined, currency: "USD" },
-          servicioArmado: initialOrder.deliveryServices.servicioArmado || { enabled: false, cost: 0, currency: "USD" },
+          deliveryExpress: initialOrder.deliveryServices.deliveryExpress || {
+            enabled: false,
+            cost: 0,
+            currency: "USD",
+          },
+          servicioAcarreo: initialOrder.deliveryServices.servicioAcarreo || {
+            enabled: false,
+            cost: undefined,
+            currency: "USD",
+          },
+          servicioArmado: initialOrder.deliveryServices.servicioArmado || {
+            enabled: false,
+            cost: 0,
+            currency: "USD",
+          },
         });
       }
 
@@ -499,7 +549,10 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       setAppliedStoreCreditUsd(initialOrder.appliedStoreCreditUsd ?? 0);
 
       // 7. Descuentos y observaciones
-      if (initialOrder.generalDiscountAmount && initialOrder.generalDiscountAmount > 0) {
+      if (
+        initialOrder.generalDiscountAmount &&
+        initialOrder.generalDiscountAmount > 0
+      ) {
         const pct = initialOrder.generalDiscountPercent;
         const pctValid =
           initialOrder.generalDiscountType === "porcentaje" &&
@@ -516,6 +569,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         }
       }
       setGeneralObservations(initialOrder.observations || "");
+      setDispatchObservations(initialOrder.dispatchObservations || "");
       setCreateSupplierOrder(initialOrder.createSupplierOrder || false);
 
       // 8. Markups
@@ -529,16 +583,20 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       const newTypes: Record<string, "monto" | "porcentaje"> = {};
       const newCurrencies: Record<string, Currency> = {};
       productsHydrated.forEach((p) => {
-        const { type: attrType, currency: attrCurrency } = readDiscountUiFromProduct(
-          p,
-          pref
-        );
+        const { type: attrType, currency: attrCurrency } =
+          readDiscountUiFromProduct(p, pref);
         const discountNum = Number(p.discount);
         const hasDiscount = Number.isFinite(discountNum) && discountNum > 0;
         const hasStoredDiscountUi =
           p.attributes != null &&
-          (Object.prototype.hasOwnProperty.call(p.attributes, "discountUiType") ||
-            Object.prototype.hasOwnProperty.call(p.attributes, "discountUiPercent"));
+          (Object.prototype.hasOwnProperty.call(
+            p.attributes,
+            "discountUiType",
+          ) ||
+            Object.prototype.hasOwnProperty.call(
+              p.attributes,
+              "discountUiPercent",
+            ));
         let finalType = attrType;
         let finalCurrency = attrCurrency;
         if (!hasStoredDiscountUi && hasDiscount) {
@@ -547,8 +605,14 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         }
         if (
           p.attributes != null &&
-          !Object.prototype.hasOwnProperty.call(p.attributes, "discountUiType") &&
-          Object.prototype.hasOwnProperty.call(p.attributes, "discountUiPercent") &&
+          !Object.prototype.hasOwnProperty.call(
+            p.attributes,
+            "discountUiType",
+          ) &&
+          Object.prototype.hasOwnProperty.call(
+            p.attributes,
+            "discountUiPercent",
+          ) &&
           hasDiscount
         ) {
           finalType = "porcentaje";
@@ -582,7 +646,10 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       return "EUR";
     }
     // Si preferredCurrency no es Bs y está disponible, usarla
-    if (selectedCurrencies.includes(preferredCurrency) && preferredCurrency !== "Bs") {
+    if (
+      selectedCurrencies.includes(preferredCurrency) &&
+      preferredCurrency !== "Bs"
+    ) {
       return preferredCurrency;
     }
     // Buscar cualquier moneda no-Bs disponible
@@ -595,40 +662,61 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
   }, [selectedCurrencies, preferredCurrency, exchangeRates]);
 
   const convertCurrencyValue = useCallback(
-    (value: number, fromCurrency: Currency, toCurrency: Currency): number | null => {
+    (
+      value: number,
+      fromCurrency: Currency,
+      toCurrency: Currency,
+    ): number | null => {
       if (fromCurrency === toCurrency) return value;
       if (fromCurrency === "Bs") {
         const rate =
-          toCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+          toCurrency === "USD"
+            ? exchangeRates.USD?.rate
+            : exchangeRates.EUR?.rate;
         return rate && rate > 0 ? value / rate : null;
       }
       if (toCurrency === "Bs") {
         const rate =
-          fromCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+          fromCurrency === "USD"
+            ? exchangeRates.USD?.rate
+            : exchangeRates.EUR?.rate;
         return rate && rate > 0 ? value * rate : null;
       }
       // Entre USD y EUR
       const fromRate =
-        fromCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+        fromCurrency === "USD"
+          ? exchangeRates.USD?.rate
+          : exchangeRates.EUR?.rate;
       const toRate =
-        toCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+        toCurrency === "USD"
+          ? exchangeRates.USD?.rate
+          : exchangeRates.EUR?.rate;
       if (fromRate && toRate && fromRate > 0 && toRate > 0) {
         return (value * fromRate) / toRate;
       }
       return null;
     },
-    [exchangeRates]
+    [exchangeRates],
   );
 
   const calculateDeliveryCost = useCallback((): number => {
     let total = 0;
-    if (deliveryServices.deliveryExpress?.enabled && deliveryServices.deliveryExpress.cost) {
+    if (
+      deliveryServices.deliveryExpress?.enabled &&
+      deliveryServices.deliveryExpress.cost
+    ) {
       total += deliveryServices.deliveryExpress.cost;
     }
-    if (deliveryServices.servicioAcarreo?.enabled && deliveryServices.servicioAcarreo.cost) {
+    if (
+      deliveryServices.servicioAcarreo?.enabled &&
+      deliveryServices.servicioAcarreo.cost
+    ) {
       total += deliveryServices.servicioAcarreo.cost;
     }
-    if (deliveryServices.servicioArmado?.enabled && deliveryServices.servicioArmado.cost) {
+    if (
+      deliveryServices.servicioArmado?.enabled &&
+      deliveryServices.servicioArmado.cost
+    ) {
       total += deliveryServices.servicioArmado.cost;
     }
     return total;
@@ -652,7 +740,10 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         let surchargeInBs = 0;
         if (product.surchargeEnabled && product.surchargeAmount) {
           const usdRate = exchangeRates.USD?.rate;
-          surchargeInBs = usdRate && usdRate > 0 ? product.surchargeAmount * usdRate : product.surchargeAmount;
+          surchargeInBs =
+            usdRate && usdRate > 0
+              ? product.surchargeAmount * usdRate
+              : product.surchargeAmount;
         }
         return product.total + markup + surchargeInBs;
       }
@@ -664,7 +755,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         category,
         exchangeRates,
         allProducts,
-        categories
+        categories,
       );
       const total = unitPrice * product.quantity;
 
@@ -672,7 +763,10 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       let surchargeInBs = 0;
       if (product.surchargeEnabled && product.surchargeAmount) {
         const usdRate = exchangeRates.USD?.rate;
-        surchargeInBs = usdRate && usdRate > 0 ? product.surchargeAmount * usdRate : product.surchargeAmount;
+        surchargeInBs =
+          usdRate && usdRate > 0
+            ? product.surchargeAmount * usdRate
+            : product.surchargeAmount;
       }
 
       return total + markup + surchargeInBs;
@@ -683,7 +777,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       allProducts,
       exchangeRates,
       calculateProductUnitPriceWithAttributes,
-    ]
+    ],
   );
 
   // Valores calculados
@@ -717,7 +811,9 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
 
   const orderSnapshotForCreditRates = useMemo(() => {
     if (initialOrder && open) {
-      const n = normalizeExchangeRatesAtCreation(initialOrder.exchangeRatesAtCreation);
+      const n = normalizeExchangeRatesAtCreation(
+        initialOrder.exchangeRatesAtCreation,
+      );
       if (n?.USD?.rate && n.USD.rate > 0) {
         return {
           exchangeRatesAtCreation: {
@@ -730,10 +826,16 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     return {
       exchangeRatesAtCreation: {
         USD: exchangeRates.USD
-          ? { rate: exchangeRates.USD.rate, effectiveDate: exchangeRates.USD.effectiveDate }
+          ? {
+              rate: exchangeRates.USD.rate,
+              effectiveDate: exchangeRates.USD.effectiveDate,
+            }
           : undefined,
         EUR: exchangeRates.EUR
-          ? { rate: exchangeRates.EUR.rate, effectiveDate: exchangeRates.EUR.effectiveDate }
+          ? {
+              rate: exchangeRates.EUR.rate,
+              effectiveDate: exchangeRates.EUR.effectiveDate,
+            }
           : undefined,
       },
     };
@@ -768,7 +870,9 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     let cancelled = false;
     void (async () => {
       try {
-        const res = await apiClient.getClientStoreCreditBalanceUsd(selectedClient.id);
+        const res = await apiClient.getClientStoreCreditBalanceUsd(
+          selectedClient.id,
+        );
         if (!cancelled) setClientStoreCreditBalanceUsd(res.balanceUsd);
       } catch {
         if (!cancelled) setClientStoreCreditBalanceUsd(0);
@@ -811,12 +915,14 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
 
   const remainingAmount = total - appliedCreditBsApprox - totalPaidInBs;
   const isPaymentsValid =
-    paymentCondition === "pago_a_entrega" || paymentCondition === "pagara_en_tienda"
+    paymentCondition === "pago_a_entrega" ||
+    paymentCondition === "pagara_en_tienda"
       ? true
       : paymentCondition === "cashea"
         ? payments.length === 1 &&
           (payments[0].amount || 0) > 0 &&
-          (payments[0].amount || 0) <= total - appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS
+          (payments[0].amount || 0) <=
+            total - appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS
         : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
 
   // Formatear precios
@@ -877,7 +983,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
           ...product,
           discount: product.discount ?? 0,
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
-        }))
+        })),
       );
       const newTypes: Record<string, "monto" | "porcentaje"> = {};
       const newCurrencies: Record<string, Currency> = {};
@@ -885,15 +991,18 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         if (!productDiscountTypes[product.id]) {
           const { type, currency } = readDiscountUiFromProduct(
             product,
-            getDefaultCurrencyFromSelection()
+            getDefaultCurrencyFromSelection(),
           );
           newTypes[product.id] = type;
           newCurrencies[product.id] = currency;
         }
-        if (!productDiscountCurrencies[product.id] && !newCurrencies[product.id]) {
+        if (
+          !productDiscountCurrencies[product.id] &&
+          !newCurrencies[product.id]
+        ) {
           newCurrencies[product.id] = readDiscountUiFromProduct(
             product,
-            getDefaultCurrencyFromSelection()
+            getDefaultCurrencyFromSelection(),
           ).currency;
         }
       });
@@ -908,7 +1017,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       productDiscountTypes,
       productDiscountCurrencies,
       getDefaultCurrencyFromSelection,
-    ]
+    ],
   );
 
   const handleProductDiscountChange = useCallback(
@@ -928,7 +1037,8 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
           let discountAmount: number;
           if (discountType === "porcentaje") {
             const percentage = Math.max(0, Math.min(value, 100));
-            discountAmount = Math.round(((baseTotal * percentage) / 100) * 100) / 100;
+            discountAmount =
+              Math.round(((baseTotal * percentage) / 100) * 100) / 100;
           } else {
             let discountInBs = value;
             if (discountCurrency !== "Bs") {
@@ -944,7 +1054,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
             discountAmount = Math.max(0, Math.min(discountInBs, baseTotal));
 
             const category = categories.find(
-              (cat) => cat.name === product.category
+              (cat) => cat.name === product.category,
             );
             if (category && category.maxDiscount > 0) {
               let maxDiscountInBs = category.maxDiscount;
@@ -976,10 +1086,10 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
               product.attributes,
               discountType,
               discountCurrency,
-              percentForAttrs
+              percentForAttrs,
             ),
           };
-        })
+        }),
       );
     },
     [
@@ -989,7 +1099,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
       preferredCurrency,
       exchangeRates,
       categories,
-    ]
+    ],
   );
 
   const handleProductDiscountTypeChange = useCallback(
@@ -1002,12 +1112,16 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
             productDiscountCurrencies[productId] ?? preferredCurrency;
           return {
             ...p,
-            attributes: mergeDiscountUiIntoAttributes(p.attributes, type, currency),
+            attributes: mergeDiscountUiIntoAttributes(
+              p.attributes,
+              type,
+              currency,
+            ),
           };
-        })
+        }),
       );
     },
-    [productDiscountCurrencies, preferredCurrency]
+    [productDiscountCurrencies, preferredCurrency],
   );
 
   const handleGeneralDiscountChange = useCallback(
@@ -1016,15 +1130,20 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         setGeneralDiscount(Math.max(0, Math.min(value, 100)));
         return;
       }
-      setGeneralDiscount(Math.max(0, Math.min(value, totalBeforeGeneralDiscount)));
+      setGeneralDiscount(
+        Math.max(0, Math.min(value, totalBeforeGeneralDiscount)),
+      );
     },
-    [generalDiscountType, totalBeforeGeneralDiscount]
+    [generalDiscountType, totalBeforeGeneralDiscount],
   );
 
-  const handleGeneralDiscountTypeChange = useCallback((type: "monto" | "porcentaje") => {
-    setGeneralDiscountType(type);
-    setGeneralDiscount(0);
-  }, []);
+  const handleGeneralDiscountTypeChange = useCallback(
+    (type: "monto" | "porcentaje") => {
+      setGeneralDiscountType(type);
+      setGeneralDiscount(0);
+    },
+    [],
+  );
 
   const step1SellerReady = !!(formData.vendor || formData.referrer);
 
@@ -1095,6 +1214,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     setGeneralDiscountType("monto");
     setGeneralDiscountCurrency(preferredCurrency);
     setGeneralObservations("");
+    setDispatchObservations("");
     setCreateSupplierOrder(false);
     setProductMarkups({});
     setProductDiscountTypes({});
@@ -1125,7 +1245,9 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         const amountInUsd = amountInBs / usdRate;
         return (
           <div className={`text-right ${className || ""}`}>
-            <div className="font-medium">{formatCurrency(amountInUsd, "USD")}</div>
+            <div className="font-medium">
+              {formatCurrency(amountInUsd, "USD")}
+            </div>
             <div className="text-xs text-muted-foreground">
               {formatCurrency(amountInBs, "Bs")}
             </div>
@@ -1138,7 +1260,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         </div>
       );
     },
-    [exchangeRates]
+    [exchangeRates],
   );
 
   const renderCurrencyCellNegative = useCallback(
@@ -1148,7 +1270,9 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         const amountInUsd = amountInBs / usdRate;
         return (
           <div className={`text-right ${className || ""}`}>
-            <div className="font-medium">-{formatCurrency(amountInUsd, "USD")}</div>
+            <div className="font-medium">
+              -{formatCurrency(amountInUsd, "USD")}
+            </div>
             <div className="text-xs text-muted-foreground">
               -{formatCurrency(amountInBs, "Bs")}
             </div>
@@ -1161,7 +1285,7 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
         </div>
       );
     },
-    [exchangeRates]
+    [exchangeRates],
   );
 
   // Cargar dirección del cliente cuando se activa delivery
@@ -1218,6 +1342,8 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     setTaxEnabled,
     generalObservations,
     setGeneralObservations,
+    dispatchObservations,
+    setDispatchObservations,
     createSupplierOrder,
     setCreateSupplierOrder,
     productMarkups,
@@ -1289,4 +1415,3 @@ export function useEditOrderForm(open: boolean, initialOrder: Order | null = nul
     isOnlineSellerReferrer: false,
   };
 }
-
