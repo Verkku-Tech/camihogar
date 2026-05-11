@@ -120,6 +120,9 @@ public class Order
     [BsonElement("observations")]
     public string? Observations { get; set; } // Observaciones generales del pedido
 
+    [BsonElement("dispatchObservations")]
+    public string? DispatchObservations { get; set; } // Observaciones generales del pedido
+
     [BsonElement("saleType")]
     public string? SaleType { get; set; } // "encargo", "entrega", "sistema_apartado"
 

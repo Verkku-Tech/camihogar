@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
 import { toast } from "sonner";
@@ -90,10 +96,18 @@ export interface UseOrderFormReturn {
     | "todo_pago"
     | "";
   setPaymentCondition: (
-    condition: UseOrderFormReturn["paymentCondition"]
+    condition: UseOrderFormReturn["paymentCondition"],
   ) => void;
 
-  saleType: "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado" | "";
+  saleType:
+    | "delivery_express"
+    | "encargo"
+    | "encargo_entrega"
+    | "entrega"
+    | "retiro_almacen"
+    | "retiro_tienda"
+    | "sistema_apartado"
+    | "";
   setSaleType: (type: UseOrderFormReturn["saleType"]) => void;
 
   deliveryType:
@@ -127,6 +141,9 @@ export interface UseOrderFormReturn {
 
   generalObservations: string;
   setGeneralObservations: (obs: string) => void;
+
+  dispatchObservations: string;
+  setDispatchObservations: (obs: string) => void;
 
   createSupplierOrder: boolean;
   setCreateSupplierOrder: (create: boolean) => void;
@@ -206,7 +223,7 @@ export interface UseOrderFormReturn {
   convertCurrencyValue: (
     value: number,
     fromCurrency: Currency,
-    toCurrency: Currency
+    toCurrency: Currency,
   ) => number | null;
   getDefaultCurrencyFromSelection: () => Currency;
   getCurrencyOrder: () => Currency[];
@@ -214,19 +231,22 @@ export interface UseOrderFormReturn {
   handleProductDiscountChange: (
     productId: string,
     value: number,
-    opts?: { inputCurrency?: Currency }
+    opts?: { inputCurrency?: Currency },
   ) => void;
   handleProductDiscountTypeChange: (
     productId: string,
-    type: "monto" | "porcentaje"
+    type: "monto" | "porcentaje",
   ) => void;
   handleGeneralDiscountChange: (value: number) => void;
   handleGeneralDiscountTypeChange: (type: "monto" | "porcentaje") => void;
   calculateDeliveryCost: () => number;
-  renderCurrencyCell: (amountInBs: number, className?: string) => React.ReactElement;
+  renderCurrencyCell: (
+    amountInBs: number,
+    className?: string,
+  ) => React.ReactElement;
   renderCurrencyCellNegative: (
     amountInBs: number,
-    className?: string
+    className?: string,
   ) => React.ReactElement;
 
   // Mock data (compatibilidad)
@@ -253,12 +273,16 @@ const ORDER_DRAFT_VERSION = 1;
 
 type DraftResolution = "idle" | "pending" | "none" | "loaded";
 
-export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn {
+export function useOrderForm(
+  open: boolean,
+  userId?: string,
+): UseOrderFormReturn {
   const { preferredCurrency, formatWithPreference } = useCurrency();
   const { user } = useAuth();
   const draftOwnerId = userId ?? user?.id;
   const [currentStep, setCurrentStep] = useState(1);
-  const [draftResolution, setDraftResolution] = useState<DraftResolution>("idle");
+  const [draftResolution, setDraftResolution] =
+    useState<DraftResolution>("idle");
   const [onlineSellerMode, setOnlineSellerMode] = useState<
     "vendor" | "referrer" | null
   >(null);
@@ -300,7 +324,14 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     | ""
   >("");
   const [saleType, setSaleType] = useState<
-    "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado" | ""
+    | "delivery_express"
+    | "encargo"
+    | "encargo_entrega"
+    | "entrega"
+    | "retiro_almacen"
+    | "retiro_tienda"
+    | "sistema_apartado"
+    | ""
   >("");
   const [deliveryType, setDeliveryType] = useState<
     | "entrega_programada"
@@ -318,7 +349,8 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
   });
   const [payments, setPayments] = useState<PartialPayment[]>([]);
   const [appliedStoreCreditUsd, setAppliedStoreCreditUsd] = useState(0);
-  const [clientStoreCreditBalanceUsd, setClientStoreCreditBalanceUsd] = useState<number | null>(null);
+  const [clientStoreCreditBalanceUsd, setClientStoreCreditBalanceUsd] =
+    useState<number | null>(null);
   const [generalDiscount, setGeneralDiscount] = useState(0);
   const [generalDiscountType, setGeneralDiscountType] = useState<
     "monto" | "porcentaje"
@@ -327,10 +359,11 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
   const [generalDiscountCurrency, setGeneralDiscountCurrency] =
     useState<Currency>(preferredCurrency);
   const [generalObservations, setGeneralObservations] = useState("");
+  const [dispatchObservations, setDispatchObservations] = useState("");
   const [createSupplierOrder, setCreateSupplierOrder] = useState(false);
-  const [productMarkups, setProductMarkups] = useState<
-    Record<string, number>
-  >({});
+  const [productMarkups, setProductMarkups] = useState<Record<string, number>>(
+    {},
+  );
   const [productDiscountTypes, setProductDiscountTypes] = useState<
     Record<string, "monto" | "porcentaje">
   >({});
@@ -356,7 +389,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         currencies.push(preferredCurrency);
       }
       return currencies;
-    }
+    },
   );
 
   // Datos cargados
@@ -478,7 +511,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     const exists = vendors.some((v) => v.id === user.id);
     if (exists) {
       setFormData((prev) =>
-        prev.vendor === user.id ? prev : { ...prev, vendor: user.id }
+        prev.vendor === user.id ? prev : { ...prev, vendor: user.id },
       );
     }
   }, [open, user?.id, user?.role, vendors]);
@@ -545,35 +578,57 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
             telefono2?: string;
             email?: string;
             rutId?: string;
-          } | null
+          } | null,
         );
-      if (Array.isArray(d.selectedProducts)) setSelectedProducts(d.selectedProducts as OrderProduct[]);
+      if (Array.isArray(d.selectedProducts))
+        setSelectedProducts(d.selectedProducts as OrderProduct[]);
       if (d.formData && typeof d.formData === "object")
         setFormData((prev) => ({ ...prev, ...(d.formData as OrderFormData) }));
-      if (typeof d.paymentCondition === "string") setPaymentCondition(d.paymentCondition as typeof paymentCondition);
-      if (typeof d.saleType === "string") setSaleType(d.saleType as typeof saleType);
-      if (typeof d.deliveryType === "string") setDeliveryType(d.deliveryType as typeof deliveryType);
+      if (typeof d.paymentCondition === "string")
+        setPaymentCondition(d.paymentCondition as typeof paymentCondition);
+      if (typeof d.saleType === "string")
+        setSaleType(d.saleType as typeof saleType);
+      if (typeof d.deliveryType === "string")
+        setDeliveryType(d.deliveryType as typeof deliveryType);
       if (typeof d.deliveryZone === "string") setDeliveryZone(d.deliveryZone);
       if (typeof d.hasDelivery === "boolean") setHasDelivery(d.hasDelivery);
       if (d.deliveryServices && typeof d.deliveryServices === "object")
         setDeliveryServices(d.deliveryServices as DeliveryServices);
-      if (Array.isArray(d.payments)) setPayments(d.payments as PartialPayment[]);
-      if (typeof d.generalDiscount === "number") setGeneralDiscount(d.generalDiscount);
-      if (d.generalDiscountType === "monto" || d.generalDiscountType === "porcentaje")
+      if (Array.isArray(d.payments))
+        setPayments(d.payments as PartialPayment[]);
+      if (typeof d.generalDiscount === "number")
+        setGeneralDiscount(d.generalDiscount);
+      if (
+        d.generalDiscountType === "monto" ||
+        d.generalDiscountType === "porcentaje"
+      )
         setGeneralDiscountType(d.generalDiscountType);
       if (typeof d.taxEnabled === "boolean") setTaxEnabled(d.taxEnabled);
       if (typeof d.generalDiscountCurrency === "string")
         setGeneralDiscountCurrency(d.generalDiscountCurrency as Currency);
-      if (typeof d.generalObservations === "string") setGeneralObservations(d.generalObservations);
-      if (typeof d.createSupplierOrder === "boolean") setCreateSupplierOrder(d.createSupplierOrder);
+      if (typeof d.generalObservations === "string")
+        setGeneralObservations(d.generalObservations);
+      if (typeof d.dispatchObservations === "string")
+        setGeneralObservations(d.dispatchObservations);
+      if (typeof d.createSupplierOrder === "boolean")
+        setCreateSupplierOrder(d.createSupplierOrder);
       if (d.productMarkups && typeof d.productMarkups === "object")
         setProductMarkups(d.productMarkups as Record<string, number>);
       if (d.productDiscountTypes && typeof d.productDiscountTypes === "object")
-        setProductDiscountTypes(d.productDiscountTypes as Record<string, "monto" | "porcentaje">);
-      if (d.productDiscountCurrencies && typeof d.productDiscountCurrencies === "object")
-        setProductDiscountCurrencies(d.productDiscountCurrencies as Record<string, Currency>);
-      if (typeof d.deliveryCurrency === "string") setDeliveryCurrency(d.deliveryCurrency as Currency);
-      if (Array.isArray(d.selectedCurrencies)) setSelectedCurrencies(d.selectedCurrencies as Currency[]);
+        setProductDiscountTypes(
+          d.productDiscountTypes as Record<string, "monto" | "porcentaje">,
+        );
+      if (
+        d.productDiscountCurrencies &&
+        typeof d.productDiscountCurrencies === "object"
+      )
+        setProductDiscountCurrencies(
+          d.productDiscountCurrencies as Record<string, Currency>,
+        );
+      if (typeof d.deliveryCurrency === "string")
+        setDeliveryCurrency(d.deliveryCurrency as Currency);
+      if (Array.isArray(d.selectedCurrencies))
+        setSelectedCurrencies(d.selectedCurrencies as Currency[]);
       const draftSellerMode =
         d.onlineSellerMode === "vendor" || d.onlineSellerMode === "referrer"
           ? d.onlineSellerMode
@@ -581,7 +636,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       setOnlineSellerMode(
         user?.role === "Online Seller" && draftSellerMode === null
           ? "vendor"
-          : draftSellerMode
+          : draftSellerMode,
       );
       setDraftResolution("loaded");
     } catch (e) {
@@ -612,7 +667,10 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       return "EUR";
     }
     // Si preferredCurrency no es Bs y está disponible, usarla
-    if (selectedCurrencies.includes(preferredCurrency) && preferredCurrency !== "Bs") {
+    if (
+      selectedCurrencies.includes(preferredCurrency) &&
+      preferredCurrency !== "Bs"
+    ) {
       return preferredCurrency;
     }
     // Buscar cualquier moneda no-Bs disponible
@@ -625,40 +683,61 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
   }, [selectedCurrencies, preferredCurrency, exchangeRates]);
 
   const convertCurrencyValue = useCallback(
-    (value: number, fromCurrency: Currency, toCurrency: Currency): number | null => {
+    (
+      value: number,
+      fromCurrency: Currency,
+      toCurrency: Currency,
+    ): number | null => {
       if (fromCurrency === toCurrency) return value;
       if (fromCurrency === "Bs") {
         const rate =
-          toCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+          toCurrency === "USD"
+            ? exchangeRates.USD?.rate
+            : exchangeRates.EUR?.rate;
         return rate && rate > 0 ? value / rate : null;
       }
       if (toCurrency === "Bs") {
         const rate =
-          fromCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+          fromCurrency === "USD"
+            ? exchangeRates.USD?.rate
+            : exchangeRates.EUR?.rate;
         return rate && rate > 0 ? value * rate : null;
       }
       // Entre USD y EUR
       const fromRate =
-        fromCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+        fromCurrency === "USD"
+          ? exchangeRates.USD?.rate
+          : exchangeRates.EUR?.rate;
       const toRate =
-        toCurrency === "USD" ? exchangeRates.USD?.rate : exchangeRates.EUR?.rate;
+        toCurrency === "USD"
+          ? exchangeRates.USD?.rate
+          : exchangeRates.EUR?.rate;
       if (fromRate && toRate && fromRate > 0 && toRate > 0) {
         return (value * fromRate) / toRate;
       }
       return null;
     },
-    [exchangeRates]
+    [exchangeRates],
   );
 
   const calculateDeliveryCost = useCallback((): number => {
     let total = 0;
-    if (deliveryServices.deliveryExpress?.enabled && deliveryServices.deliveryExpress.cost) {
+    if (
+      deliveryServices.deliveryExpress?.enabled &&
+      deliveryServices.deliveryExpress.cost
+    ) {
       total += deliveryServices.deliveryExpress.cost;
     }
-    if (deliveryServices.servicioAcarreo?.enabled && deliveryServices.servicioAcarreo.cost) {
+    if (
+      deliveryServices.servicioAcarreo?.enabled &&
+      deliveryServices.servicioAcarreo.cost
+    ) {
       total += deliveryServices.servicioAcarreo.cost;
     }
-    if (deliveryServices.servicioArmado?.enabled && deliveryServices.servicioArmado.cost) {
+    if (
+      deliveryServices.servicioArmado?.enabled &&
+      deliveryServices.servicioArmado.cost
+    ) {
       total += deliveryServices.servicioArmado.cost;
     }
     return total;
@@ -674,7 +753,10 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         let surchargeInBs = 0;
         if (product.surchargeEnabled && product.surchargeAmount) {
           const usdRate = exchangeRates.USD?.rate;
-          surchargeInBs = usdRate && usdRate > 0 ? product.surchargeAmount * usdRate : product.surchargeAmount;
+          surchargeInBs =
+            usdRate && usdRate > 0
+              ? product.surchargeAmount * usdRate
+              : product.surchargeAmount;
         }
         return product.total + markup + surchargeInBs;
       }
@@ -686,7 +768,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         category,
         exchangeRates,
         allProducts,
-        categories
+        categories,
       );
       const total = unitPrice * product.quantity;
 
@@ -694,7 +776,10 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       let surchargeInBs = 0;
       if (product.surchargeEnabled && product.surchargeAmount) {
         const usdRate = exchangeRates.USD?.rate;
-        surchargeInBs = usdRate && usdRate > 0 ? product.surchargeAmount * usdRate : product.surchargeAmount;
+        surchargeInBs =
+          usdRate && usdRate > 0
+            ? product.surchargeAmount * usdRate
+            : product.surchargeAmount;
       }
 
       return total + markup + surchargeInBs;
@@ -705,7 +790,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       allProducts,
       exchangeRates,
       calculateProductUnitPriceWithAttributes,
-    ]
+    ],
   );
 
   // Valores calculados
@@ -747,10 +832,16 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     () => ({
       exchangeRatesAtCreation: {
         USD: exchangeRates.USD
-          ? { rate: exchangeRates.USD.rate, effectiveDate: exchangeRates.USD.effectiveDate }
+          ? {
+              rate: exchangeRates.USD.rate,
+              effectiveDate: exchangeRates.USD.effectiveDate,
+            }
           : undefined,
         EUR: exchangeRates.EUR
-          ? { rate: exchangeRates.EUR.rate, effectiveDate: exchangeRates.EUR.effectiveDate }
+          ? {
+              rate: exchangeRates.EUR.rate,
+              effectiveDate: exchangeRates.EUR.effectiveDate,
+            }
           : undefined,
       },
     }),
@@ -841,12 +932,14 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
 
   const remainingAmount = total - appliedCreditBsApprox - totalPaidInBs;
   const isPaymentsValid =
-    paymentCondition === "pago_a_entrega" || paymentCondition === "pagara_en_tienda"
+    paymentCondition === "pago_a_entrega" ||
+    paymentCondition === "pagara_en_tienda"
       ? true
       : paymentCondition === "cashea"
         ? payments.length === 1 &&
           (payments[0].amount || 0) > 0 &&
-          (payments[0].amount || 0) <= total - appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS
+          (payments[0].amount || 0) <=
+            total - appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS
         : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
 
   const isDraftGateBlocking = useMemo(
@@ -915,7 +1008,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
           ...product,
           discount: product.discount ?? 0,
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
-        }))
+        })),
       );
       const newTypes: Record<string, "monto" | "porcentaje"> = {};
       const newCurrencies: Record<string, Currency> = {};
@@ -923,15 +1016,18 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         if (!productDiscountTypes[product.id]) {
           const { type, currency } = readDiscountUiFromProduct(
             product,
-            getDefaultCurrencyFromSelection()
+            getDefaultCurrencyFromSelection(),
           );
           newTypes[product.id] = type;
           newCurrencies[product.id] = currency;
         }
-        if (!productDiscountCurrencies[product.id] && !newCurrencies[product.id]) {
+        if (
+          !productDiscountCurrencies[product.id] &&
+          !newCurrencies[product.id]
+        ) {
           newCurrencies[product.id] = readDiscountUiFromProduct(
             product,
-            getDefaultCurrencyFromSelection()
+            getDefaultCurrencyFromSelection(),
           ).currency;
         }
       });
@@ -946,7 +1042,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       productDiscountTypes,
       productDiscountCurrencies,
       getDefaultCurrencyFromSelection,
-    ]
+    ],
   );
 
   const handleProductDiscountChange = useCallback(
@@ -966,7 +1062,8 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
           let discountAmount: number;
           if (discountType === "porcentaje") {
             const percentage = Math.max(0, Math.min(value, 100));
-            discountAmount = Math.round(((baseTotal * percentage) / 100) * 100) / 100;
+            discountAmount =
+              Math.round(((baseTotal * percentage) / 100) * 100) / 100;
           } else {
             let discountInBs = value;
             if (discountCurrency !== "Bs") {
@@ -982,7 +1079,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
             discountAmount = Math.max(0, Math.min(discountInBs, baseTotal));
 
             const category = categories.find(
-              (cat) => cat.name === product.category
+              (cat) => cat.name === product.category,
             );
             if (category && category.maxDiscount > 0) {
               let maxDiscountInBs = category.maxDiscount;
@@ -1014,10 +1111,10 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
               product.attributes,
               discountType,
               discountCurrency,
-              percentForAttrs
+              percentForAttrs,
             ),
           };
-        })
+        }),
       );
     },
     [
@@ -1027,7 +1124,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       preferredCurrency,
       exchangeRates,
       categories,
-    ]
+    ],
   );
 
   const handleProductDiscountTypeChange = useCallback(
@@ -1040,12 +1137,16 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
             productDiscountCurrencies[productId] ?? preferredCurrency;
           return {
             ...p,
-            attributes: mergeDiscountUiIntoAttributes(p.attributes, type, currency),
+            attributes: mergeDiscountUiIntoAttributes(
+              p.attributes,
+              type,
+              currency,
+            ),
           };
-        })
+        }),
       );
     },
-    [productDiscountCurrencies, preferredCurrency]
+    [productDiscountCurrencies, preferredCurrency],
   );
 
   const handleGeneralDiscountChange = useCallback(
@@ -1054,15 +1155,20 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         setGeneralDiscount(Math.max(0, Math.min(value, 100)));
         return;
       }
-      setGeneralDiscount(Math.max(0, Math.min(value, totalBeforeGeneralDiscount)));
+      setGeneralDiscount(
+        Math.max(0, Math.min(value, totalBeforeGeneralDiscount)),
+      );
     },
-    [generalDiscountType, totalBeforeGeneralDiscount]
+    [generalDiscountType, totalBeforeGeneralDiscount],
   );
 
-  const handleGeneralDiscountTypeChange = useCallback((type: "monto" | "porcentaje") => {
-    setGeneralDiscountType(type);
-    setGeneralDiscount(0);
-  }, []);
+  const handleGeneralDiscountTypeChange = useCallback(
+    (type: "monto" | "porcentaje") => {
+      setGeneralDiscountType(type);
+      setGeneralDiscount(0);
+    },
+    [],
+  );
 
   const step1SellerReady = useMemo(() => {
     if (formData.vendor) return true;
@@ -1075,7 +1181,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
       if (currentStep === 1) {
         if (!step1SellerReady) {
           toast.error(
-            "Por favor completa el paso 1: vendedor asignado, cliente y al menos un producto."
+            "Por favor completa el paso 1: vendedor asignado, cliente y al menos un producto.",
           );
           return;
         }
@@ -1159,8 +1265,8 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     currentStep === 1
       ? !!(step1SellerReady && selectedClient && selectedProducts.length > 0)
       : currentStep === 2
-      ? selectedProducts.length > 0
-      : true;
+        ? selectedProducts.length > 0
+        : true;
 
   const canCreateBudget: boolean =
     currentStep === 1 &&
@@ -1195,6 +1301,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
           taxEnabled,
           generalDiscountCurrency,
           generalObservations,
+          dispatchObservations,
           createSupplierOrder,
           productMarkups,
           productDiscountTypes,
@@ -1229,6 +1336,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     taxEnabled,
     generalDiscountCurrency,
     generalObservations,
+    dispatchObservations,
     createSupplierOrder,
     productMarkups,
     productDiscountTypes,
@@ -1246,7 +1354,9 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         const amountInUsd = amountInBs / usdRate;
         return (
           <div className={`text-right ${className || ""}`}>
-            <div className="font-medium">{formatCurrency(amountInUsd, "USD")}</div>
+            <div className="font-medium">
+              {formatCurrency(amountInUsd, "USD")}
+            </div>
             <div className="text-xs text-muted-foreground">
               {formatCurrency(amountInBs, "Bs")}
             </div>
@@ -1259,7 +1369,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         </div>
       );
     },
-    [exchangeRates]
+    [exchangeRates],
   );
 
   const renderCurrencyCellNegative = useCallback(
@@ -1269,7 +1379,9 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         const amountInUsd = amountInBs / usdRate;
         return (
           <div className={`text-right ${className || ""}`}>
-            <div className="font-medium">-{formatCurrency(amountInUsd, "USD")}</div>
+            <div className="font-medium">
+              -{formatCurrency(amountInUsd, "USD")}
+            </div>
             <div className="text-xs text-muted-foreground">
               -{formatCurrency(amountInBs, "Bs")}
             </div>
@@ -1282,7 +1394,7 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
         </div>
       );
     },
-    [exchangeRates]
+    [exchangeRates],
   );
 
   // Cargar dirección del cliente cuando se activa delivery
@@ -1339,6 +1451,8 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     setTaxEnabled,
     generalObservations,
     setGeneralObservations,
+    dispatchObservations,
+    setDispatchObservations,
     createSupplierOrder,
     setCreateSupplierOrder,
     productMarkups,
@@ -1410,4 +1524,3 @@ export function useOrderForm(open: boolean, userId?: string): UseOrderFormReturn
     isOnlineSellerReferrer: onlineSellerMode === "referrer",
   };
 }
-
