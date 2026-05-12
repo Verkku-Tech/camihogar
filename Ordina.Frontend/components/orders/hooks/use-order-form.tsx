@@ -609,7 +609,7 @@ export function useOrderForm(
       if (typeof d.generalObservations === "string")
         setGeneralObservations(d.generalObservations);
       if (typeof d.dispatchObservations === "string")
-        setGeneralObservations(d.dispatchObservations);
+        setDispatchObservations(d.dispatchObservations);
       if (typeof d.createSupplierOrder === "boolean")
         setCreateSupplierOrder(d.createSupplierOrder);
       if (d.productMarkups && typeof d.productMarkups === "object")
