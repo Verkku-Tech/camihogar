@@ -218,7 +218,7 @@ export function ImportProductsDialog({
               {file ? (
                 <>
                   <FileSpreadsheet className="h-10 w-10 text-muted-foreground" />
-                  <span className="text-sm font-medium truncate max-w-full">{file.name}</span>
+                  <span className="text-sm font-medium truncate block max-w-xs text-center">{file.name}</span>
                   <span className="text-xs text-muted-foreground">
                     {(file.size / 1024).toFixed(1)} KB
                   </span>
