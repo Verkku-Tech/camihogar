@@ -168,7 +168,7 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
                     </div>
 
                     {/* Select de estado */}
-                    <div className="w-full sm:w-48">
+                    <div className="w-full sm:w-56">
                       <Label>Estado de Ubicación</Label>
                       <Select
                         value={product.locationStatus ?? "DISPONIBILIDAD INMEDIATA"}
