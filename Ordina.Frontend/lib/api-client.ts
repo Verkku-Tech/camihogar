@@ -1996,6 +1996,7 @@ export interface OrderResponseDto {
   productMarkups?: { [key: string]: number };
   createSupplierOrder?: boolean;
   observations?: string;
+  dispatchObservations?: string;
   saleType?: string;
   deliveryType?: string;
   deliveryZone?: string;
@@ -2034,6 +2035,7 @@ export interface ConvertBudgetToOrderDto {
   hasDelivery?: boolean;
   deliveryServices?: CreateOrderDto["deliveryServices"];
   observations?: string;
+  dispatchObservations?: string;
   subtotal?: number;
   taxAmount?: number;
   deliveryCost?: number;
@@ -2068,6 +2070,7 @@ export interface ConfirmOrderDto {
   hasDelivery?: boolean;
   deliveryServices?: CreateOrderDto["deliveryServices"];
   observations?: string;
+  dispatchObservations?: string;
   subtotal?: number;
   taxAmount?: number;
   deliveryCost?: number;
@@ -2181,6 +2184,7 @@ export interface CreateOrderDto {
   productMarkups?: { [key: string]: number };
   createSupplierOrder?: boolean;
   observations?: string;
+  dispatchObservations?: string;
   saleType?: string;
   deliveryType?: string;
   deliveryZone?: string;
@@ -2243,6 +2247,7 @@ export interface UpdateOrderDto {
   productMarkups?: { [key: string]: number };
   createSupplierOrder?: boolean;
   observations?: string;
+  dispatchObservations?: string;
   saleType?: string;
   deliveryType?: string;
   deliveryZone?: string;
