@@ -514,7 +514,7 @@ export function useOrderForm(
         prev.vendor === user.id ? prev : { ...prev, vendor: user.id },
       );
     }
-  }, [open, user?.id, user?.role, vendors]);
+  }, [open, user?.id, user?.role, vendors, draftResolution]);
 
   // Vendedor Online: sincronizar vendedor/referidor según modo
   useEffect(() => {
@@ -533,7 +533,7 @@ export function useOrderForm(
         referrer: user.id,
       }));
     }
-  }, [open, user?.id, user?.role, onlineSellerMode]);
+  }, [open, user?.id, user?.role, onlineSellerMode, draftResolution]);
 
   const getDraftStorageKey = useCallback(() => {
     if (!draftOwnerId) return null;
@@ -609,7 +609,7 @@ export function useOrderForm(
       if (typeof d.generalObservations === "string")
         setGeneralObservations(d.generalObservations);
       if (typeof d.dispatchObservations === "string")
-        setGeneralObservations(d.dispatchObservations);
+        setDispatchObservations(d.dispatchObservations);
       if (typeof d.createSupplierOrder === "boolean")
         setCreateSupplierOrder(d.createSupplierOrder);
       if (d.productMarkups && typeof d.productMarkups === "object")
