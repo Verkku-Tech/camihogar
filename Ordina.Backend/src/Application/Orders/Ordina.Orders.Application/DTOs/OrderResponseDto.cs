@@ -35,6 +35,7 @@ public class OrderResponseDto
     public Dictionary<string, decimal>? ProductMarkups { get; set; }
     public bool? CreateSupplierOrder { get; set; }
     public string? Observations { get; set; }
+    public string? DispatchObservations { get; set; }
     public string? SaleType { get; set; }
     public string? DeliveryType { get; set; }
     public string? DeliveryZone { get; set; }

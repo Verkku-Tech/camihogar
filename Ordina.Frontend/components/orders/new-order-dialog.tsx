@@ -109,8 +109,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [isProductSelectionOpen, setIsProductSelectionOpen] = useState(false);
   const [isProductEditOpen, setIsProductEditOpen] = useState(false);
   const [isRemoveProductOpen, setIsRemoveProductOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<OrderProduct | null>(null);
-  const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(null);
+  const [editingProduct, setEditingProduct] = useState<OrderProduct | null>(
+    null,
+  );
+  const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(
+    null,
+  );
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
   const [overpaymentPrompt, setOverpaymentPrompt] = useState<{
@@ -119,7 +123,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     orderNumber: string;
   } | null>(null);
 
-  const [isPendingConfirmationSaving, setIsPendingConfirmationSaving] = useState(false);
+  const [isPendingConfirmationSaving, setIsPendingConfirmationSaving] =
+    useState(false);
   const [isCheckingClientPcf, setIsCheckingClientPcf] = useState(false);
   const [pendingPcfPrompt, setPendingPcfPrompt] = useState<{
     client: OrderFormSelectedClient;
@@ -148,9 +153,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     orderForm.setSelectedProducts((products) =>
       products.map((p) =>
         p.id === updatedProduct.id
-          ? { ...updatedProduct, locationStatus: updatedProduct.locationStatus ?? "DISPONIBILIDAD INMEDIATA" }
-          : p
-      )
+          ? {
+              ...updatedProduct,
+              locationStatus:
+                updatedProduct.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+            }
+          : p,
+      ),
     );
     setIsProductEditOpen(false);
     setEditingProduct(null);
@@ -164,7 +173,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const confirmRemoveProduct = () => {
     if (productToRemove) {
       orderForm.setSelectedProducts((products) =>
-        products.filter((p) => p.id !== productToRemove.id)
+        products.filter((p) => p.id !== productToRemove.id),
       );
       setProductToRemove(null);
       setIsRemoveProductOpen(false);
@@ -188,19 +197,19 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const updatePayment = (
     id: string,
     field: keyof PartialPayment,
-    value: string | number | Currency
+    value: string | number | Currency,
   ) => {
     orderForm.setPayments((paymentsList) =>
       paymentsList.map((payment) =>
-        payment.id === id ? { ...payment, [field]: value } : payment
-      )
+        payment.id === id ? { ...payment, [field]: value } : payment,
+      ),
     );
   };
 
   const updatePaymentDetails = (
     id: string,
     field: string,
-    value: string | number | boolean | undefined
+    value: string | number | boolean | undefined,
   ) => {
     orderForm.setPayments((paymentsList) =>
       paymentsList.map((payment) => {
@@ -217,13 +226,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           };
         }
         return payment;
-      })
+      }),
     );
   };
 
   const getAccountsForPaymentMethod = (method: string): Account[] => {
     if (method === "Paypal") {
-      return orderForm.accounts.filter((acc) => acc.accountType === "Cuentas Digitales");
+      return orderForm.accounts.filter(
+        (acc) => acc.accountType === "Cuentas Digitales",
+      );
     } else if (
       [
         "Banesco Panamá",
@@ -235,13 +246,17 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       ].includes(method)
     ) {
       return orderForm.accounts.filter(
-        (acc) => acc.accountType === "Ahorro" || acc.accountType === "Corriente"
+        (acc) =>
+          acc.accountType === "Ahorro" || acc.accountType === "Corriente",
       );
     }
     return [];
   };
 
-  const saveAccountInfoToPayment = (paymentId: string, account: Account): void => {
+  const saveAccountInfoToPayment = (
+    paymentId: string,
+    account: Account,
+  ): void => {
     updatePaymentDetails(paymentId, "accountId", account.id);
 
     if (account.accountType === "Cuentas Digitales") {
@@ -251,7 +266,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       updatePaymentDetails(paymentId, "bank", undefined);
     } else {
       // Para cuentas tradicionales, usar el código como referencia y el label puede contener el banco
-      updatePaymentDetails(paymentId, "accountNumber", account.code || undefined);
+      updatePaymentDetails(
+        paymentId,
+        "accountNumber",
+        account.code || undefined,
+      );
       updatePaymentDetails(paymentId, "bank", account.label || undefined);
       updatePaymentDetails(paymentId, "email", undefined);
       updatePaymentDetails(paymentId, "wallet", undefined);
@@ -259,9 +278,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
     // Si la etiqueta contiene información del banco, intentar extraerla para Pago Móvil/Transferencia
     const currentPayment = orderForm.payments.find((p) => p.id === paymentId);
-    if (account.label && (currentPayment?.method === "Pago Móvil" || currentPayment?.method === "Transferencia")) {
+    if (
+      account.label &&
+      (currentPayment?.method === "Pago Móvil" ||
+        currentPayment?.method === "Transferencia")
+    ) {
       // Intentar extraer el banco del label si es posible (ej: "Punto de Venta Banesco" -> "Banesco")
-      const bankMatch = account.label.match(/\b(Banesco|Mercantil|Venezuela|Provincial|BOD|100% Banco|Banco del Tesoro|Banco de Venezuela)\b/i);
+      const bankMatch = account.label.match(
+        /\b(Banesco|Mercantil|Venezuela|Provincial|BOD|100% Banco|Banco del Tesoro|Banco de Venezuela)\b/i,
+      );
       if (bankMatch) {
         const bankName = bankMatch[1];
         if (currentPayment?.method === "Pago Móvil") {
@@ -280,7 +305,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       return;
     }
     orderForm.setPayments((paymentsList) =>
-      paymentsList.filter((p) => p.id !== id)
+      paymentsList.filter((p) => p.id !== id),
     );
   };
 
@@ -289,8 +314,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       paymentsList.map((payment) =>
         payment.id === paymentId
           ? { ...payment, images: images.length > 0 ? images : undefined }
-          : payment
-      )
+          : payment,
+      ),
     );
   };
 
@@ -315,53 +340,72 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         clientName: orderForm.selectedClient.name,
         vendorId: orderForm.formData.vendor || "",
         vendorName:
-          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)?.name || "",
+          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)
+            ?.name || "",
         referrerId: orderForm.formData.referrer || undefined,
         referrerName: orderForm.formData.referrer
-          ? orderForm.mockReferrers.find((r) => r.id === orderForm.formData.referrer)?.name
+          ? orderForm.mockReferrers.find(
+              (r) => r.id === orderForm.formData.referrer,
+            )?.name
           : undefined,
         products: orderForm.selectedProducts.map((product) => ({
           ...product,
-          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          discount:
+            product.discount && product.discount > 0
+              ? product.discount
+              : undefined,
         })),
         subtotalBeforeDiscounts: orderForm.productSubtotal,
         productDiscountTotal:
-          orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
+          orderForm.productDiscountTotal > 0
+            ? orderForm.productDiscountTotal
+            : undefined,
         generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+          orderForm.generalDiscountAmount > 0
+            ? orderForm.generalDiscountAmount
+            : undefined,
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
         deliveryCost: orderForm.deliveryCost,
         total: orderForm.total,
         hasDelivery: orderForm.hasDelivery,
-        deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
+        deliveryAddress: orderForm.hasDelivery
+          ? orderForm.formData.deliveryAddress
+          : undefined,
         deliveryServices: orderForm.hasDelivery
           ? {
-              deliveryExpress: orderForm.deliveryServices.deliveryExpress?.enabled
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                ?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.deliveryExpress.cost,
-                    currency: orderForm.deliveryServices.deliveryExpress.currency,
+                    currency:
+                      orderForm.deliveryServices.deliveryExpress.currency,
                   }
                 : undefined,
-              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo?.enabled
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                ?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.servicioAcarreo.cost,
-                    currency: orderForm.deliveryServices.servicioAcarreo.currency,
+                    currency:
+                      orderForm.deliveryServices.servicioAcarreo.currency,
                   }
                 : undefined,
               servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.servicioArmado.cost,
-                    currency: orderForm.deliveryServices.servicioArmado.currency,
+                    currency:
+                      orderForm.deliveryServices.servicioArmado.currency,
                   }
                 : undefined,
             }
           : undefined,
         observations: orderForm.generalObservations.trim() || undefined,
+        dispatchObservations:
+          orderForm.dispatchObservations.trim() || undefined,
         baseCurrency: preferredCurrency,
         exchangeRatesAtCreation: orderForm.exchangeRates,
         validForDays: 30,
@@ -373,7 +417,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       onOpenChange(false);
     } catch (error) {
       console.error("Error creating budget:", error);
-      toast.error("Error al crear el presupuesto. Por favor intenta nuevamente.");
+      toast.error(
+        "Error al crear el presupuesto. Por favor intenta nuevamente.",
+      );
     }
   };
 
@@ -429,7 +475,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         user.name ||
         "";
 
-      const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
+      const orderData: Omit<
+        Order,
+        "id" | "orderNumber" | "createdAt" | "updatedAt"
+      > = {
         clientId: orderForm.selectedClient.id,
         clientName: orderForm.selectedClient.name,
         vendorId: user.id,
@@ -438,14 +487,21 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         referrerName: onlineName,
         products: orderForm.selectedProducts.map((product) => ({
           ...product,
-          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          discount:
+            product.discount && product.discount > 0
+              ? product.discount
+              : undefined,
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
         subtotalBeforeDiscounts: orderForm.productSubtotal,
         productDiscountTotal:
-          orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
+          orderForm.productDiscountTotal > 0
+            ? orderForm.productDiscountTotal
+            : undefined,
         generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+          orderForm.generalDiscountAmount > 0
+            ? orderForm.generalDiscountAmount
+            : undefined,
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
@@ -458,33 +514,42 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         deliveryType: orderForm.deliveryType as Order["deliveryType"],
         deliveryZone: orderForm.deliveryZone as Order["deliveryZone"],
         hasDelivery: orderForm.hasDelivery,
-        deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
+        deliveryAddress: orderForm.hasDelivery
+          ? orderForm.formData.deliveryAddress
+          : undefined,
         deliveryServices: orderForm.hasDelivery
           ? {
-              deliveryExpress: orderForm.deliveryServices.deliveryExpress?.enabled
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                ?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.deliveryExpress.cost,
-                    currency: orderForm.deliveryServices.deliveryExpress.currency,
+                    currency:
+                      orderForm.deliveryServices.deliveryExpress.currency,
                   }
                 : undefined,
-              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo?.enabled
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                ?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.servicioAcarreo.cost,
-                    currency: orderForm.deliveryServices.servicioAcarreo.currency,
+                    currency:
+                      orderForm.deliveryServices.servicioAcarreo.currency,
                   }
                 : undefined,
               servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.servicioArmado.cost,
-                    currency: orderForm.deliveryServices.servicioArmado.currency,
+                    currency:
+                      orderForm.deliveryServices.servicioArmado.currency,
                   }
                 : undefined,
             }
           : undefined,
         observations: orderForm.generalObservations.trim() || undefined,
+        dispatchObservations:
+          orderForm.dispatchObservations.trim() || undefined,
         baseCurrency: preferredCurrency,
         exchangeRatesAtCreation: orderForm.exchangeRates,
         productMarkups: orderForm.productMarkups,
@@ -494,13 +559,17 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       };
 
       const created = await addPendingConfirmationOrder(orderData);
-      toast.success(`Pedido por confirmar ${created.orderNumber} guardado. Visible en el historial del cliente.`);
+      toast.success(
+        `Pedido por confirmar ${created.orderNumber} guardado. Visible en el historial del cliente.`,
+      );
       orderForm.clearDraftStorage();
       orderForm.resetForm();
       onOpenChange(false);
     } catch (error) {
       console.error("Error creating pending confirmation order:", error);
-      toast.error("Error al guardar el pedido por confirmar. Intenta de nuevo.");
+      toast.error(
+        "Error al guardar el pedido por confirmar. Intenta de nuevo.",
+      );
     } finally {
       setIsPendingConfirmationSaving(false);
     }
@@ -544,7 +613,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         // Sin líneas de pago en tienda
       } else if (orderForm.paymentCondition === "cashea") {
         if (orderForm.payments.length !== 1) {
-          toast.error("Cashea: registre exactamente un pago inicial en tienda.");
+          toast.error(
+            "Cashea: registre exactamente un pago inicial en tienda.",
+          );
           return;
         }
       } else if (orderForm.payments.length === 0) {
@@ -572,30 +643,42 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
           if (payment.method === "Pago Móvil") {
             if (!payment.paymentDetails?.pagomovilReference) {
-              toast.error(`${paymentLabel} (Pago Móvil): Debe ingresar el número de referencia`);
+              toast.error(
+                `${paymentLabel} (Pago Móvil): Debe ingresar el número de referencia`,
+              );
               return;
             }
             if (!payment.paymentDetails?.accountId) {
-              toast.error(`${paymentLabel} (Pago Móvil): Debe seleccionar el banco receptor`);
+              toast.error(
+                `${paymentLabel} (Pago Móvil): Debe seleccionar el banco receptor`,
+              );
               return;
             }
           } else if (payment.method === "Transferencia") {
             if (!payment.paymentDetails?.transferenciaReference) {
-              toast.error(`${paymentLabel} (Transferencia): Debe ingresar el número de referencia`);
+              toast.error(
+                `${paymentLabel} (Transferencia): Debe ingresar el número de referencia`,
+              );
               return;
             }
             if (!payment.paymentDetails?.accountId) {
-              toast.error(`${paymentLabel} (Transferencia): Debe seleccionar el banco receptor`);
+              toast.error(
+                `${paymentLabel} (Transferencia): Debe seleccionar el banco receptor`,
+              );
               return;
             }
           } else if (payment.method === "Tarjeta de débito") {
             if (!payment.paymentDetails?.bank) {
-              toast.error(`${paymentLabel} (Tarjeta de débito): Debe seleccionar el banco`);
+              toast.error(
+                `${paymentLabel} (Tarjeta de débito): Debe seleccionar el banco`,
+              );
               return;
             }
           } else if (payment.method === "Tarjeta de Crédito") {
             if (!payment.paymentDetails?.bank) {
-              toast.error(`${paymentLabel} (Tarjeta de Crédito): Debe seleccionar el banco`);
+              toast.error(
+                `${paymentLabel} (Tarjeta de Crédito): Debe seleccionar el banco`,
+              );
               return;
             }
           } else if (payment.method === "Zelle") {
@@ -604,9 +687,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               return;
             }
           } else if (
-            (paymentMethodsRequiringReceivingAccount as readonly string[]).includes(
-              payment.method,
-            )
+            (
+              paymentMethodsRequiringReceivingAccount as readonly string[]
+            ).includes(payment.method)
           ) {
             if (!payment.paymentDetails?.accountId) {
               toast.error(
@@ -620,9 +703,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           const p = orderForm.payments[0];
           if (
             (p.amount || 0) >
-            orderForm.total - orderForm.appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS
+            orderForm.total -
+              orderForm.appliedCreditBsApprox +
+              PAYMENT_BALANCE_EPSILON_BS
           ) {
-            toast.error("El monto del pago inicial no puede superar el total del pedido.");
+            toast.error(
+              "El monto del pago inicial no puede superar el total del pedido.",
+            );
             return;
           }
         }
@@ -635,7 +722,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         orderForm.paymentCondition !== "todo_pago" &&
         !orderForm.isPaymentsValid
       ) {
-        toast.error("Los cobros no coinciden con el total del pedido (incluye crédito aplicado).");
+        toast.error(
+          "Los cobros no coinciden con el total del pedido (incluye crédito aplicado).",
+        );
         return;
       }
 
@@ -663,20 +752,30 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         clientRutId: orderForm.selectedClient.rutId,
         clientDireccion: orderForm.selectedClient.address,
         vendorName:
-          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)?.name || "",
+          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)
+            ?.name || "",
         referrerName: orderForm.formData.referrer
-          ? orderForm.mockReferrers.find((r) => r.id === orderForm.formData.referrer)?.name
+          ? orderForm.mockReferrers.find(
+              (r) => r.id === orderForm.formData.referrer,
+            )?.name
           : undefined,
         products: orderForm.selectedProducts.map((product) => ({
           ...product,
-          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          discount:
+            product.discount && product.discount > 0
+              ? product.discount
+              : undefined,
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
         subtotal: orderForm.subtotal,
         productDiscountTotal:
-          orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
+          orderForm.productDiscountTotal > 0
+            ? orderForm.productDiscountTotal
+            : undefined,
         generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+          orderForm.generalDiscountAmount > 0
+            ? orderForm.generalDiscountAmount
+            : undefined,
         ...buildGeneralDiscountPersistPayload(orderForm),
         taxAmount: orderForm.taxAmount,
         deliveryCost: orderForm.deliveryCost,
@@ -690,30 +789,37 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         deliveryAddress: orderForm.formData.deliveryAddress,
         deliveryServices: orderForm.hasDelivery
           ? {
-              deliveryExpress: orderForm.deliveryServices.deliveryExpress?.enabled
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                ?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.deliveryExpress.cost,
-                    currency: orderForm.deliveryServices.deliveryExpress.currency,
+                    currency:
+                      orderForm.deliveryServices.deliveryExpress.currency,
                   }
                 : undefined,
-              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo?.enabled
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                ?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.servicioAcarreo.cost,
-                    currency: orderForm.deliveryServices.servicioAcarreo.currency,
+                    currency:
+                      orderForm.deliveryServices.servicioAcarreo.currency,
                   }
                 : undefined,
               servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.servicioArmado.cost,
-                    currency: orderForm.deliveryServices.servicioArmado.currency,
+                    currency:
+                      orderForm.deliveryServices.servicioArmado.currency,
                   }
                 : undefined,
             }
           : undefined,
         observations: orderForm.generalObservations.trim() || undefined,
+        dispatchObservations:
+          orderForm.dispatchObservations.trim() || undefined,
       };
 
       setPendingOrderData(orderDataForConfirmation);
@@ -731,30 +837,46 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (orderForm.paymentCondition === "cashea") {
-        paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, orderForm.total);
+        paymentsNorm = buildCasheaPaymentsForSave(
+          paymentsNorm,
+          orderForm.total,
+        );
       }
       const multi = paymentsNorm.length > 1;
 
-      const orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt"> = {
+      const orderData: Omit<
+        Order,
+        "id" | "orderNumber" | "createdAt" | "updatedAt"
+      > = {
         clientId: orderForm.selectedClient.id,
         clientName: orderForm.selectedClient.name,
         vendorId: orderForm.formData.vendor,
         vendorName:
-          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)?.name || "",
+          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)
+            ?.name || "",
         referrerId: orderForm.formData.referrer || undefined,
         referrerName: orderForm.formData.referrer
-          ? orderForm.mockReferrers.find((r) => r.id === orderForm.formData.referrer)?.name
+          ? orderForm.mockReferrers.find(
+              (r) => r.id === orderForm.formData.referrer,
+            )?.name
           : undefined,
         products: orderForm.selectedProducts.map((product) => ({
           ...product,
-          discount: product.discount && product.discount > 0 ? product.discount : undefined,
+          discount:
+            product.discount && product.discount > 0
+              ? product.discount
+              : undefined,
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
         subtotalBeforeDiscounts: orderForm.productSubtotal,
         productDiscountTotal:
-          orderForm.productDiscountTotal > 0 ? orderForm.productDiscountTotal : undefined,
+          orderForm.productDiscountTotal > 0
+            ? orderForm.productDiscountTotal
+            : undefined,
         generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0 ? orderForm.generalDiscountAmount : undefined,
+          orderForm.generalDiscountAmount > 0
+            ? orderForm.generalDiscountAmount
+            : undefined,
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
@@ -765,17 +887,24 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           orderForm.paymentCondition === "cashea"
             ? "directo"
             : orderForm.paymentCondition === "todo_pago"
-            ? "directo"
-            : orderForm.paymentCondition === "pago_parcial"
-            ? "apartado"
-            : "apartado",
+              ? "directo"
+              : orderForm.paymentCondition === "pago_parcial"
+                ? "apartado"
+                : "apartado",
         paymentCondition: orderForm.paymentCondition as
           | "cashea"
           | "pagara_en_tienda"
           | "pago_a_entrega"
           | "pago_parcial"
           | "todo_pago",
-        saleType: orderForm.saleType as "delivery_express" | "encargo" | "encargo_entrega" | "entrega" | "retiro_almacen" | "retiro_tienda" | "sistema_apartado",
+        saleType: orderForm.saleType as
+          | "delivery_express"
+          | "encargo"
+          | "encargo_entrega"
+          | "entrega"
+          | "retiro_almacen"
+          | "retiro_tienda"
+          | "sistema_apartado",
         deliveryType: orderForm.deliveryType as
           | "entrega_programada"
           | "delivery_express"
@@ -793,52 +922,59 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           orderForm.paymentCondition === "pago_a_entrega"
             ? "Pago a la entrega"
             : orderForm.paymentCondition === "cashea"
-            ? "Cashea"
-            : multi
-            ? "Mixto"
-            : paymentsNorm[0]?.method || "",
+              ? "Cashea"
+              : multi
+                ? "Mixto"
+                : paymentsNorm[0]?.method || "",
         paymentDetails:
           orderForm.paymentCondition === "pago_a_entrega" ||
           orderForm.payments.length === 0
             ? undefined
             : !multi
-            ? paymentsNorm[0]?.paymentDetails
-            : undefined,
+              ? paymentsNorm[0]?.paymentDetails
+              : undefined,
         partialPayments:
           orderForm.paymentCondition === "pago_a_entrega"
             ? undefined
             : multi
-            ? []
-            : paymentsNorm,
+              ? []
+              : paymentsNorm,
         mixedPayments:
           orderForm.paymentCondition === "pago_a_entrega"
             ? undefined
             : multi
-            ? paymentsNorm
-            : undefined,
-        deliveryAddress: orderForm.hasDelivery ? orderForm.formData.deliveryAddress : undefined,
+              ? paymentsNorm
+              : undefined,
+        deliveryAddress: orderForm.hasDelivery
+          ? orderForm.formData.deliveryAddress
+          : undefined,
         hasDelivery: orderForm.hasDelivery,
         deliveryServices: orderForm.hasDelivery
           ? {
-              deliveryExpress: orderForm.deliveryServices.deliveryExpress?.enabled
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                ?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.deliveryExpress.cost,
-                    currency: orderForm.deliveryServices.deliveryExpress.currency,
+                    currency:
+                      orderForm.deliveryServices.deliveryExpress.currency,
                   }
                 : undefined,
-              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo?.enabled
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                ?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.servicioAcarreo.cost,
-                    currency: orderForm.deliveryServices.servicioAcarreo.currency,
+                    currency:
+                      orderForm.deliveryServices.servicioAcarreo.currency,
                   }
                 : undefined,
               servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
                 ? {
                     enabled: true,
                     cost: orderForm.deliveryServices.servicioArmado.cost,
-                    currency: orderForm.deliveryServices.servicioArmado.currency,
+                    currency:
+                      orderForm.deliveryServices.servicioArmado.currency,
                   }
                 : undefined,
             }
@@ -847,6 +983,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         productMarkups: orderForm.productMarkups,
         createSupplierOrder: orderForm.createSupplierOrder,
         observations: orderForm.generalObservations.trim() || undefined,
+        dispatchObservations:
+          orderForm.dispatchObservations.trim() || undefined,
         baseCurrency: "Bs",
         exchangeRatesAtCreation: {
           USD: orderForm.exchangeRates.USD
@@ -917,7 +1055,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                 aria-live="polite"
               >
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Verificando pedidos del cliente…</p>
+                <p className="text-sm text-muted-foreground">
+                  Verificando pedidos del cliente…
+                </p>
               </div>
             )}
             <DialogHeader className="pb-2 sm:pb-4">
@@ -925,9 +1065,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                 Nuevo Pedido - Paso {orderForm.currentStep} de 3
               </DialogTitle>
               <DialogDescription>
-                {orderForm.currentStep === 1 && "Configura el presupuesto, cliente y productos"}
-                {orderForm.currentStep === 2 && "Define el estado de los productos"}
-                {orderForm.currentStep === 3 && "Completa los detalles finales del pedido"}
+                {orderForm.currentStep === 1 &&
+                  "Configura el presupuesto, cliente y productos"}
+                {orderForm.currentStep === 2 &&
+                  "Define el estado de los productos"}
+                {orderForm.currentStep === 3 &&
+                  "Completa los detalles finales del pedido"}
               </DialogDescription>
             </DialogHeader>
 
@@ -951,7 +1094,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                 orderForm={orderForm}
                 onSubmit={handleSubmit}
                 addPayment={
-                  orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1
+                  orderForm.paymentCondition === "cashea" &&
+                  orderForm.payments.length >= 1
                     ? undefined
                     : addPayment
                 }
@@ -1048,11 +1192,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               const pending = list
                 .filter(
                   (o) =>
-                    o.type === "PendingConfirmation" && o.status === "Por Confirmar"
+                    o.type === "PendingConfirmation" &&
+                    o.status === "Por Confirmar",
                 )
                 .sort(
                   (a, b) =>
-                    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                    new Date(b.createdAt).getTime() -
+                    new Date(a.createdAt).getTime(),
                 );
               if (pending.length === 0) {
                 applySelectedClientToForm(client);
@@ -1062,7 +1208,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             } catch (e) {
               console.error(e);
               toast.error(
-                "No se pudo comprobar el historial del cliente. Se continúa con el cliente seleccionado."
+                "No se pudo comprobar el historial del cliente. Se continúa con el cliente seleccionado.",
               );
               applySelectedClientToForm(client);
             } finally {
@@ -1120,8 +1266,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Sobrepago detectado</AlertDialogTitle>
             <AlertDialogDescription>
-              Hay un excedente de USD {overpaymentPrompt?.amountUsd.toFixed(2)} respecto al total
-              del pedido. ¿Registrar ese monto como saldo a favor del cliente?
+              Hay un excedente de USD {overpaymentPrompt?.amountUsd.toFixed(2)}{" "}
+              respecto al total del pedido. ¿Registrar ese monto como saldo a
+              favor del cliente?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1144,7 +1291,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                   await apiClient.recordStoreCreditOverpayment(oid);
                   toast.success("Saldo a favor registrado (USD).");
                 } catch (e: unknown) {
-                  const msg = e instanceof Error ? e.message : "No se pudo registrar el crédito.";
+                  const msg =
+                    e instanceof Error
+                      ? e.message
+                      : "No se pudo registrar el crédito.";
                   toast.error(msg);
                 } finally {
                   setOverpaymentPrompt(null);
@@ -1161,7 +1311,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       <AlertDialog
         open={pendingPcfPrompt !== null}
         onOpenChange={(nextOpen) => {
-          if (!nextOpen && pendingPcfPrompt && !pcfPromptClosingForLoadRef.current) {
+          if (
+            !nextOpen &&
+            pendingPcfPrompt &&
+            !pcfPromptClosingForLoadRef.current
+          ) {
             applySelectedClientToForm(pendingPcfPrompt.client);
             setPendingPcfPrompt(null);
           }
@@ -1173,15 +1327,16 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-left text-sm text-muted-foreground">
                 <p>
-                  {pendingPcfPrompt?.client.name} tiene un pedido pendiente de confirmar (
+                  {pendingPcfPrompt?.client.name} tiene un pedido pendiente de
+                  confirmar (
                   <span className="font-mono font-medium text-foreground">
                     {pendingPcfPrompt?.pcfDto.orderNumber}
                   </span>
                   ).
                 </p>
                 <p>
-                  ¿Quieres cargarlo para revisarlo o confirmarlo en tienda, o prefieres crear un
-                  pedido nuevo desde cero?
+                  ¿Quieres cargarlo para revisarlo o confirmarlo en tienda, o
+                  prefieres crear un pedido nuevo desde cero?
                 </p>
               </div>
             </AlertDialogDescription>
@@ -1238,10 +1393,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => orderForm.discardDraftAndStartFresh()}>
+            <AlertDialogCancel
+              onClick={() => orderForm.discardDraftAndStartFresh()}
+            >
               Nuevo pedido
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => orderForm.applyDraftAndContinue()}>
+            <AlertDialogAction
+              onClick={() => orderForm.applyDraftAndContinue()}
+            >
               Continuar borrador
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1250,4 +1409,3 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     </>
   );
 }
-
