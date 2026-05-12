@@ -64,12 +64,19 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Error en scraping con fetch:", error);
+    if (error instanceof Error && error.cause) {
+      console.error("Causa raíz:", error.cause);
+    }
+    const message =
+      error instanceof Error
+        ? `${error.message} | causa: ${JSON.stringify(error.cause)}`
+        : `${error}`;
     return NextResponse.json(
       {
         dolar: null,
         euro: null,
         lastUpdated: null,
-        error: `${error}`,
+        error: message,
       },
       { status: 500 },
     );
