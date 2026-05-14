@@ -1,4 +1,7 @@
 using Ordina.Database.MongoContext;
+using Ordina.Payments.Api.BackgroundServices;
+using Ordina.Payments.Application.Interfaces;
+using Ordina.Payments.Application.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +17,16 @@ builder.Services.AddMongoDb(builder.Configuration);
 // Register Services and Repositories
 builder.Services.AddScoped<Ordina.Payments.Domain.Repositories.IExchangeRateRepository, Ordina.Payments.Infrastructure.Repositories.ExchangeRateRepository>();
 builder.Services.AddScoped<Ordina.Payments.Application.Interfaces.IExchangeRateService, Ordina.Payments.Application.Services.ExchangeRateService>();
+
+// BCV: cliente HTTP con validación TLS relajada (cadena incompleta en bcv.org.ve)
+builder.Services
+    .AddHttpClient<IBcvScraperService, BcvScraperService>()
+    .ConfigurePrimaryHttpMessageHandler(static () => new HttpClientHandler
+    {
+        ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+    });
+
+builder.Services.AddHostedService<BcvRateRefreshService>();
 
 // Add CORS
 builder.Services.AddCors(options =>

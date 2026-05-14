@@ -20,7 +20,6 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { NewOrderDialog } from "@/components/orders/new-order-dialog";
 import { useAuth } from "@/contexts/auth-context";
-import { ApiClient } from "@/lib/api-client";
 
 type Period = "day" | "week" | "month" | "year";
 type Tab =
@@ -44,94 +43,6 @@ export function Dashboard() {
 
   /** null = aún no cargado; evita múltiples getOrders en cabecera/tabla/métricas. */
   const [sharedOrders, setSharedOrders] = useState<Order[] | null>(null);
-
-  const run = async (ac: AbortController, cancelled: boolean) => {
-    try {
-      const response = await fetch("/api/scrapping", { signal: ac.signal });
-      if (cancelled) return;
-
-      const data = await response.json();
-      if (cancelled) return;
-
-      const client = new ApiClient();
-      const active = await client.getActiveExchangeRates();
-      if (cancelled) return;
-
-      console.log("Valor activo", active);
-
-      if (active.length > 0) {
-        const items = active.filter((i) => i.isActive === true);
-
-        for (const i of items) {
-          if (cancelled) return;
-
-          const effectiveDate = new Date(i.effectiveDate)
-            .toISOString()
-            .slice(0, 10);
-          const lastUpdated = new Date(data.lastUpdated)
-            .toISOString()
-            .slice(0, 10);
-
-          if (effectiveDate === lastUpdated) continue;
-
-          if (i.toCurrency === "USD" && data.dolar) {
-            await client.setExchangeRate({
-              fromCurrency: "Bs",
-              toCurrency: "USD",
-              rate: Number(data.dolar.toFixed(4)),
-            });
-          } else if (i.toCurrency === "EUR" && data.euro) {
-            await client.setExchangeRate({
-              fromCurrency: "Bs",
-              toCurrency: "EUR",
-              rate: Number(data.euro.toFixed(4)),
-            });
-          }
-
-          if (cancelled) return;
-        }
-      } else {
-        if (cancelled) return;
-
-        if (data.dolar) {
-          await client.setExchangeRate({
-            fromCurrency: "Bs",
-            toCurrency: "USD",
-            rate: Number(data.dolar.toFixed(4)),
-          });
-        }
-        if (cancelled) return;
-
-        if (data.euro) {
-          await client.setExchangeRate({
-            fromCurrency: "Bs",
-            toCurrency: "EUR",
-            rate: Number(data.euro.toFixed(4)),
-          });
-        }
-      }
-
-      if (!cancelled) {
-        console.log("RESPUESTA del Banco Central de Venezuela", data);
-      }
-    } catch (error) {
-      if (cancelled) return;
-      if (error instanceof Error && error.name === "AbortError") return;
-      console.error("Error al obtener las tasas:", `${error}`);
-    }
-  };
-
-  useEffect(() => {
-    const ac = new AbortController();
-    let cancelled = false;
-
-    void run(ac, cancelled);
-
-    return () => {
-      cancelled = true;
-      ac.abort();
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
