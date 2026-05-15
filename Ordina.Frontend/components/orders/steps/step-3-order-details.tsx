@@ -1300,7 +1300,9 @@ export function Step3OrderDetails({
               <div className="space-y-2">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                   <Label className="text-sm sm:text-base">Pagos</Label>
-                  {addPayment && !casheaOneLineOnly && (
+                  {addPayment && (
+                    //!casheaOneLineOnly
+                    //&&
                     <Button
                       type="button"
                       variant="outline"
