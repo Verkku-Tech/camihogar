@@ -913,16 +913,24 @@ export function useEditOrderForm(
     calculateTotal();
   }, [payments]);
 
+  const casheaInStorePayments = payments.filter(
+    (p) => !p.paymentDetails?.casheaFinancedPortion,
+  );
+  const casheaPaidSumBs = casheaInStorePayments.reduce(
+    (s, p) => s + (p.amount || 0),
+    0,
+  );
+  const casheaCapBs =
+    total - appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS;
   const remainingAmount = total - appliedCreditBsApprox - totalPaidInBs;
   const isPaymentsValid =
     paymentCondition === "pago_a_entrega" ||
     paymentCondition === "pagara_en_tienda"
       ? true
       : paymentCondition === "cashea"
-        ? payments.length === 1 &&
-          (payments[0].amount || 0) > 0 &&
-          (payments[0].amount || 0) <=
-            total - appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS
+        ? casheaInStorePayments.length >= 1 &&
+          casheaPaidSumBs > 0 &&
+          casheaPaidSumBs <= casheaCapBs
         : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
 
   // Formatear precios
