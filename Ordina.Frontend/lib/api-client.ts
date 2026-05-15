@@ -768,13 +768,15 @@ export class ApiClient {
     return this.request<ProductResponseDto[]>("/api/products");
   }
 
-  async getProductsPaginated(params: {
-    page?: number;
-    pageSize?: number;
-    search?: string;
-    categoryId?: string;
-    status?: string;
-  } = {}) {
+  async getProductsPaginated(
+    params: {
+      page?: number;
+      pageSize?: number;
+      search?: string;
+      categoryId?: string;
+      status?: string;
+    } = {},
+  ) {
     const query = new URLSearchParams();
     if (params.page) query.set("page", params.page.toString());
     if (params.pageSize) query.set("pageSize", params.pageSize.toString());
@@ -875,10 +877,7 @@ export class ApiClient {
     return response.json();
   }
 
-  async exportProducts(
-    includeData: boolean,
-    currency: string,
-  ): Promise<void> {
+  async exportProducts(includeData: boolean, currency: string): Promise<void> {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     const baseUrl = this.getBaseUrl("/api/products/export");
@@ -1013,7 +1012,8 @@ export class ApiClient {
   }
 
   async importClients(file: File): Promise<ImportClientsResultDto> {
-    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     const baseUrl = this.getBaseUrl("/api/clients/import");
     const url = `${baseUrl}/api/clients/import`;
     const formData = new FormData();
@@ -1215,10 +1215,13 @@ export class ApiClient {
   }
 
   async confirmPendingOrder(id: string, body: ConfirmOrderDto) {
-    return this.request<OrderResponseDto>(`/api/Orders/${encodeURIComponent(id)}/confirm`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
+    return this.request<OrderResponseDto>(
+      `/api/Orders/${encodeURIComponent(id)}/confirm`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    );
   }
 
   async convertBudgetToOrder(id: string, body: ConvertBudgetToOrderDto) {
@@ -1258,9 +1261,12 @@ export class ApiClient {
   }
 
   async validateOrderItem(orderId: string, itemId: string) {
-    return this.request<OrderResponseDto>(`/api/Orders/${orderId}/items/${itemId}/validate`, {
-      method: "PATCH",
-    });
+    return this.request<OrderResponseDto>(
+      `/api/Orders/${orderId}/items/${itemId}/validate`,
+      {
+        method: "PATCH",
+      },
+    );
   }
 
   /** Marca o desmarca conciliación de uno o más pagos (pedido). */
@@ -1271,15 +1277,17 @@ export class ApiClient {
     });
   }
 
-  async getOrderAuditLogs(params: {
-    page?: number;
-    pageSize?: number;
-    userId?: string;
-    orderNumber?: string;
-    action?: string;
-    from?: string;
-    to?: string;
-  } = {}) {
+  async getOrderAuditLogs(
+    params: {
+      page?: number;
+      pageSize?: number;
+      userId?: string;
+      orderNumber?: string;
+      action?: string;
+      from?: string;
+      to?: string;
+    } = {},
+  ) {
     const sp = new URLSearchParams();
     if (params.page != null) sp.set("page", String(params.page));
     if (params.pageSize != null) sp.set("pageSize", String(params.pageSize));
@@ -1392,7 +1400,9 @@ export class ApiClient {
     );
   }
 
-  async seedDefaultSaleTypeRules(force = false): Promise<SaleTypeCommissionRuleDto[]> {
+  async seedDefaultSaleTypeRules(
+    force = false,
+  ): Promise<SaleTypeCommissionRuleDto[]> {
     const q = force ? "?force=true" : "";
     return this.request<SaleTypeCommissionRuleDto[]>(
       `/api/CommissionSettings/SaleTypeRules/SeedDefaults${q}`,

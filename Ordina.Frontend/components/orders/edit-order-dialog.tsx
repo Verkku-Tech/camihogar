@@ -382,17 +382,18 @@ export function EditOrderDialog({
         );
         return;
       }
-      if (paymentCondition === "cashea") {
-        if (orderForm.payments.length !== 1) {
-          toast.error(
-            "Cashea: registre exactamente un pago inicial en tienda.",
-          );
-          return;
-        }
-      } else if (orderForm.payments.length === 0) {
-        toast.error("Debe agregar al menos un pago");
-        return;
-      }
+      // if (paymentCondition === "cashea") {
+      //   if (orderForm.payments.length !== 1) {
+      //     toast.error(
+      //       "Cashea: registre exactamente un pago inicial en tienda.",
+      //     );
+      //     return;
+      //   }
+      // }
+      // else if (orderForm.payments.length === 0) {
+      //   toast.error("Debe agregar al menos un pago");
+      //   return;
+      // }
 
       for (let i = 0; i < orderForm.payments.length; i++) {
         const payment = orderForm.payments[i];
@@ -479,9 +480,13 @@ export function EditOrderDialog({
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (paymentCondition === "cashea") {
+        const casheaTotalDueBs = Math.max(
+          0,
+          orderForm.total - orderForm.appliedCreditBsApprox,
+        );
         paymentsNorm = buildCasheaPaymentsForSave(
           paymentsNorm,
-          orderForm.total,
+          casheaTotalDueBs,
         );
       }
       const multi = paymentsNorm.length > 1;
@@ -656,14 +661,16 @@ export function EditOrderDialog({
 
       if (orderForm.paymentCondition === "pago_a_entrega") {
         // Sin líneas de pago en tienda
-      } else if (orderForm.paymentCondition === "cashea") {
-        if (orderForm.payments.length !== 1) {
-          toast.error(
-            "Cashea: registre exactamente un pago inicial en tienda.",
-          );
-          return;
-        }
-      } else if (orderForm.payments.length === 0) {
+      }
+      // else if (orderForm.paymentCondition === "cashea") {
+      //   if (orderForm.payments.length !== 1) {
+      //     toast.error(
+      //       "Cashea: registre exactamente un pago inicial en tienda.",
+      //     );
+      //     return;
+      //   }
+      // }
+      else if (orderForm.payments.length === 0) {
         toast.error("Por favor agrega al menos un pago");
         return;
       }
@@ -883,9 +890,13 @@ export function EditOrderDialog({
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (orderForm.paymentCondition === "cashea") {
+        const casheaTotalDueBs = Math.max(
+          0,
+          orderForm.total - orderForm.appliedCreditBsApprox,
+        );
         paymentsNorm = buildCasheaPaymentsForSave(
           paymentsNorm,
-          orderForm.total,
+          casheaTotalDueBs,
         );
       }
       const multi = paymentsNorm.length > 1;
@@ -1288,10 +1299,11 @@ export function EditOrderDialog({
               orderForm={orderForm}
               onSubmit={isPaymentsOnly ? handleSavePaymentsOnly : handleSubmit}
               addPayment={
-                orderForm.paymentCondition === "cashea" &&
-                orderForm.payments.length >= 1
-                  ? undefined
-                  : addPayment
+                // orderForm.paymentCondition === "cashea" &&
+                // orderForm.payments.length >= 1
+                //   ? undefined
+                //   :
+                addPayment
               }
               updatePayment={updatePayment}
               updatePaymentDetails={updatePaymentDetails}
