@@ -111,3 +111,8 @@ docker-compose*.override.yml
 # Logs
 logs/
 *.log
+
+# Skills / agentes locales (Cursor, Kiro, lock de skills) — no versionar
+.agents/
+.kiro/
+skills-lock.json
