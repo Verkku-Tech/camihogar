@@ -390,23 +390,26 @@ export function ConfirmOrderDialog({
       paymentCondition: paymentCondition || undefined,
       paymentDetails:
         paymentCondition === "pago_a_entrega" ||
-        paymentCondition === "pagara_en_tienda" ||
+        // ||
+        // paymentCondition === "pagara_en_tienda"
         paymentsNorm.length === 0
           ? undefined
           : !multi
             ? paymentsNorm[0]?.paymentDetails
             : undefined,
       partialPayments:
-        paymentCondition === "pago_a_entrega" ||
-        paymentCondition === "pagara_en_tienda"
-          ? undefined
+        paymentCondition === "pago_a_entrega"
+          ? // ||
+            // paymentCondition === "pagara_en_tienda"
+            undefined
           : multi
             ? []
             : paymentsNorm,
       mixedPayments:
-        paymentCondition === "pago_a_entrega" ||
-        paymentCondition === "pagara_en_tienda"
-          ? undefined
+        paymentCondition === "pago_a_entrega"
+          ? // ||
+            // paymentCondition === "pagara_en_tienda"
+            undefined
           : multi
             ? paymentsNorm
             : undefined,

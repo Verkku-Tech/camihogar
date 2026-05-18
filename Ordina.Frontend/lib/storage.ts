@@ -1705,6 +1705,7 @@ export interface PartialPayment {
 export interface Order {
   id: string;
   orderNumber: string;
+  convertedFromNumber?: string;
   clientId: string;
   clientName: string;
   vendorId: string;
@@ -1961,6 +1962,7 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     dto.orderNumber ??
     (dto as unknown as { OrderNumber?: string }).OrderNumber ??
     "",
+  convertedFromNumber: dto.convertedFromNumber,
   clientId: dto.clientId,
   clientName: dto.clientName,
   vendorId: dto.vendorId,
