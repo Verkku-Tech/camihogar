@@ -609,6 +609,7 @@ export default function OrderDetailPage() {
       const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
       if (foundOrder) {
         setOrder(foundOrder);
+        console.log("INFORMACIÓN DEL PEDIDO >>>>", foundOrder);
       }
       toast.success("Pedido validado exitosamente");
     } catch (error) {
@@ -675,6 +676,7 @@ export default function OrderDetailPage() {
         }
 
         setOrder(foundOrder);
+        console.log("INFORMACIÓN DEL PEDIDO >>>>", foundOrder);
 
         // Cargar información completa del cliente
         if (foundOrder.clientId) {
@@ -1329,8 +1331,33 @@ export default function OrderDetailPage() {
                     <HoverCardTrigger asChild>
                       <div className="cursor-help border-b border-dashed border-transparent hover:border-muted-foreground/40 pb-0.5 transition-colors">
                         <h1 className="text-2xl font-bold">
-                          Pedido {order.orderNumber}
+                          {order.type === "PendingConfirmation"
+                            ? "Orden "
+                            : "Pedido "}
+
+                          {order.orderNumber}
+                          {order.convertedFromNumber !== null &&
+                          order.convertedFromNumber !== "" ? (
+                            <>
+                              {", Convertido de Orden "}
+                              <button
+                                type="button"
+                                className="font-bold text-primary underline-offset-4 hover:underline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(
+                                    `/pedidos/${encodeURIComponent(order.convertedFromNumber!)}`,
+                                  );
+                                }}
+                              >
+                                {order.convertedFromNumber}
+                              </button>
+                            </>
+                          ) : (
+                            ""
+                          )}
                         </h1>
+
                         <p className="text-sm text-muted-foreground">
                           {new Date(order.createdAt).toLocaleString()}
                         </p>

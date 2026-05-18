@@ -12,6 +12,9 @@ public class Order
     [BsonElement("orderNumber")]
     public string OrderNumber { get; set; } = string.Empty;
 
+    [BsonElement("convertedFromNumber")]
+    public string ConvertedFromNumber { get; set; } = string.Empty;
+
     [BsonElement("clientId")]
     public string ClientId { get; set; } = string.Empty;
 

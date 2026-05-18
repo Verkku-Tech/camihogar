@@ -51,5 +51,7 @@ public class ConfirmOrderDto
     public string? PostventaId { get; set; }
     public string? PostventaName { get; set; }
 
+    public string? ConvertedFromNumber { get; set; }
+
     public ExchangeRatesAtCreationDto? ExchangeRatesAtCreation { get; set; }
 }
