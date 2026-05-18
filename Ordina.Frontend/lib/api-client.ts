@@ -1961,6 +1961,7 @@ export interface RecordOverpaymentCreditResponseDto {
 export interface OrderResponseDto {
   id: string;
   orderNumber: string;
+  convertedFromNumber: string;
   clientId: string;
   clientName: string;
   vendorId: string;

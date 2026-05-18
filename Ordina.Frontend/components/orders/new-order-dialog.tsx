@@ -509,7 +509,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         total: orderForm.total,
         paymentType: "directo",
         paymentMethod: "N/A",
-        paymentCondition: "pagara_en_tienda",
+        paymentCondition: orderForm.paymentCondition as
+          | "cashea"
+          | "pagara_en_tienda"
+          | "pago_a_entrega"
+          | "pago_parcial"
+          | "todo_pago",
         saleType: orderForm.saleType as Order["saleType"],
         deliveryType: orderForm.deliveryType as Order["deliveryType"],
         deliveryZone: orderForm.deliveryZone as Order["deliveryZone"],
@@ -560,7 +565,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       const created = await addPendingConfirmationOrder(orderData);
       toast.success(
-        `Pedido por confirmar ${created.orderNumber} guardado. Visible en el historial del cliente.`,
+        `Se ha generado la orden ${created.orderNumber}. Visible en el historial del cliente.`,
       );
       orderForm.clearDraftStorage();
       orderForm.resetForm();
@@ -1164,7 +1169,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           Guardando…
                         </>
                       ) : (
-                        "Guardar Pedido por Confirmar"
+                        "Guardar Orden"
                       )}
                     </Button>
                     <Button

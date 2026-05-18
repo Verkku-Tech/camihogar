@@ -944,23 +944,26 @@ export function EditOrderDialog({
           paymentCondition: orderForm.paymentCondition || undefined,
           paymentDetails:
             orderForm.paymentCondition === "pago_a_entrega" ||
-            orderForm.paymentCondition === "pagara_en_tienda" ||
+            // ||
+            // orderForm.paymentCondition === "pagara_en_tienda"
             orderForm.payments.length === 0
               ? undefined
               : !multi
                 ? paymentsNorm[0]?.paymentDetails
                 : undefined,
           partialPayments:
-            orderForm.paymentCondition === "pago_a_entrega" ||
-            orderForm.paymentCondition === "pagara_en_tienda"
-              ? undefined
+            orderForm.paymentCondition === "pago_a_entrega"
+              ? // ||
+                // orderForm.paymentCondition === "pagara_en_tienda"
+                undefined
               : multi
                 ? []
                 : paymentsNorm,
           mixedPayments:
-            orderForm.paymentCondition === "pago_a_entrega" ||
-            orderForm.paymentCondition === "pagara_en_tienda"
-              ? undefined
+            orderForm.paymentCondition === "pago_a_entrega"
+              ? // ||
+                // orderForm.paymentCondition === "pagara_en_tienda"
+                undefined
               : multi
                 ? paymentsNorm
                 : undefined,
