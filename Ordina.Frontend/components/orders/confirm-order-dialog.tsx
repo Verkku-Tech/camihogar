@@ -28,7 +28,11 @@ import {
 } from "@/components/ui/table";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/auth-context";
-import { apiClient, type ConfirmOrderDto, type OrderProductDto } from "@/lib/api-client";
+import {
+  apiClient,
+  type ConfirmOrderDto,
+  type OrderProductDto,
+} from "@/lib/api-client";
 import type { Order, OrderProduct, PartialPayment } from "@/lib/storage";
 import { ProductSelectionDialog } from "@/components/orders/product-selection-dialog";
 import { ProductEditDialog } from "@/components/orders/product-edit-dialog";
@@ -114,31 +118,46 @@ export function ConfirmOrderDialog({
   const [deliveryZone, setDeliveryZone] = useState<string>("");
   const [deliveryCost, setDeliveryCost] = useState(0);
   const [generalDiscountAmount, setGeneralDiscountAmount] = useState(0);
-  const [generalDiscountType, setGeneralDiscountType] = useState<string | undefined>();
-  const [generalDiscountPercent, setGeneralDiscountPercent] = useState<number | undefined>();
+  const [generalDiscountType, setGeneralDiscountType] = useState<
+    string | undefined
+  >();
+  const [generalDiscountPercent, setGeneralDiscountPercent] = useState<
+    number | undefined
+  >();
   const [taxEnabled, setTaxEnabled] = useState(true);
   const [observations, setObservations] = useState("");
   const [hasDelivery, setHasDelivery] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [exchangeRatesAtCreation, setExchangeRatesAtCreation] = useState<
-    ConfirmOrderDto["exchangeRatesAtCreation"]
+  const [exchangeRatesAtCreation, setExchangeRatesAtCreation] =
+    useState<ConfirmOrderDto["exchangeRatesAtCreation"]>();
+  const [productMarkups, setProductMarkups] = useState<
+    Record<string, number> | undefined
   >();
-  const [productMarkups, setProductMarkups] = useState<Record<string, number> | undefined>();
   const [createSupplierOrder, setCreateSupplierOrder] = useState(false);
   const [postventaId, setPostventaId] = useState<string | undefined>();
   const [postventaName, setPostventaName] = useState<string | undefined>();
-  const [deliveryServices, setDeliveryServices] = useState<Order["deliveryServices"]>();
+  const [deliveryServices, setDeliveryServices] =
+    useState<Order["deliveryServices"]>();
 
   const [paymentCondition, setPaymentCondition] = useState<
-    "cashea" | "pagara_en_tienda" | "pago_a_entrega" | "pago_parcial" | "todo_pago" | ""
+    | "cashea"
+    | "pagara_en_tienda"
+    | "pago_a_entrega"
+    | "pago_parcial"
+    | "todo_pago"
+    | ""
   >("pagara_en_tienda");
   const [payments, setPayments] = useState<PartialPayment[]>([]);
 
   const [productSelectOpen, setProductSelectOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<OrderProduct | null>(null);
-  const [removingProduct, setRemovingProduct] = useState<OrderProduct | null>(null);
+  const [editingProduct, setEditingProduct] = useState<OrderProduct | null>(
+    null,
+  );
+  const [removingProduct, setRemovingProduct] = useState<OrderProduct | null>(
+    null,
+  );
 
   const resetState = useCallback(() => {
     setPcfType(null);
@@ -201,8 +220,10 @@ export function ConfirmOrderDialog({
               uploadedAt: img.uploadedAt,
               size: img.size,
             })),
-            availabilityStatus: p.availabilityStatus as OrderProduct["availabilityStatus"],
-            manufacturingStatus: p.manufacturingStatus as OrderProduct["manufacturingStatus"],
+            availabilityStatus:
+              p.availabilityStatus as OrderProduct["availabilityStatus"],
+            manufacturingStatus:
+              p.manufacturingStatus as OrderProduct["manufacturingStatus"],
             manufacturingProviderId: p.manufacturingProviderId,
             manufacturingProviderName: p.manufacturingProviderName,
             manufacturingStartedAt: p.manufacturingStartedAt,
@@ -237,7 +258,8 @@ export function ConfirmOrderDialog({
         setDeliveryServices(dto.deliveryServices as Order["deliveryServices"]);
       } catch (e) {
         console.error(e);
-        if (!cancelled) toast.error("No se pudo cargar el pedido por confirmar.");
+        if (!cancelled)
+          toast.error("No se pudo cargar el pedido por confirmar.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -254,7 +276,10 @@ export function ConfirmOrderDialog({
   );
   const subtotal = productSubtotal;
   const taxAmount = taxEnabled ? subtotal * 0.16 : 0;
-  const total = Math.max(0, subtotal + taxAmount + deliveryCost - generalDiscountAmount);
+  const total = Math.max(
+    0,
+    subtotal + taxAmount + deliveryCost - generalDiscountAmount,
+  );
 
   const addPayment = () => {
     const newPayment: PartialPayment = {
@@ -269,11 +294,14 @@ export function ConfirmOrderDialog({
   };
 
   const validatePayments = (): boolean => {
-    if (paymentCondition === "pago_a_entrega" || paymentCondition === "pagara_en_tienda")
+    if (
+      paymentCondition === "pago_a_entrega" ||
+      paymentCondition === "pagara_en_tienda"
+    )
       return true;
     if (paymentCondition === "cashea") {
-      if (payments.length !== 1) {
-        toast.error("Cashea: registre exactamente un pago inicial.");
+      if (payments.length < 1) {
+        toast.error("Cashea: registre al menos un pago inicial.");
         return false;
       }
     } else if (payments.length === 0) {
@@ -292,16 +320,23 @@ export function ConfirmOrderDialog({
         return false;
       }
       if (
-        (paymentMethodsRequiringReceivingAccount as readonly string[]).includes(payment.method) &&
+        (paymentMethodsRequiringReceivingAccount as readonly string[]).includes(
+          payment.method,
+        ) &&
         !payment.paymentDetails?.accountId
       ) {
         toast.error(`${label}: selecciona cuenta receptora`);
         return false;
       }
     }
-    if (paymentCondition === "cashea" && payments[0] && payments[0].amount > total + PAYMENT_BALANCE_EPSILON_BS) {
-      toast.error("El monto del pago inicial no puede superar el total.");
-      return false;
+    if (paymentCondition === "cashea") {
+      const paidSumBs = payments.reduce((s, p) => s + (p.amount || 0), 0);
+      if (paidSumBs > total + PAYMENT_BALANCE_EPSILON_BS) {
+        toast.error(
+          "La suma de los cobros en tienda no puede superar el total del pedido.",
+        );
+        return false;
+      }
     }
     return true;
   };
@@ -355,21 +390,26 @@ export function ConfirmOrderDialog({
       paymentCondition: paymentCondition || undefined,
       paymentDetails:
         paymentCondition === "pago_a_entrega" ||
-        paymentCondition === "pagara_en_tienda" ||
+        // ||
+        // paymentCondition === "pagara_en_tienda"
         paymentsNorm.length === 0
           ? undefined
           : !multi
             ? paymentsNorm[0]?.paymentDetails
             : undefined,
       partialPayments:
-        paymentCondition === "pago_a_entrega" || paymentCondition === "pagara_en_tienda"
-          ? undefined
+        paymentCondition === "pago_a_entrega"
+          ? // ||
+            // paymentCondition === "pagara_en_tienda"
+            undefined
           : multi
             ? []
             : paymentsNorm,
       mixedPayments:
-        paymentCondition === "pago_a_entrega" || paymentCondition === "pagara_en_tienda"
-          ? undefined
+        paymentCondition === "pago_a_entrega"
+          ? // ||
+            // paymentCondition === "pagara_en_tienda"
+            undefined
           : multi
             ? paymentsNorm
             : undefined,
@@ -384,7 +424,8 @@ export function ConfirmOrderDialog({
       taxAmount,
       deliveryCost,
       total,
-      generalDiscountAmount: generalDiscountAmount > 0 ? generalDiscountAmount : undefined,
+      generalDiscountAmount:
+        generalDiscountAmount > 0 ? generalDiscountAmount : undefined,
       ...(generalDiscountAmount > 0 &&
       generalDiscountType === "porcentaje" &&
       generalDiscountPercent != null &&
@@ -413,9 +454,11 @@ export function ConfirmOrderDialog({
     }
   };
 
-  const canAddPayment =
-    paymentCondition !== "pago_a_entrega" &&
-    !(paymentCondition === "cashea" && payments.length >= 1);
+  const canAddPayment = paymentCondition !== "pago_a_entrega";
+  // &&
+  // !(paymentCondition === "cashea"
+  //   &&
+  //    payments.length >= 1);
 
   return (
     <>
@@ -424,8 +467,9 @@ export function ConfirmOrderDialog({
           <DialogHeader>
             <DialogTitle>Confirmar pedido (tienda)</DialogTitle>
             <DialogDescription>
-              Revisa productos y completa el pago. Si cambias productos, la comisión se reparte entre tienda y vendedor
-              online según las reglas.
+              Revisa productos y completa el pago. Si cambias productos, la
+              comisión se reparte entre tienda y vendedor online según las
+              reglas.
             </DialogDescription>
           </DialogHeader>
 
@@ -439,7 +483,12 @@ export function ConfirmOrderDialog({
               <p className="text-sm text-muted-foreground">{clientLabel}</p>
 
               <div className="flex flex-wrap gap-2 items-center">
-                <Button type="button" size="sm" variant="outline" onClick={() => setProductSelectOpen(true)}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setProductSelectOpen(true)}
+                >
                   <Plus className="h-4 w-4 mr-1" />
                   Agregar producto
                 </Button>
@@ -460,7 +509,9 @@ export function ConfirmOrderDialog({
                       <TableCell className="font-medium">{p.name}</TableCell>
                       <TableCell className="text-right">{p.quantity}</TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {p.total.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                        {p.total.toLocaleString("es-VE", {
+                          minimumFractionDigits: 2,
+                        })}
                       </TableCell>
                       <TableCell className="text-right space-x-1">
                         <Button
@@ -494,19 +545,29 @@ export function ConfirmOrderDialog({
               <div className="grid gap-2 sm:grid-cols-2 text-sm border-t pt-3">
                 <div>Subtotal productos</div>
                 <div className="text-right tabular-nums">
-                  Bs. {subtotal.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                  Bs.{" "}
+                  {subtotal.toLocaleString("es-VE", {
+                    minimumFractionDigits: 2,
+                  })}
                 </div>
                 <div>IVA (16%)</div>
                 <div className="text-right tabular-nums">
-                  Bs. {taxAmount.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                  Bs.{" "}
+                  {taxAmount.toLocaleString("es-VE", {
+                    minimumFractionDigits: 2,
+                  })}
                 </div>
                 <div>Delivery</div>
                 <div className="text-right tabular-nums">
-                  Bs. {deliveryCost.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                  Bs.{" "}
+                  {deliveryCost.toLocaleString("es-VE", {
+                    minimumFractionDigits: 2,
+                  })}
                 </div>
                 <div className="font-medium">Total</div>
                 <div className="text-right font-medium tabular-nums">
-                  Bs. {total.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                  Bs.{" "}
+                  {total.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
                 </div>
               </div>
 
@@ -516,7 +577,12 @@ export function ConfirmOrderDialog({
                   value={paymentCondition}
                   onValueChange={(v) =>
                     setPaymentCondition(
-                      v as "cashea" | "pagara_en_tienda" | "pago_a_entrega" | "pago_parcial" | "todo_pago",
+                      v as
+                        | "cashea"
+                        | "pagara_en_tienda"
+                        | "pago_a_entrega"
+                        | "pago_parcial"
+                        | "todo_pago",
                     )
                   }
                 >
@@ -538,24 +604,36 @@ export function ConfirmOrderDialog({
                   <div className="flex justify-between items-center">
                     <Label>Pagos</Label>
                     {canAddPayment && (
-                      <Button type="button" size="sm" variant="outline" onClick={addPayment}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={addPayment}
+                      >
                         <Plus className="h-4 w-4 mr-1" />
                         Agregar pago
                       </Button>
                     )}
                   </div>
                   {payments.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Sin líneas de pago.</p>
+                    <p className="text-sm text-muted-foreground">
+                      Sin líneas de pago.
+                    </p>
                   ) : (
                     payments.map((pay) => (
-                      <div key={pay.id} className="flex flex-wrap gap-2 items-end border rounded-md p-2">
+                      <div
+                        key={pay.id}
+                        className="flex flex-wrap gap-2 items-end border rounded-md p-2"
+                      >
                         <div className="flex-1 min-w-[120px]">
                           <Label className="text-xs">Método</Label>
                           <Select
                             value={pay.method}
                             onValueChange={(v) =>
                               setPayments((list) =>
-                                list.map((p) => (p.id === pay.id ? { ...p, method: v } : p)),
+                                list.map((p) =>
+                                  p.id === pay.id ? { ...p, method: v } : p,
+                                ),
                               )
                             }
                           >
@@ -564,9 +642,15 @@ export function ConfirmOrderDialog({
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="Efectivo">Efectivo</SelectItem>
-                              <SelectItem value="Pago Móvil">Pago Móvil</SelectItem>
-                              <SelectItem value="Transferencia">Transferencia</SelectItem>
-                              <SelectItem value="Punto de Venta">Punto de Venta</SelectItem>
+                              <SelectItem value="Pago Móvil">
+                                Pago Móvil
+                              </SelectItem>
+                              <SelectItem value="Transferencia">
+                                Transferencia
+                              </SelectItem>
+                              <SelectItem value="Punto de Venta">
+                                Punto de Venta
+                              </SelectItem>
                               <SelectItem value="Zelle">Zelle</SelectItem>
                             </SelectContent>
                           </Select>
@@ -580,7 +664,12 @@ export function ConfirmOrderDialog({
                             onChange={(e) =>
                               setPayments((list) =>
                                 list.map((p) =>
-                                  p.id === pay.id ? { ...p, amount: Number(e.target.value) || 0 } : p,
+                                  p.id === pay.id
+                                    ? {
+                                        ...p,
+                                        amount: Number(e.target.value) || 0,
+                                      }
+                                    : p,
                                 ),
                               )
                             }
@@ -590,7 +679,11 @@ export function ConfirmOrderDialog({
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => setPayments((list) => list.filter((p) => p.id !== pay.id))}
+                          onClick={() =>
+                            setPayments((list) =>
+                              list.filter((p) => p.id !== pay.id),
+                            )
+                          }
                         >
                           Quitar
                         </Button>
@@ -603,10 +696,19 @@ export function ConfirmOrderDialog({
           )}
 
           <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting}
+            >
               Cancelar
             </Button>
-            <Button type="button" onClick={() => void handleConfirm()} disabled={loading || submitting}>
+            <Button
+              type="button"
+              onClick={() => void handleConfirm()}
+              disabled={loading || submitting}
+            >
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -632,7 +734,9 @@ export function ConfirmOrderDialog({
         onOpenChange={setEditOpen}
         product={editingProduct}
         onProductUpdate={(updated) => {
-          setProducts((list) => list.map((p) => (p.id === updated.id ? updated : p)));
+          setProducts((list) =>
+            list.map((p) => (p.id === updated.id ? updated : p)),
+          );
           setEditOpen(false);
           setEditingProduct(null);
         }}
@@ -644,7 +748,9 @@ export function ConfirmOrderDialog({
         product={removingProduct}
         onConfirm={() => {
           if (removingProduct) {
-            setProducts((list) => list.filter((p) => p.id !== removingProduct.id));
+            setProducts((list) =>
+              list.filter((p) => p.id !== removingProduct.id),
+            );
             setRemovingProduct(null);
             setRemoveOpen(false);
           }

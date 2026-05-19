@@ -1,3 +1,5 @@
+using System.Linq;
+using System.Text.Json;
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
@@ -6,8 +8,6 @@ using MongoDB.Driver;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.Repositories;
 using Ordina.Orders.Application.DTOs;
-using System.Text.Json;
-using System.Linq;
 
 namespace Ordina.Orders.Application.Services;
 
@@ -348,6 +348,7 @@ public class OrderService : IOrderService
 
         var newOrder = new Order
         {
+            ConvertedFromNumber = pcf.OrderNumber,
             ClientId = pcf.ClientId,
             ClientName = pcf.ClientName,
             VendorId = vendorId,
@@ -879,6 +880,7 @@ public class OrderService : IOrderService
         {
             Id = order.Id,
             OrderNumber = order.OrderNumber,
+            ConvertedFromNumber = order.ConvertedFromNumber,
             ClientId = order.ClientId,
             ClientName = order.ClientName,
             VendorId = order.VendorId,

@@ -4,6 +4,7 @@ public class OrderResponseDto
 {
     public string Id { get; set; } = string.Empty;
     public string OrderNumber { get; set; } = string.Empty;
+    public string ConvertedFromNumber { get; set; } = string.Empty;
     public string ClientId { get; set; } = string.Empty;
     public string ClientName { get; set; } = string.Empty;
     public string VendorId { get; set; } = string.Empty;

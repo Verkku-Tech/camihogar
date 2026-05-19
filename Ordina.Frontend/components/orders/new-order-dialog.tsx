@@ -509,7 +509,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         total: orderForm.total,
         paymentType: "directo",
         paymentMethod: "N/A",
-        paymentCondition: "pagara_en_tienda",
+        paymentCondition: orderForm.paymentCondition as
+          | "cashea"
+          | "pagara_en_tienda"
+          | "pago_a_entrega"
+          | "pago_parcial"
+          | "todo_pago",
         saleType: orderForm.saleType as Order["saleType"],
         deliveryType: orderForm.deliveryType as Order["deliveryType"],
         deliveryZone: orderForm.deliveryZone as Order["deliveryZone"],
@@ -560,7 +565,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       const created = await addPendingConfirmationOrder(orderData);
       toast.success(
-        `Pedido por confirmar ${created.orderNumber} guardado. Visible en el historial del cliente.`,
+        `Se ha generado la orden ${created.orderNumber}. Visible en el historial del cliente.`,
       );
       orderForm.clearDraftStorage();
       orderForm.resetForm();
@@ -611,14 +616,16 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       if (orderForm.paymentCondition === "pago_a_entrega") {
         // Sin líneas de pago en tienda
-      } else if (orderForm.paymentCondition === "cashea") {
-        if (orderForm.payments.length !== 1) {
-          toast.error(
-            "Cashea: registre exactamente un pago inicial en tienda.",
-          );
-          return;
-        }
-      } else if (orderForm.payments.length === 0) {
+      }
+      // else if (orderForm.paymentCondition === "cashea") {
+      //   if (orderForm.payments.length !== 1) {
+      //     toast.error(
+      //       "Cashea: registre exactamente un pago inicial en tienda.",
+      //     );
+      //     return;
+      //   }
+      // }
+      else if (orderForm.payments.length === 0) {
         toast.error("Por favor agrega al menos un pago");
         return;
       }
@@ -837,9 +844,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (orderForm.paymentCondition === "cashea") {
+        const casheaTotalDueBs = Math.max(
+          0,
+          orderForm.total - orderForm.appliedCreditBsApprox,
+        );
         paymentsNorm = buildCasheaPaymentsForSave(
           paymentsNorm,
-          orderForm.total,
+          casheaTotalDueBs,
         );
       }
       const multi = paymentsNorm.length > 1;
@@ -1094,10 +1105,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                 orderForm={orderForm}
                 onSubmit={handleSubmit}
                 addPayment={
-                  orderForm.paymentCondition === "cashea" &&
-                  orderForm.payments.length >= 1
-                    ? undefined
-                    : addPayment
+                  // orderForm.paymentCondition === "cashea" &&
+                  // orderForm.payments.length >= 1
+                  //   ? undefined
+                  //   :
+                  addPayment
                 }
                 updatePayment={updatePayment}
                 updatePaymentDetails={updatePaymentDetails}
@@ -1157,7 +1169,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                           Guardando…
                         </>
                       ) : (
-                        "Guardar Pedido por Confirmar"
+                        "Guardar Orden"
                       )}
                     </Button>
                     <Button
