@@ -5,6 +5,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.Repositories;
+using Ordina.Orders.Application;
 using Ordina.Orders.Application.DTOs;
 
 namespace Ordina.Orders.Application.Services;
@@ -189,8 +190,8 @@ public class OrderService : IOrderService
         try
         {
             var isBudget = string.Equals(createDto.Type, "Budget", StringComparison.Ordinal);
-            var isPendingConfirmation = string.Equals(createDto.Type, "PendingConfirmation", StringComparison.Ordinal);
-            var requiresPayment = !isBudget && !isPendingConfirmation;
+            var isReservation = OrderDocumentTypes.IsReservationType(createDto.Type);
+            var requiresPayment = !isBudget && !isReservation;
             if (requiresPayment)
             {
                 if (string.IsNullOrWhiteSpace(createDto.PaymentType))
@@ -199,23 +200,14 @@ public class OrderService : IOrderService
                     throw new ArgumentException("El método de pago es requerido para pedidos", nameof(createDto.PaymentMethod));
             }
 
-            var existingOrders = (await _orderRepository.GetAllAsync()).ToList();
-            var typeForCount = isBudget ? "Budget" : isPendingConfirmation ? "PendingConfirmation" : "Order";
-            var prefix = isBudget ? "PRE-" : isPendingConfirmation ? "PCF-" : "ORD-";
-            var countForType = existingOrders.Count(o => string.Equals(o.Type, typeForCount, StringComparison.Ordinal));
-            var orderNumber = $"{prefix}{String.Format("{0:D3}", countForType + 1)}";
+            var typeForCount = isBudget ? "Budget" : isReservation ? OrderDocumentTypes.Reservation : "Order";
+            var prefix = isBudget ? "PRE-" : isReservation ? OrderDocumentTypes.ReservationPrefix : "ORD-";
+            var orderNumber = await AllocateNextOrderNumberAsync(typeForCount, prefix);
 
-            int attempts = 0;
-            while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
-            {
-                orderNumber = $"{prefix}{String.Format("{0:D3}", countForType + attempts + 2)}";
-                attempts++;
-            }
-
-            var paymentType = isBudget || isPendingConfirmation
+            var paymentType = isBudget || isReservation
                 ? (string.IsNullOrWhiteSpace(createDto.PaymentType) ? "N/A" : createDto.PaymentType!)
                 : createDto.PaymentType!;
-            var paymentMethod = isBudget || isPendingConfirmation
+            var paymentMethod = isBudget || isReservation
                 ? (string.IsNullOrWhiteSpace(createDto.PaymentMethod) ? "N/A" : createDto.PaymentMethod!)
                 : createDto.PaymentMethod!;
 
@@ -260,8 +252,8 @@ public class OrderService : IOrderService
                 DeliveryType = createDto.DeliveryType,
                 DeliveryZone = createDto.DeliveryZone,
                 ExchangeRatesAtCreation = createDto.ExchangeRatesAtCreation != null ? MapExchangeRatesFromDto(createDto.ExchangeRatesAtCreation) : null,
-                Type = createDto.Type,
-                OriginalProducts = isPendingConfirmation ? CloneOrderProducts(mappedProducts) : null,
+                Type = isReservation ? OrderDocumentTypes.Reservation : createDto.Type,
+                OriginalProducts = isReservation ? CloneOrderProducts(mappedProducts) : null,
                 AppliedStoreCreditUsd = requiresPayment && createDto.AppliedStoreCreditUsd is > 0
                     ? Math.Round(createDto.AppliedStoreCreditUsd.Value, 2, MidpointRounding.AwayFromZero)
                     : 0,
@@ -292,17 +284,17 @@ public class OrderService : IOrderService
     public async Task<OrderResponseDto> ConfirmPendingOrderAsync(string pendingOrderId, ConfirmOrderDto confirmDto, string userId, string userName)
     {
         if (string.IsNullOrWhiteSpace(pendingOrderId))
-            throw new ArgumentException("El ID del pedido por confirmar es requerido", nameof(pendingOrderId));
+            throw new ArgumentException("El ID de la reserva es requerido", nameof(pendingOrderId));
 
         var pcf = await _orderRepository.GetByIdAsync(pendingOrderId);
         if (pcf == null)
             throw new KeyNotFoundException($"Pedido con ID {pendingOrderId} no encontrado");
 
-        if (!string.Equals(pcf.Type, "PendingConfirmation", StringComparison.Ordinal))
-            throw new ArgumentException("El documento no es un pedido por confirmar (PendingConfirmation).");
+        if (!OrderDocumentTypes.IsReservationType(pcf.Type))
+            throw new ArgumentException("El documento no es una reserva.");
 
-        if (!string.Equals(pcf.Status, "Por Confirmar", StringComparison.Ordinal))
-            throw new ArgumentException($"Solo se pueden confirmar pedidos en estado «Por Confirmar». Estado actual: {pcf.Status}");
+        if (!OrderDocumentTypes.IsActiveReservationStatus(pcf.Status))
+            throw new ArgumentException($"Solo se pueden confirmar reservas en estado «{OrderDocumentTypes.ReservationStatus}». Estado actual: {pcf.Status}");
 
         var baseline = pcf.OriginalProducts is { Count: > 0 } ? pcf.OriginalProducts : pcf.Products;
         List<OrderProduct> finalProducts;
@@ -851,7 +843,18 @@ public class OrderService : IOrderService
     // Mappers
     private static void NormalizeGeneralDiscountFields(Order order)
     {
-        if ((order.GeneralDiscountAmount ?? 0m) <= 0m)
+        var maxSuffix = await _orderRepository.GetMaxNumericSuffixForTypeAndPrefixAsync(orderType, prefix);
+        if (string.Equals(orderType, OrderDocumentTypes.Reservation, StringComparison.Ordinal)
+            && string.Equals(prefix, OrderDocumentTypes.ReservationPrefix, StringComparison.Ordinal))
+        {
+            var legacyMax = await _orderRepository.GetMaxNumericSuffixForTypeAndPrefixAsync(
+                OrderDocumentTypes.LegacyReservation,
+                OrderDocumentTypes.LegacyReservationPrefix);
+            maxSuffix = Math.Max(maxSuffix, legacyMax);
+        }
+        var candidate = maxSuffix + 1;
+        const int cap = 5000;
+        for (var i = 0; i < cap; i++)
         {
             order.GeneralDiscountAmount = null;
             order.GeneralDiscountType = null;
@@ -968,7 +971,7 @@ public class OrderService : IOrderService
     private void RecalculateOrderStatus(Order order)
     {
         if (string.Equals(order.Type, "Budget", StringComparison.Ordinal)
-            || string.Equals(order.Type, "PendingConfirmation", StringComparison.Ordinal))
+            || OrderDocumentTypes.IsReservationType(order.Type))
             return;
 
         if (order.Products == null || !order.Products.Any())

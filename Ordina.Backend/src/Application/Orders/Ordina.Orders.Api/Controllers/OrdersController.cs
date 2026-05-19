@@ -56,7 +56,7 @@ public class OrdersController : ControllerBase
             || string.Equals(role, "Administrator", StringComparison.Ordinal);
     }
 
-    private static bool CanConfirmPendingOrder(ClaimsPrincipal user)
+    private static bool CanConfirmReservation(ClaimsPrincipal user)
     {
         var role = user.FindFirstValue(ClaimTypes.Role);
         if (string.IsNullOrWhiteSpace(role)) return false;
@@ -415,7 +415,7 @@ public class OrdersController : ControllerBase
     }
 
     /// <summary>
-    /// Convierte un pedido por confirmar (PCF) en pedido real (ORD).
+    /// Convierte una reserva (RES-) en pedido real (ORD).
     /// </summary>
     [HttpPost("{id}/confirm")]
     [Authorize]
@@ -426,7 +426,7 @@ public class OrdersController : ControllerBase
     {
         try
         {
-            if (!CanConfirmPendingOrder(User))
+            if (!CanConfirmReservation(User))
                 return Forbid();
 
             if (string.IsNullOrWhiteSpace(id))

@@ -10,6 +10,7 @@ using Ordina.Database.Entities.Commission;
 using Ordina.Database.Entities.User;
 using Ordina.Database.Repositories;
 using Ordina.Orders.Application.Commission;
+using Ordina.Orders.Application;
 using Ordina.Orders.Application.DTOs;
 
 namespace Ordina.Orders.Application.Services;
@@ -882,9 +883,9 @@ public class ReportService : IReportService
 
         foreach (var order in orders)
         {
-            // Presupuestos y pedidos por confirmar no forman parte del reporte de pagos de pedidos
+            // Presupuestos y reservas no forman parte del reporte de pagos de pedidos
             if (string.Equals(order.Type, "Budget", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(order.Type, "PendingConfirmation", StringComparison.OrdinalIgnoreCase))
+                || OrderDocumentTypes.IsReservationType(order.Type))
                 continue;
 
             // Un solo origen de abonos (misma regla que el detalle del pedido): partial si existe, si no mixed
@@ -1389,7 +1390,7 @@ public class ReportService : IReportService
             if (order.CreatedAt < adjustedStartDate || order.CreatedAt > adjustedEndDate)
                 continue;
 
-            if (string.Equals(order.Type, "PendingConfirmation", StringComparison.OrdinalIgnoreCase))
+            if (OrderDocumentTypes.IsReservationType(order.Type))
                 continue;
 
             // Filtrar por vendedor si se especifica

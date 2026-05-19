@@ -3,6 +3,11 @@ import type { Currency } from "./currency-utils";
 import { normalizeExchangeRatesAtCreation } from "./currency-utils";
 import { apiClient } from "./api-client";
 import { generateUUID } from "./utils";
+import {
+  isReservationOrder,
+  ORDER_STATUS_RESERVA,
+  ORDER_TYPE_RESERVATION,
+} from "./order-document-types";
 
 import type {
   CategoryResponseDto,
@@ -1820,6 +1825,7 @@ export interface Order {
     | "Fabricación"
     | "Por despachar"
     | "Completada"
+    | "Reserva"
     | "Por Confirmar"
     | "Convertido";
   createdAt: string;
@@ -1934,15 +1940,11 @@ function isBackendBudgetOrder(
   return false;
 }
 
-/** Pedidos por confirmar (PCF): solo historial por cliente / flujo de confirmación, no listado principal de pedidos. */
-function isBackendPendingConfirmationOrder(
+/** Reservas: solo historial por cliente / flujo de confirmación, no listado principal de pedidos. */
+function isBackendReservationOrder(
   order: Pick<Order, "type" | "orderNumber">,
 ): boolean {
-  const t = (order.type || "").trim();
-  if (t === "PendingConfirmation") return true;
-  const num = (order.orderNumber || "").toUpperCase();
-  if (num.startsWith("PCF-")) return true;
-  return false;
+  return isReservationOrder(order);
 }
 
 // Helper functions para mapear orders entre frontend y backend
@@ -3450,11 +3452,11 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       budgets.map((b) => b.budgetNumber).filter(Boolean),
     );
 
-    // Pedidos reales: excluir presupuestos y PCF (evita duplicar con la lista de getBudgets)
+    // Pedidos reales: excluir presupuestos y reservas (evita duplicar con la lista de getBudgets)
     const ordersForUnified = orders.filter(
       (o) =>
         !isBackendBudgetOrder(o) &&
-        !isBackendPendingConfirmationOrder(o) &&
+        !isBackendReservationOrder(o) &&
         !budgetIds.has(o.id) &&
         !budgetNumbers.has(o.orderNumber),
     );
@@ -4106,13 +4108,13 @@ export const addBudget = async (
   }
 };
 
-/** Crea un pedido por confirmar (PCF) en el API; mismo documento que Order con Type=PendingConfirmation. */
-export const addPendingConfirmationOrder = async (
+/** Crea una reserva (RES-) en el API; mismo documento que Order con Type=Reservation. */
+export const addReservationOrder = async (
   order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">,
 ): Promise<Order> => {
   const createDto = orderToBackendDto(order);
-  createDto.type = "PendingConfirmation";
-  createDto.status = "Por Confirmar";
+  createDto.type = ORDER_TYPE_RESERVATION;
+  createDto.status = ORDER_STATUS_RESERVA;
   createDto.paymentType = createDto.paymentType || "N/A";
   createDto.paymentMethod = createDto.paymentMethod || "N/A";
 
@@ -4121,10 +4123,13 @@ export const addPendingConfirmationOrder = async (
   try {
     await db.put("orders", mapped);
   } catch (e) {
-    console.warn("No se pudo cachear PCF en IndexedDB:", e);
+    console.warn("No se pudo cachear reserva en IndexedDB:", e);
   }
   return mapped;
 };
+
+/** @deprecated Use addReservationOrder */
+export const addPendingConfirmationOrder = addReservationOrder;
 
 export const updateBudget = async (
   id: string,

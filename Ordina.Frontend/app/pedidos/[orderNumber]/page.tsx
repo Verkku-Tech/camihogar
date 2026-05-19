@@ -35,6 +35,7 @@ import {
   type OrderProduct,
 } from "@/lib/storage";
 import { PAYMENT_CONDITIONS } from "@/components/orders/new-order-dialog";
+import { isReservationOrder } from "@/lib/order-document-types";
 import { getSaleTypeLabel } from "@/components/orders/constants";
 import {
   formatCurrency,
@@ -1331,8 +1332,8 @@ export default function OrderDetailPage() {
                     <HoverCardTrigger asChild>
                       <div className="cursor-help border-b border-dashed border-transparent hover:border-muted-foreground/40 pb-0.5 transition-colors">
                         <h1 className="text-2xl font-bold">
-                          {order.type === "PendingConfirmation"
-                            ? "Orden "
+                          {isReservationOrder(order)
+                            ? "Reserva "
                             : "Pedido "}
 
                           {order.orderNumber}

@@ -110,9 +110,9 @@ interface EditOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: Order | null;
-  /** "full" = admin puede editar todo; "payments" = vendedor solo edita pagos (paso 3); "confirm-pcf" = confirmar PCF desde historial de cliente. */
-  mode?: "full" | "payments" | "confirm-pcf";
-  /** Tras confirmar un PCF con éxito (nuevo número de pedido). */
+  /** "full" = admin puede editar todo; "payments" = vendedor solo edita pagos (paso 3); "confirm-reservation" = confirmar reserva desde historial de cliente. */
+  mode?: "full" | "payments" | "confirm-reservation";
+  /** Tras confirmar una reserva con éxito (nuevo número de pedido). */
   onConfirmed?: (orderNumber: string) => void;
 }
 
@@ -157,7 +157,7 @@ export function EditOrderDialog({
   const allowRemovePayment = hasPermission("orders.delete");
   const orderForm = useEditOrderForm(open, order);
   const isPaymentsOnly = mode === "payments";
-  const isConfirmingPcf = mode === "confirm-pcf";
+  const isConfirmingReservation = mode === "confirm-reservation";
   const isEditingBudget =
     !!order &&
     ((order.type || "").toLowerCase() === "budget" ||
@@ -901,7 +901,7 @@ export function EditOrderDialog({
       }
       const multi = paymentsNorm.length > 1;
 
-      if (isConfirmingPcf) {
+      if (isConfirmingReservation) {
         if (!user?.id) {
           toast.error("Debes iniciar sesión para confirmar el pedido.");
           return;
@@ -1042,7 +1042,7 @@ export function EditOrderDialog({
           },
         };
 
-        const created = await apiClient.confirmPendingOrder(order.id, body);
+        const created = await apiClient.confirmReservation(order.id, body);
         const createdOrder = orderFromBackendDto(created);
         setIsConfirmationOpen(false);
         onOpenChange(false);
@@ -1258,18 +1258,18 @@ export function EditOrderDialog({
             <DialogTitle className="text-lg sm:text-xl">
               {isPaymentsOnly
                 ? "Editar pagos del pedido"
-                : isConfirmingPcf
+                : isConfirmingReservation
                   ? `Confirmar pedido — Paso ${orderForm.currentStep} de 3`
                   : `Nuevo Pedido - Paso ${orderForm.currentStep} de 3`}
             </DialogTitle>
             <DialogDescription>
               {isPaymentsOnly && "Agrega o edita los pagos de este pedido."}
               {!isPaymentsOnly &&
-                !isConfirmingPcf &&
+                !isConfirmingReservation &&
                 orderForm.currentStep === 1 &&
                 "Configura el presupuesto, cliente y productos"}
               {!isPaymentsOnly &&
-                isConfirmingPcf &&
+                isConfirmingReservation &&
                 orderForm.currentStep === 1 &&
                 "Revisa vendedor, productos y cliente. El referidor no se puede cambiar en esta confirmación."}
               {!isPaymentsOnly &&
@@ -1289,7 +1289,7 @@ export function EditOrderDialog({
               onProductSelection={() => setIsProductSelectionOpen(true)}
               onEditProduct={handleEditProduct}
               onRemoveProduct={handleRemoveProduct}
-              referrerLocked={isConfirmingPcf}
+              referrerLocked={isConfirmingReservation}
             />
           )}
 

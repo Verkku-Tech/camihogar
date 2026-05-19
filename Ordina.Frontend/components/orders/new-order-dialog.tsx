@@ -24,7 +24,7 @@ import { EditOrderDialog } from "./edit-order-dialog";
 import {
   addOrder,
   addBudget,
-  addPendingConfirmationOrder,
+  addReservationOrder,
   orderFromBackendDto,
   type Order,
   type OrderProduct,
@@ -34,6 +34,11 @@ import {
 } from "@/lib/storage";
 import { buildGeneralDiscountPersistPayload } from "@/lib/general-discount-meta";
 import { apiClient, type OrderResponseDto } from "@/lib/api-client";
+import {
+  isActiveReservation,
+  ORDER_STATUS_RESERVA,
+  ORDER_TYPE_RESERVATION,
+} from "@/lib/order-document-types";
 import { Currency } from "@/lib/currency-utils";
 import {
   normalizePaymentsForSave,
@@ -123,15 +128,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     orderNumber: string;
   } | null>(null);
 
-  const [isPendingConfirmationSaving, setIsPendingConfirmationSaving] =
+  const [isReservationSaving, setIsReservationSaving] = useState(false);
+  const [isCheckingClientReservation, setIsCheckingClientReservation] =
     useState(false);
-  const [isCheckingClientPcf, setIsCheckingClientPcf] = useState(false);
-  const [pendingPcfPrompt, setPendingPcfPrompt] = useState<{
+  const [pendingReservationPrompt, setPendingReservationPrompt] = useState<{
     client: OrderFormSelectedClient;
-    pcfDto: OrderResponseDto;
+    reservationDto: OrderResponseDto;
   } | null>(null);
-  const [pcfToOpen, setPcfToOpen] = useState<Order | null>(null);
-  const pcfPromptClosingForLoadRef = useRef(false);
+  const [reservationToOpen, setReservationToOpen] = useState<Order | null>(null);
+  const reservationPromptClosingForLoadRef = useRef(false);
 
   const applySelectedClientToForm = (client: OrderFormSelectedClient) => {
     orderForm.setSelectedClient(client);
@@ -423,11 +428,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     }
   };
 
-  const handleCreatePendingConfirmation = async () => {
-    if (isPendingConfirmationSaving) {
+  const handleCreateReservation = async () => {
+    if (isReservationSaving) {
       return;
     }
-    setIsPendingConfirmationSaving(true);
+    setIsReservationSaving(true);
     try {
       if (typeof document !== "undefined") {
         (document.activeElement as HTMLElement | null)?.blur?.();
@@ -559,24 +564,22 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         exchangeRatesAtCreation: orderForm.exchangeRates,
         productMarkups: orderForm.productMarkups,
         createSupplierOrder: orderForm.createSupplierOrder,
-        status: "Por Confirmar",
-        type: "PendingConfirmation",
+        status: ORDER_STATUS_RESERVA,
+        type: ORDER_TYPE_RESERVATION,
       };
 
-      const created = await addPendingConfirmationOrder(orderData);
+      const created = await addReservationOrder(orderData);
       toast.success(
-        `Se ha generado la orden ${created.orderNumber}. Visible en el historial del cliente.`,
+        `Se ha generado la reserva ${created.orderNumber}. Visible en el historial del cliente.`,
       );
       orderForm.clearDraftStorage();
       orderForm.resetForm();
       onOpenChange(false);
     } catch (error) {
-      console.error("Error creating pending confirmation order:", error);
-      toast.error(
-        "Error al guardar el pedido por confirmar. Intenta de nuevo.",
-      );
+      console.error("Error creating reservation:", error);
+      toast.error("Error al guardar la reserva. Intenta de nuevo.");
     } finally {
-      setIsPendingConfirmationSaving(false);
+      setIsReservationSaving(false);
     }
   };
 
@@ -1059,7 +1062,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4">
           {/* relative solo en wrapper interno: evita que tailwind-merge quite position:fixed del DialogContent base */}
           <div className="relative flex min-h-0 flex-1 flex-col gap-4">
-            {isCheckingClientPcf && (
+            {isCheckingClientReservation && (
               <div
                 className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-lg bg-background/70 backdrop-blur-sm"
                 aria-busy="true"
@@ -1159,24 +1162,24 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={handleCreatePendingConfirmation}
+                      onClick={handleCreateReservation}
                       className="w-full sm:w-auto"
-                      disabled={isPendingConfirmationSaving}
+                      disabled={isReservationSaving}
                     >
-                      {isPendingConfirmationSaving ? (
+                      {isReservationSaving ? (
                         <>
                           <Loader2 className="w-4 h-4 mr-2 shrink-0 animate-spin" />
                           Guardando…
                         </>
                       ) : (
-                        "Guardar Orden"
+                        "Guardar Reserva"
                       )}
                     </Button>
                     <Button
                       type="button"
                       onClick={handleSubmit}
                       className="w-full sm:w-auto"
-                      disabled={isPendingConfirmationSaving}
+                      disabled={isReservationSaving}
                     >
                       Crear Pedido
                     </Button>
@@ -1198,14 +1201,16 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         onOpenChange={setIsClientLookupOpen}
         onClientSelect={(client) => {
           void (async () => {
-            setIsCheckingClientPcf(true);
+            setIsCheckingClientReservation(true);
             try {
               const list = await apiClient.getOrdersByClient(client.id);
               const pending = list
-                .filter(
-                  (o) =>
-                    o.type === "PendingConfirmation" &&
-                    o.status === "Por Confirmar",
+                .filter((o) =>
+                  isActiveReservation({
+                    type: o.type,
+                    status: o.status,
+                    orderNumber: o.orderNumber,
+                  }),
                 )
                 .sort(
                   (a, b) =>
@@ -1215,7 +1220,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               if (pending.length === 0) {
                 applySelectedClientToForm(client);
               } else {
-                setPendingPcfPrompt({ client, pcfDto: pending[0]! });
+                setPendingReservationPrompt({
+                  client,
+                  reservationDto: pending[0]!,
+                });
               }
             } catch (e) {
               console.error(e);
@@ -1224,7 +1232,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               );
               applySelectedClientToForm(client);
             } finally {
-              setIsCheckingClientPcf(false);
+              setIsCheckingClientReservation(false);
             }
           })();
         }}
@@ -1321,33 +1329,33 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       </AlertDialog>
 
       <AlertDialog
-        open={pendingPcfPrompt !== null}
+        open={pendingReservationPrompt !== null}
         onOpenChange={(nextOpen) => {
           if (
             !nextOpen &&
-            pendingPcfPrompt &&
-            !pcfPromptClosingForLoadRef.current
+            pendingReservationPrompt &&
+            !reservationPromptClosingForLoadRef.current
           ) {
-            applySelectedClientToForm(pendingPcfPrompt.client);
-            setPendingPcfPrompt(null);
+            applySelectedClientToForm(pendingReservationPrompt.client);
+            setPendingReservationPrompt(null);
           }
         }}
       >
         <AlertDialogContent className="z-[110]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Pedido por confirmar</AlertDialogTitle>
+            <AlertDialogTitle>Reserva existente</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-left text-sm text-muted-foreground">
                 <p>
-                  {pendingPcfPrompt?.client.name} tiene un pedido pendiente de
-                  confirmar (
+                  {pendingReservationPrompt?.client.name} tiene una reserva
+                  pendiente (
                   <span className="font-mono font-medium text-foreground">
-                    {pendingPcfPrompt?.pcfDto.orderNumber}
+                    {pendingReservationPrompt?.reservationDto.orderNumber}
                   </span>
                   ).
                 </p>
                 <p>
-                  ¿Quieres cargarlo para revisarlo o confirmarlo en tienda, o
+                  ¿Quieres cargarla para revisarla o confirmarla en tienda, o
                   prefieres crear un pedido nuevo desde cero?
                 </p>
               </div>
@@ -1358,9 +1366,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               type="button"
               variant="outline"
               onClick={() => {
-                if (!pendingPcfPrompt) return;
-                const { client } = pendingPcfPrompt;
-                setPendingPcfPrompt(null);
+                if (!pendingReservationPrompt) return;
+                const { client } = pendingReservationPrompt;
+                setPendingReservationPrompt(null);
                 applySelectedClientToForm(client);
               }}
             >
@@ -1369,30 +1377,30 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             <Button
               type="button"
               onClick={() => {
-                if (!pendingPcfPrompt) return;
-                const { pcfDto } = pendingPcfPrompt;
-                pcfPromptClosingForLoadRef.current = true;
-                setPendingPcfPrompt(null);
+                if (!pendingReservationPrompt) return;
+                const { reservationDto } = pendingReservationPrompt;
+                reservationPromptClosingForLoadRef.current = true;
+                setPendingReservationPrompt(null);
                 onOpenChange(false);
-                setPcfToOpen(orderFromBackendDto(pcfDto));
+                setReservationToOpen(orderFromBackendDto(reservationDto));
                 queueMicrotask(() => {
-                  pcfPromptClosingForLoadRef.current = false;
+                  reservationPromptClosingForLoadRef.current = false;
                 });
               }}
             >
-              Cargar pendiente
+              Cargar reserva
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <EditOrderDialog
-        open={pcfToOpen !== null}
+        open={reservationToOpen !== null}
         onOpenChange={(next) => {
-          if (!next) setPcfToOpen(null);
+          if (!next) setReservationToOpen(null);
         }}
-        order={pcfToOpen}
-        mode="confirm-pcf"
+        order={reservationToOpen}
+        mode="confirm-reservation"
       />
 
       {/* Después del Dialog principal para que el portal quede encima (mismo z-index) */}

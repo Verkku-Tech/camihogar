@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Ordina.Database.Entities.Audit;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.Repositories;
+using Ordina.Orders.Application;
 using Ordina.Orders.Application.DTOs;
 
 namespace Ordina.Orders.Application.Services;
@@ -389,7 +390,7 @@ public class OrderAuditLogService : IOrderAuditLogService
     }
 
     /// <summary>
-    /// Alinea el filtro con ORD-xxx / PRE- / PCF- + 3 dígitos (mismo criterio que en el front).
+    /// Alinea el filtro con ORD-xxx / PRE- / RES- (y PCF- legacy) + 3 dígitos (mismo criterio que en el front).
     /// </summary>
     private static string NormalizeOrderNumberForFilter(string orderNumber)
     {
@@ -401,14 +402,15 @@ public class OrderAuditLogService : IOrderAuditLogService
 
         static string Pad3(int n) => n.ToString("D3", CultureInfo.InvariantCulture);
 
-        var m = Regex.Match(s, @"^(?i)(ord|pre|pcf)\s*-\s*0*(\d+)$");
+        var m = Regex.Match(s, @"^(?i)(ord|pre|res|pcf)\s*-\s*0*(\d+)$");
         if (m.Success && int.TryParse(m.Groups[2].Value, out var n) && n >= 0)
         {
             return m.Groups[1].Value.ToUpperInvariant() switch
             {
                 "ORD" => $"ORD-{Pad3(n)}",
                 "PRE" => $"PRE-{Pad3(n)}",
-                "PCF" => $"PCF-{Pad3(n)}",
+                "RES" => $"{OrderDocumentTypes.ReservationPrefix}{Pad3(n)}",
+                "PCF" => $"{OrderDocumentTypes.ReservationPrefix}{Pad3(n)}",
                 _ => s
             };
         }

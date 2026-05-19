@@ -68,7 +68,7 @@ public class CreateOrderDto
     public string? DeliveryType { get; set; }
     public string? DeliveryZone { get; set; }
     public ExchangeRatesAtCreationDto? ExchangeRatesAtCreation { get; set; }
-    public string Type { get; set; } = "Order"; // "Order", "Budget", "PendingConfirmation"
+    public string Type { get; set; } = "Order"; // "Order", "Budget", "Reservation"
 
     /// <summary>USD de saldo a favor del cliente aplicados a este pedido al crearlo.</summary>
     public decimal? AppliedStoreCreditUsd { get; set; }

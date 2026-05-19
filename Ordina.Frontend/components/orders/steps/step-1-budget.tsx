@@ -35,7 +35,7 @@ interface Step1BudgetProps {
   onProductSelection: () => void;
   onEditProduct: (product: any) => void;
   onRemoveProduct: (product: any) => void;
-  /** Si true, el referidor se muestra solo lectura (p. ej. confirmación de PCF en tienda). */
+  /** Si true, el referidor se muestra solo lectura (p. ej. confirmación de reserva en tienda). */
   referrerLocked?: boolean;
 }
 
