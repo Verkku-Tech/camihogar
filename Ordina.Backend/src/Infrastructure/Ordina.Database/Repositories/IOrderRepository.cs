@@ -24,5 +24,14 @@ public interface IOrderRepository
     Task<bool> DeleteAsync(string id);
     Task<bool> ExistsAsync(string id);
     Task<bool> OrderNumberExistsAsync(string orderNumber);
+
+    /// <summary>Cuenta documentos por <see cref="Order.Type"/> sin cargar toda la colección.</summary>
+    Task<long> CountByTypeAsync(string type);
+
+    /// <summary>
+    /// Máximo sufijo numérico de orderNumber con formato {prefix}{dígitos} para el tipo dado.
+    /// Si no hay coincidencias, devuelve 0.
+    /// </summary>
+    Task<int> GetMaxNumericSuffixForTypeAndPrefixAsync(string orderType, string prefix);
 }
 

@@ -1,8 +1,10 @@
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
+using MongoDB.Driver;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.Repositories;
 using Ordina.Orders.Application;
@@ -264,8 +266,7 @@ public class OrderService : IOrderService
             NormalizeGeneralDiscountFields(order);
 
             RecalculateOrderStatus(order);
-            var createdOrder = await _orderRepository.CreateAsync(order);
-            await _auditLogService.LogOrderCreatedAsync(createdOrder, userId, userName);
+            var createdOrder = await CreateOrderAndAuditAsync(order, typeForCount, prefix, userId, userName);
 
             if (requiresPayment && createdOrder.AppliedStoreCreditUsd > 0)
             {
@@ -394,20 +395,10 @@ public class OrderService : IOrderService
 
         NormalizeGeneralDiscountFields(newOrder);
 
-        var existingOrders = (await _orderRepository.GetAllAsync()).ToList();
-        var ordCount = existingOrders.Count(o => string.Equals(o.Type, "Order", StringComparison.Ordinal));
-        var orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + 1)}";
-        var attempts = 0;
-        while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
-        {
-            orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + attempts + 2)}";
-            attempts++;
-        }
-        newOrder.OrderNumber = orderNumber;
+        newOrder.OrderNumber = await AllocateNextOrderNumberAsync("Order", "ORD-");
 
         RecalculateOrderStatus(newOrder);
-        var created = await _orderRepository.CreateAsync(newOrder);
-        await _auditLogService.LogOrderCreatedAsync(created, userId, userName);
+        var created = await CreateOrderAndAuditAsync(newOrder, "Order", "ORD-", userId, userName);
 
         var pcfBefore = OrderDeepClone.Clone(pcf);
         pcf.Status = "Convertido";
@@ -511,20 +502,10 @@ public class OrderService : IOrderService
 
         NormalizeGeneralDiscountFields(newOrder);
 
-        var existingOrders = (await _orderRepository.GetAllAsync()).ToList();
-        var ordCount = existingOrders.Count(o => string.Equals(o.Type, "Order", StringComparison.Ordinal));
-        var orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + 1)}";
-        var attempts = 0;
-        while (await _orderRepository.OrderNumberExistsAsync(orderNumber) && attempts < 10)
-        {
-            orderNumber = $"ORD-{String.Format("{0:D3}", ordCount + attempts + 2)}";
-            attempts++;
-        }
-        newOrder.OrderNumber = orderNumber;
+        newOrder.OrderNumber = await AllocateNextOrderNumberAsync("Order", "ORD-");
 
         RecalculateOrderStatus(newOrder);
-        var created = await _orderRepository.CreateAsync(newOrder);
-        await _auditLogService.LogOrderCreatedAsync(created, userId, userName);
+        var created = await CreateOrderAndAuditAsync(newOrder, "Order", "ORD-", userId, userName);
 
         var budgetBefore = OrderDeepClone.Clone(budget);
         budget.Status = "Convertido";
@@ -840,8 +821,10 @@ public class OrderService : IOrderService
         }
     }
 
-    // Mappers
-    private static void NormalizeGeneralDiscountFields(Order order)
+    private static string FormatOrderNumberWithPrefix(string prefix, int suffix) =>
+        $"{prefix}{suffix.ToString("D3", CultureInfo.InvariantCulture)}";
+
+    private async Task<string> AllocateNextOrderNumberAsync(string orderType, string prefix)
     {
         var maxSuffix = await _orderRepository.GetMaxNumericSuffixForTypeAndPrefixAsync(orderType, prefix);
         if (string.Equals(orderType, OrderDocumentTypes.Reservation, StringComparison.Ordinal)
@@ -852,9 +835,63 @@ public class OrderService : IOrderService
                 OrderDocumentTypes.LegacyReservationPrefix);
             maxSuffix = Math.Max(maxSuffix, legacyMax);
         }
+
         var candidate = maxSuffix + 1;
         const int cap = 5000;
         for (var i = 0; i < cap; i++)
+        {
+            var orderNumber = FormatOrderNumberWithPrefix(prefix, candidate);
+            if (!await _orderRepository.OrderNumberExistsAsync(orderNumber))
+                return orderNumber;
+            candidate++;
+        }
+
+        throw new InvalidOperationException(
+            $"No se pudo generar un número único para el prefijo {prefix} (tipo {orderType}).");
+    }
+
+    private static bool IsDuplicateKeyWrite(MongoWriteException ex) =>
+        ex.WriteError?.Code == 11000;
+
+    private async Task<Order> CreateOrderAndAuditAsync(
+        Order order,
+        string orderTypeForNumber,
+        string orderNumberPrefix,
+        string userId,
+        string userName)
+    {
+        const int maxDupRetries = 10;
+        for (var attempt = 0; attempt < maxDupRetries; attempt++)
+        {
+            try
+            {
+                var created = await _orderRepository.CreateAsync(order);
+                await _auditLogService.LogOrderCreatedAsync(created, userId, userName);
+                return created;
+            }
+            catch (MongoWriteException ex) when (IsDuplicateKeyWrite(ex))
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Clave duplicada al insertar pedido (orderNumber {OrderNumber}, intento {Attempt}). Reasignando.",
+                    order.OrderNumber,
+                    attempt + 1);
+
+                if (attempt == maxDupRetries - 1)
+                    throw;
+
+                order.OrderNumber = await AllocateNextOrderNumberAsync(orderTypeForNumber, orderNumberPrefix);
+            }
+        }
+
+        throw new InvalidOperationException("Fallo inesperado al persistir el pedido.");
+    }
+
+    // Mappers
+    private static void NormalizeGeneralDiscountFields(Order order)
+    {
+        var amt = order.GeneralDiscountAmount ?? 0m;
+        if (amt <= 0m)
         {
             order.GeneralDiscountAmount = null;
             order.GeneralDiscountType = null;
@@ -863,16 +900,24 @@ public class OrderService : IOrderService
         }
 
         var t = order.GeneralDiscountType?.Trim().ToLowerInvariant();
-        if (t != "porcentaje" && t != "monto")
+        if (t == "porcentaje")
         {
-            order.GeneralDiscountType = null;
-            order.GeneralDiscountPercent = null;
-            return;
+            var p = order.GeneralDiscountPercent;
+            if (p is null || p <= 0m || p > 100m)
+            {
+                order.GeneralDiscountType = "monto";
+                order.GeneralDiscountPercent = null;
+            }
+            else
+            {
+                order.GeneralDiscountPercent = decimal.Round(p.Value, 4, MidpointRounding.AwayFromZero);
+            }
         }
-
-        order.GeneralDiscountType = t;
-        if (t != "porcentaje")
+        else
+        {
+            order.GeneralDiscountType = "monto";
             order.GeneralDiscountPercent = null;
+        }
     }
 
     private OrderResponseDto MapToDto(Order order)
