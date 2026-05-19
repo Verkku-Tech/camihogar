@@ -28,6 +28,10 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { EditOrderDialog } from "@/components/orders/edit-order-dialog";
 import { orderFromBackendDto, type Order } from "@/lib/storage";
+import {
+  isActiveReservation,
+  isReservationOrder,
+} from "@/lib/order-document-types";
 
 import {
   formatUsdOnlyFromOrderTotal,
@@ -67,6 +71,7 @@ const getStatusColor = (status: string) => {
     case "Generado":
     case "Generada":
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+    case "Reserva":
     case "Por Confirmar":
       return "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200";
     case "Convertido":
@@ -116,14 +121,13 @@ export function ClientOrdersHistoryDialog({
   const [storeCreditBalanceUsd, setStoreCreditBalanceUsd] = useState<
     number | null
   >(null);
-  const [pcfOrderToConfirm, setPcfOrderToConfirm] = useState<Order | null>(
-    null,
-  );
+  const [reservationToConfirm, setReservationToConfirm] =
+    useState<Order | null>(null);
   const [orderTotalsUsd, setOrderTotalsUsd] = useState<Record<string, string>>(
     {},
   );
 
-  const canConfirmPcf =
+  const canConfirmReservation =
     user &&
     (user.role === "Store Seller" ||
       user.role === "Administrator" ||
@@ -145,7 +149,7 @@ export function ClientOrdersHistoryDialog({
           .filter(
             (o) =>
               o.type === "Order" ||
-              (o.status !== "Convertido" && o.type === "PendingConfirmation"),
+              (o.status !== "Convertido" && isReservationOrder(o)),
           )
           .sort(
             (a, b) =>
@@ -262,12 +266,9 @@ export function ClientOrdersHistoryDialog({
                 </TableHeader>
                 <TableBody>
                   {orders.map((order) => {
-                    const isPcfPending =
-                      order.type === "PendingConfirmation" &&
-                      order.status === "Por Confirmar";
-                    const typeLabel =
-                      order.type === "PendingConfirmation"
-                        ? "Por confirmar"
+                    const isReservationPending = isActiveReservation(order);
+                    const typeLabel = isReservationOrder(order)
+                        ? "Reserva"
                         : order.type === "Budget"
                           ? "Presupuesto"
                           : "Pedido";
@@ -314,15 +315,15 @@ export function ClientOrdersHistoryDialog({
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            {canConfirmPcf && isPcfPending && (
+                            {canConfirmReservation && isReservationPending && (
                               <Button
                                 type="button"
                                 variant="default"
                                 size="sm"
                                 className="h-8 px-2"
-                                title="Confirmar pedido en tienda"
+                                title="Confirmar reserva en tienda"
                                 onClick={() => {
-                                  setPcfOrderToConfirm(
+                                  setReservationToConfirm(
                                     orderFromBackendDto(order),
                                   );
                                 }}
@@ -360,12 +361,12 @@ export function ClientOrdersHistoryDialog({
       </Dialog>
 
       <EditOrderDialog
-        open={pcfOrderToConfirm != null}
+        open={reservationToConfirm != null}
         onOpenChange={(o) => {
-          if (!o) setPcfOrderToConfirm(null);
+          if (!o) setReservationToConfirm(null);
         }}
-        order={pcfOrderToConfirm}
-        mode="confirm-pcf"
+        order={reservationToConfirm}
+        mode="confirm-reservation"
         onConfirmed={() => {
           if (!client) return;
           void (async () => {
