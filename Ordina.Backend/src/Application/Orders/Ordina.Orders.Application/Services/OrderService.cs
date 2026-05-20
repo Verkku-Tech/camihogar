@@ -457,6 +457,7 @@ public class OrderService : IOrderService
 
         var newOrder = new Order
         {
+            ConvertedFromNumber = budget.OrderNumber,
             ClientId = budget.ClientId,
             ClientName = budget.ClientName,
             VendorId = budget.VendorId,

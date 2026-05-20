@@ -31,6 +31,7 @@ import { orderFromBackendDto, type Order } from "@/lib/storage";
 import {
   isActiveReservation,
   isReservationOrder,
+  ORDER_TYPE_RESERVATION,
 } from "@/lib/order-document-types";
 
 import {
@@ -115,6 +116,46 @@ function getPaymentStatusBadgeClass(paid: boolean) {
     : "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200";
 }
 
+function toDateFilterKey(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function applyHistoryFilters(
+  list: OrderResponseDto[],
+  documentType: string,
+  status: string,
+  filterDate: string,
+): OrderResponseDto[] {
+  return [...list]
+    .filter((d) => {
+      if (filterDate === "") return true;
+      return toDateFilterKey(d.createdAt) === filterDate;
+    })
+    .filter((s) => {
+      if (status === "all") return true;
+      return s.status === status;
+    })
+    .filter((d) => {
+      if (documentType === ORDER_TYPE_RESERVATION) {
+        return isReservationOrder(d);
+      }
+      return d.type === documentType;
+    })
+    .filter((o) => {
+      if (documentType === "Order") return true;
+      return o.status !== "Convertido";
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+}
+
 interface ClientOrdersHistoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -146,9 +187,8 @@ export function ClientOrdersHistoryDialog({
     (user.role === "Store Seller" ||
       user.role === "Administrator" ||
       user.role === "Super Administrator");
-  const [documentTypeSelected, setDocumentTypeSelected] = useState<string>(
-    "PendingConfirmation",
-  );
+  const [documentTypeSelected, setDocumentTypeSelected] =
+    useState<string>("Order");
 
   const [statusSelected, setStatusSelected] = useState<string>("all");
 
@@ -156,7 +196,7 @@ export function ClientOrdersHistoryDialog({
     switch (documentTypeSelected) {
       case "Budget":
         return BUDGET_STATUSES;
-      case "PendingConfirmation":
+      case ORDER_TYPE_RESERVATION:
         return ORDER_STATUSES;
 
       default:
@@ -165,7 +205,7 @@ export function ClientOrdersHistoryDialog({
   }, [documentTypeSelected]);
 
   const documentTypes = [
-    { value: "PendingConfirmation", label: "Reservas" },
+    { value: ORDER_TYPE_RESERVATION, label: "Reservas" },
     { value: "Order", label: "Pedidos" },
     { value: "Budget", label: "Presupuesto" },
   ];
@@ -184,25 +224,10 @@ export function ClientOrdersHistoryDialog({
   });
 
   useEffect(() => {
-    setDocumentTypeSelected("PendingConfirmation");
+    setDocumentTypeSelected("Order");
     setStatusSelected("all");
     setFilterDate("");
   }, [open]);
-
-  const canConfirmPcf =
-    user &&
-    (user.role === "Store Seller" ||
-      user.role === "Administrator" ||
-      user.role === "Super Administrator");
-
-  function toDateFilterKey(iso: string): string {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
 
   useEffect(() => {
     if (!open || !client) {
@@ -216,39 +241,14 @@ export function ClientOrdersHistoryDialog({
       try {
         const list = await apiClient.getOrdersByClient(client.id);
         if (cancelled) return;
-        const sorted = [...list]
-          .filter((d) => {
-            if (filterDate === "") {
-              return true;
-            } else {
-              console.log(
-                "FECHAS NECESARIAS >>>>",
-                toDateFilterKey(d.createdAt),
-                filterDate,
-              );
-              return toDateFilterKey(d.createdAt) === filterDate;
-            }
-          })
-          .filter((s) => {
-            if (statusSelected === "all") {
-              return true;
-            } else {
-              return s.status === statusSelected;
-            }
-          })
-          .filter((d) => d.type === documentTypeSelected)
-          .filter((o) => {
-            if (o.type === "Budget") return true;
-            if (o.type === "Order") return true;
-            if (o.type === "PendingConfirmation") {
-              return o.status !== "Convertido";
-            }
-          })
-          .sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          );
-        setOrders(sorted);
+        setOrders(
+          applyHistoryFilters(
+            list,
+            documentTypeSelected,
+            statusSelected,
+            filterDate,
+          ),
+        );
       } catch (e) {
         console.error(e);
         if (!cancelled) {
@@ -345,12 +345,14 @@ export function ClientOrdersHistoryDialog({
               </SelectTrigger>
               <SelectContent>
                 {documentTypes.map((d) => (
-                  <SelectItem value={d.value}>{d.label}</SelectItem>
+                  <SelectItem key={d.value} value={d.value}>
+                    {d.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
-            {documentTypeSelected !== "PendingConfirmation" && (
+            {documentTypeSelected !== ORDER_TYPE_RESERVATION && (
               <Select value={statusSelected} onValueChange={setStatusSelected}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Tipo" />
@@ -358,7 +360,9 @@ export function ClientOrdersHistoryDialog({
                 <SelectContent>
                   <SelectItem value="all">Todos los estados</SelectItem>
                   {statusOptions.map((s) => (
-                    <SelectItem value={s.value}>{s.label}</SelectItem>
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -404,7 +408,7 @@ export function ClientOrdersHistoryDialog({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {orders.map((order) => {
+                  {paginatedOrders.map((order) => {
                     const isReservationPending = isActiveReservation(order);
                     const typeLabel = isReservationOrder(order)
                       ? "Reserva"
@@ -439,18 +443,22 @@ export function ClientOrdersHistoryDialog({
                           {orderTotalsUsd[order.id] ?? "—"}
                         </TableCell>
                         <TableCell className="font-mono text-sm font-medium">
-                          <button
-                            type="button"
-                            className="font-mono text-sm font-medium hover:underline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(
-                                `/pedidos/${encodeURIComponent(order.convertedFromNumber!)}`,
-                              );
-                            }}
-                          >
-                            {order.convertedFromNumber}
-                          </button>
+                          {order.convertedFromNumber ? (
+                            <button
+                              type="button"
+                              className="font-mono text-sm font-medium hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(
+                                  `/pedidos/${encodeURIComponent(order.convertedFromNumber)}`,
+                                );
+                              }}
+                            >
+                              {order.convertedFromNumber}
+                            </button>
+                          ) : (
+                            "—"
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
@@ -524,12 +532,14 @@ export function ClientOrdersHistoryDialog({
           void (async () => {
             try {
               const list = await apiClient.getOrdersByClient(client.id);
-              const sorted = [...list].sort(
-                (a, b) =>
-                  new Date(b.createdAt).getTime() -
-                  new Date(a.createdAt).getTime(),
+              setOrders(
+                applyHistoryFilters(
+                  list,
+                  documentTypeSelected,
+                  statusSelected,
+                  filterDate,
+                ),
               );
-              setOrders(sorted);
             } catch (e) {
               console.error(e);
               toast.error("No se pudo actualizar el historial.");
