@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Eye, Loader2, ClipboardCheck } from "lucide-react";
+import { Eye, Loader2, ClipboardCheck, Filter } from "lucide-react";
 import { toast } from "sonner";
 import {
   apiClient,
@@ -28,6 +28,11 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { EditOrderDialog } from "@/components/orders/edit-order-dialog";
 import { orderFromBackendDto, type Order } from "@/lib/storage";
+import {
+  isActiveReservation,
+  isReservationOrder,
+  ORDER_TYPE_RESERVATION,
+} from "@/lib/order-document-types";
 
 import {
   formatUsdOnlyFromOrderTotal,
@@ -37,6 +42,18 @@ import {
   getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_BS,
 } from "@/lib/order-payments";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { BUDGET_STATUSES, ORDER_STATUSES } from "../orders/constants";
+import { Label } from "../ui/label";
+import { Input } from "../ui/input";
+import { usePagination } from "@/hooks/use-pagination";
+import { TablePagination } from "../ui/table-pagination";
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -67,6 +84,7 @@ const getStatusColor = (status: string) => {
     case "Generado":
     case "Generada":
       return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+    case "Reserva":
     case "Por Confirmar":
       return "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200";
     case "Convertido":
@@ -98,6 +116,46 @@ function getPaymentStatusBadgeClass(paid: boolean) {
     : "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200";
 }
 
+function toDateFilterKey(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function applyHistoryFilters(
+  list: OrderResponseDto[],
+  documentType: string,
+  status: string,
+  filterDate: string,
+): OrderResponseDto[] {
+  return [...list]
+    .filter((d) => {
+      if (filterDate === "") return true;
+      return toDateFilterKey(d.createdAt) === filterDate;
+    })
+    .filter((s) => {
+      if (status === "all") return true;
+      return s.status === status;
+    })
+    .filter((d) => {
+      if (documentType === ORDER_TYPE_RESERVATION) {
+        return isReservationOrder(d);
+      }
+      return d.type === documentType;
+    })
+    .filter((o) => {
+      if (documentType === "Order") return true;
+      return o.status !== "Convertido";
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+}
+
 interface ClientOrdersHistoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -113,21 +171,63 @@ export function ClientOrdersHistoryDialog({
   const { user } = useAuth();
   const [orders, setOrders] = useState<OrderResponseDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [filterDate, setFilterDate] = useState("");
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [storeCreditBalanceUsd, setStoreCreditBalanceUsd] = useState<
     number | null
   >(null);
-  const [pcfOrderToConfirm, setPcfOrderToConfirm] = useState<Order | null>(
-    null,
-  );
+  const [reservationToConfirm, setReservationToConfirm] =
+    useState<Order | null>(null);
   const [orderTotalsUsd, setOrderTotalsUsd] = useState<Record<string, string>>(
     {},
   );
 
-  const canConfirmPcf =
+  const canConfirmReservation =
     user &&
     (user.role === "Store Seller" ||
       user.role === "Administrator" ||
       user.role === "Super Administrator");
+  const [documentTypeSelected, setDocumentTypeSelected] =
+    useState<string>("Order");
+
+  const [statusSelected, setStatusSelected] = useState<string>("all");
+
+  const statusOptions = useMemo(() => {
+    switch (documentTypeSelected) {
+      case "Budget":
+        return BUDGET_STATUSES;
+      case ORDER_TYPE_RESERVATION:
+        return ORDER_STATUSES;
+
+      default:
+        return ORDER_STATUSES;
+    }
+  }, [documentTypeSelected]);
+
+  const documentTypes = [
+    { value: ORDER_TYPE_RESERVATION, label: "Reservas" },
+    { value: "Order", label: "Pedidos" },
+    { value: "Budget", label: "Presupuesto" },
+  ];
+
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedOrders,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({
+    data: orders,
+    itemsPerPage,
+  });
+
+  useEffect(() => {
+    setDocumentTypeSelected("Order");
+    setStatusSelected("all");
+    setFilterDate("");
+  }, [open]);
 
   useEffect(() => {
     if (!open || !client) {
@@ -141,17 +241,14 @@ export function ClientOrdersHistoryDialog({
       try {
         const list = await apiClient.getOrdersByClient(client.id);
         if (cancelled) return;
-        const sorted = [...list]
-          .filter(
-            (o) =>
-              o.type === "Order" ||
-              (o.status !== "Convertido" && o.type === "PendingConfirmation"),
-          )
-          .sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          );
-        setOrders(sorted);
+        setOrders(
+          applyHistoryFilters(
+            list,
+            documentTypeSelected,
+            statusSelected,
+            filterDate,
+          ),
+        );
       } catch (e) {
         console.error(e);
         if (!cancelled) {
@@ -167,7 +264,7 @@ export function ClientOrdersHistoryDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, client?.id]);
+  }, [open, client?.id, documentTypeSelected, statusSelected, filterDate]);
 
   useEffect(() => {
     if (!open || !client?.id) {
@@ -221,7 +318,7 @@ export function ClientOrdersHistoryDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {storeCreditBalanceUsd != null && storeCreditBalanceUsd > 0 && (
@@ -233,6 +330,56 @@ export function ClientOrdersHistoryDialog({
               </p>
             )}
           </DialogHeader>
+
+          <div className="flex gap-2">
+            <Select
+              value={documentTypeSelected}
+              onValueChange={(value) => {
+                setDocumentTypeSelected(value);
+                setStatusSelected("all");
+                setFilterDate("");
+              }}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                {documentTypes.map((d) => (
+                  <SelectItem key={d.value} value={d.value}>
+                    {d.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {documentTypeSelected !== ORDER_TYPE_RESERVATION && (
+              <Select value={statusSelected} onValueChange={setStatusSelected}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  {statusOptions.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                Fecha
+              </span>
+              <Input
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="w-[150px]"
+                aria-label="Fecha"
+              />
+            </div>
+          </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto">
             {isLoading ? (
@@ -261,16 +408,13 @@ export function ClientOrdersHistoryDialog({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {orders.map((order) => {
-                    const isPcfPending =
-                      order.type === "PendingConfirmation" &&
-                      order.status === "Por Confirmar";
-                    const typeLabel =
-                      order.type === "PendingConfirmation"
-                        ? "Por confirmar"
-                        : order.type === "Budget"
-                          ? "Presupuesto"
-                          : "Pedido";
+                  {paginatedOrders.map((order) => {
+                    const isReservationPending = isActiveReservation(order);
+                    const typeLabel = isReservationOrder(order)
+                      ? "Reserva"
+                      : order.type === "Budget"
+                        ? "Presupuesto"
+                        : "Pedido";
                     const fullyPaid = isOrderFullyPaid(order);
                     return (
                       <TableRow key={order.id}>
@@ -299,30 +443,34 @@ export function ClientOrdersHistoryDialog({
                           {orderTotalsUsd[order.id] ?? "—"}
                         </TableCell>
                         <TableCell className="font-mono text-sm font-medium">
-                          <button
-                            type="button"
-                            className="font-mono text-sm font-medium hover:underline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(
-                                `/pedidos/${encodeURIComponent(order.convertedFromNumber!)}`,
-                              );
-                            }}
-                          >
-                            {order.convertedFromNumber}
-                          </button>
+                          {order.convertedFromNumber ? (
+                            <button
+                              type="button"
+                              className="font-mono text-sm font-medium hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(
+                                  `/pedidos/${encodeURIComponent(order.convertedFromNumber)}`,
+                                );
+                              }}
+                            >
+                              {order.convertedFromNumber}
+                            </button>
+                          ) : (
+                            "—"
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
-                            {canConfirmPcf && isPcfPending && (
+                            {canConfirmReservation && isReservationPending && (
                               <Button
                                 type="button"
                                 variant="default"
                                 size="sm"
                                 className="h-8 px-2"
-                                title="Confirmar pedido en tienda"
+                                title="Confirmar reserva en tienda"
                                 onClick={() => {
-                                  setPcfOrderToConfirm(
+                                  setReservationToConfirm(
                                     orderFromBackendDto(order),
                                   );
                                 }}
@@ -356,27 +504,42 @@ export function ClientOrdersHistoryDialog({
               </Table>
             )}
           </div>
+          {/* Paginación */}
+          {!isLoading && orders.length > 0 && (
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              startIndex={startIndex}
+              endIndex={endIndex}
+              onPageChange={goToPage}
+              itemsPerPage={itemsPerPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
       <EditOrderDialog
-        open={pcfOrderToConfirm != null}
+        open={reservationToConfirm != null}
         onOpenChange={(o) => {
-          if (!o) setPcfOrderToConfirm(null);
+          if (!o) setReservationToConfirm(null);
         }}
-        order={pcfOrderToConfirm}
-        mode="confirm-pcf"
+        order={reservationToConfirm}
+        mode="confirm-reservation"
         onConfirmed={() => {
           if (!client) return;
           void (async () => {
             try {
               const list = await apiClient.getOrdersByClient(client.id);
-              const sorted = [...list].sort(
-                (a, b) =>
-                  new Date(b.createdAt).getTime() -
-                  new Date(a.createdAt).getTime(),
+              setOrders(
+                applyHistoryFilters(
+                  list,
+                  documentTypeSelected,
+                  statusSelected,
+                  filterDate,
+                ),
               );
-              setOrders(sorted);
             } catch (e) {
               console.error(e);
               toast.error("No se pudo actualizar el historial.");

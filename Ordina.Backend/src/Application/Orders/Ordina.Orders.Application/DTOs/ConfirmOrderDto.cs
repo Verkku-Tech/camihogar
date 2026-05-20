@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace Ordina.Orders.Application.DTOs;
 
 /// <summary>
-/// Datos para convertir un pedido por confirmar (PCF) en pedido real (ORD).
+/// Datos para convertir una reserva (RES-) en pedido real (ORD).
 /// </summary>
 public class ConfirmOrderDto
 {
@@ -13,7 +13,7 @@ public class ConfirmOrderDto
     [Required(ErrorMessage = "El nombre del vendedor de tienda es requerido")]
     public string StoreVendorName { get; set; } = string.Empty;
 
-    /// <summary>Líneas finales; si es null o vacío se usan las del PCF.</summary>
+    /// <summary>Líneas finales; si es null o vacío se usan las de la reserva.</summary>
     public List<OrderProductDto>? Products { get; set; }
 
     [Required(ErrorMessage = "El tipo de pago es requerido")]

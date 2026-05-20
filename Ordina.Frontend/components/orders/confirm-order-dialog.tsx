@@ -46,6 +46,10 @@ import {
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
 import type { Currency } from "@/lib/currency-utils";
+import {
+  isActiveReservationStatus,
+  isReservationType,
+} from "@/lib/order-document-types";
 
 function mapProductsToDto(products: OrderProduct[]): OrderProductDto[] {
   return products.map((p) => ({
@@ -95,7 +99,7 @@ function mapProductsToDto(products: OrderProduct[]): OrderProductDto[] {
 export interface ConfirmOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Mongo id del PCF */
+  /** Mongo id de la reserva */
   pendingOrderId: string | null;
   onConfirmed?: (orderNumber: string) => void;
 }
@@ -259,7 +263,7 @@ export function ConfirmOrderDialog({
       } catch (e) {
         console.error(e);
         if (!cancelled)
-          toast.error("No se pudo cargar el pedido por confirmar.");
+          toast.error("No se pudo cargar la reserva.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -343,7 +347,10 @@ export function ConfirmOrderDialog({
 
   const handleConfirm = async () => {
     if (!pendingOrderId || !user?.id) return;
-    if (pcfType !== "PendingConfirmation" || pcfStatus !== "Por Confirmar") {
+    if (
+      !isReservationType(pcfType) ||
+      !isActiveReservationStatus(pcfStatus)
+    ) {
       toast.error("Este documento no se puede confirmar.");
       return;
     }
@@ -441,7 +448,7 @@ export function ConfirmOrderDialog({
 
     setSubmitting(true);
     try {
-      const created = await apiClient.confirmPendingOrder(pendingOrderId, body);
+      const created = await apiClient.confirmReservation(pendingOrderId, body);
       toast.success(`Pedido ${created.orderNumber} confirmado.`);
       onOpenChange(false);
       onConfirmed?.(created.orderNumber);

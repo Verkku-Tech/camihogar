@@ -1216,7 +1216,7 @@ export class ApiClient {
     });
   }
 
-  async confirmPendingOrder(id: string, body: ConfirmOrderDto) {
+  async confirmReservation(id: string, body: ConfirmOrderDto) {
     return this.request<OrderResponseDto>(
       `/api/Orders/${encodeURIComponent(id)}/confirm`,
       {
@@ -1224,6 +1224,11 @@ export class ApiClient {
         body: JSON.stringify(body),
       },
     );
+  }
+
+  /** @deprecated Use confirmReservation */
+  async confirmPendingOrder(id: string, body: ConfirmOrderDto) {
+    return this.confirmReservation(id, body);
   }
 
   async convertBudgetToOrder(id: string, body: ConvertBudgetToOrderDto) {
@@ -2065,7 +2070,7 @@ export interface ConvertBudgetToOrderDto {
   exchangeRatesAtCreation?: CreateOrderDto["exchangeRatesAtCreation"];
 }
 
-/** Confirmar un pedido por confirmar (PCF) y crear el ORD. */
+/** Confirmar una reserva (RES-) y crear el ORD. */
 export interface ConfirmOrderDto {
   storeVendorId: string;
   storeVendorName: string;
