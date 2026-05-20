@@ -17,6 +17,14 @@ export const ORDER_STATUSES = [
   { value: "Declinado", label: "Declinado" },
 ] as const;
 
+export const BUDGET_STATUSES = [
+  { value: "Presupuesto", label: "Presupuesto" },
+  { value: "Aprobado", label: "Aprobado" },
+  { value: "Rechazado", label: "Rechazado" },
+  { value: "Vencido", label: "Vencido" },
+  { value: "Convertido", label: "Convertido" },
+] as const;
+
 // Métodos de pago para filtros (lista completa)
 export const PAYMENT_METHODS_FILTER = [
   "AirTM",
@@ -133,13 +141,13 @@ export const paymentMethodsNoManualBsConversion = [
 
 export function paymentMethodUsesOnlyOfficialBsRate(method: string): boolean {
   return (paymentMethodsNoManualBsConversion as readonly string[]).includes(
-    method
+    method,
   );
 }
 
 /** Efectivo en USD/EUR: no se ofrece conversión manual a Bs. */
 export function efectivoCashExcludesManualBs(
-  cash: "Bs" | "USD" | "EUR" | undefined
+  cash: "Bs" | "USD" | "EUR" | undefined,
 ): cash is "USD" | "EUR" {
   return cash === "USD" || cash === "EUR";
 }
@@ -151,4 +159,3 @@ export const bsOnlyPaymentMethods = [
   "Tarjeta de Crédito",
   "Transferencia",
 ];
-
