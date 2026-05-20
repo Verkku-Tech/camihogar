@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Eye, Loader2, ClipboardCheck } from "lucide-react";
+import { Eye, Loader2, ClipboardCheck, Filter } from "lucide-react";
 import { toast } from "sonner";
 import {
   apiClient,
@@ -41,6 +41,18 @@ import {
   getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_BS,
 } from "@/lib/order-payments";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { BUDGET_STATUSES, ORDER_STATUSES } from "../orders/constants";
+import { Label } from "../ui/label";
+import { Input } from "../ui/input";
+import { usePagination } from "@/hooks/use-pagination";
+import { TablePagination } from "../ui/table-pagination";
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -118,6 +130,8 @@ export function ClientOrdersHistoryDialog({
   const { user } = useAuth();
   const [orders, setOrders] = useState<OrderResponseDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [filterDate, setFilterDate] = useState("");
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [storeCreditBalanceUsd, setStoreCreditBalanceUsd] = useState<
     number | null
   >(null);
@@ -132,6 +146,63 @@ export function ClientOrdersHistoryDialog({
     (user.role === "Store Seller" ||
       user.role === "Administrator" ||
       user.role === "Super Administrator");
+  const [documentTypeSelected, setDocumentTypeSelected] = useState<string>(
+    "PendingConfirmation",
+  );
+
+  const [statusSelected, setStatusSelected] = useState<string>("all");
+
+  const statusOptions = useMemo(() => {
+    switch (documentTypeSelected) {
+      case "Budget":
+        return BUDGET_STATUSES;
+      case "PendingConfirmation":
+        return ORDER_STATUSES;
+
+      default:
+        return ORDER_STATUSES;
+    }
+  }, [documentTypeSelected]);
+
+  const documentTypes = [
+    { value: "PendingConfirmation", label: "Reservas" },
+    { value: "Order", label: "Pedidos" },
+    { value: "Budget", label: "Presupuesto" },
+  ];
+
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedOrders,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({
+    data: orders,
+    itemsPerPage,
+  });
+
+  useEffect(() => {
+    setDocumentTypeSelected("PendingConfirmation");
+    setStatusSelected("all");
+    setFilterDate("");
+  }, [open]);
+
+  const canConfirmPcf =
+    user &&
+    (user.role === "Store Seller" ||
+      user.role === "Administrator" ||
+      user.role === "Super Administrator");
+
+  function toDateFilterKey(iso: string): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
 
   useEffect(() => {
     if (!open || !client) {
@@ -146,11 +217,33 @@ export function ClientOrdersHistoryDialog({
         const list = await apiClient.getOrdersByClient(client.id);
         if (cancelled) return;
         const sorted = [...list]
-          .filter(
-            (o) =>
-              o.type === "Order" ||
-              (o.status !== "Convertido" && isReservationOrder(o)),
-          )
+          .filter((d) => {
+            if (filterDate === "") {
+              return true;
+            } else {
+              console.log(
+                "FECHAS NECESARIAS >>>>",
+                toDateFilterKey(d.createdAt),
+                filterDate,
+              );
+              return toDateFilterKey(d.createdAt) === filterDate;
+            }
+          })
+          .filter((s) => {
+            if (statusSelected === "all") {
+              return true;
+            } else {
+              return s.status === statusSelected;
+            }
+          })
+          .filter((d) => d.type === documentTypeSelected)
+          .filter((o) => {
+            if (o.type === "Budget") return true;
+            if (o.type === "Order") return true;
+            if (o.type === "PendingConfirmation") {
+              return o.status !== "Convertido";
+            }
+          })
           .sort(
             (a, b) =>
               new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
@@ -171,7 +264,7 @@ export function ClientOrdersHistoryDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, client?.id]);
+  }, [open, client?.id, documentTypeSelected, statusSelected, filterDate]);
 
   useEffect(() => {
     if (!open || !client?.id) {
@@ -225,7 +318,7 @@ export function ClientOrdersHistoryDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {storeCreditBalanceUsd != null && storeCreditBalanceUsd > 0 && (
@@ -237,6 +330,52 @@ export function ClientOrdersHistoryDialog({
               </p>
             )}
           </DialogHeader>
+
+          <div className="flex gap-2">
+            <Select
+              value={documentTypeSelected}
+              onValueChange={(value) => {
+                setDocumentTypeSelected(value);
+                setStatusSelected("all");
+                setFilterDate("");
+              }}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                {documentTypes.map((d) => (
+                  <SelectItem value={d.value}>{d.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {documentTypeSelected !== "PendingConfirmation" && (
+              <Select value={statusSelected} onValueChange={setStatusSelected}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  {statusOptions.map((s) => (
+                    <SelectItem value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                Fecha
+              </span>
+              <Input
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="w-[150px]"
+                aria-label="Fecha"
+              />
+            </div>
+          </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto">
             {isLoading ? (
@@ -268,10 +407,10 @@ export function ClientOrdersHistoryDialog({
                   {orders.map((order) => {
                     const isReservationPending = isActiveReservation(order);
                     const typeLabel = isReservationOrder(order)
-                        ? "Reserva"
-                        : order.type === "Budget"
-                          ? "Presupuesto"
-                          : "Pedido";
+                      ? "Reserva"
+                      : order.type === "Budget"
+                        ? "Presupuesto"
+                        : "Pedido";
                     const fullyPaid = isOrderFullyPaid(order);
                     return (
                       <TableRow key={order.id}>
@@ -357,6 +496,19 @@ export function ClientOrdersHistoryDialog({
               </Table>
             )}
           </div>
+          {/* Paginación */}
+          {!isLoading && orders.length > 0 && (
+            <TablePagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              startIndex={startIndex}
+              endIndex={endIndex}
+              onPageChange={goToPage}
+              itemsPerPage={itemsPerPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
