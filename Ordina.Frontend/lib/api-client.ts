@@ -68,6 +68,44 @@ export interface ApiError {
   status?: number;
 }
 
+export interface GenerateAccessPinResponseDto {
+  pin: string;
+  expiresAt: string;
+  expiresInSeconds: number;
+}
+
+export interface ValidateAccessPinResponseDto {
+  success: boolean;
+  sessionExpiresAt: string;
+  sessionRemainingSeconds: number;
+}
+
+export interface AccessPinSessionResponseDto {
+  active: boolean;
+  remainingSeconds?: number;
+  sessionExpiresAt?: string;
+}
+
+export interface AccessPinHistoryItemDto {
+  id: string;
+  pinMasked: string;
+  generatedByUserName: string;
+  usedByUserId?: string;
+  orderId?: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt?: string;
+  sessionExpiresAt?: string;
+  status: string;
+}
+
+export interface AccessPinHistoryResponseDto {
+  items: AccessPinHistoryItemDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 interface CachedApiResponse {
   id: string;
   endpoint: string;
@@ -107,6 +145,7 @@ export class ApiClient {
     } else if (
       endpoint.startsWith("/api/orders") ||
       endpoint.startsWith("/api/Orders") ||
+      endpoint.startsWith("/api/AccessPin") ||
       endpoint.startsWith("/api/CommissionSettings") ||
       endpoint.startsWith("/api/commissionSettings") ||
       endpoint.toLowerCase().includes("/api/commissionsettings") ||
@@ -1223,6 +1262,31 @@ export class ApiClient {
         method: "POST",
         body: JSON.stringify(body),
       },
+    );
+  }
+
+  async generateAccessPin() {
+    return this.request<GenerateAccessPinResponseDto>("/api/AccessPin/generate", {
+      method: "POST",
+    });
+  }
+
+  async validateAccessPin(pin: string, orderId: string) {
+    return this.request<ValidateAccessPinResponseDto>("/api/AccessPin/validate", {
+      method: "POST",
+      body: JSON.stringify({ pin, orderId }),
+    });
+  }
+
+  async getAccessPinSession(orderId: string) {
+    return this.request<AccessPinSessionResponseDto>(
+      `/api/AccessPin/session/${encodeURIComponent(orderId)}`,
+    );
+  }
+
+  async getAccessPinHistory(page = 1, pageSize = 20) {
+    return this.request<AccessPinHistoryResponseDto>(
+      `/api/AccessPin/history?page=${page}&pageSize=${pageSize}`,
     );
   }
 
