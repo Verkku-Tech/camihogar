@@ -41,6 +41,7 @@ interface DashboardHeaderProps {
 import { CurrencyCalculatorDialog } from "@/components/currency/currency-calculator-dialog";
 import { OrderAuditLogDialog } from "@/components/orders/order-audit-log-dialog";
 import { Calculator, ScrollText } from "lucide-react";
+import { PinGeneratorDialog } from "@/components/pin/pin-generator-dialog";
 import { OrderSearchCombobox } from "@/components/dashboard/order-search-combobox";
 import {
   Dialog,
@@ -66,6 +67,7 @@ export function DashboardHeader({
   const [hasActiveExchangeRates, setHasActiveExchangeRates] = useState(true);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isAuditLogOpen, setIsAuditLogOpen] = useState(false);
+  const [isPinGeneratorOpen, setIsPinGeneratorOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -158,6 +160,8 @@ export function DashboardHeader({
   const canViewOrderAuditLogs =
     user?.role === "Super Administrator" || user?.role === "Administrator";
 
+  const canGenerateAccessPin = canViewOrderAuditLogs;
+
   const CalculatorButton = () => (
     <Button
       variant="ghost"
@@ -181,6 +185,18 @@ export function DashboardHeader({
       </Button>
     ) : null;
 
+  const PinGeneratorButton = () =>
+    canGenerateAccessPin ? (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setIsPinGeneratorOpen(true)}
+        title="Generar PIN de acceso"
+      >
+        <KeyRound className="w-5 h-5" />
+      </Button>
+    ) : null;
+
   if (!mounted) {
     return (
       <header className="h-16 bg-background border-b border-border flex items-center justify-between px-4 lg:px-6">
@@ -199,6 +215,7 @@ export function DashboardHeader({
 
           <CalculatorButton />
           <AuditLogButton />
+          <PinGeneratorButton />
 
           <DropdownMenu>
             {/* ... Bell Dropdown ... */}
@@ -281,6 +298,7 @@ export function DashboardHeader({
         </div>
         <CurrencyCalculatorDialog open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen} />
         <OrderAuditLogDialog open={isAuditLogOpen} onOpenChange={setIsAuditLogOpen} />
+        <PinGeneratorDialog open={isPinGeneratorOpen} onOpenChange={setIsPinGeneratorOpen} />
       </header>
     );
   }
@@ -301,20 +319,21 @@ export function DashboardHeader({
       <div className="flex items-center gap-4">
         <OrderSearchCombobox preloadedOrders={orderSearchPreloaded} />
 
-        <CalculatorButton />
-        <AuditLogButton />
+          <CalculatorButton />
+          <AuditLogButton />
+          <PinGeneratorButton />
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="relative">
-              <Bell className="w-5 h-5" />
-              {!hasActiveExchangeRates && (
-                <span className="absolute top-0 right-0 h-2 w-2 bg-red-500 rounded-full border-2 border-background" />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
-            {!hasActiveExchangeRates ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="relative">
+                <Bell className="w-5 h-5" />
+                {!hasActiveExchangeRates && (
+                  <span className="absolute top-0 right-0 h-2 w-2 bg-red-500 rounded-full border-2 border-background" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              {!hasActiveExchangeRates ? (
               <>
                 <div className="px-3 py-2">
                   <div className="flex items-start gap-3">
@@ -480,6 +499,7 @@ export function DashboardHeader({
       </Dialog>
       <CurrencyCalculatorDialog open={isCalculatorOpen} onOpenChange={setIsCalculatorOpen} />
       <OrderAuditLogDialog open={isAuditLogOpen} onOpenChange={setIsAuditLogOpen} />
+      <PinGeneratorDialog open={isPinGeneratorOpen} onOpenChange={setIsPinGeneratorOpen} />
     </header>
   );
 }

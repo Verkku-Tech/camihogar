@@ -436,7 +436,8 @@ public class OrdersController : ControllerBase
                 return BadRequest(ModelState);
 
             var (userId, userName) = GetActor(User);
-            var order = await _orderService.ConfirmPendingOrderAsync(id, confirmDto, userId, userName);
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            var order = await _orderService.ConfirmPendingOrderAsync(id, confirmDto, userId, userName, role);
             return Ok(order);
         }
         catch (ArgumentException ex)

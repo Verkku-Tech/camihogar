@@ -17,17 +17,20 @@ public class OrderService : IOrderService
     private readonly IOrderRepository _orderRepository;
     private readonly IOrderAuditLogService _auditLogService;
     private readonly IClientCreditService _clientCreditService;
+    private readonly IAccessPinService _accessPinService;
     private readonly ILogger<OrderService> _logger;
 
     public OrderService(
         IOrderRepository orderRepository,
         IOrderAuditLogService auditLogService,
         IClientCreditService clientCreditService,
+        IAccessPinService accessPinService,
         ILogger<OrderService> logger)
     {
         _orderRepository = orderRepository;
         _auditLogService = auditLogService;
         _clientCreditService = clientCreditService;
+        _accessPinService = accessPinService;
         _logger = logger;
     }
 
@@ -282,7 +285,12 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<OrderResponseDto> ConfirmPendingOrderAsync(string pendingOrderId, ConfirmOrderDto confirmDto, string userId, string userName)
+    public async Task<OrderResponseDto> ConfirmPendingOrderAsync(
+        string pendingOrderId,
+        ConfirmOrderDto confirmDto,
+        string userId,
+        string userName,
+        string? callerRole = null)
     {
         if (string.IsNullOrWhiteSpace(pendingOrderId))
             throw new ArgumentException("El ID de la reserva es requerido", nameof(pendingOrderId));
@@ -305,6 +313,14 @@ public class OrderService : IOrderService
             finalProducts = CloneOrderProducts(pcf.Products);
 
         var structureChanged = HasProductStructureChanges(baseline, finalProducts);
+
+        if (structureChanged && !IsAdministratorOrSuperAdministrator(callerRole))
+        {
+            var hasSession = await _accessPinService.HasActiveSessionAsync(pendingOrderId, userId);
+            if (!hasSession)
+                throw new ArgumentException(
+                    "Se requiere PIN de acceso para modificar productos de la reserva. Solicita un PIN al administrador.");
+        }
 
         string vendorId;
         string vendorName;

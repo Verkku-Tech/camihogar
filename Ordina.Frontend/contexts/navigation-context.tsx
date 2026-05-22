@@ -133,6 +133,14 @@ const defaultNavigationItems: NavigationItem[] = [
     description: "Gestión de comisiones por rol o por usuario",
   },
   {
+    id: "pin-acceso",
+    name: "PIN de Acceso",
+    href: "/configuracion/pin-acceso",
+    category: "configuration",
+    active: true,
+    description: "Generación de PIN para edición de reservas en tienda",
+  },
+  {
     id: "sistema",
     name: "Sistema",
     href: "/configuracion/sistema",

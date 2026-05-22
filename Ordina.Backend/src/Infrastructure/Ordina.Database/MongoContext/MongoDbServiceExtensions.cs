@@ -48,6 +48,7 @@ public static class MongoDbServiceExtensions
         services.AddScoped<ISaleTypeCommissionRuleRepository, SaleTypeCommissionRuleRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IAccountRepository, AccountRepository>();
+        services.AddScoped<IAccessPinRepository, AccessPinRepository>();
 
         return services;
     }

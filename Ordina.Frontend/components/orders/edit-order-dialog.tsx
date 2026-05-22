@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +47,8 @@ import {
 import { tryComputeOverpaymentUsd } from "@/lib/order-store-credit-usd";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
+import { usePinSession } from "@/hooks/use-pin-session";
+import { hasProductStructureChanges } from "@/lib/order-product-structure";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
 import {
   AlertDialog,
@@ -158,6 +160,24 @@ export function EditOrderDialog({
   const orderForm = useEditOrderForm(open, order);
   const isPaymentsOnly = mode === "payments";
   const isConfirmingReservation = mode === "confirm-reservation";
+  const isStoreSellerConfirming =
+    isConfirmingReservation && user?.role === "Store Seller";
+  const pinSession = usePinSession(
+    order?.id ?? null,
+    isStoreSellerConfirming && open,
+  );
+  const baselineProductsRef = useRef<OrderProduct[]>([]);
+
+  useEffect(() => {
+    if (open && isConfirmingReservation && order?.products) {
+      baselineProductsRef.current = order.products.map((p) => ({ ...p }));
+    }
+  }, [open, isConfirmingReservation, order?.id]);
+
+  const handleTogglePinPanel = useCallback(() => {
+    pinSession.setShowPinPanel(!pinSession.showPinPanel);
+  }, [pinSession.showPinPanel, pinSession.setShowPinPanel]);
+
   const isEditingBudget =
     !!order &&
     ((order.type || "").toLowerCase() === "budget" ||
@@ -907,6 +927,27 @@ export function EditOrderDialog({
           return;
         }
 
+        const productsPrepared = orderForm.selectedProducts.map((product) => ({
+          ...product,
+          discount:
+            product.discount && product.discount > 0
+              ? product.discount
+              : undefined,
+          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+        }));
+
+        const structureChanged = hasProductStructureChanges(
+          baselineProductsRef.current,
+          productsPrepared,
+        );
+
+        if (isStoreSellerConfirming && structureChanged && !pinSession.isActive) {
+          toast.error(
+            "Se requiere PIN de acceso para modificar productos. Solicita un PIN al administrador.",
+          );
+          return;
+        }
+
         const paymentType =
           orderForm.paymentCondition === "pago_a_entrega" ||
           orderForm.paymentCondition === "cashea"
@@ -925,15 +966,6 @@ export function EditOrderDialog({
                 : multi
                   ? "Mixto"
                   : paymentsNorm[0]?.method || "";
-
-        const productsPrepared = orderForm.selectedProducts.map((product) => ({
-          ...product,
-          discount:
-            product.discount && product.discount > 0
-              ? product.discount
-              : undefined,
-          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
-        }));
 
         const body: ConfirmOrderDto = {
           storeVendorId: user.id,
@@ -1290,6 +1322,13 @@ export function EditOrderDialog({
               onEditProduct={handleEditProduct}
               onRemoveProduct={handleRemoveProduct}
               referrerLocked={isConfirmingReservation}
+              pinEditMode={isStoreSellerConfirming}
+              pinSessionActive={pinSession.isActive}
+              pinRemainingFormatted={pinSession.remainingFormatted}
+              showPinPanel={pinSession.showPinPanel}
+              onTogglePinPanel={handleTogglePinPanel}
+              onValidatePin={pinSession.validatePin}
+              isValidatingPin={pinSession.isValidating}
             />
           )}
 
