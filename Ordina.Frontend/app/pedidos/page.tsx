@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
@@ -41,22 +41,17 @@ import {
 import { useAuth } from "@/contexts/auth-context"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
-import { ORDER_STATUSES, PURCHASE_TYPES } from "@/components/orders/constants"
+import {
+  buildOrderStatusFilterOptions,
+  PURCHASE_TYPES,
+} from "@/components/orders/constants"
 import {
   isSistemaApartado,
   isSaWarehouseHighlight,
   purchaseTypeLabel,
 } from "@/lib/order-sa"
 import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility"
-
-/** yyyy-MM-dd en calendario local (alineado con toLocaleDateString de la tabla). */
-function toLocalDateKey(iso: string): string {
-  const d = new Date(iso)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
-}
+import { toLocalDateKey } from "@/lib/date-utils"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -186,7 +181,10 @@ export default function PedidosPage() {
   // Obtener valores únicos para los filtros
   const uniqueVendors = Array.from(new Set(orders.map((o) => o.vendorName))).sort()
 
-  const uniqueStatuses = ORDER_STATUSES.map((s) => s.value)
+  const statusFilterOptions = useMemo(
+    () => buildOrderStatusFilterOptions(orders.map((o) => o.status)),
+    [orders],
+  )
 
   let rangeFrom = dateFrom
   let rangeTo = dateTo
@@ -422,9 +420,9 @@ export default function PedidosPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos los estados</SelectItem>
-                    {uniqueStatuses.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {status}
+                    {statusFilterOptions.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

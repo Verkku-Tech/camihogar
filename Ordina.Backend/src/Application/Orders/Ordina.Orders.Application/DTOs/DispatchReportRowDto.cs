@@ -14,4 +14,6 @@ public class DispatchReportRowDto
     /// <summary>Saldo por cobrar en tienda (USD), 0 si está pagado.</summary>
     public decimal SaldoPendiente { get; set; }
     public string DispatchObservations { get; set; } = string.Empty;
+    /// <summary>Zona, tipo de entrega y observaciones formateados para transportistas.</summary>
+    public string InformacionDespacho { get; set; } = string.Empty;
 }

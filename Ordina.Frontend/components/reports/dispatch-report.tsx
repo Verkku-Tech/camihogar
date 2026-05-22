@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -29,6 +29,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DELIVERY_ZONES } from "@/components/orders/new-order-dialog";
+import { usePagination } from "@/hooks/use-pagination";
+import { TablePagination } from "@/components/ui/table-pagination";
 
 /** Fila del reporte (API en camelCase). */
 interface DispatchReportRow {
@@ -42,12 +44,15 @@ interface DispatchReportRow {
   estadoPago: string;
   importeTotal: number;
   saldoPendiente: number;
-  DispatchObservations: string;
+  informacionDespacho: string;
 }
 
 function normalizeDispatchRow(raw: Record<string, unknown>): DispatchReportRow {
   const g = (k: string) =>
     raw[k] ?? raw[k.charAt(0).toUpperCase() + k.slice(1)];
+  const dispatchObs = String(g("dispatchObservations") ?? "").trim();
+  const informacion =
+    String(g("informacionDespacho") ?? "").trim() || dispatchObs;
   return {
     notaDespacho: String(g("notaDespacho") ?? ""),
     cliente: String(g("cliente") ?? ""),
@@ -59,9 +64,15 @@ function normalizeDispatchRow(raw: Record<string, unknown>): DispatchReportRow {
     estadoPago: String(g("estadoPago") ?? ""),
     importeTotal: Number(g("importeTotal") ?? 0),
     saldoPendiente: Number(g("saldoPendiente") ?? 0),
-    DispatchObservations: String(g("dispatchObservations") ?? ""),
+    informacionDespacho: informacion,
   };
 }
+
+const escapeCsvCell = (value: string): string => {
+  const s = value ?? "";
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+};
 
 export function DispatchReport() {
   const [selectedZone, setSelectedZone] = useState<string>("all");
@@ -69,7 +80,22 @@ export function DispatchReport() {
   const [endDate, setEndDate] = useState<string>("");
   const [reportData, setReportData] = useState<DispatchReportRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [isDownloadingExcel, setIsDownloadingExcel] = useState(false);
+  const [isDownloadingCsv, setIsDownloadingCsv] = useState(false);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  const {
+    currentPage,
+    totalPages,
+    paginatedData,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({
+    data: reportData,
+    itemsPerPage,
+  });
 
   // Cargar datos del reporte desde el backend
   useEffect(() => {
@@ -124,8 +150,22 @@ export function DispatchReport() {
     loadReportData();
   }, [selectedZone, startDate, endDate]);
 
+  const buildReportQueryParams = () => {
+    const params = new URLSearchParams();
+    if (selectedZone && selectedZone !== "all") {
+      params.append("deliveryZone", selectedZone);
+    }
+    if (startDate) {
+      params.append("startDate", startDate);
+    }
+    if (endDate) {
+      params.append("endDate", endDate);
+    }
+    return params;
+  };
+
   const handleDownloadExcel = async () => {
-    setIsDownloading(true);
+    setIsDownloadingExcel(true);
 
     try {
       const token = localStorage.getItem("auth_token");
@@ -134,18 +174,7 @@ export function DispatchReport() {
         return;
       }
 
-      const params = new URLSearchParams();
-      if (selectedZone && selectedZone !== "all") {
-        params.append("deliveryZone", selectedZone);
-      }
-      if (startDate) {
-        params.append("startDate", startDate);
-      }
-      if (endDate) {
-        params.append("endDate", endDate);
-      }
-
-      const url = `/api/proxy/orders/api/Reports/Dispatch/Excel?${params.toString()}`;
+      const url = `/api/proxy/orders/api/Reports/Dispatch/Excel?${buildReportQueryParams().toString()}`;
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -172,9 +201,73 @@ export function DispatchReport() {
       console.error("Error downloading report:", error);
       toast.error("Error al descargar el reporte");
     } finally {
-      setIsDownloading(false);
+      setIsDownloadingExcel(false);
     }
   };
+
+  const handleDownloadCsv = useCallback(() => {
+    if (reportData.length === 0) {
+      toast.error("No hay datos para exportar");
+      return;
+    }
+
+    setIsDownloadingCsv(true);
+    try {
+      const headers = [
+        "Pedido",
+        "Cliente",
+        "Teléfono 1",
+        "Teléfono 2",
+        "Dirección",
+        "Cantidad",
+        "Descripción",
+        "Estado de pago",
+        "Importe total",
+        "Saldo pendiente (USD)",
+        "Información de despacho",
+        "Firma",
+      ];
+
+      const lines = [headers.map(escapeCsvCell).join(",")];
+      for (const row of reportData) {
+        lines.push(
+          [
+            row.notaDespacho,
+            row.cliente,
+            row.telefono1,
+            row.telefono2,
+            row.direccion,
+            String(row.cantidadTotal),
+            row.descripcion,
+            row.estadoPago,
+            row.importeTotal.toFixed(2),
+            row.saldoPendiente.toFixed(2),
+            row.informacionDespacho,
+            "",
+          ]
+            .map(escapeCsvCell)
+            .join(","),
+        );
+      }
+
+      const csv = "\uFEFF" + lines.join("\r\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Reporte_Despacho_${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("CSV exportado");
+    } catch (error) {
+      console.error("Error exportando CSV:", error);
+      toast.error("No se pudo generar el CSV");
+    } finally {
+      setIsDownloadingCsv(false);
+    }
+  }, [reportData]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -184,7 +277,6 @@ export function DispatchReport() {
     }).format(amount);
   };
 
-  // Calcular totales
   const totalImporte = reportData.reduce(
     (sum, row) => sum + row.importeTotal,
     0,
@@ -194,9 +286,10 @@ export function DispatchReport() {
     0,
   );
 
+  const exportDisabled = isLoading || reportData.length === 0;
+
   return (
     <div className="space-y-6">
-      {/* Filtros */}
       <Card>
         <CardHeader>
           <CardTitle>Parámetros del Reporte</CardTitle>
@@ -245,14 +338,32 @@ export function DispatchReport() {
         </CardContent>
       </Card>
 
-      {/* Botón de descarga */}
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
         <Button
-          onClick={handleDownloadExcel}
-          disabled={isDownloading || isLoading}
+          type="button"
+          variant="outline"
+          onClick={handleDownloadCsv}
+          disabled={exportDisabled || isDownloadingCsv || isDownloadingExcel}
           className="gap-2"
         >
-          {isDownloading ? (
+          {isDownloadingCsv ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Exportando CSV...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4" />
+              Descargar CSV
+            </>
+          )}
+        </Button>
+        <Button
+          onClick={handleDownloadExcel}
+          disabled={exportDisabled || isDownloadingExcel || isDownloadingCsv}
+          className="gap-2"
+        >
+          {isDownloadingExcel ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
               Descargando...
@@ -266,7 +377,6 @@ export function DispatchReport() {
         </Button>
       </div>
 
-      {/* Tabla de resultados */}
       <Card>
         <CardHeader>
           <CardTitle>Resultados del Reporte</CardTitle>
@@ -291,64 +401,62 @@ export function DispatchReport() {
               No se encontraron pedidos para los filtros seleccionados
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Pedido</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Teléfono 1</TableHead>
-                    <TableHead>Teléfono 2</TableHead>
-                    <TableHead>Dirección</TableHead>
-                    <TableHead className="text-center">Cantidad</TableHead>
-                    <TableHead>Descripción</TableHead>
-                    <TableHead>Estado de pago</TableHead>
-                    <TableHead className="text-right">Importe total</TableHead>
-                    <TableHead className="text-right">
-                      Saldo pendiente (USD)
-                    </TableHead>
-                    {/* TODO:Mostrar el reporte de despacho */}
-                    <TableHead className="text-right">
-                      Información de despacho
-                    </TableHead>
-                    <TableHead className="min-w-[120px]">Firma</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reportData.map((row, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium whitespace-nowrap">
-                        {row.notaDespacho}
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {row.cliente}
-                      </TableCell>
-                      <TableCell>{row.telefono1}</TableCell>
-                      <TableCell>{row.telefono2}</TableCell>
-                      <TableCell className="max-w-[220px]">
-                        {row.direccion}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {row.cantidadTotal}
-                      </TableCell>
-                      <TableCell className="max-w-[320px]">
-                        {row.descripcion}
-                      </TableCell>
-                      <TableCell>{row.estadoPago}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(row.importeTotal)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(row.saldoPendiente)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {row.DispatchObservations}
-                      </TableCell>
-                      {/* TODO:Mostrar el reporte de despacho */}
-                      <TableCell className="min-w-[120px] min-h-[2.5rem] align-bottom border-b border-dashed border-muted-foreground/30" />
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Pedido</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Teléfono 1</TableHead>
+                      <TableHead>Teléfono 2</TableHead>
+                      <TableHead>Dirección</TableHead>
+                      <TableHead className="text-center">Cantidad</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead>Estado de pago</TableHead>
+                      <TableHead className="text-right">Importe total</TableHead>
+                      <TableHead className="text-right">
+                        Saldo pendiente (USD)
+                      </TableHead>
+                      <TableHead className="max-w-[280px]">
+                        Información de despacho
+                      </TableHead>
+                      <TableHead className="min-w-[120px]">Firma</TableHead>
                     </TableRow>
-                  ))}
-                  {reportData.length > 0 && (
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedData.map((row) => (
+                      <TableRow key={row.notaDespacho}>
+                        <TableCell className="font-medium whitespace-nowrap">
+                          {row.notaDespacho}
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate">
+                          {row.cliente}
+                        </TableCell>
+                        <TableCell>{row.telefono1}</TableCell>
+                        <TableCell>{row.telefono2}</TableCell>
+                        <TableCell className="max-w-[220px]">
+                          {row.direccion}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {row.cantidadTotal}
+                        </TableCell>
+                        <TableCell className="max-w-[320px]">
+                          {row.descripcion}
+                        </TableCell>
+                        <TableCell>{row.estadoPago}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(row.importeTotal)}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(row.saldoPendiente)}
+                        </TableCell>
+                        <TableCell className="max-w-[280px] text-sm whitespace-pre-wrap">
+                          {row.informacionDespacho || "—"}
+                        </TableCell>
+                        <TableCell className="min-w-[120px] min-h-[2.5rem] align-bottom border-b border-dashed border-muted-foreground/30" />
+                      </TableRow>
+                    ))}
                     <TableRow className="font-bold bg-muted/50">
                       <TableCell colSpan={8} className="text-right">
                         Totales
@@ -359,13 +467,24 @@ export function DispatchReport() {
                       <TableCell className="text-right">
                         {formatCurrency(totalSaldoPendiente)}
                       </TableCell>
-                      <TableCell className="text-right"></TableCell>
+                      <TableCell />
                       <TableCell />
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableBody>
+                </Table>
+              </div>
+
+              <TablePagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                startIndex={startIndex}
+                endIndex={endIndex}
+                onPageChange={goToPage}
+                itemsPerPage={itemsPerPage}
+                onItemsPerPageChange={setItemsPerPage}
+              />
+            </>
           )}
         </CardContent>
       </Card>
