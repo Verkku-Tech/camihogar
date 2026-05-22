@@ -14,6 +14,7 @@ import {
 import { Plus, Edit, Trash2, KeyRound } from "lucide-react";
 import { PinValidationPanel } from "@/components/orders/pin-validation-panel";
 import { Badge } from "@/components/ui/badge";
+import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
 import type { UseOrderFormReturn } from "../hooks/use-order-form";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import {
@@ -251,8 +252,13 @@ export function Step1Budget({
                         <div className="space-y-4">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1">
-                              <div className="font-medium text-base mb-1">
-                                {product.name}
+                              <div className="flex flex-wrap items-center gap-2 mb-1">
+                                <span className="font-medium text-base">
+                                  {product.name}
+                                </span>
+                                <CommissionLineSourceBadge
+                                  source={product.commissionLineSource}
+                                />
                               </div>
                             </div>
                             <div className="text-right">
@@ -532,8 +538,11 @@ export function Step1Budget({
                           return (
                             <TableRow key={product.id}>
                               <TableCell className="w-[20%]">
-                                <div className="flex items-center gap-1">
+                                <div className="flex flex-col gap-1 min-w-0">
                                   <span className="truncate text-sm">{product.name}</span>
+                                  <CommissionLineSourceBadge
+                                    source={product.commissionLineSource}
+                                  />
                                 </div>
                               </TableCell>
                               <TableCell className="w-[10%] text-right text-sm">

@@ -8,6 +8,7 @@ using MongoDB.Driver;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.Repositories;
 using Ordina.Orders.Application;
+using Ordina.Orders.Application.Commission;
 using Ordina.Orders.Application.DTOs;
 
 namespace Ordina.Orders.Application.Services;
@@ -322,18 +323,22 @@ public class OrderService : IOrderService
                     "Se requiere PIN de acceso para modificar productos de la reserva. Solicita un PIN al administrador.");
         }
 
+        CommissionLineClassifier.ClassifyLines(baseline, finalProducts);
+
+        var onlineVendorId = !string.IsNullOrWhiteSpace(pcf.ReferrerId) ? pcf.ReferrerId! : pcf.VendorId;
+        var onlineVendorName = !string.IsNullOrWhiteSpace(pcf.ReferrerName) ? pcf.ReferrerName! : pcf.VendorName;
+        var commissionStructureChanged = CommissionLineClassifier.HasAnyNonUnchangedLine(finalProducts);
+
         string vendorId;
         string vendorName;
         string? referrerId;
         string? referrerName;
-        if (structureChanged)
+        if (commissionStructureChanged)
         {
             vendorId = confirmDto.StoreVendorId;
             vendorName = confirmDto.StoreVendorName;
-            var onlineId = !string.IsNullOrWhiteSpace(pcf.ReferrerId) ? pcf.ReferrerId! : pcf.VendorId;
-            var onlineName = !string.IsNullOrWhiteSpace(pcf.ReferrerName) ? pcf.ReferrerName! : pcf.VendorName;
-            referrerId = onlineId;
-            referrerName = onlineName;
+            referrerId = onlineVendorId;
+            referrerName = onlineVendorName;
         }
         else
         {
@@ -405,6 +410,9 @@ public class OrderService : IOrderService
                 : pcf.ExchangeRatesAtCreation,
             Type = "Order",
             OriginalOrderId = pcf.Id,
+            OriginalProducts = CloneOrderProducts(baseline),
+            SourceReservationVendorId = onlineVendorId,
+            SourceReservationVendorName = onlineVendorName,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -985,6 +993,8 @@ public class OrderService : IOrderService
             Type = order.Type,
             OriginalOrderId = order.OriginalOrderId,
             OriginalProducts = order.OriginalProducts?.Select(MapProductToDto).ToList(),
+            SourceReservationVendorId = order.SourceReservationVendorId,
+            SourceReservationVendorName = order.SourceReservationVendorName,
             AppliedStoreCreditUsd = order.AppliedStoreCreditUsd,
         };
     }
@@ -1126,7 +1136,9 @@ public class OrderService : IOrderService
                 Type = img.Type,
                 UploadedAt = img.UploadedAt,
                 Size = img.Size
-            }).ToList()
+            }).ToList(),
+            CommissionLineSource = product.CommissionLineSource,
+            CatalogProductId = product.CatalogProductId
         };
     }
 
@@ -1178,7 +1190,9 @@ public class OrderService : IOrderService
                 Type = img.Type,
                 UploadedAt = img.UploadedAt,
                 Size = img.Size
-            }).ToList()
+            }).ToList(),
+            CommissionLineSource = dto.CommissionLineSource,
+            CatalogProductId = dto.CatalogProductId
         };
     }
 
