@@ -1397,41 +1397,40 @@ public class ReportService : IReportService
             if (!string.IsNullOrWhiteSpace(vendorId) && order.VendorId != vendorId)
                 continue;
 
-            // Obtener datos del vendedor principal
-            var mainVendor = users.FirstOrDefault(u => u.Id == order.VendorId);
-            var isExclusiveVendor = mainVendor?.ExclusiveCommission ?? false;
-            var vendorBaseSalary = mainVendor?.BaseSalary ?? 0m;
             var tipoVentaLabel = GetCommissionSaleTypeLabel(order, saleTypeRules);
 
             // Procesar cada producto del pedido (una fila por producto)
             foreach (var product in order.Products)
             {
-                var isSharedSale = !string.IsNullOrWhiteSpace(order.ReferrerId);
+                var lineCtx = ResolveLineCommissionContext(product, order);
 
-                // Calcular comisiones usando el nuevo sistema
+                var mainVendor = users.FirstOrDefault(u => u.Id == lineCtx.EffectiveVendorId);
+                var isExclusiveVendor = mainVendor?.ExclusiveCommission ?? false;
+                var vendorBaseSalary = mainVendor?.BaseSalary ?? 0m;
+
                 var (vendorCommission, referrerCommission, postventaCommission, baseRate, appliedVendorRate, appliedReferrerRate, appliedPostventaRate) =
-                    CalculateProductCommission(product, order, productCommissions, saleTypeRules, users, isExclusiveVendor);
+                    CalculateProductCommission(
+                        product, order, productCommissions, saleTypeRules, isExclusiveVendor, lineCtx.IsSharedSale);
 
                 if (vendorCommission == 0m && referrerCommission == 0m && postventaCommission == 0m)
                     continue;
 
-                if (isSharedSale && !isExclusiveVendor)
+                if (lineCtx.IsSharedSale && !isExclusiveVendor)
                 {
                     var postventaLabel = string.IsNullOrWhiteSpace(order.PostventaName)
                         ? "Post venta"
                         : order.PostventaName.Trim();
-                    // VENTA COMPARTIDA: Comisión según reglas de tipo de venta
                     reportData.Add(new CommissionReportRow
                     {
                         Fecha = order.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
                         Cliente = order.ClientName,
-                        Vendedor = order.VendorName,
+                        Vendedor = lineCtx.EffectiveVendorName,
                         Pedido = order.OrderNumber,
                         Descripcion = await FormatProductDescriptionAsync(product),
                         CantidadArticulos = product.Quantity,
                         TipoVenta = tipoVentaLabel,
                         Comision = vendorCommission,
-                        VendedorSecundario = order.ReferrerName,
+                        VendedorSecundario = lineCtx.EffectiveReferrerName,
                         ComisionSecundaria = referrerCommission,
                         VendedorPostventa = postventaCommission > 0m ? postventaLabel : null,
                         ComisionPostventa = postventaCommission > 0m ? postventaCommission : null,
@@ -1446,12 +1445,11 @@ public class ReportService : IReportService
                 }
                 else
                 {
-                    // VENTA NORMAL o VENDEDOR EXCLUSIVO: Comisión completa para vendedor
                     reportData.Add(new CommissionReportRow
                     {
                         Fecha = order.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
                         Cliente = order.ClientName,
-                        Vendedor = order.VendorName,
+                        Vendedor = lineCtx.EffectiveVendorName,
                         Pedido = order.OrderNumber,
                         Descripcion = await FormatProductDescriptionAsync(product),
                         CantidadArticulos = product.Quantity,
@@ -1470,6 +1468,66 @@ public class ReportService : IReportService
         return reportData;
     }
 
+    private sealed record LineCommissionContext(
+        bool IsSharedSale,
+        string EffectiveVendorId,
+        string EffectiveVendorName,
+        string? EffectiveReferrerId,
+        string? EffectiveReferrerName);
+
+    private static LineCommissionContext ResolveLineCommissionContext(OrderProduct product, Order order)
+    {
+        var source = product.CommissionLineSource;
+
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            var legacyShared = !string.IsNullOrWhiteSpace(order.ReferrerId);
+            return new LineCommissionContext(
+                legacyShared,
+                order.VendorId,
+                order.VendorName,
+                order.ReferrerId,
+                order.ReferrerName);
+        }
+
+        switch (source)
+        {
+            case CommissionLineSources.ReservationUnchanged:
+                return new LineCommissionContext(
+                    false,
+                    order.SourceReservationVendorId ?? order.VendorId,
+                    order.SourceReservationVendorName ?? order.VendorName,
+                    null,
+                    null);
+
+            case CommissionLineSources.StoreAdded:
+                return new LineCommissionContext(
+                    false,
+                    order.VendorId,
+                    order.VendorName,
+                    null,
+                    null);
+
+            case CommissionLineSources.StoreModified:
+            case CommissionLineSources.StoreSubstitution:
+                return new LineCommissionContext(
+                    true,
+                    order.VendorId,
+                    order.VendorName,
+                    order.ReferrerId ?? order.SourceReservationVendorId,
+                    order.ReferrerName ?? order.SourceReservationVendorName);
+
+            default:
+                var fallbackShared = !string.IsNullOrWhiteSpace(order.ReferrerId);
+                return new LineCommissionContext(
+                    fallbackShared,
+                    order.VendorId,
+                    order.VendorName,
+                    order.ReferrerId,
+                    order.ReferrerName);
+        }
+    }
+
     /// <summary>
     /// Comisión por línea: USD por unidad (commissionValue) × cantidad.
     /// Venta compartida: vendorRate/referrerRate son % de esa comisión de familia, no del total del producto.
@@ -1480,8 +1538,8 @@ public class ReportService : IReportService
             Order order,
             IEnumerable<ProductCommission> productCommissions,
             IEnumerable<SaleTypeCommissionRule> saleTypeRules,
-            IEnumerable<User> users,
-            bool isExclusiveVendor)
+            bool isExclusiveVendor,
+            bool isSharedSale)
     {
         // 1. Obtener comisión base de la categoría del producto
         var categoryCommission = productCommissions.FirstOrDefault(c =>
@@ -1497,9 +1555,6 @@ public class ReportService : IReportService
 
         var qty = Math.Max(product.Quantity, 1);
         var familyCommission = baseCommissionRate * qty;
-
-        // Verificar si es venta compartida
-        var isSharedSale = !string.IsNullOrWhiteSpace(order.ReferrerId);
 
         if (isSharedSale && !isExclusiveVendor)
         {

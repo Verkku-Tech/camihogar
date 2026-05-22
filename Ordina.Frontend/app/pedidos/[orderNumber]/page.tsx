@@ -48,6 +48,7 @@ import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
 import { apiClient } from "@/lib/api-client";
 import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility";
+import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
 import {
   sumPaymentsInStoreBs,
   CASHEA_FINANCED_METHOD_LABEL,
@@ -1749,9 +1750,14 @@ export default function OrderDetailPage() {
 
                               <div className="flex justify-between items-start mb-2">
                                 <div className="flex-1">
-                                  <p className="font-semibold text-lg">
-                                    {product.name}
-                                  </p>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="font-semibold text-lg">
+                                      {product.name}
+                                    </p>
+                                    <CommissionLineSourceBadge
+                                      source={product.commissionLineSource}
+                                    />
+                                  </div>
                                   <p className="text-sm text-muted-foreground">
                                     Cantidad: {product.quantity}
                                   </p>

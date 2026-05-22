@@ -1952,6 +1952,8 @@ export interface OrderProductDto {
   surchargeEnabled?: boolean;
   surchargeAmount?: number;
   surchargeReason?: string;
+  commissionLineSource?: string;
+  catalogProductId?: string;
 }
 
 export interface PaymentDetailsDto {
@@ -2097,6 +2099,8 @@ export interface OrderResponseDto {
   type?: string;
   originalOrderId?: string;
   originalProducts?: OrderProductDto[];
+  sourceReservationVendorId?: string;
+  sourceReservationVendorName?: string;
   /** Crédito de tienda aplicado a este pedido (USD). */
   appliedStoreCreditUsd?: number;
 }

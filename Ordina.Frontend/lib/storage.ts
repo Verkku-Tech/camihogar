@@ -1662,6 +1662,8 @@ export interface OrderProduct {
   surchargeEnabled?: boolean; // Checkbox "Sobre precio" activo
   surchargeAmount?: number; // Monto del sobreprecio (en USD)
   surchargeReason?: string; // Razón del sobreprecio
+  commissionLineSource?: string;
+  catalogProductId?: string;
 }
 
 export interface PartialPayment {
@@ -1844,6 +1846,10 @@ export interface Order {
   completedAt?: string; // Fecha de completado
   /** Crédito de tienda aplicado al pedido (USD), persistido con el pedido. */
   appliedStoreCreditUsd?: number;
+  originalOrderId?: string;
+  originalProducts?: OrderProduct[];
+  sourceReservationVendorId?: string;
+  sourceReservationVendorName?: string;
 }
 
 export interface Client {
@@ -2040,6 +2046,8 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     surchargeEnabled: p.surchargeEnabled,
     surchargeAmount: p.surchargeAmount,
     surchargeReason: p.surchargeReason,
+    commissionLineSource: p.commissionLineSource,
+    catalogProductId: p.catalogProductId,
     refabricationReason: p.refabricationReason,
     refabricatedAt: p.refabricatedAt,
     refabricationHistory: p.refabricationHistory?.map((r) => ({
@@ -2205,6 +2213,23 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     (dto as { AppliedStoreCreditUsd?: number }).AppliedStoreCreditUsd ??
     0,
   type: dto.type ?? (dto as unknown as { Type?: string }).Type ?? "Order",
+  originalOrderId: dto.originalOrderId,
+  originalProducts: dto.originalProducts?.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    quantity: p.quantity,
+    total: p.total,
+    category: p.category,
+    stock: p.stock,
+    attributes: p.attributes,
+    discount: p.discount,
+    observations: p.observations,
+    commissionLineSource: p.commissionLineSource,
+    catalogProductId: p.catalogProductId,
+  })),
+  sourceReservationVendorId: dto.sourceReservationVendorId,
+  sourceReservationVendorName: dto.sourceReservationVendorName,
 });
 
 export const orderToBackendDto = (
