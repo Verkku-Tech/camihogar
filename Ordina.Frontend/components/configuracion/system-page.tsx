@@ -52,7 +52,9 @@ export function SystemPage() {
     setConfirmOpen(false)
     try {
       await clearAllIndexedDBDataStores()
-      toast.success("Cache local (IndexedDB) limpiado. Los datos se volverán a cargar desde el servidor.")
+      toast.success(
+        "Cache local limpiado. Al recargar Pedidos se hará una sincronización completa desde el servidor.",
+      )
       await loadStats()
     } catch (e) {
       console.error(e)

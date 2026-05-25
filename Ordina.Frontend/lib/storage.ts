@@ -349,6 +349,7 @@ export const INDEXEDDB_DATA_STORES = [
 /**
  * Limpia todas las tablas de datos en IndexedDB (no sync_queue ni app_settings).
  * Usado por bootSync y por la pantalla de emergencia en configuración.
+ * Sin preserveOrderCaches también borra `last_orders_sync_at` para forzar sync completa en el próximo getOrders.
  * @param options.preserveOrderCaches Si true (boot), no vacía `orders` ni `budgets` para no forzar re-descarga múltiple en frío; getOrders sigue refrescando desde API.
  */
 export const clearAllIndexedDBDataStores = async (options?: {
@@ -365,6 +366,9 @@ export const clearAllIndexedDBDataStores = async (options?: {
     } catch (e) {
       console.warn(`clearStore ${name}:`, e);
     }
+  }
+  if (!options?.preserveOrderCaches) {
+    await clearLastOrdersSyncAt();
   }
 };
 
@@ -2545,6 +2549,22 @@ const setLastOrdersSyncAt = async (iso: string): Promise<void> => {
   }
 };
 
+/** Borra el marcador de sync incremental y reinicia el flag de sesión (p. ej. tras limpiar cache). */
+export const clearLastOrdersSyncAt = async (): Promise<void> => {
+  try {
+    const settings = await db.getAll<{ id: string; key: string; value: string }>(
+      "app_settings",
+    );
+    const existing = settings.find((s) => s.key === LAST_ORDERS_SYNC_KEY);
+    if (existing?.id) {
+      await db.remove("app_settings", existing.id);
+    }
+  } catch (e) {
+    console.warn("No se pudo borrar last_orders_sync_at:", e);
+  }
+  ordersListSyncedThisSession = false;
+};
+
 /** Pedidos en IndexedDB sin sincronizar con la API. */
 export const getOrdersFromCache = async (): Promise<Order[]> => {
   try {
@@ -2614,7 +2634,15 @@ export const getOrders = async (
         const allOrders: Order[] = [];
         const forceFull =
           options.forceFullSync === true || options.refreshFromBackend === true;
-        const since = forceFull ? null : await getLastOrdersSyncAt();
+        let since = forceFull ? null : await getLastOrdersSyncAt();
+
+        // Cache de pedidos vacío pero marcador incremental presente → sync completa (server-first).
+        if (since && !forceFull && localForMerge.length === 0) {
+          console.log(
+            "getOrders: store orders vacío; ignorando sync incremental y usando paginación completa",
+          );
+          since = null;
+        }
 
         if (since && !forceFull) {
           try {
@@ -2650,12 +2678,21 @@ export const getOrders = async (
             if (serverTimestamp) {
               await setLastOrdersSyncAt(serverTimestamp);
             }
-            ordersListSyncedThisSession = true;
             const merged = await db.getAll<Order>("orders");
-            console.log(
-              `Órdenes sincronización incremental: ${mappedDelta.length} cambios, ${merged.length} en IndexedDB`,
+            const incrementalLooksComplete =
+              localForMerge.length > 0 ||
+              mappedDelta.length > 0 ||
+              merged.length > 0;
+            if (incrementalLooksComplete) {
+              ordersListSyncedThisSession = true;
+              console.log(
+                `Órdenes sincronización incremental: ${mappedDelta.length} cambios, ${merged.length} en IndexedDB`,
+              );
+              return merged;
+            }
+            console.warn(
+              "Sync incremental sin pedidos con cache vacío; usando paginación completa",
             );
-            return merged;
           } catch (incErr) {
             console.warn(
               "Sync incremental falló, usando paginación completa:",
@@ -2719,7 +2756,9 @@ export const getOrders = async (
         if (lastServerTimestamp) {
           await setLastOrdersSyncAt(lastServerTimestamp);
         }
-        ordersListSyncedThisSession = true;
+        if (ordersOnly.length > 0 || localOnly.length > 0) {
+          ordersListSyncedThisSession = true;
+        }
         console.log(
           `Órdenes (sin presupuestos en store orders): ${ordersOnly.length} del servidor + ${localOnly.length} solo locales = ${merged.length}`,
         );
@@ -2729,6 +2768,7 @@ export const getOrders = async (
           "Error obteniendo órdenes del servidor, usando IndexedDB:",
           error,
         );
+        ordersListSyncedThisSession = false;
         return localForMerge;
       } finally {
         inflightOrdersSync = null;
@@ -2778,9 +2818,6 @@ export const getOrder = async (
 ): Promise<Order | undefined> => {
   try {
     const cached = await db.get<Order>("orders", id);
-    if (cached && !options?.forceRefresh) {
-      return cached;
-    }
     if (isOnline()) {
       try {
         const dto = await apiClient.getOrderById(id);
@@ -2789,7 +2826,12 @@ export const getOrder = async (
         return order;
       } catch (error) {
         console.warn("getOrder: API falló, usando IndexedDB", error);
+        if (cached && !options?.forceRefresh) {
+          return cached;
+        }
       }
+    } else if (cached && !options?.forceRefresh) {
+      return cached;
     }
     return cached ?? (await db.get<Order>("orders", id));
   } catch (error) {
@@ -2818,6 +2860,69 @@ export const getOrdersByStatus = async (status: string): Promise<Order[]> => {
   }
 };
 
+const sortOrdersByCreatedDesc = (list: Order[]): Order[] =>
+  [...list].sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+
+const dedupeReservationOrders = (list: Order[]): Order[] => {
+  const seen = new Set<string>();
+  const out: Order[] = [];
+  for (const o of list) {
+    if (!isReservationOrder(o)) continue;
+    const key = (o.id || o.orderNumber || "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(o);
+  }
+  return out;
+};
+
+/** Listado dedicado de reservas (RES-/PCF-); no usa getUnifiedOrders ni getOrders paginado completo. */
+export const getReservations = async (): Promise<Order[]> => {
+  const cacheReservations = async (list: Order[]) => {
+    for (const o of list) {
+      try {
+        await db.put("orders", o);
+      } catch (e) {
+        console.warn("No se pudo cachear reserva en IndexedDB:", e);
+      }
+    }
+  };
+
+  if (isOnline()) {
+    try {
+      const [reservaDtos, legacyDtos] = await Promise.all([
+        apiClient.getOrdersByStatus("Reserva"),
+        apiClient
+          .getOrdersByStatus("Por Confirmar")
+          .catch(() => [] as OrderResponseDto[]),
+      ]);
+      const mapped = dedupeReservationOrders(
+        [...reservaDtos, ...legacyDtos].map((dto) => orderFromBackendDto(dto)),
+      );
+      await cacheReservations(mapped);
+      return sortOrdersByCreatedDesc(mapped);
+    } catch (error) {
+      console.warn(
+        "Error cargando reservas desde API, usando cache local:",
+        error,
+      );
+    }
+  }
+
+  try {
+    const localOrders = await db.getAll<Order>("orders");
+    return sortOrdersByCreatedDesc(
+      dedupeReservationOrders(localOrders.filter(isReservationOrder)),
+    );
+  } catch (error) {
+    console.error("Error loading reservations from cache:", error);
+    return [];
+  }
+};
+
 function newLocalOrderId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -2830,7 +2935,7 @@ function nextOfflineOrderNumber(existingOrders: Order[]): string {
   const existingNumbers = new Set(
     existingOrders
       .map((o) => o.orderNumber)
-      .filter((n): n is string => typeof n === "string" && n.trim() !== "")
+      .filter((n): n is string => typeof n === "string" && n.trim() !== ""),
   );
   let max = 0;
   const re = /^ORD-(\d+)$/i;
@@ -4174,10 +4279,18 @@ export const getBudgets = async (options?: {
     // Cargar siempre presupuestos locales desde IndexedDB primero (offline-first)
     const localBudgets = await db.getAll<Budget>("budgets");
 
+    let cachedOrdersCount = 0;
+    try {
+      cachedOrdersCount = await db.count("orders");
+    } catch {
+      /* ignore */
+    }
+
     if (
       options?.skipApiIfFresh &&
       ordersListSyncedThisSession &&
-      localBudgets.length > 0
+      localBudgets.length > 0 &&
+      cachedOrdersCount > 0
     ) {
       return localBudgets;
     }
@@ -4509,9 +4622,6 @@ export const getClient = async (
 ): Promise<Client | undefined> => {
   try {
     const cached = await db.get<Client>("clients", id);
-    if (cached && !options?.forceRefresh) {
-      return cached;
-    }
     if (isOnline()) {
       try {
         const dto = await apiClient.getClientById(id);
@@ -4520,7 +4630,12 @@ export const getClient = async (
         return c;
       } catch (error) {
         console.warn("getClient: API falló, usando IndexedDB", error);
+        if (cached && !options?.forceRefresh) {
+          return cached;
+        }
       }
+    } else if (cached && !options?.forceRefresh) {
+      return cached;
     }
     return cached ?? (await db.get<Client>("clients", id));
   } catch (error) {
