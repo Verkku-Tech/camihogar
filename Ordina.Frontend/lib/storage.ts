@@ -2860,40 +2860,68 @@ export const getOrdersByStatus = async (status: string): Promise<Order[]> => {
   }
 };
 
-function newLocalOrderId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-}
-
-/** Siguiente ORD-xxx libre respecto al índice único orderNumber en IndexedDB. */
-function nextOfflineOrderNumber(existingOrders: Order[]): string {
-  const existingNumbers = new Set(
-    existingOrders
-      .map((o) => o.orderNumber)
-      .filter((n): n is string => typeof n === "string" && n.trim() !== "")
+const sortOrdersByCreatedDesc = (list: Order[]): Order[] =>
+  [...list].sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
-  let max = 0;
-  const re = /^ORD-(\d+)$/i;
-  for (const o of existingOrders) {
-    const m = o.orderNumber?.match(re);
-    if (m) {
-      const n = parseInt(m[1], 10);
-      if (!Number.isNaN(n) && n > max) max = n;
+
+const dedupeReservationOrders = (list: Order[]): Order[] => {
+  const seen = new Set<string>();
+  const out: Order[] = [];
+  for (const o of list) {
+    if (!isReservationOrder(o)) continue;
+    const key = (o.id || o.orderNumber || "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(o);
+  }
+  return out;
+};
+
+/** Listado dedicado de reservas (RES-/PCF-); no usa getUnifiedOrders ni getOrders paginado completo. */
+export const getReservations = async (): Promise<Order[]> => {
+  const cacheReservations = async (list: Order[]) => {
+    for (const o of list) {
+      try {
+        await db.put("orders", o);
+      } catch (e) {
+        console.warn("No se pudo cachear reserva en IndexedDB:", e);
+      }
+    }
+  };
+
+  if (isOnline()) {
+    try {
+      const [reservaDtos, legacyDtos] = await Promise.all([
+        apiClient.getOrdersByStatus("Reserva"),
+        apiClient
+          .getOrdersByStatus("Por Confirmar")
+          .catch(() => [] as OrderResponseDto[]),
+      ]);
+      const mapped = dedupeReservationOrders(
+        [...reservaDtos, ...legacyDtos].map((dto) => orderFromBackendDto(dto)),
+      );
+      await cacheReservations(mapped);
+      return sortOrdersByCreatedDesc(mapped);
+    } catch (error) {
+      console.warn(
+        "Error cargando reservas desde API, usando cache local:",
+        error,
+      );
     }
   }
-  let candidate = max + 1;
-  for (let i = 0; i < 100000; i++) {
-    const label =
-      candidate <= 999
-        ? `ORD-${String(candidate).padStart(3, "0")}`
-        : `ORD-${candidate}`;
-    if (!existingNumbers.has(label)) return label;
-    candidate++;
+
+  try {
+    const localOrders = await db.getAll<Order>("orders");
+    return sortOrdersByCreatedDesc(
+      dedupeReservationOrders(localOrders.filter(isReservationOrder)),
+    );
+  } catch (error) {
+    console.error("Error loading reservations from cache:", error);
+    return [];
   }
-  return `ORD-L-${Date.now()}`;
-}
+};
 
 export const addOrder = async (
   order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">,

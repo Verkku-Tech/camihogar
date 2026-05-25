@@ -19,6 +19,7 @@ import {
   Box,
   DollarSign,
   Truck,
+  ClipboardList,
   CreditCard,
   Percent,
   Shield,
@@ -47,6 +48,7 @@ const navigation = [
 
 const ordersSubmenu = [
   { id: "pedidos-list", name: "Pedidos", href: "/pedidos", icon: ShoppingCart },
+  { id: "reservas", name: "Reservas", href: "/pedidos/reservas", icon: ClipboardList },
   { id: "fabricacion", name: "Fabricación", href: "/inventario/fabricacion", icon: Package },
   { id: "despachos", name: "Despachos", href: "/pedidos/despachos", icon: Truck },
 ]
@@ -74,6 +76,7 @@ const permissionMap: Record<string, string | string[]> = {
   "cuentas": "finance.accounts.read",
   "reportes": ["reports.dispatch.view", "reports.commissions.view", "reports.manufacturing.view", "reports.payments.detailed.view"], // Show if any
   "pedidos-list": "orders.read",
+  "reservas": "orders.read",
   "despachos": "dispatch.read",
   "categorias": "products.read",
   "productos": "products.read",
