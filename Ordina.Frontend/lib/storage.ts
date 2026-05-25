@@ -2923,6 +2923,41 @@ export const getReservations = async (): Promise<Order[]> => {
   }
 };
 
+function newLocalOrderId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/** Siguiente ORD-xxx libre respecto al índice único orderNumber en IndexedDB. */
+function nextOfflineOrderNumber(existingOrders: Order[]): string {
+  const existingNumbers = new Set(
+    existingOrders
+      .map((o) => o.orderNumber)
+      .filter((n): n is string => typeof n === "string" && n.trim() !== ""),
+  );
+  let max = 0;
+  const re = /^ORD-(\d+)$/i;
+  for (const o of existingOrders) {
+    const m = o.orderNumber?.match(re);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (!Number.isNaN(n) && n > max) max = n;
+    }
+  }
+  let candidate = max + 1;
+  for (let i = 0; i < 100000; i++) {
+    const label =
+      candidate <= 999
+        ? `ORD-${String(candidate).padStart(3, "0")}`
+        : `ORD-${candidate}`;
+    if (!existingNumbers.has(label)) return label;
+    candidate++;
+  }
+  return `ORD-L-${Date.now()}`;
+}
+
 export const addOrder = async (
   order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">,
 ): Promise<Order> => {
