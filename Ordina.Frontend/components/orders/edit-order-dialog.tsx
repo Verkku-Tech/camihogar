@@ -1443,6 +1443,10 @@ export function EditOrderDialog({
         onOpenChange={setIsProductSelectionOpen}
         onProductsSelect={orderForm.handleProductsSelect}
         selectedProducts={orderForm.selectedProducts}
+        preloadedProducts={orderForm.allProducts}
+        preloadedCategories={orderForm.categories}
+        productSales={orderForm.productSales}
+        preloadedExchangeRates={orderForm.exchangeRates}
       />
 
       <ProductEditDialog

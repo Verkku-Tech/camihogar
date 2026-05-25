@@ -124,7 +124,9 @@ export class ApiClient {
       | "stores"
       | "payments" = "security";
 
-    console.log(`[ApiClient] Resolving service for endpoint: "${endpoint}"`);
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[ApiClient] Resolving service for endpoint: "${endpoint}"`);
+    }
 
     if (endpoint.startsWith("/api/Auth")) {
       service = "security";
@@ -168,9 +170,11 @@ export class ApiClient {
       service = "payments";
     }
 
-    console.log(
-      `[ApiClient] Resolved service "${service}" for endpoint "${endpoint}"`,
-    );
+    if (process.env.NODE_ENV === "development") {
+      console.log(
+        `[ApiClient] Resolved service "${service}" for endpoint "${endpoint}"`,
+      );
+    }
 
     // Si estamos en el cliente (navegador) y la página está en HTTPS, usar proxy
     if (typeof window !== "undefined") {

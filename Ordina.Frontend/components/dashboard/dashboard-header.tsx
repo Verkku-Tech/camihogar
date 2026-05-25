@@ -26,6 +26,7 @@ import {
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { useCurrency } from "@/contexts/currency-context";
 
 import { ExchangeRate } from "@/lib/currency-utils";
 import { useRouter } from "next/navigation";
@@ -64,7 +65,7 @@ export function DashboardHeader({
   const [mounted, setMounted] = useState(false);
   const { user, logout } = useAuth();
   const router = useRouter();
-  const [hasActiveExchangeRates, setHasActiveExchangeRates] = useState(true);
+  const { hasActiveExchangeRates } = useCurrency();
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isAuditLogOpen, setIsAuditLogOpen] = useState(false);
   const [isPinGeneratorOpen, setIsPinGeneratorOpen] = useState(false);
@@ -79,39 +80,6 @@ export function DashboardHeader({
   }, []);
 
   // ... existing useEffects ...
-
-  // Verificar si hay tasas de cambio activas
-  useEffect(() => {
-    const checkExchangeRates = async () => {
-      try {
-        const { ApiClient } = await import("@/lib/api-client");
-        const client = new ApiClient();
-        const activeRates = await client.getActiveExchangeRates();
-        setHasActiveExchangeRates(activeRates && activeRates.length > 0);
-      } catch (error) {
-        console.error("Error checking exchange rates:", error);
-        // Si hay error (ej: backend caído), asumimos que no hay tasas para alertar al usuario
-        // O podríamos dejarlo en true para no molestar. 
-        // En este caso, si falla el check, mejor mostrar alerta si no estamos seguros, o false?
-        // El código original ponía true en catch. Si falla el backend, quizás no queremos bloquear.
-        // Pero si el usuario dice que "no muestra notificación", es porque quiere verla.
-        // Si falla la conexión, hasActiveExchangeRates = false mostraría la alerta.
-        setHasActiveExchangeRates(false);
-      }
-    };
-
-    checkExchangeRates();
-
-    // Escuchar cambios en las tasas
-    const handleRateUpdate = () => {
-      checkExchangeRates();
-    };
-    window.addEventListener("exchangeRateUpdated", handleRateUpdate);
-
-    return () => {
-      window.removeEventListener("exchangeRateUpdated", handleRateUpdate);
-    };
-  }, []);
 
   const toggleTheme = () => {
     // Default to light if theme is undefined or system

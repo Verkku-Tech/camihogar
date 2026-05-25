@@ -16,6 +16,8 @@ import {
   getCategories,
   getProducts,
   getAccounts,
+  getOrdersFromCache,
+  buildProductSalesMap,
   calculateProductUnitPriceWithAttributes,
   resolveProductFromAttributeValue,
   type OrderProduct,
@@ -174,6 +176,7 @@ export interface UseOrderFormReturn {
   referrers: Vendor[];
   categories: Category[];
   allProducts: Product[];
+  productSales: Record<string, number>;
   accounts: Account[];
   exchangeRates: { USD?: ExchangeRate; EUR?: ExchangeRate };
 
@@ -397,6 +400,7 @@ export function useOrderForm(
   const [referrers, setReferrers] = useState<Vendor[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [productSales, setProductSales] = useState<Record<string, number>>({});
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [exchangeRates, setExchangeRates] = useState<{
     USD?: ExchangeRate;
@@ -443,6 +447,8 @@ export function useOrderForm(
         setAllProducts(loadedProducts);
         setAccounts(loadedAccounts);
         setExchangeRates(rates);
+        const cachedOrders = await getOrdersFromCache();
+        setProductSales(buildProductSalesMap(cachedOrders));
 
         // Actualizar monedas seleccionadas según tasas disponibles
         setSelectedCurrencies((prev) => {
@@ -1484,6 +1490,7 @@ export function useOrderForm(
     referrers,
     categories,
     allProducts,
+    productSales,
     accounts,
     exchangeRates,
     productSubtotal,
