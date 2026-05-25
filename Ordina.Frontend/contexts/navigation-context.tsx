@@ -37,6 +37,14 @@ const defaultNavigationItems: NavigationItem[] = [
     description: "Gestión de pedidos y presupuestos",
   },
   {
+    id: "reservas",
+    name: "Reservas",
+    href: "/pedidos/reservas",
+    category: "orders",
+    active: true,
+    description: "Listado y confirmación de reservas en tienda",
+  },
+  {
     id: "despachos",
     name: "Despachos",
     href: "/pedidos/despachos",

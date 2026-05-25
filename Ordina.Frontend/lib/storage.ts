@@ -2645,6 +2645,69 @@ export const getOrdersByStatus = async (status: string): Promise<Order[]> => {
   }
 };
 
+const sortOrdersByCreatedDesc = (list: Order[]): Order[] =>
+  [...list].sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+
+const dedupeReservationOrders = (list: Order[]): Order[] => {
+  const seen = new Set<string>();
+  const out: Order[] = [];
+  for (const o of list) {
+    if (!isReservationOrder(o)) continue;
+    const key = (o.id || o.orderNumber || "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(o);
+  }
+  return out;
+};
+
+/** Listado dedicado de reservas (RES-/PCF-); no usa getUnifiedOrders ni getOrders paginado completo. */
+export const getReservations = async (): Promise<Order[]> => {
+  const cacheReservations = async (list: Order[]) => {
+    for (const o of list) {
+      try {
+        await db.put("orders", o);
+      } catch (e) {
+        console.warn("No se pudo cachear reserva en IndexedDB:", e);
+      }
+    }
+  };
+
+  if (isOnline()) {
+    try {
+      const [reservaDtos, legacyDtos] = await Promise.all([
+        apiClient.getOrdersByStatus("Reserva"),
+        apiClient
+          .getOrdersByStatus("Por Confirmar")
+          .catch(() => [] as OrderResponseDto[]),
+      ]);
+      const mapped = dedupeReservationOrders(
+        [...reservaDtos, ...legacyDtos].map((dto) => orderFromBackendDto(dto)),
+      );
+      await cacheReservations(mapped);
+      return sortOrdersByCreatedDesc(mapped);
+    } catch (error) {
+      console.warn(
+        "Error cargando reservas desde API, usando cache local:",
+        error,
+      );
+    }
+  }
+
+  try {
+    const localOrders = await db.getAll<Order>("orders");
+    return sortOrdersByCreatedDesc(
+      dedupeReservationOrders(localOrders.filter(isReservationOrder)),
+    );
+  } catch (error) {
+    console.error("Error loading reservations from cache:", error);
+    return [];
+  }
+};
+
 export const addOrder = async (
   order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">,
 ): Promise<Order> => {
