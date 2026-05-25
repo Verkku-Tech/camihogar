@@ -24,13 +24,6 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Search, Eye, ClipboardCheck, Loader2, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { getReservations, getClients, type Order, type Client } from "@/lib/storage";
@@ -74,16 +67,12 @@ function reservationOnlineVendor(order: Order): string {
   return order.vendorName?.trim() || "—";
 }
 
-type FilterStatus = "pending" | "all" | "Reserva" | "Por Confirmar";
-
 export default function ReservasPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [reservations, setReservations] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [clientSearch, setClientSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>("pending");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -161,36 +150,23 @@ export default function ReservasPage() {
     }
 
     const q = searchTerm.trim().toLowerCase();
-    const clientQ = clientSearch.trim().toLowerCase();
+    const qDigits = digitsOnly(searchTerm);
 
     return reservations.filter((order) => {
-      if (filterStatus === "pending" && !isActiveReservation(order)) {
-        return false;
-      }
-      if (filterStatus === "Reserva" && order.status !== "Reserva") {
-        return false;
-      }
-      if (filterStatus === "Por Confirmar" && order.status !== "Por Confirmar") {
-        return false;
-      }
-
       const on = (order.orderNumber ?? "").toLowerCase();
       const vendor = reservationOnlineVendor(order).toLowerCase();
-      const matchesSearch =
-        q === "" ||
-        on.includes(q) ||
-        order.clientName.toLowerCase().includes(q) ||
-        vendor.includes(q);
-
       const haystack = buildClientFilterHaystack(
         order.clientName,
         clientById.get(order.clientId),
       ).toLowerCase();
-      const matchesClient =
-        clientQ === "" ||
-        haystack.includes(clientQ) ||
-        (digitsOnly(clientSearch) !== "" &&
-          digitsOnly(haystack).includes(digitsOnly(clientSearch)));
+      const haystackDigits = digitsOnly(haystack);
+
+      const matchesSearch =
+        q === "" ||
+        on.includes(q) ||
+        haystack.includes(q) ||
+        vendor.includes(q) ||
+        (qDigits !== "" && haystackDigits.includes(qDigits));
 
       const matchesDate = matchesLocalDateRange(
         order.createdAt,
@@ -198,17 +174,9 @@ export default function ReservasPage() {
         rangeTo,
       );
 
-      return matchesSearch && matchesClient && matchesDate;
+      return matchesSearch && matchesDate;
     });
-  }, [
-    reservations,
-    filterStatus,
-    searchTerm,
-    clientSearch,
-    clientById,
-    dateFrom,
-    dateTo,
-  ]);
+  }, [reservations, searchTerm, clientById, dateFrom, dateTo]);
 
   const {
     currentPage,
@@ -241,46 +209,15 @@ export default function ReservasPage() {
             </nav>
 
             <div className="space-y-6">
-              <div className="flex flex-col lg:flex-row gap-4">
+              <div className="flex flex-col lg:flex-row gap-4 items-end">
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar por #reserva, cliente o vendedor..."
+                    placeholder="Buscar por #reserva, cliente, teléfono, CI o vendedor..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-9"
                   />
-                </div>
-                <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Filtrar por cliente (nombre, teléfono, CI)..."
-                    value={clientSearch}
-                    onChange={(e) => setClientSearch(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-4 items-end">
-                <div className="space-y-2 w-[180px]">
-                  <Label htmlFor="filterStatus">Estado</Label>
-                  <Select
-                    value={filterStatus}
-                    onValueChange={(v) => setFilterStatus(v as FilterStatus)}
-                  >
-                    <SelectTrigger id="filterStatus">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pendientes</SelectItem>
-                      <SelectItem value="all">Todas</SelectItem>
-                      <SelectItem value="Reserva">Reserva</SelectItem>
-                      <SelectItem value="Por Confirmar">
-                        Por Confirmar (histórico)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="dateFrom">Desde</Label>
