@@ -406,12 +406,10 @@ export const bootSync = async (): Promise<void> => {
     console.warn("bootSync: error en cola de sincronización", e);
   }
   try {
-    await clearAllIndexedDBDataStores({ preserveOrderCaches: true });
-    console.log(
-      "bootSync: IndexedDB (datos) limpiado (orders/budgets conservados)",
-    );
+    await db.clearStore("api_cache");
+    console.log("bootSync: api_cache limpiado (catálogo y pedidos conservados)");
   } catch (e) {
-    console.warn("bootSync: error al limpiar IndexedDB", e);
+    console.warn("bootSync: error al limpiar api_cache", e);
   }
 };
 
@@ -428,9 +426,20 @@ const repopulateCategoriesCache = async (
   }
 };
 
+let inflightCategoriesSync: Promise<Category[]> | null = null;
+
 export const getCategories = async (): Promise<Category[]> => {
   try {
-    if (isOnline()) {
+    if (!isOnline()) {
+      const localCategoriesDB = await db.getAll<CategoryDB>("categories");
+      return localCategoriesDB.map(categoryFromDB);
+    }
+
+    if (inflightCategoriesSync) {
+      return await inflightCategoriesSync;
+    }
+
+    inflightCategoriesSync = (async (): Promise<Category[]> => {
       try {
         const backendCategories = await apiClient.getCategories();
         const list = backendCategories.map(categoryFromBackendDto);
@@ -443,11 +452,12 @@ export const getCategories = async (): Promise<Category[]> => {
         );
         const localCategoriesDB = await db.getAll<CategoryDB>("categories");
         return localCategoriesDB.map(categoryFromDB);
+      } finally {
+        inflightCategoriesSync = null;
       }
-    }
+    })();
 
-    const localCategoriesDB = await db.getAll<CategoryDB>("categories");
-    return localCategoriesDB.map(categoryFromDB);
+    return await inflightCategoriesSync;
   } catch (error) {
     console.error("Error loading categories:", error);
     return [];
@@ -1179,9 +1189,20 @@ const repopulateProductsCache = async (products: Product[]): Promise<void> => {
   }
 };
 
+let inflightProductsSync: Promise<Product[]> | null = null;
+
 export const getProducts = async (_forceSync = false): Promise<Product[]> => {
   try {
-    if (isOnline()) {
+    if (!isOnline()) {
+      const localProductsDB = await db.getAll<ProductDB>("products");
+      return localProductsDB.map(productFromDB);
+    }
+
+    if (inflightProductsSync) {
+      return await inflightProductsSync;
+    }
+
+    inflightProductsSync = (async (): Promise<Product[]> => {
       try {
         const backendProducts = await apiClient.getProducts();
         const list = backendProducts.map(productFromBackendDto);
@@ -1194,11 +1215,12 @@ export const getProducts = async (_forceSync = false): Promise<Product[]> => {
         );
         const localProductsDB = await db.getAll<ProductDB>("products");
         return localProductsDB.map(productFromDB);
+      } finally {
+        inflightProductsSync = null;
       }
-    }
+    })();
 
-    const localProductsDB = await db.getAll<ProductDB>("products");
-    return localProductsDB.map(productFromDB);
+    return await inflightProductsSync;
   } catch (error) {
     console.error("Error loading products:", error);
     return [];
@@ -1662,6 +1684,8 @@ export interface OrderProduct {
   surchargeEnabled?: boolean; // Checkbox "Sobre precio" activo
   surchargeAmount?: number; // Monto del sobreprecio (en USD)
   surchargeReason?: string; // Razón del sobreprecio
+  commissionLineSource?: string;
+  catalogProductId?: string;
 }
 
 export interface PartialPayment {
@@ -1844,6 +1868,10 @@ export interface Order {
   completedAt?: string; // Fecha de completado
   /** Crédito de tienda aplicado al pedido (USD), persistido con el pedido. */
   appliedStoreCreditUsd?: number;
+  originalOrderId?: string;
+  originalProducts?: OrderProduct[];
+  sourceReservationVendorId?: string;
+  sourceReservationVendorName?: string;
 }
 
 export interface Client {
@@ -2040,6 +2068,8 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     surchargeEnabled: p.surchargeEnabled,
     surchargeAmount: p.surchargeAmount,
     surchargeReason: p.surchargeReason,
+    commissionLineSource: p.commissionLineSource,
+    catalogProductId: p.catalogProductId,
     refabricationReason: p.refabricationReason,
     refabricatedAt: p.refabricatedAt,
     refabricationHistory: p.refabricationHistory?.map((r) => ({
@@ -2205,6 +2235,23 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     (dto as { AppliedStoreCreditUsd?: number }).AppliedStoreCreditUsd ??
     0,
   type: dto.type ?? (dto as unknown as { Type?: string }).Type ?? "Order",
+  originalOrderId: dto.originalOrderId,
+  originalProducts: dto.originalProducts?.map((p) => ({
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    quantity: p.quantity,
+    total: p.total,
+    category: p.category,
+    stock: p.stock,
+    attributes: p.attributes,
+    discount: p.discount,
+    observations: p.observations,
+    commissionLineSource: p.commissionLineSource,
+    catalogProductId: p.catalogProductId,
+  })),
+  sourceReservationVendorId: dto.sourceReservationVendorId,
+  sourceReservationVendorName: dto.sourceReservationVendorName,
 });
 
 export const orderToBackendDto = (
@@ -2460,10 +2507,96 @@ export type GetOrdersOptions = {
 /** Una sola sincronización a la vez: varias llamadas simultáneas comparten la misma promesa. */
 let inflightOrdersSync: Promise<Order[]> | null = null;
 
+/** Tras getOrders() exitoso en esta sesión, getBudgets puede omitir GET por estado. */
+let ordersListSyncedThisSession = false;
+
+const LAST_ORDERS_SYNC_KEY = "last_orders_sync_at";
+
+const getLastOrdersSyncAt = async (): Promise<string | null> => {
+  try {
+    const settings = await db.getAll<{ id: string; key: string; value: string }>(
+      "app_settings",
+    );
+    const row = settings.find((s) => s.key === LAST_ORDERS_SYNC_KEY);
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const setLastOrdersSyncAt = async (iso: string): Promise<void> => {
+  try {
+    const settings = await db.getAll<{ id: string; key: string; value: string }>(
+      "app_settings",
+    );
+    const existing = settings.find((s) => s.key === LAST_ORDERS_SYNC_KEY);
+    const row = {
+      id: existing?.id ?? LAST_ORDERS_SYNC_KEY,
+      key: LAST_ORDERS_SYNC_KEY,
+      value: iso,
+    };
+    if (existing) {
+      await db.update("app_settings", row);
+    } else {
+      await db.add("app_settings", row);
+    }
+  } catch (e) {
+    console.warn("No se pudo guardar last_orders_sync_at:", e);
+  }
+};
+
+/** Pedidos en IndexedDB sin sincronizar con la API. */
+export const getOrdersFromCache = async (): Promise<Order[]> => {
+  try {
+    return await db.getAll<Order>("orders");
+  } catch {
+    return [];
+  }
+};
+
+/** Mapa productId → unidades vendidas (para ordenar en selector de productos). */
+export const buildProductSalesMap = (
+  orders: { products: OrderProduct[] }[],
+): Record<string, number> => {
+  const sales: Record<string, number> = {};
+  for (const order of orders) {
+    for (const line of order.products) {
+      const productId = line.id.toString();
+      sales[productId] = (sales[productId] || 0) + line.quantity;
+    }
+  }
+  return sales;
+};
+
+export const getOrderFromCache = async (
+  id: string,
+): Promise<Order | undefined> => {
+  try {
+    return await db.get<Order>("orders", id);
+  } catch {
+    return undefined;
+  }
+};
+
+export const getClientFromCache = async (
+  id: string,
+): Promise<Client | undefined> => {
+  try {
+    return await db.get<Client>("clients", id);
+  } catch {
+    return undefined;
+  }
+};
+
 export const getOrders = async (
   optionsOrForceFull?: boolean | GetOrdersOptions,
 ): Promise<Order[]> => {
   try {
+    const options: GetOrdersOptions =
+      typeof optionsOrForceFull === "boolean"
+        ? { forceFullSync: optionsOrForceFull }
+        : optionsOrForceFull ?? {};
+
     const localOrders = await db.getAll<Order>("orders");
 
     if (!isOnline()) {
@@ -2479,14 +2612,68 @@ export const getOrders = async (
     inflightOrdersSync = (async (): Promise<Order[]> => {
       try {
         const allOrders: Order[] = [];
+        const forceFull =
+          options.forceFullSync === true || options.refreshFromBackend === true;
+        const since = forceFull ? null : await getLastOrdersSyncAt();
+
+        if (since && !forceFull) {
+          try {
+            const { orders: delta, serverTimestamp } =
+              await apiClient.getOrdersSince(since);
+            const mappedDelta = delta.map(orderFromBackendDto);
+            for (const order of mappedDelta) {
+              if (isBackendBudgetOrder(order)) {
+                try {
+                  await db.remove("orders", order.id);
+                } catch {
+                  /* ignore */
+                }
+                try {
+                  await db.put("budgets", orderMappedToBudget(order));
+                } catch (err) {
+                  console.warn(
+                    `Error guardando presupuesto ${order.orderNumber}:`,
+                    err,
+                  );
+                }
+              } else {
+                try {
+                  await db.put("orders", order);
+                } catch (err) {
+                  console.warn(
+                    `Error guardando orden ${order.orderNumber}:`,
+                    err,
+                  );
+                }
+              }
+            }
+            if (serverTimestamp) {
+              await setLastOrdersSyncAt(serverTimestamp);
+            }
+            ordersListSyncedThisSession = true;
+            const merged = await db.getAll<Order>("orders");
+            console.log(
+              `Órdenes sincronización incremental: ${mappedDelta.length} cambios, ${merged.length} en IndexedDB`,
+            );
+            return merged;
+          } catch (incErr) {
+            console.warn(
+              "Sync incremental falló, usando paginación completa:",
+              incErr,
+            );
+          }
+        }
+
         let page = 1;
         let hasMore = true;
+        let lastServerTimestamp = "";
 
         while (hasMore) {
           const response = await apiClient.getOrdersPaged(page, 50);
           const mappedOrders = response.orders.map(orderFromBackendDto);
           allOrders.push(...mappedOrders);
           hasMore = response.hasNextPage;
+          lastServerTimestamp = response.serverTimestamp || lastServerTimestamp;
           page++;
           console.log(
             `Pedidos página ${page - 1}: ${mappedOrders.length} (acumulado: ${allOrders.length}/${response.totalCount})`,
@@ -2529,6 +2716,10 @@ export const getOrders = async (
         }
 
         const merged = [...ordersOnly, ...localOnly];
+        if (lastServerTimestamp) {
+          await setLastOrdersSyncAt(lastServerTimestamp);
+        }
+        ordersListSyncedThisSession = true;
         console.log(
           `Órdenes (sin presupuestos en store orders): ${ordersOnly.length} del servidor + ${localOnly.length} solo locales = ${merged.length}`,
         );
@@ -2581,8 +2772,15 @@ export const getOrderByOrderNumberPreferBackend = async (
   }
 };
 
-export const getOrder = async (id: string): Promise<Order | undefined> => {
+export const getOrder = async (
+  id: string,
+  options?: { forceRefresh?: boolean },
+): Promise<Order | undefined> => {
   try {
+    const cached = await db.get<Order>("orders", id);
+    if (cached && !options?.forceRefresh) {
+      return cached;
+    }
     if (isOnline()) {
       try {
         const dto = await apiClient.getOrderById(id);
@@ -2593,7 +2791,7 @@ export const getOrder = async (id: string): Promise<Order | undefined> => {
         console.warn("getOrder: API falló, usando IndexedDB", error);
       }
     }
-    return await db.get<Order>("orders", id);
+    return cached ?? (await db.get<Order>("orders", id));
   } catch (error) {
     console.error("Error loading order:", error);
     return undefined;
@@ -3480,7 +3678,7 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
   try {
     // Secuencial: getOrders sincroniza primero y escribe presupuestos en `budgets`; luego getBudgets refina con el API por estado.
     const orders = await getOrders();
-    const budgets = await getBudgets();
+    const budgets = await getBudgets({ skipApiIfFresh: true });
 
     const budgetIds = new Set(budgets.map((b) => b.id));
     const budgetNumbers = new Set(
@@ -3969,10 +4167,20 @@ function orderMappedToBudget(
   };
 }
 
-export const getBudgets = async (): Promise<Budget[]> => {
+export const getBudgets = async (options?: {
+  skipApiIfFresh?: boolean;
+}): Promise<Budget[]> => {
   try {
     // Cargar siempre presupuestos locales desde IndexedDB primero (offline-first)
     const localBudgets = await db.getAll<Budget>("budgets");
+
+    if (
+      options?.skipApiIfFresh &&
+      ordersListSyncedThisSession &&
+      localBudgets.length > 0
+    ) {
+      return localBudgets;
+    }
 
     // Si hay conexión, intentar sincronizar con backend
     if (isOnline()) {
@@ -4295,8 +4503,15 @@ export const getClients = async (): Promise<Client[]> => {
   }
 };
 
-export const getClient = async (id: string): Promise<Client | undefined> => {
+export const getClient = async (
+  id: string,
+  options?: { forceRefresh?: boolean },
+): Promise<Client | undefined> => {
   try {
+    const cached = await db.get<Client>("clients", id);
+    if (cached && !options?.forceRefresh) {
+      return cached;
+    }
     if (isOnline()) {
       try {
         const dto = await apiClient.getClientById(id);
@@ -4307,7 +4522,7 @@ export const getClient = async (id: string): Promise<Client | undefined> => {
         console.warn("getClient: API falló, usando IndexedDB", error);
       }
     }
-    return await db.get<Client>("clients", id);
+    return cached ?? (await db.get<Client>("clients", id));
   } catch (error) {
     console.error("Error loading client:", error);
     return undefined;

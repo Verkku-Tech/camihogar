@@ -8,8 +8,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
-import { Search, Plus, Package, DollarSign, Layers, Filter } from "lucide-react"
-import { getProducts, getOrders, getCategories, type OrderProduct, type Product, type Category } from "@/lib/storage"
+import { Search, Plus, Package, DollarSign, Layers, Filter, Loader2 } from "lucide-react"
+import {
+  getProducts,
+  getCategories,
+  type OrderProduct,
+  type Product,
+  type Category,
+} from "@/lib/storage"
 import { ProductEditDialog } from "@/components/orders/product-edit-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { getActiveExchangeRates, convertProductPriceToBs, formatCurrency, type Currency } from "@/lib/currency-utils"
@@ -21,6 +27,12 @@ interface ProductSelectionDialogProps {
   onOpenChange: (open: boolean) => void
   onProductsSelect: (products: OrderProduct[]) => void
   selectedProducts: OrderProduct[]
+  /** Catálogo ya cargado por el formulario de pedido (evita GET /api/products). */
+  preloadedProducts?: Product[]
+  preloadedCategories?: Category[]
+  /** Ventas por productId; si no se pasa, el orden es solo por nombre/stock. */
+  productSales?: Record<string, number>
+  preloadedExchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } }
 }
 
 export function ProductSelectionDialog({
@@ -28,6 +40,10 @@ export function ProductSelectionDialog({
   onOpenChange,
   onProductsSelect,
   selectedProducts,
+  preloadedProducts,
+  preloadedCategories,
+  productSales: productSalesProp,
+  preloadedExchangeRates,
 }: ProductSelectionDialogProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
@@ -36,45 +52,76 @@ export function ProductSelectionDialog({
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [productSales, setProductSales] = useState<Record<string, number>>({})
+  const [productSales, setProductSales] = useState<Record<string, number>>(
+    productSalesProp ?? {},
+  )
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [productToEdit, setProductToEdit] = useState<OrderProduct | null>(null)
   const [exchangeRates, setExchangeRates] = useState<{ USD?: any; EUR?: any }>({})
   const { formatWithPreference, preferredCurrency } = useCurrency()
   const [productPrices, setProductPrices] = useState<Record<number, string>>({})
 
-  // Cargar solo al abrir: evita competir con Dashboard / otras vistas al montar el formulario
   useEffect(() => {
-    if (!open) {
+    if (productSalesProp) {
+      setProductSales(productSalesProp)
+    }
+  }, [productSalesProp])
+
+  useEffect(() => {
+    if (!open) return
+
+    if (
+      preloadedProducts &&
+      preloadedProducts.length > 0 &&
+      preloadedCategories &&
+      preloadedCategories.length > 0
+    ) {
+      setProducts(preloadedProducts)
+      setCategories(preloadedCategories)
+      if (preloadedExchangeRates) {
+        setExchangeRates(preloadedExchangeRates)
+      }
+      if (productSalesProp) {
+        setProductSales(productSalesProp)
+      }
+      setIsLoadingCatalog(false)
       return
     }
+
     const loadData = async () => {
+      setIsLoadingCatalog(true)
       try {
-        const [loadedProducts, loadedCategories, loadedOrders, rates] = await Promise.all([
-          getProducts(),
-          getCategories(),
-          getOrders(),
-          getActiveExchangeRates(),
+        const [loadedProducts, loadedCategories, rates] = await Promise.all([
+          preloadedProducts?.length ? Promise.resolve(preloadedProducts) : getProducts(),
+          preloadedCategories?.length
+            ? Promise.resolve(preloadedCategories)
+            : getCategories(),
+          preloadedExchangeRates
+            ? Promise.resolve(preloadedExchangeRates)
+            : getActiveExchangeRates(),
         ])
 
         setProducts(loadedProducts)
         setCategories(loadedCategories)
         setExchangeRates(rates)
-
-        const sales: Record<string, number> = {}
-        loadedOrders.forEach((order) => {
-          order.products.forEach((orderProduct) => {
-            const productId = orderProduct.id.toString()
-            sales[productId] = (sales[productId] || 0) + orderProduct.quantity
-          })
-        })
-        setProductSales(sales)
+        if (productSalesProp) {
+          setProductSales(productSalesProp)
+        }
       } catch (error) {
         console.error("Error loading data:", error)
+      } finally {
+        setIsLoadingCatalog(false)
       }
     }
     void loadData()
-  }, [open])
+  }, [
+    open,
+    preloadedProducts,
+    preloadedCategories,
+    preloadedExchangeRates,
+    productSalesProp,
+  ])
 
   // Actualizar precios cuando cambien los productos o la moneda preferida
   useEffect(() => {
@@ -413,7 +460,14 @@ export function ProductSelectionDialog({
             </Table>
           </div>
 
-          {filteredAndSortedProducts.length === 0 && (
+          {isLoadingCatalog && (
+            <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>Cargando productos…</span>
+            </div>
+          )}
+
+          {!isLoadingCatalog && filteredAndSortedProducts.length === 0 && (
             <div className="text-center py-8 text-sm sm:text-base text-muted-foreground">
               {products.length === 0 ? "No hay productos en inventario" : "No se encontraron productos"}
             </div>

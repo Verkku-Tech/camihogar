@@ -1,54 +1,60 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Currency, getActiveExchangeRates, convertCurrency } from "@/lib/currency-utils";
-import { getCurrencyPreference, setCurrencyPreference } from "@/lib/currency-preference";
-import { formatCurrency } from "@/lib/currency-utils";
+import {
+  Currency,
+  getActiveExchangeRates,
+  convertCurrency,
+  formatCurrency,
+  type ExchangeRate,
+} from "@/lib/currency-utils";
+import {
+  getCurrencyPreference,
+  setCurrencyPreference,
+} from "@/lib/currency-preference";
 
 interface CurrencyContextType {
   preferredCurrency: Currency;
   setPreferredCurrency: (currency: Currency) => Promise<void>;
-  formatWithPreference: (amount: number, originalCurrency: Currency) => Promise<string>;
+  formatWithPreference: (
+    amount: number,
+    originalCurrency: Currency,
+  ) => Promise<string>;
   isLoading: boolean;
-  exchangeRates?: { USD?: { rate: number; effectiveDate: string }; EUR?: { rate: number; effectiveDate: string } };
+  exchangeRates?: { USD?: ExchangeRate; EUR?: ExchangeRate };
+  hasActiveExchangeRates: boolean;
 }
 
-const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined);
+const CurrencyContext = createContext<CurrencyContextType | undefined>(
+  undefined,
+);
 
 export function CurrencyProvider({ children }: { children: React.ReactNode }) {
-  const [preferredCurrency, setPreferredCurrencyState] = useState<Currency>("Bs");
+  const [preferredCurrency, setPreferredCurrencyState] =
+    useState<Currency>("Bs");
   const [isLoading, setIsLoading] = useState(true);
-  const [exchangeRates, setExchangeRates] = useState<{ USD?: { rate: number; effectiveDate: string }; EUR?: { rate: number; effectiveDate: string } }>({});
+  const [exchangeRates, setExchangeRates] = useState<{
+    USD?: ExchangeRate;
+    EUR?: ExchangeRate;
+  }>({});
+  const [hasActiveExchangeRates, setHasActiveExchangeRates] = useState(true);
 
   useEffect(() => {
     const loadPreference = async () => {
       try {
-        const { ApiClient } = await import("@/lib/api-client");
-        const client = new ApiClient();
-
-        // Cargar preferencia y tasas en paralelo
-        const [currency, activeRates] = await Promise.all([
+        const [currency, ratesObj] = await Promise.all([
           getCurrencyPreference(),
-          client.getActiveExchangeRates(),
+          getActiveExchangeRates(),
         ]);
 
-        // Convertir array de tasas a objeto { USD: ..., EUR: ... }
-        const ratesObj: { USD?: any; EUR?: any } = {};
-        if (Array.isArray(activeRates)) {
-          const usd = activeRates.find((r: any) => r.toCurrency === "USD");
-          if (usd) ratesObj.USD = usd;
-
-          const eur = activeRates.find((r: any) => r.toCurrency === "EUR");
-          if (eur) ratesObj.EUR = eur;
-        }
-
-        // Determine default currency: Force USD if available, else Bs
         const activeCurrency: Currency = ratesObj.USD ? "USD" : "Bs";
 
         setPreferredCurrencyState(activeCurrency);
-        setExchangeRates(ratesObj as any);
+        setExchangeRates(ratesObj);
+        setHasActiveExchangeRates(!!ratesObj.USD || !!ratesObj.EUR);
       } catch (error) {
         console.error("Error loading currency preference:", error);
+        setHasActiveExchangeRates(false);
       } finally {
         setIsLoading(false);
       }
@@ -56,33 +62,32 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     loadPreference();
   }, []);
 
-  // Recargar tasas periódicamente
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const { ApiClient } = await import("@/lib/api-client");
-        const client = new ApiClient();
-        const activeRates = await client.getActiveExchangeRates();
-
-        const ratesObj: { USD?: any; EUR?: any } = {};
-        if (Array.isArray(activeRates)) {
-          const usd = activeRates.find((r: any) => r.toCurrency === "USD");
-          if (usd) ratesObj.USD = usd;
-
-          const eur = activeRates.find((r: any) => r.toCurrency === "EUR");
-          if (eur) ratesObj.EUR = eur;
-        }
-
-        // Auto-switch based on availability during periodic refresh
+        const ratesObj = await getActiveExchangeRates();
         const activeCurrency: Currency = ratesObj.USD ? "USD" : "Bs";
         setPreferredCurrencyState(activeCurrency);
-        setExchangeRates(ratesObj as any);
+        setExchangeRates(ratesObj);
+        setHasActiveExchangeRates(!!ratesObj.USD || !!ratesObj.EUR);
       } catch (error) {
         console.error("Error reloading exchange rates:", error);
+        setHasActiveExchangeRates(false);
       }
-    }, 60000); // Cada minuto
+    }, 60000);
 
-    return () => clearInterval(interval);
+    const handleRateUpdate = () => {
+      void getActiveExchangeRates().then((ratesObj) => {
+        setExchangeRates(ratesObj);
+        setHasActiveExchangeRates(!!ratesObj.USD || !!ratesObj.EUR);
+      });
+    };
+    window.addEventListener("exchangeRateUpdated", handleRateUpdate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("exchangeRateUpdated", handleRateUpdate);
+    };
   }, []);
 
   const setPreferredCurrency = async (currency: Currency) => {
@@ -97,19 +102,18 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
 
   const formatWithPreference = async (
     amount: number,
-    originalCurrency: Currency
+    originalCurrency: Currency,
   ): Promise<string> => {
-    // Si la moneda original es la preferida, no convertir
     if (originalCurrency === preferredCurrency) {
       return formatCurrency(amount, originalCurrency);
     }
 
-    // Convertir a la moneda preferida
     try {
       const convertedAmount = await convertCurrency(
         amount,
         originalCurrency,
-        preferredCurrency
+        preferredCurrency,
+        exchangeRates,
       );
       if (convertedAmount === null) {
         return `${formatCurrency(amount, originalCurrency)} (sin tasa BCV)`;
@@ -129,6 +133,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
         formatWithPreference,
         isLoading,
         exchangeRates,
+        hasActiveExchangeRates,
       }}
     >
       {children}
@@ -143,4 +148,3 @@ export function useCurrency() {
   }
   return context;
 }
-

@@ -41,6 +41,7 @@ import { Label } from "@/components/ui/label"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { matchesLocalDateRange } from "@/lib/date-utils"
 
 type TabType = "por_despachar" | "en_despacho" | "despachados"
 type ActionType = "to_dispatch" | "to_delivered" | "to_store"
@@ -178,6 +179,8 @@ export default function DespachosPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [deliveryTypeFilter, setDeliveryTypeFilter] = useState<string>("all")
   const [deliveryZoneFilter, setDeliveryZoneFilter] = useState<string>("all")
+  const [deliveredDateFrom, setDeliveredDateFrom] = useState("")
+  const [deliveredDateTo, setDeliveredDateTo] = useState("")
   const [activeTab, setActiveTab] = useState<TabType>("por_despachar")
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -242,10 +245,14 @@ export default function DespachosPage() {
     loadCategories()
   }, [])
 
-  // Limpiar selecciones cuando se cambia de pestaña
+  // Limpiar selecciones y filtro de fecha al cambiar de pestaña
   useEffect(() => {
     setSelectedOrders(new Set())
     setExpandedOrders(new Set())
+    if (activeTab !== "despachados") {
+      setDeliveredDateFrom("")
+      setDeliveredDateTo("")
+    }
   }, [activeTab])
 
   const getCategoryForProduct = (productCategory: string) =>
@@ -364,18 +371,29 @@ export default function DespachosPage() {
     deliveryZoneFilter,
   ])
 
+  const hasDeliveredDateFilter =
+    deliveredDateFrom !== "" || deliveredDateTo !== ""
+
   const deliveredRows = useMemo((): DeliveredRow[] => {
     const rows: DeliveredRow[] = []
     for (const order of filteredOrders) {
       if (order.type !== "order") continue
       for (const product of order.products) {
-        if (getProductDispatchStatus(product) === "despachados") {
-          rows.push({ order, product })
+        if (getProductDispatchStatus(product) !== "despachados") continue
+        if (
+          !matchesLocalDateRange(
+            product.deliveredAt,
+            deliveredDateFrom,
+            deliveredDateTo,
+          )
+        ) {
+          continue
         }
+        rows.push({ order, product })
       }
     }
     return rows
-  }, [filteredOrders])
+  }, [filteredOrders, deliveredDateFrom, deliveredDateTo])
 
   const handleExportDispatchedCsv = useCallback(async () => {
     const headers = [
@@ -390,28 +408,23 @@ export default function DespachosPage() {
     ]
     const rows: string[][] = []
     try {
-      for (const order of filteredOrders) {
-        if (order.type !== "order") continue
-        for (const product of order.products) {
-          if (getProductDispatchStatus(product) !== "despachados") continue
-          // Misma lógica que la tabla: total de línea está en Bs; se muestra según preferencia (p. ej. USD).
-          const precioVenta = await formatWithPreference(product.total, "Bs")
-          rows.push([
-            order.orderNumber,
-            order.clientName,
-            order.vendorName ?? "",
-            product.name,
-            String(product.quantity),
-            precioVenta,
-            deliveryZoneLabel(order.deliveryZone),
-            product.deliveredAt
-              ? new Date(product.deliveredAt).toLocaleString("es-VE", {
-                  dateStyle: "short",
-                  timeStyle: "short",
-                })
-              : "",
-          ])
-        }
+      for (const { order, product } of deliveredRows) {
+        const precioVenta = await formatWithPreference(product.total, "Bs")
+        rows.push([
+          order.orderNumber,
+          order.clientName,
+          order.vendorName ?? "",
+          product.name,
+          String(product.quantity),
+          precioVenta,
+          deliveryZoneLabel(order.deliveryZone),
+          product.deliveredAt
+            ? new Date(product.deliveredAt).toLocaleString("es-VE", {
+                dateStyle: "short",
+                timeStyle: "short",
+              })
+            : "",
+        ])
       }
       const lines = [headers.map(escapeCsvCell).join(",")]
       for (const r of rows) {
@@ -432,7 +445,7 @@ export default function DespachosPage() {
       console.error("Error exportando CSV de despachados:", error)
       toast.error("No se pudo generar el CSV")
     }
-  }, [filteredOrders, formatWithPreference])
+  }, [deliveredRows, formatWithPreference])
 
   // Paginación: por pedido (almacén / en ruta) o por fila entregada (despachados)
   const ordersPagination = usePagination({
@@ -773,7 +786,7 @@ export default function DespachosPage() {
                       className="pl-9"
                     />
                   </div>
-                  <div className="flex gap-4">
+                  <div className="flex flex-wrap gap-4 items-center">
                     <div className="space-y-2 flex-1 max-w-xs hidden md:block">
                       <Select value={deliveryTypeFilter} onValueChange={setDeliveryTypeFilter}>
                         <SelectTrigger id="deliveryTypeFilter">
@@ -804,6 +817,34 @@ export default function DespachosPage() {
                         </SelectContent>
                       </Select>
                     </div>
+                    {activeTab === "despachados" && (
+                      <>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            Desde
+                          </span>
+                          <Input
+                            type="date"
+                            value={deliveredDateFrom}
+                            onChange={(e) => setDeliveredDateFrom(e.target.value)}
+                            className="w-[150px]"
+                            aria-label="Fecha de entrega desde"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            Hasta
+                          </span>
+                          <Input
+                            type="date"
+                            value={deliveredDateTo}
+                            onChange={(e) => setDeliveredDateTo(e.target.value)}
+                            className="w-[150px]"
+                            aria-label="Fecha de entrega hasta"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -861,7 +902,11 @@ export default function DespachosPage() {
                     ) : activeTab === "despachados" ? (
                       deliveredRows.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">
-                          {searchTerm ? "No se encontraron resultados" : "No hay elementos en esta área"}
+                          {hasDeliveredDateFilter
+                            ? "No hay entregas en el rango de fechas seleccionado"
+                            : searchTerm
+                              ? "No se encontraron resultados"
+                              : "No hay elementos en esta área"}
                         </div>
                       ) : (
                         <div className="rounded-md border overflow-x-auto">

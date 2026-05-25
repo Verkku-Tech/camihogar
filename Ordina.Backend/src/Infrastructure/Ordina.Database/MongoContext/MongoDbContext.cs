@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Ordina.Database.Entities.AccessPin;
 using Ordina.Database.Entities.Account;
 using Ordina.Database.Entities.Audit;
 using Ordina.Database.Entities.Category;
@@ -84,4 +85,7 @@ public class MongoDbContext
 
     public IMongoCollection<OrderAuditLog> OrderAuditLogs =>
         _database.GetCollection<OrderAuditLog>("orderAuditLogs");
+
+    public IMongoCollection<AccessPin> AccessPins =>
+        _database.GetCollection<AccessPin>("accessPins");
 }

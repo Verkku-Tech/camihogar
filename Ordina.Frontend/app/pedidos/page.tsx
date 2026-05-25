@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
@@ -32,6 +32,7 @@ import {
   getClients,
   type UnifiedOrder,
   type Client,
+  type Order,
 } from "@/lib/storage"
 import { buildClientFilterHaystack, digitsOnly } from "@/lib/order-client-search"
 import {
@@ -41,22 +42,17 @@ import {
 import { useAuth } from "@/contexts/auth-context"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
-import { ORDER_STATUSES, PURCHASE_TYPES } from "@/components/orders/constants"
+import {
+  buildOrderStatusFilterOptions,
+  PURCHASE_TYPES,
+} from "@/components/orders/constants"
 import {
   isSistemaApartado,
   isSaWarehouseHighlight,
   purchaseTypeLabel,
 } from "@/lib/order-sa"
 import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility"
-
-/** yyyy-MM-dd en calendario local (alineado con toLocaleDateString de la tabla). */
-function toLocalDateKey(iso: string): string {
-  const d = new Date(iso)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
-}
+import { toLocalDateKey } from "@/lib/date-utils"
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -115,6 +111,35 @@ export default function PedidosPage() {
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [clientById, setClientById] = useState<Map<string, Client>>(new Map())
+
+  const ordersForSearch: Order[] | null = useMemo(() => {
+    if (isLoading) return null
+    return orders
+      .filter((o) => o.type === "order")
+      .map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        clientId: o.clientId,
+        clientName: o.clientName,
+        vendorId: o.vendorId,
+        vendorName: o.vendorName,
+        referrerId: o.referrerId,
+        referrerName: o.referrerName,
+        postventaId: o.postventaId,
+        postventaName: o.postventaName,
+        products: o.products,
+        subtotal: o.subtotal,
+        taxAmount: o.taxAmount,
+        deliveryCost: o.deliveryCost,
+        total: o.total,
+        paymentType: "directo" as const,
+        paymentMethod: o.paymentMethod ?? "",
+        status: o.status as Order["status"],
+        createdAt: o.createdAt,
+        updatedAt: o.updatedAt,
+        hasDelivery: o.hasDelivery,
+      }))
+  }, [orders, isLoading])
 
   useEffect(() => {
     const loadClients = async () => {
@@ -186,7 +211,10 @@ export default function PedidosPage() {
   // Obtener valores únicos para los filtros
   const uniqueVendors = Array.from(new Set(orders.map((o) => o.vendorName))).sort()
 
-  const uniqueStatuses = ORDER_STATUSES.map((s) => s.value)
+  const statusFilterOptions = useMemo(
+    () => buildOrderStatusFilterOptions(orders.map((o) => o.status)),
+    [orders],
+  )
 
   let rangeFrom = dateFrom
   let rangeTo = dateTo
@@ -353,7 +381,10 @@ export default function PedidosPage() {
         <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
+          <DashboardHeader
+            onMenuClick={() => setSidebarOpen(true)}
+            orderSearchPreloaded={isLoading ? null : ordersForSearch}
+          />
 
           <main className="flex-1 overflow-y-auto p-4 lg:p-6">
             <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
@@ -422,9 +453,9 @@ export default function PedidosPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos los estados</SelectItem>
-                    {uniqueStatuses.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {status}
+                    {statusFilterOptions.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -572,6 +603,7 @@ export default function PedidosPage() {
                                 <OrderPdfRowAction
                                   orderId={order.id}
                                   orderType={order.type}
+                                  client={clientById.get(order.clientId) ?? null}
                                 />
                                 {canEditOrder(order) && (
                                   <Button

@@ -1397,41 +1397,40 @@ public class ReportService : IReportService
             if (!string.IsNullOrWhiteSpace(vendorId) && order.VendorId != vendorId)
                 continue;
 
-            // Obtener datos del vendedor principal
-            var mainVendor = users.FirstOrDefault(u => u.Id == order.VendorId);
-            var isExclusiveVendor = mainVendor?.ExclusiveCommission ?? false;
-            var vendorBaseSalary = mainVendor?.BaseSalary ?? 0m;
             var tipoVentaLabel = GetCommissionSaleTypeLabel(order, saleTypeRules);
 
             // Procesar cada producto del pedido (una fila por producto)
             foreach (var product in order.Products)
             {
-                var isSharedSale = !string.IsNullOrWhiteSpace(order.ReferrerId);
+                var lineCtx = ResolveLineCommissionContext(product, order);
 
-                // Calcular comisiones usando el nuevo sistema
+                var mainVendor = users.FirstOrDefault(u => u.Id == lineCtx.EffectiveVendorId);
+                var isExclusiveVendor = mainVendor?.ExclusiveCommission ?? false;
+                var vendorBaseSalary = mainVendor?.BaseSalary ?? 0m;
+
                 var (vendorCommission, referrerCommission, postventaCommission, baseRate, appliedVendorRate, appliedReferrerRate, appliedPostventaRate) =
-                    CalculateProductCommission(product, order, productCommissions, saleTypeRules, users, isExclusiveVendor);
+                    CalculateProductCommission(
+                        product, order, productCommissions, saleTypeRules, isExclusiveVendor, lineCtx.IsSharedSale);
 
                 if (vendorCommission == 0m && referrerCommission == 0m && postventaCommission == 0m)
                     continue;
 
-                if (isSharedSale && !isExclusiveVendor)
+                if (lineCtx.IsSharedSale && !isExclusiveVendor)
                 {
                     var postventaLabel = string.IsNullOrWhiteSpace(order.PostventaName)
                         ? "Post venta"
                         : order.PostventaName.Trim();
-                    // VENTA COMPARTIDA: Comisión según reglas de tipo de venta
                     reportData.Add(new CommissionReportRow
                     {
                         Fecha = order.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
                         Cliente = order.ClientName,
-                        Vendedor = order.VendorName,
+                        Vendedor = lineCtx.EffectiveVendorName,
                         Pedido = order.OrderNumber,
                         Descripcion = await FormatProductDescriptionAsync(product),
                         CantidadArticulos = product.Quantity,
                         TipoVenta = tipoVentaLabel,
                         Comision = vendorCommission,
-                        VendedorSecundario = order.ReferrerName,
+                        VendedorSecundario = lineCtx.EffectiveReferrerName,
                         ComisionSecundaria = referrerCommission,
                         VendedorPostventa = postventaCommission > 0m ? postventaLabel : null,
                         ComisionPostventa = postventaCommission > 0m ? postventaCommission : null,
@@ -1446,12 +1445,11 @@ public class ReportService : IReportService
                 }
                 else
                 {
-                    // VENTA NORMAL o VENDEDOR EXCLUSIVO: Comisión completa para vendedor
                     reportData.Add(new CommissionReportRow
                     {
                         Fecha = order.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
                         Cliente = order.ClientName,
-                        Vendedor = order.VendorName,
+                        Vendedor = lineCtx.EffectiveVendorName,
                         Pedido = order.OrderNumber,
                         Descripcion = await FormatProductDescriptionAsync(product),
                         CantidadArticulos = product.Quantity,
@@ -1470,6 +1468,66 @@ public class ReportService : IReportService
         return reportData;
     }
 
+    private sealed record LineCommissionContext(
+        bool IsSharedSale,
+        string EffectiveVendorId,
+        string EffectiveVendorName,
+        string? EffectiveReferrerId,
+        string? EffectiveReferrerName);
+
+    private static LineCommissionContext ResolveLineCommissionContext(OrderProduct product, Order order)
+    {
+        var source = product.CommissionLineSource;
+
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            var legacyShared = !string.IsNullOrWhiteSpace(order.ReferrerId);
+            return new LineCommissionContext(
+                legacyShared,
+                order.VendorId,
+                order.VendorName,
+                order.ReferrerId,
+                order.ReferrerName);
+        }
+
+        switch (source)
+        {
+            case CommissionLineSources.ReservationUnchanged:
+                return new LineCommissionContext(
+                    false,
+                    order.SourceReservationVendorId ?? order.VendorId,
+                    order.SourceReservationVendorName ?? order.VendorName,
+                    null,
+                    null);
+
+            case CommissionLineSources.StoreAdded:
+                return new LineCommissionContext(
+                    false,
+                    order.VendorId,
+                    order.VendorName,
+                    null,
+                    null);
+
+            case CommissionLineSources.StoreModified:
+            case CommissionLineSources.StoreSubstitution:
+                return new LineCommissionContext(
+                    true,
+                    order.VendorId,
+                    order.VendorName,
+                    order.ReferrerId ?? order.SourceReservationVendorId,
+                    order.ReferrerName ?? order.SourceReservationVendorName);
+
+            default:
+                var fallbackShared = !string.IsNullOrWhiteSpace(order.ReferrerId);
+                return new LineCommissionContext(
+                    fallbackShared,
+                    order.VendorId,
+                    order.VendorName,
+                    order.ReferrerId,
+                    order.ReferrerName);
+        }
+    }
+
     /// <summary>
     /// Comisión por línea: USD por unidad (commissionValue) × cantidad.
     /// Venta compartida: vendorRate/referrerRate son % de esa comisión de familia, no del total del producto.
@@ -1480,8 +1538,8 @@ public class ReportService : IReportService
             Order order,
             IEnumerable<ProductCommission> productCommissions,
             IEnumerable<SaleTypeCommissionRule> saleTypeRules,
-            IEnumerable<User> users,
-            bool isExclusiveVendor)
+            bool isExclusiveVendor,
+            bool isSharedSale)
     {
         // 1. Obtener comisión base de la categoría del producto
         var categoryCommission = productCommissions.FirstOrDefault(c =>
@@ -1497,9 +1555,6 @@ public class ReportService : IReportService
 
         var qty = Math.Max(product.Quantity, 1);
         var familyCommission = baseCommissionRate * qty;
-
-        // Verificar si es venta compartida
-        var isSharedSale = !string.IsNullOrWhiteSpace(order.ReferrerId);
 
         if (isSharedSale && !isExclusiveVendor)
         {
@@ -1600,6 +1655,52 @@ public class ReportService : IReportService
     // DISPATCH REPORT METHODS
     // ================================================================
 
+    private static readonly Dictionary<string, string> DeliveryZoneLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["caracas"] = "Caracas",
+        ["g_g"] = "G&G",
+        ["san_antonio_los_teques"] = "San Antonio-Los Teques",
+        ["caucagua_higuerote"] = "Caucagua-Higuerote",
+        ["la_guaira"] = "La Guaira",
+        ["charallave_cua"] = "Charallave-Cua",
+        ["interior_pais"] = "Interior del País",
+    };
+
+    private static readonly Dictionary<string, string> DeliveryTypeLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["entrega_programada"] = "Entrega programada",
+        ["delivery_express"] = "Delivery Express",
+        ["retiro_tienda"] = "Retiro por Tienda",
+        ["retiro_almacen"] = "Retiro por almacén",
+    };
+
+    private static string FormatDeliveryZoneLabel(string? zone)
+    {
+        if (string.IsNullOrWhiteSpace(zone)) return "";
+        return DeliveryZoneLabels.TryGetValue(zone.Trim(), out var label) ? label : zone.Trim();
+    }
+
+    private static string FormatDeliveryTypeLabel(string? deliveryType)
+    {
+        if (string.IsNullOrWhiteSpace(deliveryType)) return "";
+        return DeliveryTypeLabels.TryGetValue(deliveryType.Trim(), out var label) ? label : deliveryType.Trim();
+    }
+
+    private static string BuildInformacionDespacho(Order order)
+    {
+        var parts = new List<string>();
+        var zona = FormatDeliveryZoneLabel(order.DeliveryZone);
+        if (!string.IsNullOrWhiteSpace(zona))
+            parts.Add($"Zona: {zona}");
+        var tipo = FormatDeliveryTypeLabel(order.DeliveryType);
+        if (!string.IsNullOrWhiteSpace(tipo))
+            parts.Add($"Tipo: {tipo}");
+        var obs = (order.DispatchObservations ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(obs))
+            parts.Add($"Obs: {obs}");
+        return parts.Count > 0 ? string.Join(" | ", parts) : "";
+    }
+
     public async Task<Stream> GenerateDispatchReportAsync(
         string? deliveryZone = null,
         DateTime? startDate = null,
@@ -1632,7 +1733,8 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 8, "Estado de Pago");
                 sl.SetCellValue(1, 9, "Importe Total");
                 sl.SetCellValue(1, 10, "Saldo Pendiente por Cobrar (USD)");
-                sl.SetCellValue(1, 11, "Firma");
+                sl.SetCellValue(1, 11, "Información de despacho");
+                sl.SetCellValue(1, 12, "Firma");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
@@ -1642,7 +1744,7 @@ public class ReportService : IReportService
                 usdMoneyStyle.FormatCode = "\"$\"#,##0.00";
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 11; col++)
+                for (int col = 1; col <= 12; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -1663,7 +1765,8 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 10, item.SaldoPendiente);
                     sl.SetCellStyle(row, 9, usdMoneyStyle);
                     sl.SetCellStyle(row, 10, usdMoneyStyle);
-                    sl.SetCellValue(row, 11, " ");
+                    sl.SetCellValue(row, 11, item.InformacionDespacho);
+                    sl.SetCellValue(row, 12, " ");
                     row++;
                 }
 
@@ -1678,7 +1781,8 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(8, 22);  // Estado de Pago
                 sl.SetColumnWidth(9, 15);  // Importe Total
                 sl.SetColumnWidth(10, 28); // Saldo Pendiente
-                sl.SetColumnWidth(11, 22); // Firma (espacio para firmar)
+                sl.SetColumnWidth(11, 45); // Información de despacho
+                sl.SetColumnWidth(12, 22); // Firma (espacio para firmar)
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
@@ -1720,7 +1824,8 @@ public class ReportService : IReportService
                 EstadoPago = row.EstadoPago,
                 ImporteTotal = row.ImporteTotal,
                 SaldoPendiente = row.SaldoPendiente,
-                DispatchObservations = row.DispatchObservations
+                DispatchObservations = row.DispatchObservations,
+                InformacionDespacho = row.InformacionDespacho
             }).ToList();
         }
         catch (Exception ex)
@@ -1828,7 +1933,8 @@ public class ReportService : IReportService
                 EstadoPago = estadoPago,
                 ImporteTotal = importeTotalUsd,
                 SaldoPendiente = saldoPendiente,
-                DispatchObservations = order.DispatchObservations ?? ""
+                DispatchObservations = order.DispatchObservations ?? "",
+                InformacionDespacho = BuildInformacionDespacho(order)
             });
         }
 
@@ -2015,6 +2121,7 @@ public class ReportService : IReportService
         public decimal ImporteTotal { get; set; }
         public decimal SaldoPendiente { get; set; }
         public string DispatchObservations { get; set; } = string.Empty;
+        public string InformacionDespacho { get; set; } = string.Empty;
     }
 }
 

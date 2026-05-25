@@ -154,4 +154,11 @@ public class Order
     /// <summary>Snapshot de productos al crear la reserva (para detectar cambios en confirmación).</summary>
     [BsonElement("originalProducts")]
     public List<OrderProduct>? OriginalProducts { get; set; }
+
+    /// <summary>Vendedor online de la reserva origen (para comisión 100% en líneas reservation_unchanged).</summary>
+    [BsonElement("sourceReservationVendorId")]
+    public string? SourceReservationVendorId { get; set; }
+
+    [BsonElement("sourceReservationVendorName")]
+    public string? SourceReservationVendorName { get; set; }
 }

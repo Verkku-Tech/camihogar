@@ -953,6 +953,7 @@ export function ProductEditDialog({
   const [formattedAttributeAdjustments, setFormattedAttributeAdjustments] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    if (!open) return;
     const loadCategories = async () => {
       try {
         const [loadedCategories, rates] = await Promise.all([
@@ -965,8 +966,8 @@ export function ProductEditDialog({
         console.error("Error loading categories:", error);
       }
     };
-    loadCategories();
-  }, []);
+    void loadCategories();
+  }, [open]);
 
   useEffect(() => {
     if (product) {

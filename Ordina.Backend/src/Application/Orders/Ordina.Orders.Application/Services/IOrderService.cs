@@ -20,7 +20,12 @@ public interface IOrderService
     Task<OrderResponseDto?> GetOrderByIdAsync(string id);
     Task<OrderResponseDto?> GetOrderByOrderNumberAsync(string orderNumber);
     Task<OrderResponseDto> CreateOrderAsync(CreateOrderDto createDto, string userId, string userName);
-    Task<OrderResponseDto> ConfirmPendingOrderAsync(string pendingOrderId, ConfirmOrderDto confirmDto, string userId, string userName);
+    Task<OrderResponseDto> ConfirmPendingOrderAsync(
+        string pendingOrderId,
+        ConfirmOrderDto confirmDto,
+        string userId,
+        string userName,
+        string? callerRole = null);
     Task<OrderResponseDto> ConvertBudgetToOrderAsync(string budgetId, ConvertBudgetToOrderDto dto, string userId, string userName);
     Task<OrderResponseDto> UpdateOrderAsync(
         string id,

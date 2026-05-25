@@ -1,5 +1,7 @@
-// Estados de pedidos para filtros
-export const ORDER_STATUSES = [
+export type OrderStatusOption = { value: string; label: string };
+
+/** Estados vigentes del flujo de pedidos (backend + fabricación + despachos). */
+export const ACTIVE_ORDER_STATUSES: readonly OrderStatusOption[] = [
   { value: "Presupuesto", label: "Presupuesto" },
   { value: "Generado", label: "Generado" },
   { value: "Validado", label: "Validado" },
@@ -8,14 +10,50 @@ export const ORDER_STATUSES = [
   { value: "En Ruta", label: "En Ruta" },
   { value: "Completado", label: "Completado" },
   { value: "Cancelado", label: "Cancelado" },
-  // Mantener los antiguos para compatibilidad con pedidos viejos
-  { value: "Por Fabricar", label: "Por Fabricar (Antiguo)" },
-  { value: "En Fabricación", label: "En Fabricación (Antiguo)" },
-  { value: "Almacén", label: "Almacén (Antiguo)" },
-  { value: "Despacho", label: "Despacho (Antiguo)" },
-  { value: "Entregado", label: "Entregado (Antiguo)" },
-  { value: "Declinado", label: "Declinado" },
 ] as const;
+
+/** Etiquetas para estados históricos en BD que ya no se asignan en pedidos nuevos. */
+export const LEGACY_ORDER_STATUS_LABELS: Record<string, string> = {
+  "Por Fabricar": "Por Fabricar (histórico)",
+  "En Fabricación": "En Fabricación (histórico)",
+  Almacén: "Almacén (histórico)",
+  Despacho: "Despacho (histórico)",
+  Entregado: "Entregado (histórico)",
+  Declinado: "Declinado (histórico)",
+  Generada: "Generada (histórico)",
+  Completada: "Completada (histórico)",
+  Fabricación: "Fabricación (histórico)",
+  "Por despachar": "Por despachar (histórico)",
+};
+
+const ACTIVE_ORDER_STATUS_VALUES = new Set(
+  ACTIVE_ORDER_STATUSES.map((s) => s.value),
+);
+
+/**
+ * Opciones del filtro de estado: lista activa + estados presentes en datos que no están en el flujo actual.
+ */
+export function buildOrderStatusFilterOptions(
+  statusesInData: Iterable<string> = [],
+): OrderStatusOption[] {
+  const options: OrderStatusOption[] = [...ACTIVE_ORDER_STATUSES];
+  const seen = new Set(ACTIVE_ORDER_STATUS_VALUES);
+
+  for (const raw of statusesInData) {
+    const status = raw?.trim();
+    if (!status || seen.has(status)) continue;
+    seen.add(status);
+    options.push({
+      value: status,
+      label: LEGACY_ORDER_STATUS_LABELS[status] ?? `${status} (histórico)`,
+    });
+  }
+
+  return options;
+}
+
+/** Alias de estados activos (filtros simples sin datos cargados). */
+export const ORDER_STATUSES = ACTIVE_ORDER_STATUSES;
 
 export const BUDGET_STATUSES = [
   { value: "Presupuesto", label: "Presupuesto" },

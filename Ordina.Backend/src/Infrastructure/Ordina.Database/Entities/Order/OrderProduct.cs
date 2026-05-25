@@ -94,4 +94,12 @@ public class OrderProduct
 
     [BsonElement("images")]
     public List<ProductImage>? Images { get; set; } // Imágenes del producto
+
+    /// <summary>Origen de la línea para comisión: reservation_unchanged | store_modified | store_added | store_substitution</summary>
+    [BsonElement("commissionLineSource")]
+    public string? CommissionLineSource { get; set; }
+
+    /// <summary>ID de catálogo estable (prefijo del line id) para matching en conversión de reserva.</summary>
+    [BsonElement("catalogProductId")]
+    public string? CatalogProductId { get; set; }
 }

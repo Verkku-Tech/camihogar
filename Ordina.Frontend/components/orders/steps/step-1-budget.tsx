@@ -11,7 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Edit, Trash2 } from "lucide-react";
+import { Plus, Edit, Trash2, KeyRound } from "lucide-react";
+import { PinValidationPanel } from "@/components/orders/pin-validation-panel";
+import { Badge } from "@/components/ui/badge";
+import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
 import type { UseOrderFormReturn } from "../hooks/use-order-form";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import {
@@ -37,6 +40,14 @@ interface Step1BudgetProps {
   onRemoveProduct: (product: any) => void;
   /** Si true, el referidor se muestra solo lectura (p. ej. confirmación de reserva en tienda). */
   referrerLocked?: boolean;
+  /** Requiere PIN para editar productos (confirmación de reserva, vendedor tienda). */
+  pinEditMode?: boolean;
+  pinSessionActive?: boolean;
+  pinRemainingFormatted?: string;
+  showPinPanel?: boolean;
+  onTogglePinPanel?: () => void;
+  onValidatePin?: (pin: string) => Promise<boolean>;
+  isValidatingPin?: boolean;
 }
 
 export function Step1Budget({
@@ -46,11 +57,21 @@ export function Step1Budget({
   onEditProduct,
   onRemoveProduct,
   referrerLocked = false,
+  pinEditMode = false,
+  pinSessionActive = false,
+  pinRemainingFormatted,
+  showPinPanel = false,
+  onTogglePinPanel,
+  onValidatePin,
+  isValidatingPin = false,
 }: Step1BudgetProps) {
   const { preferredCurrency } = useCurrency();
   const { user } = useAuth();
   const isStoreSeller = user?.role === "Store Seller";
   const isOnlineSeller = user?.role === "Online Seller";
+
+  const canEditProducts = !pinEditMode || pinSessionActive;
+  const showPinGate = pinEditMode && !pinSessionActive;
 
   const vendorDisplayName =
     orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)?.name ?? "";
@@ -150,26 +171,61 @@ export function Step1Budget({
           {/* Products Table */}
           <div className="space-y-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center">
-              <Label>Productos</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full sm:w-auto"
-                onClick={onProductSelection}
-                disabled={!orderForm.canAddProduct}
-                title={
-                  !orderForm.selectedClient
-                    ? "Selecciona un cliente para agregar productos"
-                    : !orderForm.step1SellerReady
-                    ? "Selecciona vendedor o activa modo referidor (Online) para agregar productos"
-                    : ""
-                }
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Agregar Producto
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Label>Productos</Label>
+                {pinEditMode && pinSessionActive && pinRemainingFormatted && (
+                  <Badge variant="secondary" className="text-xs">
+                    Edición habilitada — {pinRemainingFormatted}
+                  </Badge>
+                )}
+              </div>
+              {showPinGate ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={onTogglePinPanel}
+                >
+                  <KeyRound className="w-4 h-4 mr-2" />
+                  Editar reserva
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={onProductSelection}
+                  disabled={!orderForm.canAddProduct || !canEditProducts}
+                  title={
+                    showPinGate
+                      ? "Solicita un PIN al administrador para modificar productos"
+                      : !orderForm.selectedClient
+                        ? "Selecciona un cliente para agregar productos"
+                        : !orderForm.step1SellerReady
+                          ? "Selecciona vendedor o activa modo referidor (Online) para agregar productos"
+                          : ""
+                  }
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Agregar Producto
+                </Button>
+              )}
             </div>
+            {showPinGate && (
+              <p className="text-xs text-muted-foreground">
+                Solicita un PIN al administrador para modificar productos de esta
+                reserva.
+              </p>
+            )}
+            {showPinGate && showPinPanel && onValidatePin && (
+              <PinValidationPanel
+                onValidate={onValidatePin}
+                isValidating={isValidatingPin}
+                onCancel={onTogglePinPanel}
+              />
+            )}
             {!orderForm.canAddProduct && (
               <p className="text-xs text-muted-foreground">
                 {!orderForm.selectedClient
@@ -196,8 +252,13 @@ export function Step1Budget({
                         <div className="space-y-4">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1">
-                              <div className="font-medium text-base mb-1">
-                                {product.name}
+                              <div className="flex flex-wrap items-center gap-2 mb-1">
+                                <span className="font-medium text-base">
+                                  {product.name}
+                                </span>
+                                <CommissionLineSourceBadge
+                                  source={product.commissionLineSource}
+                                />
                               </div>
                             </div>
                             <div className="text-right">
@@ -423,26 +484,28 @@ export function Step1Budget({
                               )}
                           </div>
 
-                          <div className="flex gap-2 pt-2 border-t">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => onEditProduct(product)}
-                              className="flex-1"
-                            >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Editar
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => onRemoveProduct(product)}
-                              className="flex-1"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Eliminar
-                            </Button>
-                          </div>
+                          {canEditProducts && (
+                            <div className="flex gap-2 pt-2 border-t">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => onEditProduct(product)}
+                                className="flex-1"
+                              >
+                                <Edit className="w-4 h-4 mr-2" />
+                                Editar
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => onRemoveProduct(product)}
+                                className="flex-1"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Eliminar
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </Card>
                     );
@@ -475,8 +538,11 @@ export function Step1Budget({
                           return (
                             <TableRow key={product.id}>
                               <TableCell className="w-[20%]">
-                                <div className="flex items-center gap-1">
+                                <div className="flex flex-col gap-1 min-w-0">
                                   <span className="truncate text-sm">{product.name}</span>
+                                  <CommissionLineSourceBadge
+                                    source={product.commissionLineSource}
+                                  />
                                 </div>
                               </TableCell>
                               <TableCell className="w-[10%] text-right text-sm">
@@ -688,24 +754,26 @@ export function Step1Budget({
                                   formatCurrency(finalTotal, "Bs")}
                               </TableCell>
                               <TableCell className="w-[12%] text-right">
-                                <div className="flex justify-end gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => onEditProduct(product)}
-                                    className="h-7 w-7 p-0"
-                                  >
-                                    <Edit className="w-3.5 h-3.5" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => onRemoveProduct(product)}
-                                    className="h-7 w-7 p-0"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </Button>
-                                </div>
+                                {canEditProducts && (
+                                  <div className="flex justify-end gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => onEditProduct(product)}
+                                      className="h-7 w-7 p-0"
+                                    >
+                                      <Edit className="w-3.5 h-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => onRemoveProduct(product)}
+                                      className="h-7 w-7 p-0"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </div>
+                                )}
                               </TableCell>
                             </TableRow>
                           );

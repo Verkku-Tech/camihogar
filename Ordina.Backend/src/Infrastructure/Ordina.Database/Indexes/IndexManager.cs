@@ -1,4 +1,5 @@
 using MongoDB.Driver;
+using Ordina.Database.Entities.AccessPin;
 using Ordina.Database.Entities.Audit;
 using Ordina.Database.Entities.Category;
 using Ordina.Database.Entities.Client;
@@ -28,6 +29,7 @@ public static class IndexManager
         CreatePaymentIndexes(context.Payments);
         CreatePaymentMethodIndexes(context.PaymentMethods);
         CreateOrderAuditLogIndexes(context.OrderAuditLogs);
+        CreateAccessPinIndexes(context.AccessPins);
     }
 
     private static void CreateCategoryIndexes(IMongoCollection<Category> collection)
@@ -279,6 +281,35 @@ public static class IndexManager
             new CreateIndexModel<PaymentMethod>(
                 Builders<PaymentMethod>.IndexKeys.Ascending(x => x.Type),
                 new CreateIndexOptions { Name = "idx_paymentMethod_type" }
+            )
+        );
+    }
+
+    private static void CreateAccessPinIndexes(IMongoCollection<AccessPin> collection)
+    {
+        collection.Indexes.CreateOne(
+            new CreateIndexModel<AccessPin>(
+                Builders<AccessPin>.IndexKeys
+                    .Ascending(x => x.Pin)
+                    .Ascending(x => x.Status),
+                new CreateIndexOptions { Name = "idx_accessPin_pin_status" }
+            )
+        );
+
+        collection.Indexes.CreateOne(
+            new CreateIndexModel<AccessPin>(
+                Builders<AccessPin>.IndexKeys
+                    .Ascending(x => x.OrderId)
+                    .Ascending(x => x.UsedByUserId)
+                    .Descending(x => x.SessionExpiresAt),
+                new CreateIndexOptions { Name = "idx_accessPin_order_user_session" }
+            )
+        );
+
+        collection.Indexes.CreateOne(
+            new CreateIndexModel<AccessPin>(
+                Builders<AccessPin>.IndexKeys.Descending(x => x.CreatedAt),
+                new CreateIndexOptions { Name = "idx_accessPin_createdAt" }
             )
         );
     }

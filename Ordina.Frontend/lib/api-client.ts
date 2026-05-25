@@ -68,6 +68,44 @@ export interface ApiError {
   status?: number;
 }
 
+export interface GenerateAccessPinResponseDto {
+  pin: string;
+  expiresAt: string;
+  expiresInSeconds: number;
+}
+
+export interface ValidateAccessPinResponseDto {
+  success: boolean;
+  sessionExpiresAt: string;
+  sessionRemainingSeconds: number;
+}
+
+export interface AccessPinSessionResponseDto {
+  active: boolean;
+  remainingSeconds?: number;
+  sessionExpiresAt?: string;
+}
+
+export interface AccessPinHistoryItemDto {
+  id: string;
+  pinMasked: string;
+  generatedByUserName: string;
+  usedByUserId?: string;
+  orderId?: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt?: string;
+  sessionExpiresAt?: string;
+  status: string;
+}
+
+export interface AccessPinHistoryResponseDto {
+  items: AccessPinHistoryItemDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 interface CachedApiResponse {
   id: string;
   endpoint: string;
@@ -86,7 +124,9 @@ export class ApiClient {
       | "stores"
       | "payments" = "security";
 
-    console.log(`[ApiClient] Resolving service for endpoint: "${endpoint}"`);
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[ApiClient] Resolving service for endpoint: "${endpoint}"`);
+    }
 
     if (endpoint.startsWith("/api/Auth")) {
       service = "security";
@@ -107,6 +147,7 @@ export class ApiClient {
     } else if (
       endpoint.startsWith("/api/orders") ||
       endpoint.startsWith("/api/Orders") ||
+      endpoint.startsWith("/api/AccessPin") ||
       endpoint.startsWith("/api/CommissionSettings") ||
       endpoint.startsWith("/api/commissionSettings") ||
       endpoint.toLowerCase().includes("/api/commissionsettings") ||
@@ -129,9 +170,11 @@ export class ApiClient {
       service = "payments";
     }
 
-    console.log(
-      `[ApiClient] Resolved service "${service}" for endpoint "${endpoint}"`,
-    );
+    if (process.env.NODE_ENV === "development") {
+      console.log(
+        `[ApiClient] Resolved service "${service}" for endpoint "${endpoint}"`,
+      );
+    }
 
     // Si estamos en el cliente (navegador) y la página está en HTTPS, usar proxy
     if (typeof window !== "undefined") {
@@ -1226,6 +1269,31 @@ export class ApiClient {
     );
   }
 
+  async generateAccessPin() {
+    return this.request<GenerateAccessPinResponseDto>("/api/AccessPin/generate", {
+      method: "POST",
+    });
+  }
+
+  async validateAccessPin(pin: string, orderId: string) {
+    return this.request<ValidateAccessPinResponseDto>("/api/AccessPin/validate", {
+      method: "POST",
+      body: JSON.stringify({ pin, orderId }),
+    });
+  }
+
+  async getAccessPinSession(orderId: string) {
+    return this.request<AccessPinSessionResponseDto>(
+      `/api/AccessPin/session/${encodeURIComponent(orderId)}`,
+    );
+  }
+
+  async getAccessPinHistory(page = 1, pageSize = 20) {
+    return this.request<AccessPinHistoryResponseDto>(
+      `/api/AccessPin/history?page=${page}&pageSize=${pageSize}`,
+    );
+  }
+
   /** @deprecated Use confirmReservation */
   async confirmPendingOrder(id: string, body: ConfirmOrderDto) {
     return this.confirmReservation(id, body);
@@ -1888,6 +1956,8 @@ export interface OrderProductDto {
   surchargeEnabled?: boolean;
   surchargeAmount?: number;
   surchargeReason?: string;
+  commissionLineSource?: string;
+  catalogProductId?: string;
 }
 
 export interface PaymentDetailsDto {
@@ -2033,6 +2103,8 @@ export interface OrderResponseDto {
   type?: string;
   originalOrderId?: string;
   originalProducts?: OrderProductDto[];
+  sourceReservationVendorId?: string;
+  sourceReservationVendorName?: string;
   /** Crédito de tienda aplicado a este pedido (USD). */
   appliedStoreCreditUsd?: number;
 }

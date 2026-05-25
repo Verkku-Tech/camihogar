@@ -37,5 +37,8 @@ public class OrderProductDto
     public decimal? SurchargeAmount { get; set; }
     public string? SurchargeReason { get; set; }
     public List<ProductImageDto>? Images { get; set; } // Imágenes del producto
+
+    public string? CommissionLineSource { get; set; }
+    public string? CatalogProductId { get; set; }
 }
 
