@@ -40,6 +40,7 @@ import {
 import {
   buildExchangeRatesAtCreationPayload,
   commercialRatesToExchangeRatesInput,
+  formatCommercialDualDisplay,
   formatDualCurrencyAmounts,
   getCommercialRatesFromOrder,
   getFrozenCommercialTotalsFromOrder,
@@ -47,9 +48,8 @@ import {
 } from "@/lib/order-currency-display";
 import { getBsPerUsdFromOrder } from "@/lib/order-store-credit-usd";
 import {
-  formatLineAmount,
-  formatLineUnitPrice,
   getLineDiscountInBaseCurrency,
+  getLinePriceCurrency,
   getOrderBaseCurrency,
   getProductLineBaseTotalInBaseCurrency,
   isUsdBaseOrder,
@@ -200,6 +200,8 @@ export interface UseOrderFormReturn {
   exchangeRates: { USD?: ExchangeRate; EUR?: ExchangeRate };
   /** Tasas del día del pedido (solo lectura / persistencia). */
   commercialExchangeRates: { USD?: ExchangeRate; EUR?: ExchangeRate };
+  /** Moneda base persistida del pedido (legacy: Bs). */
+  formBaseCurrency: Currency;
   /** Líneas sin cambios: totales congelados al pedido guardado. */
   commercialTotalsFrozen: boolean;
 
@@ -1027,75 +1029,78 @@ export function useEditOrderForm(
           ? Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_USD
           : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
 
-  // Formatear precios
+  // Formatear precios (paso 1): USD comercial + Bs informativo, también en pedidos legacy Bs
   useEffect(() => {
-    const formatPrices = async () => {
-      if (selectedProducts.length === 0) {
-        setFormattedProductPrices({});
-        setFormattedProductTotals({});
-        setFormattedProductFinalTotals({});
-        return;
-      }
+    if (selectedProducts.length === 0) {
+      setFormattedProductPrices({});
+      setFormattedProductTotals({});
+      setFormattedProductFinalTotals({});
+      return;
+    }
 
-      const prices: Record<string, string> = {};
-      const totals: Record<string, string> = {};
-      const finalTotals: Record<string, string> = {};
-
-      const liveRates = liveExchangeRates;
-      for (const product of selectedProducts) {
-        const baseTotal = getProductBaseTotal(product);
-        const discCurrency =
-          productDiscountCurrencies[product.id] || preferredCurrency;
-        const discountInBase = getLineDiscountInBaseCurrency(
-          product,
-          product.discount || 0,
-          discCurrency,
-          formBaseCurrency,
-          commercialRatesInput,
-        );
-        const finalTotal = Math.max(baseTotal - discountInBase, 0);
-
-        prices[product.id] = await formatLineUnitPrice(product, {
-          showBsEquivalent: formUsesUsdTotals,
-          liveRates,
-        });
-        totals[product.id] = formatLineAmount(baseTotal, formBaseCurrency, {
-          showBsEquivalent: formUsesUsdTotals,
-          liveRates,
-        });
-        finalTotals[product.id] = formatLineAmount(
-          finalTotal,
-          formBaseCurrency,
-          { showBsEquivalent: formUsesUsdTotals, liveRates },
-        );
-      }
-
-      setFormattedProductPrices(prices);
-      setFormattedProductTotals(totals);
-      setFormattedProductFinalTotals(finalTotals);
+    const prices: Record<string, string> = {};
+    const totals: Record<string, string> = {};
+    const finalTotals: Record<string, string> = {};
+    const dualOpts = {
+      commercialRates: commercialRatesInput,
+      liveRates: liveRatesInput,
     };
 
-    formatPrices();
+    for (const product of selectedProducts) {
+      const baseTotal = getProductBaseTotal(product);
+      const discCurrency =
+        productDiscountCurrencies[product.id] || preferredCurrency;
+      const discountInBase = getLineDiscountInBaseCurrency(
+        product,
+        product.discount || 0,
+        discCurrency,
+        formBaseCurrency,
+        commercialRatesInput,
+      );
+      const finalTotal = Math.max(baseTotal - discountInBase, 0);
+
+      prices[product.id] = formatCommercialDualDisplay(
+        product.price,
+        getLinePriceCurrency(product),
+        dualOpts,
+      );
+      totals[product.id] = formatCommercialDualDisplay(
+        baseTotal,
+        formBaseCurrency,
+        dualOpts,
+      );
+      finalTotals[product.id] = formatCommercialDualDisplay(
+        finalTotal,
+        formBaseCurrency,
+        dualOpts,
+      );
+    }
+
+    setFormattedProductPrices(prices);
+    setFormattedProductTotals(totals);
+    setFormattedProductFinalTotals(finalTotals);
   }, [
     selectedProducts,
     preferredCurrency,
-    liveExchangeRates,
     commercialRatesInput,
+    liveRatesInput,
+    productDiscountCurrencies,
+    formBaseCurrency,
     productMarkups,
     categories,
     allProducts,
-    formatWithPreference,
     productDiscountTypes,
     getProductBaseTotal,
   ]);
 
   useEffect(() => {
-    const formatted = formatLineAmount(subtotal, formBaseCurrency, {
-      showBsEquivalent: formUsesUsdTotals,
-      liveRates: liveExchangeRates,
-    });
-    setFormattedSubtotal(formatted);
-  }, [subtotal, formBaseCurrency, formUsesUsdTotals, liveExchangeRates]);
+    setFormattedSubtotal(
+      formatCommercialDualDisplay(subtotal, formBaseCurrency, {
+        commercialRates: commercialRatesInput,
+        liveRates: liveRatesInput,
+      }),
+    );
+  }, [subtotal, formBaseCurrency, commercialRatesInput, liveRatesInput]);
 
   // Handlers
   const handleProductsSelect = useCallback(
@@ -1476,6 +1481,7 @@ export function useEditOrderForm(
     accounts,
     exchangeRates: liveExchangeRates,
     commercialExchangeRates,
+    formBaseCurrency,
     commercialTotalsFrozen,
     productSubtotal,
     productDiscountTotal,

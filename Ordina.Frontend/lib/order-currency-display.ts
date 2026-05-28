@@ -109,6 +109,23 @@ export function formatDualCurrencyAmounts(
   return { primary: formatCurrency(bsAmount, "Bs") };
 }
 
+/** Una línea para tablas (paso 1): `$X (Bs. Y)` o solo primario. */
+export function formatCommercialDualDisplay(
+  amount: number,
+  baseCurrency: Currency,
+  options: {
+    commercialRates?: ExchangeRatesInput;
+    liveRates?: ExchangeRatesInput;
+  },
+): string {
+  const { primary, secondary } = formatDualCurrencyAmounts(
+    amount,
+    baseCurrency,
+    options,
+  );
+  return secondary ? `${primary} (${secondary})` : primary;
+}
+
 /** Total comercial en USD (nativo si base USD; si no Bs / tasa pedido). */
 export function getCommercialTotalUsd(order: {
   total: number;
