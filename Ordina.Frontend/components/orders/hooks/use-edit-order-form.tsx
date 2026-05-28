@@ -30,9 +30,29 @@ import {
 import {
   getActivePaymentsList,
   filterCasheaStubForEditForm,
+  getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_BS,
+  PAYMENT_BALANCE_EPSILON_USD,
+  sumPaymentsToUsd,
 } from "@/lib/order-payments";
+import {
+  buildExchangeRatesAtCreationPayload,
+  commercialRatesToExchangeRatesInput,
+  formatDualCurrencyAmounts,
+  getCommercialRatesFromOrder,
+  getFrozenCommercialTotalsFromOrder,
+  shouldFreezeCommercialTotals,
+} from "@/lib/order-currency-display";
 import { getBsPerUsdFromOrder } from "@/lib/order-store-credit-usd";
+import {
+  formatLineAmount,
+  formatLineUnitPrice,
+  getLineDiscountInBaseCurrency,
+  getOrderBaseCurrency,
+  getProductLineBaseTotalInBaseCurrency,
+  isUsdBaseOrder,
+  sumDeliveryServicesToBaseCurrency,
+} from "@/lib/order-line-pricing";
 import { apiClient } from "@/lib/api-client";
 import {
   mergeDiscountUiIntoAttributes,
@@ -175,6 +195,10 @@ export interface UseOrderFormReturn {
   allProducts: Product[];
   accounts: Account[];
   exchangeRates: { USD?: ExchangeRate; EUR?: ExchangeRate };
+  /** Tasas del día del pedido (solo lectura / persistencia). */
+  commercialExchangeRates: { USD?: ExchangeRate; EUR?: ExchangeRate };
+  /** Líneas sin cambios: totales congelados al pedido guardado. */
+  commercialTotalsFrozen: boolean;
 
   // Control de impuesto
   taxEnabled: boolean;
@@ -379,7 +403,11 @@ export function useEditOrderForm(
   const [categories, setCategories] = useState<Category[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [exchangeRates, setExchangeRates] = useState<{
+  const [liveExchangeRates, setLiveExchangeRates] = useState<{
+    USD?: ExchangeRate;
+    EUR?: ExchangeRate;
+  }>({});
+  const [commercialExchangeRates, setCommercialExchangeRates] = useState<{
     USD?: ExchangeRate;
     EUR?: ExchangeRate;
   }>({});
@@ -423,7 +451,9 @@ export function useEditOrderForm(
         setCategories(loadedCategories);
         setAllProducts(loadedProducts);
         setAccounts(loadedAccounts);
-        setExchangeRates(rates);
+        setLiveExchangeRates(rates);
+        const cachedOrders = await getOrdersFromCache();
+        setProductSales(buildProductSalesMap(cachedOrders));
 
         // Actualizar monedas seleccionadas según tasas disponibles
         setSelectedCurrencies((prev) => {
@@ -622,6 +652,8 @@ export function useEditOrderForm(
       });
       setProductDiscountTypes(newTypes);
       setProductDiscountCurrencies(newCurrencies);
+
+      setCommercialExchangeRates(getCommercialRatesFromOrder(initialOrder));
     }
   }, [initialOrder, open, preferredCurrency]);
 
@@ -638,11 +670,11 @@ export function useEditOrderForm(
 
   const getDefaultCurrencyFromSelection = useCallback((): Currency => {
     // Priorizar USD primero si está disponible en selectedCurrencies O si hay tasa de cambio
-    if (selectedCurrencies.includes("USD") || exchangeRates.USD?.rate) {
+    if (selectedCurrencies.includes("USD") || liveExchangeRates.USD?.rate) {
       return "USD";
     }
     // Luego EUR si está disponible en selectedCurrencies O si hay tasa de cambio
-    if (selectedCurrencies.includes("EUR") || exchangeRates.EUR?.rate) {
+    if (selectedCurrencies.includes("EUR") || liveExchangeRates.EUR?.rate) {
       return "EUR";
     }
     // Si preferredCurrency no es Bs y está disponible, usarla
@@ -659,7 +691,7 @@ export function useEditOrderForm(
     }
     // Fallback: devolver preferredCurrency o USD si no hay nada
     return preferredCurrency !== "Bs" ? preferredCurrency : "USD";
-  }, [selectedCurrencies, preferredCurrency, exchangeRates]);
+  }, [selectedCurrencies, preferredCurrency, liveExchangeRates]);
 
   const convertCurrencyValue = useCallback(
     (
@@ -671,56 +703,69 @@ export function useEditOrderForm(
       if (fromCurrency === "Bs") {
         const rate =
           toCurrency === "USD"
-            ? exchangeRates.USD?.rate
-            : exchangeRates.EUR?.rate;
+            ? liveExchangeRates.USD?.rate
+            : liveExchangeRates.EUR?.rate;
         return rate && rate > 0 ? value / rate : null;
       }
       if (toCurrency === "Bs") {
         const rate =
           fromCurrency === "USD"
-            ? exchangeRates.USD?.rate
-            : exchangeRates.EUR?.rate;
+            ? liveExchangeRates.USD?.rate
+            : liveExchangeRates.EUR?.rate;
         return rate && rate > 0 ? value * rate : null;
       }
       // Entre USD y EUR
       const fromRate =
         fromCurrency === "USD"
-          ? exchangeRates.USD?.rate
-          : exchangeRates.EUR?.rate;
+          ? liveExchangeRates.USD?.rate
+          : liveExchangeRates.EUR?.rate;
       const toRate =
         toCurrency === "USD"
-          ? exchangeRates.USD?.rate
-          : exchangeRates.EUR?.rate;
+          ? liveExchangeRates.USD?.rate
+          : liveExchangeRates.EUR?.rate;
       if (fromRate && toRate && fromRate > 0 && toRate > 0) {
         return (value * fromRate) / toRate;
       }
       return null;
     },
-    [exchangeRates],
+    [liveExchangeRates],
+  );
+
+  const formBaseCurrency = useMemo(
+    () => getOrderBaseCurrency(initialOrder ?? undefined),
+    [initialOrder],
+  );
+  const formUsesUsdTotals = isUsdBaseOrder(initialOrder ?? undefined);
+
+  const commercialRatesInput = useMemo(
+    () => commercialRatesToExchangeRatesInput(commercialExchangeRates),
+    [commercialExchangeRates],
+  );
+  const liveRatesInput = useMemo(
+    () => commercialRatesToExchangeRatesInput(liveExchangeRates),
+    [liveExchangeRates],
+  );
+
+  const commercialTotalsFrozen = useMemo(
+    () => shouldFreezeCommercialTotals(initialOrder, selectedProducts),
+    [initialOrder, selectedProducts],
+  );
+
+  const frozenCommercialTotals = useMemo(
+    () =>
+      initialOrder && commercialTotalsFrozen
+        ? getFrozenCommercialTotalsFromOrder(initialOrder)
+        : null,
+    [initialOrder, commercialTotalsFrozen],
   );
 
   const calculateDeliveryCost = useCallback((): number => {
-    let total = 0;
-    if (
-      deliveryServices.deliveryExpress?.enabled &&
-      deliveryServices.deliveryExpress.cost
-    ) {
-      total += deliveryServices.deliveryExpress.cost;
-    }
-    if (
-      deliveryServices.servicioAcarreo?.enabled &&
-      deliveryServices.servicioAcarreo.cost
-    ) {
-      total += deliveryServices.servicioAcarreo.cost;
-    }
-    if (
-      deliveryServices.servicioArmado?.enabled &&
-      deliveryServices.servicioArmado.cost
-    ) {
-      total += deliveryServices.servicioArmado.cost;
-    }
-    return total;
-  }, [deliveryServices]);
+    return sumDeliveryServicesToBaseCurrency(
+      deliveryServices,
+      formBaseCurrency,
+      commercialRatesInput,
+    );
+  }, [deliveryServices, formBaseCurrency, commercialRatesInput]);
 
   /** Evita duplicar envío si coexisten servicios y `order.deliveryCost` por datos inconsistentes. */
   const DELIVERY_TOTAL_EPSILON = 1e-6;
@@ -732,82 +777,88 @@ export function useEditOrderForm(
 
   const getProductBaseTotal = useCallback(
     (product: OrderProduct): number => {
-      const markup = productMarkups[product.id] || 0;
-      const category = categories.find((cat) => cat.name === product.category);
-
-      if (!category) {
-        // Incluir sobreprecio (viene en USD, convertir a Bs)
-        let surchargeInBs = 0;
-        if (product.surchargeEnabled && product.surchargeAmount) {
-          const usdRate = exchangeRates.USD?.rate;
-          surchargeInBs =
-            usdRate && usdRate > 0
-              ? product.surchargeAmount * usdRate
-              : product.surchargeAmount;
-        }
-        return product.total + markup + surchargeInBs;
-      }
-
-      // Calcular el precio base con todos los ajustes (incluyendo productos-atributos y sus sub-atributos)
-      const unitPrice = calculateProductUnitPriceWithAttributes(
-        product.price,
-        product.attributes,
-        category,
-        exchangeRates,
-        allProducts,
+      return getProductLineBaseTotalInBaseCurrency(product, {
+        baseCurrency: formBaseCurrency,
+        exchangeRates: commercialRatesInput,
         categories,
-      );
-      const total = unitPrice * product.quantity;
-
-      // Incluir sobreprecio (viene en USD, convertir a Bs)
-      let surchargeInBs = 0;
-      if (product.surchargeEnabled && product.surchargeAmount) {
-        const usdRate = exchangeRates.USD?.rate;
-        surchargeInBs =
-          usdRate && usdRate > 0
-            ? product.surchargeAmount * usdRate
-            : product.surchargeAmount;
-      }
-
-      return total + markup + surchargeInBs;
+        allProducts,
+        markup: productMarkups[product.id] || 0,
+      });
     },
-    [
-      productMarkups,
-      categories,
-      allProducts,
-      exchangeRates,
-      calculateProductUnitPriceWithAttributes,
-    ],
+    [productMarkups, categories, allProducts, commercialRatesInput, formBaseCurrency],
   );
 
   // Valores calculados
-  const productSubtotal = useMemo(() => {
+  const productSubtotalComputed = useMemo(() => {
     return selectedProducts.reduce((sum, product) => {
       return sum + getProductBaseTotal(product);
     }, 0);
   }, [selectedProducts, getProductBaseTotal]);
 
-  const productDiscountTotal = useMemo(() => {
+  const productSubtotal =
+    frozenCommercialTotals?.productSubtotal ?? productSubtotalComputed;
+
+  const productDiscountTotalComputed = useMemo(() => {
     return selectedProducts.reduce((sum, product) => {
-      return sum + (product.discount || 0);
+      const disc = product.discount || 0;
+      if (disc <= 0) return sum;
+      const discCurrency =
+        productDiscountCurrencies[product.id] || preferredCurrency;
+      return (
+        sum +
+        getLineDiscountInBaseCurrency(
+          product,
+          disc,
+          discCurrency,
+          formBaseCurrency,
+          commercialRatesInput,
+        )
+      );
     }, 0);
-  }, [selectedProducts]);
+  }, [
+    selectedProducts,
+    productDiscountCurrencies,
+    preferredCurrency,
+    commercialRatesInput,
+    formBaseCurrency,
+  ]);
 
-  const subtotalAfterProductDiscounts = useMemo(() => {
-    return Math.max(productSubtotal - productDiscountTotal, 0);
-  }, [productSubtotal, productDiscountTotal]);
+  const productDiscountTotal =
+    frozenCommercialTotals?.productDiscountTotal ?? productDiscountTotalComputed;
 
-  const subtotal = subtotalAfterProductDiscounts;
-  const taxAmount = taxEnabled ? subtotal * 0.16 : 0; // Impuesto condicional (16% o 0%)
+  const subtotalAfterProductDiscounts = Math.max(
+    productSubtotal - productDiscountTotal,
+    0,
+  );
+
+  const subtotalComputed = subtotalAfterProductDiscounts;
+  const subtotal = frozenCommercialTotals?.subtotal ?? subtotalComputed;
+
+  const taxAmountComputed = taxEnabled ? subtotal * 0.16 : 0;
+  const taxAmount = frozenCommercialTotals?.taxAmount ?? taxAmountComputed;
+
   const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
   const generalDiscountAmount = useMemo(() => {
+    if (frozenCommercialTotals) {
+      return initialOrder?.generalDiscountAmount ?? 0;
+    }
     if (generalDiscountType === "porcentaje") {
       const p = Math.min(Math.max(generalDiscount, 0), 100);
       return (totalBeforeGeneralDiscount * p) / 100;
     }
     return Math.min(Math.max(generalDiscount, 0), totalBeforeGeneralDiscount);
-  }, [generalDiscountType, generalDiscount, totalBeforeGeneralDiscount]);
-  const total = Math.max(totalBeforeGeneralDiscount - generalDiscountAmount, 0);
+  }, [
+    frozenCommercialTotals,
+    initialOrder?.generalDiscountAmount,
+    generalDiscountType,
+    generalDiscount,
+    totalBeforeGeneralDiscount,
+  ]);
+  const totalComputed = Math.max(
+    totalBeforeGeneralDiscount - generalDiscountAmount,
+    0,
+  );
+  const total = frozenCommercialTotals?.total ?? totalComputed;
 
   const orderSnapshotForCreditRates = useMemo(() => {
     if (initialOrder && open) {
@@ -824,22 +875,11 @@ export function useEditOrderForm(
       }
     }
     return {
-      exchangeRatesAtCreation: {
-        USD: exchangeRates.USD
-          ? {
-              rate: exchangeRates.USD.rate,
-              effectiveDate: exchangeRates.USD.effectiveDate,
-            }
-          : undefined,
-        EUR: exchangeRates.EUR
-          ? {
-              rate: exchangeRates.EUR.rate,
-              effectiveDate: exchangeRates.EUR.effectiveDate,
-            }
-          : undefined,
-      },
+      exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+        commercialExchangeRates,
+      ),
     };
-  }, [initialOrder, exchangeRates.USD, exchangeRates.EUR, open]);
+  }, [initialOrder, commercialExchangeRates, open]);
 
   const bsPerUsdForStoreCredit = useMemo(() => {
     try {
@@ -855,12 +895,21 @@ export function useEditOrderForm(
   }, [appliedStoreCreditUsd, bsPerUsdForStoreCredit]);
 
   const maxApplicableStoreCreditUsd = useMemo(() => {
+    const bal = clientStoreCreditBalanceUsd ?? 0;
+    if (formUsesUsdTotals) {
+      const cap = Math.min(bal, total);
+      return Math.round(Math.max(0, cap) * 100) / 100;
+    }
     if (bsPerUsdForStoreCredit <= 0) return 0;
     const orderTotalUsd = total / bsPerUsdForStoreCredit;
-    const bal = clientStoreCreditBalanceUsd ?? 0;
     const cap = Math.min(bal, orderTotalUsd);
     return Math.round(Math.max(0, cap) * 100) / 100;
-  }, [total, bsPerUsdForStoreCredit, clientStoreCreditBalanceUsd]);
+  }, [
+    total,
+    bsPerUsdForStoreCredit,
+    clientStoreCreditBalanceUsd,
+    formUsesUsdTotals,
+  ]);
 
   useEffect(() => {
     if (!open || !selectedClient?.id) {
@@ -901,37 +950,80 @@ export function useEditOrderForm(
     }
   }, [selectedClient?.id]);
 
-  // Calcular total pagado
+  const orderPaymentContext = useMemo(
+    () => ({
+      baseCurrency: formBaseCurrency,
+      exchangeRatesAtCreation: orderSnapshotForCreditRates.exchangeRatesAtCreation,
+    }),
+    [formBaseCurrency, orderSnapshotForCreditRates],
+  );
+
+  const totalPaidInUsd = useMemo(
+    () => sumPaymentsToUsd(payments, orderPaymentContext),
+    [payments, orderPaymentContext],
+  );
+
   useEffect(() => {
-    const calculateTotal = async () => {
+    if (formUsesUsdTotals) {
+      setTotalPaidInBs(totalPaidInUsd);
+    } else {
       let totalInBs = 0;
       for (const payment of payments) {
         totalInBs += payment.amount || 0;
       }
       setTotalPaidInBs(totalInBs);
-    };
-    calculateTotal();
-  }, [payments]);
+    }
+  }, [payments, formUsesUsdTotals, totalPaidInUsd]);
 
   const casheaInStorePayments = payments.filter(
     (p) => !p.paymentDetails?.casheaFinancedPortion,
+  );
+  const casheaPaidSumUsd = useMemo(
+    () => sumPaymentsToUsd(casheaInStorePayments, orderPaymentContext),
+    [casheaInStorePayments, orderPaymentContext],
   );
   const casheaPaidSumBs = casheaInStorePayments.reduce(
     (s, p) => s + (p.amount || 0),
     0,
   );
+  const casheaCapUsd =
+    total - appliedStoreCreditUsd + PAYMENT_BALANCE_EPSILON_USD;
   const casheaCapBs =
     total - appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS;
-  const remainingAmount = total - appliedCreditBsApprox - totalPaidInBs;
+  const remainingAmount = useMemo(
+    () =>
+      getOrderPendingTotal({
+        total,
+        baseCurrency: formBaseCurrency,
+        exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+          commercialExchangeRates,
+        ),
+        appliedStoreCreditUsd,
+        partialPayments: payments,
+      }),
+    [
+      total,
+      formBaseCurrency,
+      commercialExchangeRates,
+      appliedStoreCreditUsd,
+      payments,
+    ],
+  );
   const isPaymentsValid =
     paymentCondition === "pago_a_entrega" ||
     paymentCondition === "pagara_en_tienda"
       ? true
       : paymentCondition === "cashea"
-        ? casheaInStorePayments.length >= 1 &&
-          casheaPaidSumBs > 0 &&
-          casheaPaidSumBs <= casheaCapBs
-        : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
+        ? formUsesUsdTotals
+          ? casheaInStorePayments.length >= 1 &&
+            casheaPaidSumUsd > 0 &&
+            casheaPaidSumUsd <= casheaCapUsd
+          : casheaInStorePayments.length >= 1 &&
+            casheaPaidSumBs > 0 &&
+            casheaPaidSumBs <= casheaCapBs
+        : formUsesUsdTotals
+          ? Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_USD
+          : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
 
   // Formatear precios
   useEffect(() => {
@@ -947,14 +1039,33 @@ export function useEditOrderForm(
       const totals: Record<string, string> = {};
       const finalTotals: Record<string, string> = {};
 
+      const liveRates = liveExchangeRates;
       for (const product of selectedProducts) {
         const baseTotal = getProductBaseTotal(product);
-        const discount = product.discount || 0;
-        const finalTotal = Math.max(baseTotal - discount, 0);
+        const discCurrency =
+          productDiscountCurrencies[product.id] || preferredCurrency;
+        const discountInBase = getLineDiscountInBaseCurrency(
+          product,
+          product.discount || 0,
+          discCurrency,
+          formBaseCurrency,
+          commercialRatesInput,
+        );
+        const finalTotal = Math.max(baseTotal - discountInBase, 0);
 
-        prices[product.id] = await formatWithPreference(product.price, "Bs");
-        totals[product.id] = await formatWithPreference(baseTotal, "Bs");
-        finalTotals[product.id] = await formatWithPreference(finalTotal, "Bs");
+        prices[product.id] = await formatLineUnitPrice(product, {
+          showBsEquivalent: formUsesUsdTotals,
+          liveRates,
+        });
+        totals[product.id] = formatLineAmount(baseTotal, formBaseCurrency, {
+          showBsEquivalent: formUsesUsdTotals,
+          liveRates,
+        });
+        finalTotals[product.id] = formatLineAmount(
+          finalTotal,
+          formBaseCurrency,
+          { showBsEquivalent: formUsesUsdTotals, liveRates },
+        );
       }
 
       setFormattedProductPrices(prices);
@@ -966,7 +1077,8 @@ export function useEditOrderForm(
   }, [
     selectedProducts,
     preferredCurrency,
-    exchangeRates,
+    liveExchangeRates,
+    commercialRatesInput,
     productMarkups,
     categories,
     allProducts,
@@ -976,12 +1088,12 @@ export function useEditOrderForm(
   ]);
 
   useEffect(() => {
-    const formatSubtotal = async () => {
-      const formatted = await formatWithPreference(subtotal, "Bs");
-      setFormattedSubtotal(formatted);
-    };
-    formatSubtotal();
-  }, [subtotal, preferredCurrency, formatWithPreference, exchangeRates]);
+    const formatted = formatLineAmount(subtotal, formBaseCurrency, {
+      showBsEquivalent: formUsesUsdTotals,
+      liveRates: liveExchangeRates,
+    });
+    setFormattedSubtotal(formatted);
+  }, [subtotal, formBaseCurrency, formUsesUsdTotals, liveExchangeRates]);
 
   // Handlers
   const handleProductsSelect = useCallback(
@@ -1052,8 +1164,8 @@ export function useEditOrderForm(
             if (discountCurrency !== "Bs") {
               const rate =
                 discountCurrency === "USD"
-                  ? exchangeRates.USD?.rate
-                  : exchangeRates.EUR?.rate;
+                  ? liveExchangeRates.USD?.rate
+                  : liveExchangeRates.EUR?.rate;
               if (rate && rate > 0) {
                 discountInBs = value * rate;
               }
@@ -1072,8 +1184,8 @@ export function useEditOrderForm(
               ) {
                 const rate =
                   category.maxDiscountCurrency === "USD"
-                    ? exchangeRates.USD?.rate
-                    : exchangeRates.EUR?.rate;
+                    ? liveExchangeRates.USD?.rate
+                    : liveExchangeRates.EUR?.rate;
                 if (rate && rate > 0) {
                   maxDiscountInBs = category.maxDiscount * rate;
                 }
@@ -1105,7 +1217,7 @@ export function useEditOrderForm(
       productDiscountTypes,
       productDiscountCurrencies,
       preferredCurrency,
-      exchangeRates,
+      liveExchangeRates,
       categories,
     ],
   );
@@ -1245,55 +1357,45 @@ export function useEditOrderForm(
 
   const canAddProduct: boolean = !!(step1SellerReady && selectedClient);
 
-  // Render helpers
+  // Render helpers (USD comercial con tasa del pedido; Bs informativo con tasa viva)
   const renderCurrencyCell = useCallback(
-    (amountInBs: number, className?: string) => {
-      const usdRate = exchangeRates.USD?.rate;
-      if (usdRate && usdRate > 0) {
-        const amountInUsd = amountInBs / usdRate;
-        return (
-          <div className={`text-right ${className || ""}`}>
-            <div className="font-medium">
-              {formatCurrency(amountInUsd, "USD")}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {formatCurrency(amountInBs, "Bs")}
-            </div>
-          </div>
-        );
-      }
+    (amount: number, className?: string) => {
+      const formatted = formatDualCurrencyAmounts(amount, formBaseCurrency, {
+        commercialRates: commercialRatesInput,
+        liveRates: liveRatesInput,
+      });
       return (
         <div className={`text-right ${className || ""}`}>
-          <div className="font-medium">{formatCurrency(amountInBs, "Bs")}</div>
+          <div className="font-medium">{formatted.primary}</div>
+          {formatted.secondary && (
+            <div className="text-xs text-muted-foreground">
+              {formatted.secondary}
+            </div>
+          )}
         </div>
       );
     },
-    [exchangeRates],
+    [formBaseCurrency, commercialRatesInput, liveRatesInput],
   );
 
   const renderCurrencyCellNegative = useCallback(
-    (amountInBs: number, className?: string) => {
-      const usdRate = exchangeRates.USD?.rate;
-      if (usdRate && usdRate > 0) {
-        const amountInUsd = amountInBs / usdRate;
-        return (
-          <div className={`text-right ${className || ""}`}>
-            <div className="font-medium">
-              -{formatCurrency(amountInUsd, "USD")}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              -{formatCurrency(amountInBs, "Bs")}
-            </div>
-          </div>
-        );
-      }
+    (amount: number, className?: string) => {
+      const formatted = formatDualCurrencyAmounts(amount, formBaseCurrency, {
+        commercialRates: commercialRatesInput,
+        liveRates: liveRatesInput,
+      });
       return (
         <div className={`text-right ${className || ""}`}>
-          <div className="font-medium">-{formatCurrency(amountInBs, "Bs")}</div>
+          <div className="font-medium">-{formatted.primary}</div>
+          {formatted.secondary && (
+            <div className="text-xs text-muted-foreground">
+              -{formatted.secondary}
+            </div>
+          )}
         </div>
       );
     },
-    [exchangeRates],
+    [formBaseCurrency, commercialRatesInput, liveRatesInput],
   );
 
   // Cargar dirección del cliente cuando se activa delivery
@@ -1369,7 +1471,9 @@ export function useEditOrderForm(
     categories,
     allProducts,
     accounts,
-    exchangeRates,
+    exchangeRates: liveExchangeRates,
+    commercialExchangeRates,
+    commercialTotalsFrozen,
     productSubtotal,
     productDiscountTotal,
     subtotalAfterProductDiscounts,

@@ -39,10 +39,21 @@ import { isReservationOrder } from "@/lib/order-document-types";
 import { getSaleTypeLabel } from "@/components/orders/constants";
 import {
   formatCurrency,
+  getActiveExchangeRates,
   type Currency,
   convertFromBs,
   type ExchangeRate,
 } from "@/lib/currency-utils";
+import {
+  getOrderBaseCurrency,
+  isUsdBaseOrder,
+} from "@/lib/order-line-pricing";
+import { formatDualCurrencyAmounts } from "@/lib/order-currency-display";
+import {
+  getOrderPendingTotal,
+  sumPaymentsToUsd,
+  PAYMENT_BALANCE_EPSILON_USD,
+} from "@/lib/order-payments";
 import { useCurrency } from "@/contexts/currency-context";
 import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
@@ -100,9 +111,15 @@ const getOriginalPaymentAmount = (
     };
   }
 
-  // Fallback: calcular desde payment.amount (que está en Bs)
   const paymentCurrency = payment.currency || "Bs";
   if (paymentCurrency === "Bs") {
+    const payRate = payment.paymentDetails?.exchangeRate;
+    if (payRate && payRate > 0) {
+      return {
+        amount: (payment.amount || 0) / payRate,
+        currency: "USD",
+      };
+    }
     return {
       amount: payment.amount,
       currency: "Bs",
@@ -197,39 +214,39 @@ const deriveExchangeRatesFromPayments = (
 
 // Función helper para formatear moneda siempre en USD como principal, Bs como secundario
 const formatCurrencyWithUsdPrimary = (
-  amountInBs: number,
+  amount: number,
+  baseCurrency: Currency,
   exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } },
+  liveRates?: { USD?: { rate: number }; EUR?: { rate: number } },
 ): { primary: string; secondary?: string } => {
-  // Intentar convertir a USD si hay tasa disponible
-  const usdRate = exchangeRates?.USD?.rate;
-
-  if (usdRate && usdRate > 0) {
-    const amountInUsd = amountInBs / usdRate;
-    return {
-      primary: formatCurrency(amountInUsd, "USD"),
-      secondary: formatCurrency(amountInBs, "Bs"),
-    };
-  }
-
-  // Si no hay tasa USD, mostrar solo en Bs
-  return {
-    primary: formatCurrency(amountInBs, "Bs"),
-  };
+  return formatDualCurrencyAmounts(amount, baseCurrency, {
+    commercialRates: exchangeRates,
+    liveRates: liveRates ?? exchangeRates,
+  });
 };
 
 // Componente para renderizar moneda con formato USD principal / Bs secundario
 const CurrencyDisplay = ({
-  amountInBs,
+  amount,
+  baseCurrency,
   exchangeRates,
+  liveRates,
   className = "",
   inline = false,
 }: {
-  amountInBs: number;
+  amount: number;
+  baseCurrency: Currency;
   exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } };
+  liveRates?: { USD?: { rate: number }; EUR?: { rate: number } };
   className?: string;
   inline?: boolean;
 }) => {
-  const formatted = formatCurrencyWithUsdPrimary(amountInBs, exchangeRates);
+  const formatted = formatCurrencyWithUsdPrimary(
+    amount,
+    baseCurrency,
+    exchangeRates,
+    liveRates,
+  );
 
   if (inline) {
     return (
@@ -505,6 +522,10 @@ export default function OrderDetailPage() {
     USD?: ExchangeRate;
     EUR?: ExchangeRate;
   }>({});
+  const [liveExchangeRates, setLiveExchangeRates] = useState<{
+    USD?: ExchangeRate;
+    EUR?: ExchangeRate;
+  }>({});
   const [formattedTotals, setFormattedTotals] = useState<
     Record<string, { primary: string; secondary?: string }>
   >({});
@@ -541,15 +562,70 @@ export default function OrderDetailPage() {
     return order.mixedPayments ?? [];
   }, [order]);
 
-  const pendingBalanceAmountInBs = useMemo(() => {
+  const orderBaseCurrency = order ? getOrderBaseCurrency(order) : "Bs";
+
+  const pendingBalanceInBase = useMemo(() => {
     if (!order) return 0;
-    const paid = activePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-    const creditBs = appliedStoreCreditBsOnOrder(order);
-    return order.total - paid - creditBs;
+    return getOrderPendingTotal(order);
+  }, [order]);
+
+  const hasMeaningfulPendingBalance = useMemo(() => {
+    if (!order) return false;
+    return isUsdBaseOrder(order)
+      ? pendingBalanceInBase > PAYMENT_BALANCE_EPSILON_USD
+      : pendingBalanceInBase > PENDING_BALANCE_EPSILON_BS;
+  }, [order, pendingBalanceInBase]);
+
+  const totalPaidInBase = useMemo(() => {
+    if (!order) return 0;
+    if (isUsdBaseOrder(order)) {
+      return sumPaymentsToUsd(activePayments, order);
+    }
+    return activePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
   }, [order, activePayments]);
 
-  const hasMeaningfulPendingBalance =
-    order != null && pendingBalanceAmountInBs > PENDING_BALANCE_EPSILON_BS;
+  const OrderCurrency = ({
+    amount,
+    className,
+    inline,
+    paymentUsdRate,
+  }: {
+    amount: number;
+    className?: string;
+    inline?: boolean;
+    paymentUsdRate?: number;
+  }) => {
+    const commercialRates =
+      paymentUsdRate && paymentUsdRate > 0
+        ? {
+            ...localExchangeRates,
+            USD: {
+              ...(localExchangeRates.USD ?? {
+                id: "payment-usd",
+                fromCurrency: "Bs" as const,
+                toCurrency: "USD" as const,
+                effectiveDate: "",
+                isActive: true,
+                createdAt: "",
+                updatedAt: "",
+              }),
+              rate: paymentUsdRate,
+              effectiveDate:
+                localExchangeRates.USD?.effectiveDate ?? "",
+            },
+          }
+        : localExchangeRates;
+    return (
+      <CurrencyDisplay
+        amount={amount}
+        baseCurrency={orderBaseCurrency}
+        exchangeRates={commercialRates}
+        liveRates={liveExchangeRates}
+        className={className}
+        inline={inline}
+      />
+    );
+  };
 
   const casheaPaidInStoreBs = useMemo(() => {
     if (!order || order.paymentCondition !== "cashea") return 0;
@@ -736,11 +812,13 @@ export default function OrderDetailPage() {
           }
 
           setLocalExchangeRates(savedRates);
+          void getActiveExchangeRates().then(setLiveExchangeRates);
         } else {
           // Si no hay tasas guardadas en el pedido, intentar derivarlas desde los pagos
           const paymentDerived = deriveExchangeRatesFromPayments(foundOrder);
           if (paymentDerived.USD || paymentDerived.EUR) {
             setLocalExchangeRates(paymentDerived);
+            void getActiveExchangeRates().then(setLiveExchangeRates);
           } else {
             // Fallback: Buscar tasas del día del pedido si no están guardadas ni se pueden derivar
             const orderDateObj = new Date(foundOrder.createdAt);
@@ -775,6 +853,7 @@ export default function OrderDetailPage() {
               USD: usdRate || latestUsd,
               EUR: eurRate || latestEur,
             });
+            void getActiveExchangeRates().then(setLiveExchangeRates);
           }
         }
       } catch (error) {
@@ -857,42 +936,56 @@ export default function OrderDetailPage() {
       const totals: Record<string, { primary: string; secondary?: string }> =
         {};
 
-      // Usar siempre USD como principal
+      const base = getOrderBaseCurrency(order);
       totals.total = formatCurrencyWithUsdPrimary(
         order.total,
+        base,
         localExchangeRates,
+        liveExchangeRates,
       );
       totals.subtotal = formatCurrencyWithUsdPrimary(
         order.subtotal,
+        base,
         localExchangeRates,
+        liveExchangeRates,
       );
       totals.tax = formatCurrencyWithUsdPrimary(
         order.taxAmount,
+        base,
         localExchangeRates,
+        liveExchangeRates,
       );
       totals.subtotalBeforeDiscounts = formatCurrencyWithUsdPrimary(
         order.subtotalBeforeDiscounts || 0,
+        base,
         localExchangeRates,
+        liveExchangeRates,
       );
 
       if (order.productDiscountTotal && order.productDiscountTotal > 0) {
         totals.productDiscountTotal = formatCurrencyWithUsdPrimary(
           order.productDiscountTotal,
+          base,
           localExchangeRates,
+          liveExchangeRates,
         );
       }
 
       if (order.generalDiscountAmount && order.generalDiscountAmount > 0) {
         totals.generalDiscountAmount = formatCurrencyWithUsdPrimary(
           order.generalDiscountAmount,
+          base,
           localExchangeRates,
+          liveExchangeRates,
         );
       }
 
       if (order.deliveryCost > 0) {
         totals.deliveryCost = formatCurrencyWithUsdPrimary(
           order.deliveryCost,
+          base,
           localExchangeRates,
+          liveExchangeRates,
         );
       }
 
@@ -900,7 +993,7 @@ export default function OrderDetailPage() {
     };
 
     formatTotals();
-  }, [order, localExchangeRates]);
+  }, [order, localExchangeRates, liveExchangeRates]);
 
   // Formatear pagos cuando cambia la moneda seleccionada
   useEffect(() => {
@@ -961,37 +1054,36 @@ export default function OrderDetailPage() {
         }),
       );
 
-      // Calcular total pagado
-      const totalPaidInBs = activePayments.reduce(
-        (sum, p) => sum + (p.amount || 0),
-        0,
-      );
       if (selectedCurrency && selectedCurrency !== "Bs") {
         const totalPaidFormatted = await formatWithSelectedCurrency(
-          totalPaidInBs,
-          "Bs",
+          totalPaidInBase,
+          isUsdBaseOrder(order) ? "USD" : "Bs",
         );
         setFormattedTotalPaid(totalPaidFormatted);
       } else {
-        setFormattedTotalPaid(formatCurrency(totalPaidInBs, "Bs"));
+        setFormattedTotalPaid(
+          formatCurrency(
+            totalPaidInBase,
+            isUsdBaseOrder(order) ? "USD" : "Bs",
+          ),
+        );
       }
 
-      // Calcular saldo pendiente (restar crédito de tienda aplicado al pedido, misma tasa que el backend)
-      const totalOrderInBs = order.total;
-      const creditBsApplied = appliedStoreCreditBsOnOrder(order);
-      const pendingBalanceInBs =
-        totalOrderInBs - totalPaidInBs - creditBsApplied;
-
-      if (pendingBalanceInBs > PENDING_BALANCE_EPSILON_BS) {
+      if (pendingBalanceInBase > PENDING_BALANCE_EPSILON_BS) {
         // Hay saldo pendiente
         if (selectedCurrency && selectedCurrency !== "Bs") {
           const pendingFormatted = await formatWithSelectedCurrency(
-            pendingBalanceInBs,
-            "Bs",
+            pendingBalanceInBase,
+            isUsdBaseOrder(order) ? "USD" : "Bs",
           );
           setFormattedPendingBalance(pendingFormatted);
         } else {
-          setFormattedPendingBalance(formatCurrency(pendingBalanceInBs, "Bs"));
+          setFormattedPendingBalance(
+            formatCurrency(
+              pendingBalanceInBase,
+              isUsdBaseOrder(order) ? "USD" : "Bs",
+            ),
+          );
         }
       } else {
         // El pedido está completamente pagado
@@ -1008,12 +1100,23 @@ export default function OrderDetailPage() {
     selectedCurrency,
     formatWithSelectedCurrency,
     localExchangeRates,
+    totalPaidInBase,
+    pendingBalanceInBase,
   ]);
 
   // Formatear precios, descuentos, totales y calcular desglose detallado de productos
   useEffect(() => {
     const formatProductData = () => {
       if (!order || categories.length === 0 || allProducts.length === 0) return;
+
+      const base = getOrderBaseCurrency(order);
+      const fmtAmount = (amount: number) =>
+        formatCurrencyWithUsdPrimary(
+          amount,
+          base,
+          localExchangeRates,
+          liveExchangeRates,
+        );
 
       const formattedDiscounts: Record<
         string,
@@ -1053,22 +1156,31 @@ export default function OrderDetailPage() {
       > = {};
 
       for (const orderProduct of order.products) {
-        // Formatear precios básicos siempre en USD como principal
-        formattedPrices[orderProduct.id] = formatCurrencyWithUsdPrimary(
-          orderProduct.price,
-          localExchangeRates,
-        );
+        const lineCurrency =
+          orderProduct.priceCurrency ||
+          resolveCatalogProductFromOrderProductId(orderProduct.id, allProducts)
+            ?.priceCurrency ||
+          "Bs";
+        formattedPrices[orderProduct.id] =
+          lineCurrency === "USD" || lineCurrency === "EUR"
+            ? {
+                primary: formatCurrency(orderProduct.price, lineCurrency),
+                ...(localExchangeRates?.USD?.rate &&
+                lineCurrency === "USD"
+                  ? {
+                      secondary: formatCurrency(
+                        orderProduct.price * localExchangeRates.USD.rate,
+                        "Bs",
+                      ),
+                    }
+                  : {}),
+              }
+            : fmtAmount(orderProduct.price);
         if (orderProduct.discount && orderProduct.discount > 0) {
-          formattedDiscounts[orderProduct.id] = formatCurrencyWithUsdPrimary(
-            orderProduct.discount,
-            localExchangeRates,
-          );
+          formattedDiscounts[orderProduct.id] = fmtAmount(orderProduct.discount);
         }
         const productTotal = orderProduct.total - (orderProduct.discount || 0);
-        formattedTotals[orderProduct.id] = formatCurrencyWithUsdPrimary(
-          productTotal,
-          localExchangeRates,
-        );
+        formattedTotals[orderProduct.id] = fmtAmount(productTotal);
 
         // Calcular desglose detallado
         const category = categories.find(
@@ -1084,8 +1196,13 @@ export default function OrderDetailPage() {
         // Calcular precio base en Bs (usar precio original del producto, no el convertido)
         // IMPORTANTE: orderProduct.price ya está en Bs, pero necesitamos el precio original
         // para mostrarlo correctamente y calcular el desglose
-        let basePriceInBs = orderProduct.price; // Fallback: usar precio ya convertido
-        if (originalProduct) {
+        const lineCurrencyStored = orderProduct.priceCurrency;
+        let basePriceInBs = orderProduct.price;
+        if (lineCurrencyStored === "USD" && localExchangeRates?.USD?.rate) {
+          basePriceInBs = orderProduct.price * localExchangeRates.USD.rate;
+        } else if (lineCurrencyStored === "EUR" && localExchangeRates?.EUR?.rate) {
+          basePriceInBs = orderProduct.price * localExchangeRates.EUR.rate;
+        } else if (!lineCurrencyStored && originalProduct) {
           const originalPrice = originalProduct.price;
           const originalCurrency = originalProduct.priceCurrency || "Bs";
           if (originalCurrency === "Bs") {
@@ -1105,11 +1222,13 @@ export default function OrderDetailPage() {
           }
         }
 
-        const basePriceCurrency = originalProduct?.priceCurrency || "Bs";
+        const basePriceCurrency =
+          lineCurrencyStored || originalProduct?.priceCurrency || "Bs";
         // Formatear precio base siempre en USD como principal
-        const basePriceFormatted = formatCurrencyWithUsdPrimary(
-          basePriceInBs,
-          localExchangeRates,
+        const basePriceFormatted = fmtAmount(
+          base === "USD" && lineCurrencyStored === "USD"
+            ? orderProduct.price
+            : basePriceInBs,
         );
 
         // Calcular ajustes de atributos normales
@@ -1124,10 +1243,7 @@ export default function OrderDetailPage() {
             name: adj.attributeName,
             value: adj.selectedValueLabel,
             // Formatear ajuste siempre en USD como principal
-            adjustment: formatCurrencyWithUsdPrimary(
-              adj.adjustment,
-              localExchangeRates,
-            ),
+            adjustment: fmtAmount(adj.adjustment),
             adjustmentValue: adj.adjustment, // Mantener el valor en Bs para cálculos
           }),
         );
@@ -1182,10 +1298,7 @@ export default function OrderDetailPage() {
                   productPriceInBsForDisplay = productPrice * rate;
                 }
               }
-              const productPriceFormatted = formatCurrencyWithUsdPrimary(
-                productPriceInBsForDisplay,
-                localExchangeRates,
-              );
+              const productPriceFormatted = fmtAmount(productPriceInBsForDisplay);
 
               // Convertir precio del producto a Bs para cálculos
               let productPriceInBs = productPrice;
@@ -1226,10 +1339,7 @@ export default function OrderDetailPage() {
                     name: adj.attributeName,
                     value: adj.selectedValueLabel,
                     // Formatear ajuste siempre en USD como principal
-                    adjustment: formatCurrencyWithUsdPrimary(
-                      adj.adjustment,
-                      localExchangeRates,
-                    ),
+                    adjustment: fmtAmount(adj.adjustment),
                     adjustmentValue: adj.adjustment, // Mantener el valor en Bs para cálculos
                   }));
                 }
@@ -1265,10 +1375,7 @@ export default function OrderDetailPage() {
           });
         });
 
-        const unitPriceFormatted = formatCurrencyWithUsdPrimary(
-          unitPriceInBs,
-          localExchangeRates,
-        );
+        const unitPriceFormatted = fmtAmount(unitPriceInBs);
 
         breakdowns[orderProduct.id] = {
           basePrice: basePriceFormatted,
@@ -1284,7 +1391,7 @@ export default function OrderDetailPage() {
       setProductBreakdowns(breakdowns);
     };
     formatProductData();
-  }, [order, categories, allProducts, localExchangeRates]);
+  }, [order, categories, allProducts, localExchangeRates, liveExchangeRates]);
 
   if (loading) {
     return (
@@ -1390,59 +1497,25 @@ export default function OrderDetailPage() {
                         </p>
                         <p className="text-sm">
                           <span className="text-muted-foreground">Total:</span>{" "}
-                          <CurrencyDisplay
-                            amountInBs={order.total}
-                            exchangeRates={localExchangeRates}
+                          <OrderCurrency
+                            amount={order.total}
                             inline
                             className="inline"
                           />
                         </p>
                         <>
-                          {activePayments.length > 0 &&
-                            (() => {
-                              const totalPaid = activePayments.reduce(
-                                (sum, p) => sum + (p.amount || 0),
-                                0,
-                              );
-                              const pending =
-                                order.total -
-                                totalPaid -
-                                appliedStoreCreditBsOnOrder(order);
-                              if (pending > PENDING_BALANCE_EPSILON_BS) {
-                                return (
-                                  <p className="text-sm text-red-600 dark:text-red-400">
-                                    <span className="text-muted-foreground">
-                                      Saldo pendiente:
-                                    </span>{" "}
-                                    <CurrencyDisplay
-                                      amountInBs={pending}
-                                      exchangeRates={localExchangeRates}
-                                      inline
-                                      className="inline font-medium"
-                                    />
-                                  </p>
-                                );
-                              }
-                              return null;
-                            })()}
-                          {activePayments.length === 0 &&
-                            order.total - appliedStoreCreditBsOnOrder(order) >
-                              PENDING_BALANCE_EPSILON_BS && (
-                              <p className="text-sm text-red-600 dark:text-red-400">
-                                <span className="text-muted-foreground">
-                                  Saldo pendiente:
-                                </span>{" "}
-                                <CurrencyDisplay
-                                  amountInBs={
-                                    order.total -
-                                    appliedStoreCreditBsOnOrder(order)
-                                  }
-                                  exchangeRates={localExchangeRates}
-                                  inline
-                                  className="inline font-medium"
-                                />
-                              </p>
-                            )}
+                          {hasMeaningfulPendingBalance && (
+                            <p className="text-sm text-red-600 dark:text-red-400">
+                              <span className="text-muted-foreground">
+                                Saldo pendiente:
+                              </span>{" "}
+                              <OrderCurrency
+                                amount={pendingBalanceInBase}
+                                inline
+                                className="inline font-medium"
+                              />
+                            </p>
+                          )}
                           {order.paymentCondition === "cashea" &&
                             casheaHasFinancedLine && (
                               <p className="text-sm text-blue-700 dark:text-blue-300">
@@ -2149,9 +2222,8 @@ export default function OrderDetailPage() {
                           formatted={formattedTotals.subtotalBeforeDiscounts}
                         />
                       ) : (
-                        <CurrencyDisplay
-                          amountInBs={order.subtotalBeforeDiscounts || 0}
-                          exchangeRates={localExchangeRates}
+                        <OrderCurrency
+                          amount={order.subtotalBeforeDiscounts || 0}
                         />
                       )}
                     </div>
@@ -2164,10 +2236,7 @@ export default function OrderDetailPage() {
                               formatted={formattedTotals.productDiscountTotal}
                             />
                           ) : (
-                            <CurrencyDisplay
-                              amountInBs={order.productDiscountTotal}
-                              exchangeRates={localExchangeRates}
-                            />
+                            <OrderCurrency amount={order.productDiscountTotal} />
                           )}
                         </div>
                       )}
@@ -2179,10 +2248,7 @@ export default function OrderDetailPage() {
                           formatted={formattedTotals.subtotal}
                         />
                       ) : (
-                        <CurrencyDisplay
-                          amountInBs={order.subtotal}
-                          exchangeRates={localExchangeRates}
-                        />
+                        <OrderCurrency amount={order.subtotal} />
                       )}
                     </div>
                     <div className="flex justify-between">
@@ -2192,10 +2258,7 @@ export default function OrderDetailPage() {
                           formatted={formattedTotals.tax}
                         />
                       ) : (
-                        <CurrencyDisplay
-                          amountInBs={order.taxAmount}
-                          exchangeRates={localExchangeRates}
-                        />
+                        <OrderCurrency amount={order.taxAmount} />
                       )}
                     </div>
                     {order.generalDiscountAmount &&
@@ -2207,10 +2270,7 @@ export default function OrderDetailPage() {
                               formatted={formattedTotals.generalDiscountAmount}
                             />
                           ) : (
-                            <CurrencyDisplay
-                              amountInBs={order.generalDiscountAmount}
-                              exchangeRates={localExchangeRates}
-                            />
+                            <OrderCurrency amount={order.generalDiscountAmount} />
                           )}
                         </div>
                       )}
@@ -2222,10 +2282,7 @@ export default function OrderDetailPage() {
                             formatted={formattedTotals.deliveryCost}
                           />
                         ) : (
-                          <CurrencyDisplay
-                            amountInBs={order.deliveryCost}
-                            exchangeRates={localExchangeRates}
-                          />
+                          <OrderCurrency amount={order.deliveryCost} />
                         )}
                       </div>
                     )}
@@ -2237,10 +2294,7 @@ export default function OrderDetailPage() {
                           formatted={formattedTotals.total}
                         />
                       ) : (
-                        <CurrencyDisplay
-                          amountInBs={order.total}
-                          exchangeRates={localExchangeRates}
-                        />
+                        <OrderCurrency amount={order.total} />
                       )}
                     </div>
                   </div>
@@ -2322,9 +2376,11 @@ export default function OrderDetailPage() {
                                   {payment.method} ({originalPayment.currency})
                                 </span>
                                 {originalPayment.currency === "Bs" ? (
-                                  <CurrencyDisplay
-                                    amountInBs={originalPayment.amount}
-                                    exchangeRates={localExchangeRates}
+                                  <OrderCurrency
+                                    amount={originalPayment.amount}
+                                    paymentUsdRate={
+                                      paymentExchangeRate
+                                    }
                                   />
                                 ) : (
                                   <span className="font-medium text-right">
@@ -2332,14 +2388,21 @@ export default function OrderDetailPage() {
                                       originalPayment.amount,
                                       originalPayment.currency as Currency,
                                     )}
+                                    {paymentExchangeRate &&
+                                      paymentCurrency === "USD" && (
+                                        <span className="block text-xs text-muted-foreground">
+                                          {formatCurrency(
+                                            originalPayment.amount *
+                                              paymentExchangeRate,
+                                            "Bs",
+                                          )}
+                                        </span>
+                                      )}
                                   </span>
                                 )}
                               </div>
 
-                              {/* Mostrar tasa de cambio del día del pago si existe y no es en Bs */}
-                              {paymentExchangeRate &&
-                                paymentCurrency &&
-                                paymentCurrency !== "Bs" && (
+                              {paymentExchangeRate && (
                                   <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/30 px-2 py-1 rounded">
                                     💱 Tasa de cambio del día del pago: 1{" "}
                                     {paymentCurrency} ={" "}
@@ -2402,28 +2465,38 @@ export default function OrderDetailPage() {
                                 {payment.method} ({originalPayment.currency})
                               </span>
                               {originalPayment.currency === "Bs" ? (
-                                <CurrencyDisplay
-                                  amountInBs={originalPayment.amount}
-                                  exchangeRates={localExchangeRates}
+                                <OrderCurrency
+                                  amount={originalPayment.amount}
+                                  paymentUsdRate={paymentExchangeRate}
                                 />
                               ) : (
                                 <div className="text-right">
                                   <div className="font-medium">
-                                    {formattedPayment.original}
+                                    {formatCurrency(
+                                      originalPayment.amount,
+                                      originalPayment.currency as Currency,
+                                    )}
                                   </div>
-                                  {formattedPayment.converted && (
-                                    <div className="text-xs text-muted-foreground">
-                                      {formattedPayment.converted}
-                                    </div>
-                                  )}
+                                  {payment.amount > 0 &&
+                                    originalPayment.currency === "USD" && (
+                                      <div className="text-xs text-muted-foreground">
+                                        {formatCurrency(
+                                          payment.amount,
+                                          "Bs",
+                                        )}
+                                      </div>
+                                    )}
+                                  {formattedPayment.converted &&
+                                    originalPayment.currency !== "USD" && (
+                                      <div className="text-xs text-muted-foreground">
+                                        {formattedPayment.converted}
+                                      </div>
+                                    )}
                                 </div>
                               )}
                             </div>
 
-                            {/* Mostrar tasa de cambio del día del pago si existe y no es en Bs */}
-                            {paymentExchangeRate &&
-                              paymentCurrency &&
-                              paymentCurrency !== "Bs" && (
+                            {paymentExchangeRate && (
                                 <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/30 px-2 py-1 rounded">
                                   💱 Tasa de cambio del día del pago: 1{" "}
                                   {paymentCurrency} ={" "}
@@ -2467,10 +2540,7 @@ export default function OrderDetailPage() {
                         casheaHasFinancedLine && (
                           <div className="flex justify-between text-sm text-muted-foreground">
                             <span>Pago inicial en tienda:</span>
-                            <CurrencyDisplay
-                              amountInBs={casheaPaidInStoreBs}
-                              exchangeRates={localExchangeRates}
-                            />
+                            <OrderCurrency amount={casheaPaidInStoreBs} />
                           </div>
                         )}
                       <div className="flex justify-between font-semibold">
@@ -2480,20 +2550,13 @@ export default function OrderDetailPage() {
                             ? "Total cubierto (inicial + financiación Cashea):"
                             : "Total Pagado:"}
                         </span>
-                        <CurrencyDisplay
-                          amountInBs={activePayments.reduce(
-                            (sum, p) => sum + (p.amount || 0),
-                            0,
-                          )}
-                          exchangeRates={localExchangeRates}
-                        />
+                        <OrderCurrency amount={totalPaidInBase} />
                       </div>
                       {(order.appliedStoreCreditUsd ?? 0) > 0 && (
                         <div className="flex justify-between text-sm text-muted-foreground">
                           <span>Crédito de tienda aplicado (equiv. Bs):</span>
-                          <CurrencyDisplay
-                            amountInBs={appliedStoreCreditBsOnOrder(order)}
-                            exchangeRates={localExchangeRates}
+                          <OrderCurrency
+                            amount={appliedStoreCreditBsOnOrder(order)}
                           />
                         </div>
                       )}
@@ -2512,17 +2575,16 @@ export default function OrderDetailPage() {
                                   </span>
                                 </div>
                                 <div className="text-right">
-                                  <CurrencyDisplay
-                                    amountInBs={pendingBalanceAmountInBs}
-                                    exchangeRates={localExchangeRates}
+                                  <OrderCurrency
+                                    amount={pendingBalanceInBase}
                                     className="font-bold text-lg text-red-700 dark:text-red-300"
                                   />
                                 </div>
                               </div>
                               {localExchangeRates?.USD?.rate && (
                                 <p className="text-xs text-red-600/90 dark:text-red-400/90">
-                                  Monto a pagar en dólares (tasa del día del
-                                  pedido aplicada)
+                                  Saldo comercial en USD; equivalente en Bs con
+                                  tasa vigente para cobro
                                 </p>
                               )}
                             </div>
@@ -2566,9 +2628,8 @@ export default function OrderDetailPage() {
                           <span className="font-semibold text-red-700 dark:text-red-300">
                             Total pendiente:
                           </span>
-                          <CurrencyDisplay
-                            amountInBs={pendingBalanceAmountInBs}
-                            exchangeRates={localExchangeRates}
+                          <OrderCurrency
+                            amount={pendingBalanceInBase}
                             className="font-bold text-lg text-red-700 dark:text-red-300"
                           />
                         </div>

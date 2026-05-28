@@ -21,6 +21,10 @@ import {
   DISCOUNT_UI_PERCENT_KEY,
   DISCOUNT_UI_TYPE_KEY,
 } from "@/lib/product-discount-ui";
+import {
+  getLinePriceCurrency,
+  isUsdBaseOrder,
+} from "@/lib/order-line-pricing";
 
 /** Ajuste en UI o variables de entorno según tienda; valores por defecto para encabezado del PDF. */
 export const DEFAULT_ORDER_PDF_COMPANY = {
@@ -191,16 +195,48 @@ function getOrderLineAmountPair(
   return { primary: formatCurrency(amountInBs, "Bs") };
 }
 
+function getAmountDisplayPair(
+  amount: number,
+  currency: Currency,
+  usdRate: number | undefined,
+  orderUsesUsd: boolean,
+): { primary: string; secondary?: string } {
+  if (orderUsesUsd || currency === "USD") {
+    const primary = formatCurrency(amount, "USD");
+    const secondary =
+      usdRate && usdRate > 0
+        ? formatCurrency(amount * usdRate, "Bs")
+        : undefined;
+    return { primary, secondary };
+  }
+  if (currency === "EUR" && usdRate && usdRate > 0) {
+    return {
+      primary: formatCurrency(amount, "EUR"),
+      secondary: formatCurrency(amount, "Bs"),
+    };
+  }
+  return getOrderLineAmountPair(amount, usdRate);
+}
+
 function OrderAmountBlock({
   amountInBs,
   usdRate,
   align = "right",
+  currency = "Bs",
+  orderUsesUsd = false,
 }: {
   amountInBs: number;
   usdRate: number | undefined;
   align?: "left" | "right";
+  currency?: Currency;
+  orderUsesUsd?: boolean;
 }) {
-  const { primary, secondary } = getOrderLineAmountPair(amountInBs, usdRate);
+  const { primary, secondary } = getAmountDisplayPair(
+    amountInBs,
+    currency,
+    usdRate,
+    orderUsesUsd,
+  );
   return (
     <View style={{ alignItems: align === "right" ? "flex-end" : "flex-start" }}>
       <Text style={styles.amountPrimary}>{primary}</Text>
@@ -315,6 +351,7 @@ export function OrderPdfDocument({
   const products = order.products ?? [];
   const payments = getActivePaymentsList(order);
   const usdRate = getUsdRateFromOrder(order);
+  const orderUsesUsd = isUsdBaseOrder(order);
   const pendingBs = getOrderPendingTotal(order);
   const paidBs = Math.max(0, order.total - pendingBs);
 
@@ -423,12 +460,16 @@ export function OrderPdfDocument({
                 <OrderAmountBlock
                   amountInBs={p.price}
                   usdRate={usdRate}
+                  currency={getLinePriceCurrency(p)}
+                  orderUsesUsd={orderUsesUsd}
                 />
               </View>
               <View style={[styles.colTot, { paddingLeft: 2 }]}>
                 <OrderAmountBlock
                   amountInBs={p.total}
                   usdRate={usdRate}
+                  currency={getLinePriceCurrency(p)}
+                  orderUsesUsd={orderUsesUsd}
                 />
               </View>
             </View>
@@ -438,13 +479,20 @@ export function OrderPdfDocument({
         <View style={styles.totalsBox}>
           <View style={styles.totalRow}>
             <Text>Subtotal</Text>
-            <OrderAmountBlock amountInBs={order.subtotal} usdRate={usdRate} />
+            <OrderAmountBlock
+              amountInBs={order.subtotal}
+              usdRate={usdRate}
+              currency={orderUsesUsd ? "USD" : "Bs"}
+              orderUsesUsd={orderUsesUsd}
+            />
           </View>
           <View style={styles.totalRow}>
             <Text>IVA / impuestos</Text>
             <OrderAmountBlock
               amountInBs={order.taxAmount ?? 0}
               usdRate={usdRate}
+              currency={orderUsesUsd ? "USD" : "Bs"}
+              orderUsesUsd={orderUsesUsd}
             />
           </View>
           <View style={styles.totalRow}>
@@ -452,19 +500,36 @@ export function OrderPdfDocument({
             <OrderAmountBlock
               amountInBs={order.deliveryCost ?? 0}
               usdRate={usdRate}
+              currency={orderUsesUsd ? "USD" : "Bs"}
+              orderUsesUsd={orderUsesUsd}
             />
           </View>
           <View style={styles.totalGrand}>
             <Text>Total</Text>
-            <OrderAmountBlock amountInBs={order.total} usdRate={usdRate} />
+            <OrderAmountBlock
+              amountInBs={order.total}
+              usdRate={usdRate}
+              currency={orderUsesUsd ? "USD" : "Bs"}
+              orderUsesUsd={orderUsesUsd}
+            />
           </View>
           <View style={styles.totalRow}>
             <Text>Pagado</Text>
-            <OrderAmountBlock amountInBs={paidBs} usdRate={usdRate} />
+            <OrderAmountBlock
+              amountInBs={paidBs}
+              usdRate={usdRate}
+              currency={orderUsesUsd ? "USD" : "Bs"}
+              orderUsesUsd={orderUsesUsd}
+            />
           </View>
           <View style={styles.totalRow}>
             <Text>Resta por pagar</Text>
-            <OrderAmountBlock amountInBs={pendingBs} usdRate={usdRate} />
+            <OrderAmountBlock
+              amountInBs={pendingBs}
+              usdRate={usdRate}
+              currency={orderUsesUsd ? "USD" : "Bs"}
+              orderUsesUsd={orderUsesUsd}
+            />
           </View>
         </View>
 

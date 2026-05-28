@@ -1923,6 +1923,7 @@ export interface OrderProductDto {
   id: string;
   name: string;
   price: number;
+  priceCurrency?: "Bs" | "USD" | "EUR";
   quantity: number;
   total: number;
   category: string;

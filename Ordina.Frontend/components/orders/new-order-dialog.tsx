@@ -40,10 +40,12 @@ import {
   ORDER_TYPE_RESERVATION,
 } from "@/lib/order-document-types";
 import { Currency } from "@/lib/currency-utils";
+import { ORDER_BASE_CURRENCY } from "@/lib/order-line-pricing";
 import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
   PAYMENT_BALANCE_EPSILON_BS,
+  PAYMENT_BALANCE_EPSILON_USD,
 } from "@/lib/order-payments";
 import { tryComputeOverpaymentUsd } from "@/lib/order-store-credit-usd";
 import { useCurrency } from "@/contexts/currency-context";
@@ -411,7 +413,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         observations: orderForm.generalObservations.trim() || undefined,
         dispatchObservations:
           orderForm.dispatchObservations.trim() || undefined,
-        baseCurrency: preferredCurrency,
+        baseCurrency: ORDER_BASE_CURRENCY,
         exchangeRatesAtCreation: orderForm.exchangeRates,
         validForDays: 30,
       };
@@ -560,7 +562,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         observations: orderForm.generalObservations.trim() || undefined,
         dispatchObservations:
           orderForm.dispatchObservations.trim() || undefined,
-        baseCurrency: preferredCurrency,
+        baseCurrency: ORDER_BASE_CURRENCY,
         exchangeRatesAtCreation: orderForm.exchangeRates,
         productMarkups: orderForm.productMarkups,
         createSupplierOrder: orderForm.createSupplierOrder,
@@ -714,8 +716,8 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           if (
             (p.amount || 0) >
             orderForm.total -
-              orderForm.appliedCreditBsApprox +
-              PAYMENT_BALANCE_EPSILON_BS
+              orderForm.appliedStoreCreditUsd +
+              PAYMENT_BALANCE_EPSILON_USD
           ) {
             toast.error(
               "El monto del pago inicial no puede superar el total del pedido.",
@@ -847,10 +849,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (orderForm.paymentCondition === "cashea") {
-        const casheaTotalDueBs = Math.max(
+        const dueUsd = Math.max(
           0,
-          orderForm.total - orderForm.appliedCreditBsApprox,
+          orderForm.total - orderForm.appliedStoreCreditUsd,
         );
+        const usdRate = orderForm.exchangeRates.USD?.rate;
+        const casheaTotalDueBs =
+          usdRate && usdRate > 0 ? dueUsd * usdRate : dueUsd;
         paymentsNorm = buildCasheaPaymentsForSave(
           paymentsNorm,
           casheaTotalDueBs,
@@ -999,7 +1004,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         observations: orderForm.generalObservations.trim() || undefined,
         dispatchObservations:
           orderForm.dispatchObservations.trim() || undefined,
-        baseCurrency: "Bs",
+        baseCurrency: ORDER_BASE_CURRENCY,
         exchangeRatesAtCreation: {
           USD: orderForm.exchangeRates.USD
             ? {

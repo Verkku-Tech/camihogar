@@ -1,7 +1,74 @@
 import type { Order, PartialPayment } from "@/lib/storage";
+import {
+  convertAmountBetween,
+  isUsdBaseOrder,
+  type ExchangeRatesInput,
+} from "@/lib/order-line-pricing";
+import { normalizeExchangeRatesAtCreation } from "@/lib/currency-utils";
 
 /** Misma tolerancia que en formularios de pedido para saldo y validación. */
 export const PAYMENT_BALANCE_EPSILON_BS = 0.1;
+export const PAYMENT_BALANCE_EPSILON_USD = 0.01;
+
+type PaymentOrderContext = Pick<Order, "exchangeRatesAtCreation" | "baseCurrency">;
+
+/** Monto del pago expresado en USD (moneda comercial del pedido nuevo). */
+export function paymentToUsd(
+  payment: PartialPayment,
+  order?: PaymentOrderContext | null,
+): number {
+  const det = payment.paymentDetails;
+  const originalCurrency = (det?.originalCurrency ??
+    payment.currency ??
+    "Bs") as "Bs" | "USD" | "EUR";
+  const originalAmount =
+    det?.originalAmount ??
+    det?.cashReceived ??
+    (originalCurrency === "Bs" ? payment.amount : payment.amount);
+
+  if (originalCurrency === "USD") {
+    return originalAmount ?? 0;
+  }
+
+  const rates: ExchangeRatesInput | undefined =
+    order?.exchangeRatesAtCreation
+      ? (normalizeExchangeRatesAtCreation(
+          order.exchangeRatesAtCreation,
+        ) as ExchangeRatesInput)
+      : undefined;
+
+  if (originalCurrency === "Bs") {
+    const rate = det?.exchangeRate ?? rates?.USD?.rate;
+    if (rate && rate > 0) return (payment.amount || 0) / rate;
+    if (originalAmount && rates?.USD?.rate) {
+      return originalAmount / rates.USD.rate;
+    }
+    return 0;
+  }
+
+  const converted = convertAmountBetween(
+    originalAmount ?? payment.amount ?? 0,
+    originalCurrency,
+    "USD",
+    rates,
+  );
+  return converted ?? 0;
+}
+
+export function sumPaymentsToUsd(
+  payments: PartialPayment[],
+  order?: PaymentOrderContext | null,
+): number {
+  return payments.reduce((sum, p) => {
+    if (
+      p.paymentDetails?.casheaFinancedPortion ||
+      p.method === CASHEA_FINANCED_METHOD_LABEL
+    ) {
+      return sum;
+    }
+    return sum + paymentToUsd(p, order);
+  }, 0);
+}
 
 /** Objeto con listas de abonos (pedido, listado unificado, etc.) */
 export type PartialMixedPaymentsSource = {
@@ -25,15 +92,32 @@ export function getActivePaymentsList(
   return [];
 }
 
-/** Saldo pendiente vs el total (Bs): partial si tiene ítems, si no mixed. */
+/** Saldo pendiente vs el total: USD si baseCurrency USD, si no Bs (legacy). */
 export function getOrderPendingTotal(
-  order: PartialMixedPaymentsSource & { total: number },
+  order: PartialMixedPaymentsSource & {
+    total: number;
+    baseCurrency?: Order["baseCurrency"];
+    exchangeRatesAtCreation?: Order["exchangeRatesAtCreation"];
+    appliedStoreCreditUsd?: number;
+  },
 ): number {
-  const totalPaid = getActivePaymentsList(order).reduce(
-    (sum, p) => sum + (p.amount || 0),
-    0,
-  );
-  return Math.max(0, order.total - totalPaid);
+  const payments = getActivePaymentsList(order);
+  if (isUsdBaseOrder(order)) {
+    const paidUsd = sumPaymentsToUsd(payments, order);
+    const credit = order.appliedStoreCreditUsd ?? 0;
+    return Math.max(0, order.total - credit - paidUsd);
+  }
+  const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const creditUsd = order.appliedStoreCreditUsd ?? 0;
+  let creditBs = 0;
+  if (creditUsd > 0 && order.exchangeRatesAtCreation) {
+    const rates = normalizeExchangeRatesAtCreation(
+      order.exchangeRatesAtCreation,
+    );
+    const rate = rates?.USD?.rate;
+    if (rate && rate > 0) creditBs = creditUsd * rate;
+  }
+  return Math.max(0, order.total - totalPaid - creditBs);
 }
 
 /** Misma regla que el detalle del pedido y el reporte backend: partial si existe, si no mixed */

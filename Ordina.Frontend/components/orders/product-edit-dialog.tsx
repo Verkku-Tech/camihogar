@@ -34,6 +34,10 @@ import {
 } from "@/lib/storage";
 import { toast } from "sonner";
 import { getActiveExchangeRates, formatCurrency, type Currency } from "@/lib/currency-utils";
+import {
+  convertAmountBetweenOrKeep,
+  getLinePriceCurrency,
+} from "@/lib/order-line-pricing";
 import { useCurrency } from "@/contexts/currency-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1654,70 +1658,40 @@ export function ProductEditDialog({
       }
     }
 
-    // Usar el precio original del producto si está disponible, sino usar el precio convertido
-    let basePriceInBs = product.price;
-    if (originalProduct) {
-      const originalPrice = originalProduct.price;
-      const originalCurrency = originalProduct.priceCurrency || "Bs";
-      if (originalCurrency === "Bs") {
-        basePriceInBs = originalPrice;
-      } else if (originalCurrency === "USD" && exchangeRates?.USD?.rate) {
-        basePriceInBs = originalPrice * exchangeRates.USD.rate;
-      } else if (originalCurrency === "EUR" && exchangeRates?.EUR?.rate) {
-        basePriceInBs = originalPrice * exchangeRates.EUR.rate;
-      } else {
-        basePriceInBs = originalPrice;
-      }
-    }
-    
-    // Calcular el precio base con ajustes normales de atributos
-    const basePriceWithAdjustments = calculateProductUnitPriceWithAttributes(
-      basePriceInBs,
+    const lineCurrency = (
+      originalProduct?.priceCurrency ||
+      product.priceCurrency ||
+      "Bs"
+    ) as Currency;
+    const basePrice = originalProduct ? originalProduct.price : product.price;
+    const basePriceCurrency = (
+      originalProduct?.priceCurrency || getLinePriceCurrency(product)
+    ) as Currency;
+
+    const unitPrice = calculateProductUnitPriceWithAttributes(
+      basePrice,
       attributes,
       currentCategory,
       exchangeRates,
       allProducts,
-      categories
+      categories,
+      {
+        targetCurrency: lineCurrency,
+        basePriceCurrency: basePriceCurrency,
+      },
     );
 
-    // Sumar precios de productos cuando son atributos (convertidos a Bs)
-    let productAttributesTotal = 0;
-    if (currentCategory) {
-      for (const attribute of currentCategory.attributes || []) {
-        if (attribute.valueType === "Product") {
-          const attrId = attribute.id?.toString() || attribute.title;
-          const productsForAttr = productAttributes[attrId] || [];
-          
-          for (const productEntry of productsForAttr) {
-            // Convertir precio del producto-atributo a Bs
-            const productPrice = productEntry.product.price;
-            const productCurrency = productEntry.product.priceCurrency || "Bs";
-            
-            let productPriceInBs = productPrice;
-            if (productCurrency !== "Bs") {
-              if (productCurrency === "USD" && exchangeRates?.USD?.rate) {
-                productPriceInBs = productPrice * exchangeRates.USD.rate;
-              } else if (productCurrency === "EUR" && exchangeRates?.EUR?.rate) {
-                productPriceInBs = productPrice * exchangeRates.EUR.rate;
-              }
-            }
-            
-            // Los ajustes ya se incluyen en el calculateProductUnitPriceWithAttributes de arriba
-          }
-        }
-      }
-    }
-
-    // Calcular sobreprecio en Bs (viene en USD)
-    let surchargeInBs = 0;
+    let surchargeNative = 0;
     if (surchargeEnabled && surchargeAmount > 0) {
-      const usdRate = exchangeRates?.USD?.rate;
-      surchargeInBs = usdRate && usdRate > 0 ? surchargeAmount * usdRate : surchargeAmount;
+      surchargeNative = convertAmountBetweenOrKeep(
+        surchargeAmount,
+        "USD",
+        lineCurrency,
+        exchangeRates,
+      );
     }
 
-    // Calcular el total: (precio base + ajustes + precios de productos-atributos) * cantidad + sobreprecio
-    const unitPrice = basePriceWithAdjustments;
-    const total = (unitPrice * quantity) + surchargeInBs;
+    const total = unitPrice * quantity + surchargeNative;
 
     // IMPORTANTE: Normalizar atributos para usar títulos como claves en lugar de IDs
     const finalAttributes: Record<string, any> = {};
@@ -1768,6 +1742,8 @@ export function ProductEditDialog({
     // Preservar locationStatus del producto original o establecer por defecto "DISPONIBILIDAD INMEDIATA"
     const updatedProduct: OrderProduct = {
       ...product,
+      price: basePrice,
+      priceCurrency: lineCurrency,
       quantity,
       total,
       attributes: finalAttributes,

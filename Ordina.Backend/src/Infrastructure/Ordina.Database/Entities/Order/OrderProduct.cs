@@ -16,6 +16,10 @@ public class OrderProduct
     [BsonRepresentation(BsonType.Decimal128)]
     public decimal Price { get; set; }
 
+    /// <summary>Moneda de Price y Total (USD, Bs, EUR). Legacy sin campo = Bs.</summary>
+    [BsonElement("priceCurrency")]
+    public string? PriceCurrency { get; set; }
+
     [BsonElement("quantity")]
     public int Quantity { get; set; }
 

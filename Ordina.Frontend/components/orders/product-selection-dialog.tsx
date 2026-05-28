@@ -12,7 +12,7 @@ import { Search, Plus, Package, DollarSign, Layers, Filter } from "lucide-react"
 import { getProducts, getOrders, getCategories, type OrderProduct, type Product, type Category } from "@/lib/storage"
 import { ProductEditDialog } from "@/components/orders/product-edit-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getActiveExchangeRates, convertProductPriceToBs, formatCurrency, type Currency } from "@/lib/currency-utils"
+import { getActiveExchangeRates, formatCurrency, type Currency } from "@/lib/currency-utils"
 import { useCurrency } from "@/contexts/currency-context"
 import { toast } from "sonner"
 
@@ -157,34 +157,21 @@ export function ProductSelectionDialog({
     }
     const mergedAttributes = cloneAttributes(product.attributes)
     
-    // Convertir precio del producto a Bs si está en otra moneda
-    const productCurrency = product.priceCurrency || "Bs"
-    const priceInBs = await convertProductPriceToBs(
-      product.price,
-      productCurrency,
-      exchangeRates
-    )
+    const productCurrency = (product.priceCurrency || "Bs") as Currency
 
-    if (priceInBs === null) {
-      toast.error(
-        "No hay tasa de cambio activa para USD/EUR. Configura la tasa BCV antes de agregar este producto al pedido.",
-      )
-      return
-    }
-
-    // Preparar producto y abrir modal de edición
-    // IMPORTANTE: Guardamos el precio convertido a Bs para todos los cálculos
     const newProduct: OrderProduct = {
-      id: uniqueId, // ID único para esta instancia
+      id: uniqueId,
       name: product.name,
-      price: priceInBs, // Precio ya convertido a Bs
+      price: product.price,
+      priceCurrency: productCurrency,
       quantity,
-      total: priceInBs * quantity,
+      total: product.price * quantity,
       category: product.category,
-      stock: 0, // Los productos se crean bajo demanda, no hay stock
+      stock: 0,
       attributes: mergedAttributes,
-      discount: 0, // Inicializar sin descuento
-      locationStatus: "DISPONIBILIDAD INMEDIATA", // Establecer por defecto "DISPONIBILIDAD INMEDIATA"
+      discount: 0,
+      locationStatus: "DISPONIBILIDAD INMEDIATA",
+      catalogProductId: product.backendId ?? product.id.toString(),
     }
     
     setProductToEdit(newProduct)
