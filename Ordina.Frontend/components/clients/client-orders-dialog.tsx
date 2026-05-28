@@ -41,7 +41,9 @@ import {
 import {
   getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_BS,
+  PAYMENT_BALANCE_EPSILON_USD,
 } from "@/lib/order-payments";
+import { isUsdBaseOrder } from "@/lib/order-line-pricing";
 import {
   Select,
   SelectContent,
@@ -107,7 +109,11 @@ function formatDate(iso: string) {
 }
 
 function isOrderFullyPaid(order: OrderResponseDto): boolean {
-  return getOrderPendingTotal(order) <= PAYMENT_BALANCE_EPSILON_BS;
+  const pending = getOrderPendingTotal(order);
+  const epsilon = isUsdBaseOrder(order)
+    ? PAYMENT_BALANCE_EPSILON_USD
+    : PAYMENT_BALANCE_EPSILON_BS;
+  return pending <= epsilon;
 }
 
 function getPaymentStatusBadgeClass(paid: boolean) {

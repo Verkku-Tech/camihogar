@@ -4,13 +4,20 @@ import {
   isUsdBaseOrder,
   type ExchangeRatesInput,
 } from "@/lib/order-line-pricing";
-import { normalizeExchangeRatesAtCreation } from "@/lib/currency-utils";
+import {
+  normalizeExchangeRatesAtCreation,
+  type ExchangeRatesAtCreationRaw,
+} from "@/lib/currency-utils";
 
 /** Misma tolerancia que en formularios de pedido para saldo y validación. */
 export const PAYMENT_BALANCE_EPSILON_BS = 0.1;
 export const PAYMENT_BALANCE_EPSILON_USD = 0.01;
 
-type PaymentOrderContext = Pick<Order, "exchangeRatesAtCreation" | "baseCurrency">;
+/** Contexto de tasas acepta Order, DTO API (null en USD/EUR) y presupuestos. */
+export type PaymentOrderContext = {
+  baseCurrency?: Order["baseCurrency"];
+  exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
+};
 
 /** Monto del pago expresado en USD (moneda comercial del pedido nuevo). */
 export function paymentToUsd(
@@ -92,15 +99,15 @@ export function getActivePaymentsList(
   return [];
 }
 
+export type OrderPendingTotalInput = PartialMixedPaymentsSource & {
+  total: number;
+  baseCurrency?: Order["baseCurrency"];
+  exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
+  appliedStoreCreditUsd?: number;
+};
+
 /** Saldo pendiente vs el total: USD si baseCurrency USD, si no Bs (legacy). */
-export function getOrderPendingTotal(
-  order: PartialMixedPaymentsSource & {
-    total: number;
-    baseCurrency?: Order["baseCurrency"];
-    exchangeRatesAtCreation?: Order["exchangeRatesAtCreation"];
-    appliedStoreCreditUsd?: number;
-  },
-): number {
+export function getOrderPendingTotal(order: OrderPendingTotalInput): number {
   const payments = getActivePaymentsList(order);
   if (isUsdBaseOrder(order)) {
     const paidUsd = sumPaymentsToUsd(payments, order);

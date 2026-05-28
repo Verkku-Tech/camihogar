@@ -16,8 +16,6 @@ import {
   getCategories,
   getProducts,
   getAccounts,
-  getOrdersFromCache,
-  buildProductSalesMap,
   calculateProductUnitPriceWithAttributes,
   resolveProductFromAttributeValue,
   type OrderProduct,
