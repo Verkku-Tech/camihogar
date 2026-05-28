@@ -456,8 +456,6 @@ export function useEditOrderForm(
         setAllProducts(loadedProducts);
         setAccounts(loadedAccounts);
         setLiveExchangeRates(rates);
-        const cachedOrders = await getOrdersFromCache();
-        setProductSales(buildProductSalesMap(cachedOrders));
 
         // Actualizar monedas seleccionadas según tasas disponibles
         setSelectedCurrencies((prev) => {
