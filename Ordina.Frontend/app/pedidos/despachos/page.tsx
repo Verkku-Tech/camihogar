@@ -409,7 +409,10 @@ export default function DespachosPage() {
     const rows: string[][] = []
     try {
       for (const { order, product } of deliveredRows) {
-        const precioVenta = await formatWithPreference(product.total, "Bs")
+        const precioVenta = await formatWithPreference(
+          product.total,
+          product.priceCurrency || order.baseCurrency || "Bs",
+        )
         rows.push([
           order.orderNumber,
           order.clientName,
@@ -495,7 +498,10 @@ export default function DespachosPage() {
       const next: Record<string, string> = {}
       for (const { order, product } of pageRows) {
         const k = `${order.id}|${product.id}`
-        next[k] = await formatWithPreference(product.total, "Bs")
+        next[k] = await formatWithPreference(
+          product.total,
+          product.priceCurrency || order.baseCurrency || "Bs",
+        )
       }
       if (!cancelled) {
         setLineTotalLabels((prev) => ({ ...prev, ...next }))

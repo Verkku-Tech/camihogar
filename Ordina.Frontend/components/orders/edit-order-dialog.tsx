@@ -39,6 +39,12 @@ import {
   type OrderProductDto,
 } from "@/lib/api-client";
 import { Currency } from "@/lib/currency-utils";
+import { ORDER_BASE_CURRENCY } from "@/lib/order-line-pricing";
+import {
+  buildExchangeRatesAtCreationPayload,
+  getFrozenCommercialTotalsFromOrder,
+  type CommercialRatesMap,
+} from "@/lib/order-currency-display";
 import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
@@ -60,6 +66,54 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+/** No pisar tasas del pedido al actualizar; solo rellenar si faltaban. */
+function resolveExchangeRatesAtCreationForUpdate(
+  existingOrder: Order,
+  commercialExchangeRates: CommercialRatesMap,
+): Order["exchangeRatesAtCreation"] {
+  if (existingOrder.exchangeRatesAtCreation) {
+    return existingOrder.exchangeRatesAtCreation;
+  }
+  return buildExchangeRatesAtCreationPayload(commercialExchangeRates);
+}
+
+function resolveCommercialTotalsFieldsForUpdate(
+  existingOrder: Order,
+  orderForm: {
+    commercialTotalsFrozen: boolean;
+    productSubtotal: number;
+    productDiscountTotal: number;
+    subtotal: number;
+    taxAmount: number;
+    deliveryCost: number;
+    total: number;
+  },
+) {
+  if (orderForm.commercialTotalsFrozen) {
+    const snap = getFrozenCommercialTotalsFromOrder(existingOrder);
+    return {
+      subtotalBeforeDiscounts: snap.productSubtotal,
+      productDiscountTotal:
+        snap.productDiscountTotal > 0 ? snap.productDiscountTotal : undefined,
+      subtotal: snap.subtotal,
+      taxAmount: snap.taxAmount,
+      deliveryCost: existingOrder.deliveryCost ?? orderForm.deliveryCost,
+      total: snap.total,
+    };
+  }
+  return {
+    subtotalBeforeDiscounts: orderForm.productSubtotal,
+    productDiscountTotal:
+      orderForm.productDiscountTotal > 0
+        ? orderForm.productDiscountTotal
+        : undefined,
+    subtotal: orderForm.subtotal,
+    taxAmount: orderForm.taxAmount,
+    deliveryCost: orderForm.deliveryCost,
+    total: orderForm.total,
+  };
+}
 
 function mapOrderProductsToConfirmDto(
   products: OrderProduct[],
@@ -630,7 +684,14 @@ export function EditOrderDialog({
           : undefined,
         observations: orderForm.generalObservations.trim() || undefined,
         baseCurrency: preferredCurrency,
-        exchangeRatesAtCreation: orderForm.exchangeRates,
+        exchangeRatesAtCreation: order
+          ? resolveExchangeRatesAtCreationForUpdate(
+              order,
+              orderForm.commercialExchangeRates,
+            )
+          : buildExchangeRatesAtCreationPayload(
+              orderForm.commercialExchangeRates,
+            ),
         validForDays: 30,
       };
 
@@ -1040,15 +1101,7 @@ export function EditOrderDialog({
           observations: orderForm.generalObservations.trim() || undefined,
           dispatchObservations:
             orderForm.dispatchObservations.trim() || undefined,
-          subtotal: orderForm.subtotal,
-          taxAmount: orderForm.taxAmount,
-          deliveryCost: orderForm.deliveryCost,
-          total: orderForm.total,
-          subtotalBeforeDiscounts: orderForm.productSubtotal,
-          productDiscountTotal:
-            orderForm.productDiscountTotal > 0
-              ? orderForm.productDiscountTotal
-              : undefined,
+          ...resolveCommercialTotalsFieldsForUpdate(order, orderForm),
           generalDiscountAmount:
             orderForm.generalDiscountAmount > 0
               ? orderForm.generalDiscountAmount
@@ -1058,20 +1111,10 @@ export function EditOrderDialog({
           createSupplierOrder: orderForm.createSupplierOrder,
           postventaId: order.postventaId,
           postventaName: order.postventaName,
-          exchangeRatesAtCreation: {
-            USD: orderForm.exchangeRates.USD
-              ? {
-                  rate: orderForm.exchangeRates.USD.rate,
-                  effectiveDate: orderForm.exchangeRates.USD.effectiveDate,
-                }
-              : undefined,
-            EUR: orderForm.exchangeRates.EUR
-              ? {
-                  rate: orderForm.exchangeRates.EUR.rate,
-                  effectiveDate: orderForm.exchangeRates.EUR.effectiveDate,
-                }
-              : undefined,
-          },
+          exchangeRatesAtCreation: resolveExchangeRatesAtCreationForUpdate(
+            order,
+            orderForm.commercialExchangeRates,
+          ),
         };
 
         const created = await apiClient.confirmReservation(order.id, body);
@@ -1110,20 +1153,12 @@ export function EditOrderDialog({
               : undefined,
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
-        subtotalBeforeDiscounts: orderForm.productSubtotal,
-        productDiscountTotal:
-          orderForm.productDiscountTotal > 0
-            ? orderForm.productDiscountTotal
-            : undefined,
+        ...resolveCommercialTotalsFieldsForUpdate(order, orderForm),
         generalDiscountAmount:
           orderForm.generalDiscountAmount > 0
             ? orderForm.generalDiscountAmount
             : undefined,
         ...buildGeneralDiscountPersistPayload(orderForm),
-        subtotal: orderForm.subtotal,
-        taxAmount: orderForm.taxAmount,
-        deliveryCost: orderForm.deliveryCost,
-        total: orderForm.total,
         paymentType:
           orderForm.paymentCondition === "pago_a_entrega" ||
           orderForm.paymentCondition === "cashea"
@@ -1227,21 +1262,11 @@ export function EditOrderDialog({
         observations: orderForm.generalObservations.trim() || undefined,
         dispatchObservations:
           orderForm.dispatchObservations.trim() || undefined,
-        baseCurrency: "Bs",
-        exchangeRatesAtCreation: {
-          USD: orderForm.exchangeRates.USD
-            ? {
-                rate: orderForm.exchangeRates.USD.rate,
-                effectiveDate: orderForm.exchangeRates.USD.effectiveDate,
-              }
-            : undefined,
-          EUR: orderForm.exchangeRates.EUR
-            ? {
-                rate: orderForm.exchangeRates.EUR.rate,
-                effectiveDate: orderForm.exchangeRates.EUR.effectiveDate,
-              }
-            : undefined,
-        },
+        baseCurrency: order?.baseCurrency ?? ORDER_BASE_CURRENCY,
+        exchangeRatesAtCreation: resolveExchangeRatesAtCreationForUpdate(
+          order,
+          orderForm.commercialExchangeRates,
+        ),
         ...(orderForm.paymentCondition !== "pago_a_entrega" &&
         orderForm.paymentCondition !== "pagara_en_tienda" &&
         orderForm.appliedStoreCreditUsd > 0

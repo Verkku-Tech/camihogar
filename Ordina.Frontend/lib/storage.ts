@@ -1654,6 +1654,8 @@ export interface OrderProduct {
   id: string;
   name: string;
   price: number;
+  /** Moneda en la que están expresados price y total de la línea. Legacy: omitido = Bs. */
+  priceCurrency?: Currency;
   quantity: number;
   total: number;
   category: string;
@@ -2009,6 +2011,9 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     id: p.id,
     name: p.name,
     price: p.price,
+    priceCurrency: (p as { priceCurrency?: Currency }).priceCurrency as
+      | Currency
+      | undefined,
     quantity: p.quantity,
     total: p.total,
     category: p.category,
@@ -2244,6 +2249,9 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     id: p.id,
     name: p.name,
     price: p.price,
+    priceCurrency: (p as { priceCurrency?: Currency }).priceCurrency as
+      | Currency
+      | undefined,
     quantity: p.quantity,
     total: p.total,
     category: p.category,
@@ -2273,6 +2281,7 @@ export const orderToBackendDto = (
     id: p.id,
     name: p.name,
     price: p.price,
+    priceCurrency: p.priceCurrency,
     quantity: p.quantity,
     total: p.total,
     category: p.category,
@@ -3108,6 +3117,7 @@ export const updateOrder = async (
                     id: p.id,
                     name: p.name,
                     price: p.price,
+                    priceCurrency: p.priceCurrency,
                     quantity: p.quantity,
                     total: p.total,
                     category: p.category,
@@ -3445,6 +3455,7 @@ export const updateOrder = async (
             id: p.id,
             name: p.name,
             price: p.price,
+            priceCurrency: p.priceCurrency,
             quantity: p.quantity,
             total: p.total,
             category: p.category,
@@ -5458,6 +5469,42 @@ export const calculateProductTotalWithAttributes = (
  * @param exchangeRates - Tasas de cambio para convertir ajustes de atributos (opcional)
  * @returns Precio unitario calculado (precio base + ajustes de atributos convertidos)
  */
+export type CalculateUnitPriceOptions = {
+  /** Moneda del basePrice (default Bs, legacy). */
+  basePriceCurrency?: Currency;
+  /** Moneda del resultado (default Bs, legacy). */
+  targetCurrency?: Currency;
+};
+
+const convertAdjustmentToTarget = (
+  adjustment: number,
+  fromCurrency: string | undefined,
+  targetCurrency: Currency,
+  exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } },
+): number => {
+  const from = (fromCurrency || "Bs") as Currency;
+  if (from === targetCurrency) return adjustment;
+
+  let amountInBs = adjustment;
+  if (from !== "Bs") {
+    const fromRate =
+      from === "USD"
+        ? exchangeRates?.USD?.rate
+        : exchangeRates?.EUR?.rate;
+    if (!fromRate || fromRate <= 0) return adjustment;
+    amountInBs = adjustment * fromRate;
+  }
+
+  if (targetCurrency === "Bs") return amountInBs;
+
+  const toRate =
+    targetCurrency === "USD"
+      ? exchangeRates?.USD?.rate
+      : exchangeRates?.EUR?.rate;
+  if (!toRate || toRate <= 0) return adjustment;
+  return amountInBs / toRate;
+};
+
 export const calculateProductUnitPriceWithAttributes = (
   basePrice: number,
   productAttributes: Record<string, string | number | string[]> | undefined,
@@ -5465,24 +5512,29 @@ export const calculateProductUnitPriceWithAttributes = (
   exchangeRates?: { USD?: any; EUR?: any },
   allProducts: Product[] = [],
   categories: Category[] = [],
+  options?: CalculateUnitPriceOptions,
 ): number => {
+  const targetCurrency: Currency = options?.targetCurrency ?? "Bs";
+  const basePriceCurrency: Currency = options?.basePriceCurrency ?? "Bs";
+
+  let normalizedBase = basePrice;
+  if (basePriceCurrency !== targetCurrency) {
+    normalizedBase = convertAdjustmentToTarget(
+      basePrice,
+      basePriceCurrency,
+      targetCurrency,
+      exchangeRates,
+    );
+  }
+
   if (!productAttributes || !category || !category.attributes) {
-    return basePrice;
+    return normalizedBase;
   }
 
   let totalAdjustment = 0;
 
-  // Función helper para convertir ajuste a Bs
-  const convertAdjustment = (adjustment: number, currency?: string): number => {
-    if (!currency || currency === "Bs") return adjustment;
-    if (currency === "USD" && exchangeRates?.USD?.rate) {
-      return adjustment * exchangeRates.USD.rate;
-    }
-    if (currency === "EUR" && exchangeRates?.EUR?.rate) {
-      return adjustment * exchangeRates.EUR.rate;
-    }
-    return adjustment; // Si no hay tasa, usar valor original
-  };
+  const convertAdjustment = (adjustment: number, currency?: string): number =>
+    convertAdjustmentToTarget(adjustment, currency, targetCurrency, exchangeRates);
 
   Object.entries(productAttributes).forEach(([attrKey, selectedValue]) => {
     const categoryAttribute = category.attributes.find(
@@ -5504,26 +5556,19 @@ export const calculateProductUnitPriceWithAttributes = (
           (p) => p.id === productIdNum || p.backendId === productId.toString(),
         );
         if (foundProduct) {
-          // Convertir precio del producto a Bs
-          let pPrice = foundProduct.price;
-          if (
-            foundProduct.priceCurrency &&
-            foundProduct.priceCurrency !== "Bs" &&
-            exchangeRates
-          ) {
-            if (foundProduct.priceCurrency === "USD" && exchangeRates.USD?.rate)
-              pPrice *= exchangeRates.USD.rate;
-            else if (
-              foundProduct.priceCurrency === "EUR" &&
-              exchangeRates.EUR?.rate
-            )
-              pPrice *= exchangeRates.EUR.rate;
-          }
+          const pCurrency = (foundProduct.priceCurrency || "Bs") as Currency;
+          const pPrice = convertAdjustmentToTarget(
+            foundProduct.price,
+            pCurrency,
+            targetCurrency,
+            exchangeRates,
+          );
           totalAdjustment += pPrice;
 
-          // Sumar ajustes de los atributos del sub-producto si están presentes en productAttributes
           const subAttrKey = `${attrKey}_${foundProduct.id}`;
-          const subAttrs = (productAttributes as any)[subAttrKey];
+          const subAttrs = (productAttributes as Record<string, unknown>)[
+            subAttrKey
+          ] as Record<string, string | number | string[]> | undefined;
           if (subAttrs) {
             const subCategory = categories.find(
               (c) => c.name === foundProduct.category,
@@ -5536,6 +5581,7 @@ export const calculateProductUnitPriceWithAttributes = (
                 exchangeRates,
                 allProducts,
                 categories,
+                { targetCurrency, basePriceCurrency: targetCurrency },
               );
             }
           }
@@ -5571,7 +5617,6 @@ export const calculateProductUnitPriceWithAttributes = (
         }
       });
     } else {
-      // Manejar valores simples (selección única)
       const selectedValueStr = selectedValue.toString();
       const attributeValue = categoryAttribute.values.find((val) => {
         if (typeof val === "string") {
@@ -5592,7 +5637,7 @@ export const calculateProductUnitPriceWithAttributes = (
     }
   });
 
-  return basePrice + totalAdjustment;
+  return normalizedBase + totalAdjustment;
 };
 
 // ===== USERS STORAGE (IndexedDB) =====
