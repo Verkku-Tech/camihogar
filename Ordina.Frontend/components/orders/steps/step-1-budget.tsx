@@ -18,6 +18,14 @@ import { CommissionLineSourceBadge } from "@/components/orders/commission-line-s
 import type { UseOrderFormReturn } from "../hooks/use-order-form";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import {
+  commercialRatesToExchangeRatesInput,
+  formatCommercialDualDisplay,
+} from "@/lib/order-currency-display";
+import {
+  getLinePriceCurrency,
+  ORDER_BASE_CURRENCY,
+} from "@/lib/order-line-pricing";
+import {
   Table,
   TableBody,
   TableCell,
@@ -30,6 +38,29 @@ import { useAuth } from "@/contexts/auth-context";
 
 function roundDisplayAmount(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+type Step1OrderForm = UseOrderFormReturn & {
+  commercialExchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } };
+  formBaseCurrency?: Currency;
+};
+
+function formatStep1Money(
+  orderForm: Step1OrderForm,
+  amount: number,
+  amountCurrency: Currency,
+): string {
+  const commercial = orderForm.commercialExchangeRates
+    ? commercialRatesToExchangeRatesInput(orderForm.commercialExchangeRates)
+    : undefined;
+  return formatCommercialDualDisplay(amount, amountCurrency, {
+    commercialRates: commercial,
+    liveRates: orderForm.exchangeRates,
+  });
+}
+
+function getStep1TotalsCurrency(orderForm: Step1OrderForm): Currency {
+  return orderForm.formBaseCurrency ?? ORDER_BASE_CURRENCY;
 }
 
 interface Step1BudgetProps {
@@ -264,7 +295,11 @@ export function Step1Budget({
                             <div className="text-right">
                               <div className="text-lg font-semibold">
                                 {orderForm.formattedProductFinalTotals[product.id] ||
-                                  formatCurrency(finalTotal, "Bs")}
+                                  formatStep1Money(
+                                    orderForm,
+                                    finalTotal,
+                                    getStep1TotalsCurrency(orderForm),
+                                  )}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 Total final
@@ -277,7 +312,11 @@ export function Step1Budget({
                               <span className="text-muted-foreground">Precio:</span>
                               <span className="ml-2 font-medium">
                                 {orderForm.formattedProductPrices[product.id] ||
-                                  formatCurrency(product.price, "Bs")}
+                                  formatStep1Money(
+                                    orderForm,
+                                    product.price,
+                                    getLinePriceCurrency(product),
+                                  )}
                               </span>
                             </div>
                             <div>
@@ -288,7 +327,11 @@ export function Step1Budget({
                               <span className="text-muted-foreground">Subtotal:</span>
                               <span className="ml-2 font-medium">
                                 {orderForm.formattedProductTotals[product.id] ||
-                                  formatCurrency(baseTotal, "Bs")}
+                                  formatStep1Money(
+                                    orderForm,
+                                    baseTotal,
+                                    getStep1TotalsCurrency(orderForm),
+                                  )}
                               </span>
                             </div>
                           </div>
@@ -547,14 +590,22 @@ export function Step1Budget({
                               </TableCell>
                               <TableCell className="w-[10%] text-right text-sm">
                                 {orderForm.formattedProductPrices[product.id] ||
-                                  formatCurrency(product.price, "Bs")}
+                                  formatStep1Money(
+                                    orderForm,
+                                    product.price,
+                                    getLinePriceCurrency(product),
+                                  )}
                               </TableCell>
                               <TableCell className="w-[10%] text-center text-sm font-medium">
                                 {product.quantity || 1}
                               </TableCell>
                               <TableCell className="w-[10%] text-right text-sm">
                                 {orderForm.formattedProductTotals[product.id] ||
-                                  formatCurrency(baseTotal, "Bs")}
+                                  formatStep1Money(
+                                    orderForm,
+                                    baseTotal,
+                                    getStep1TotalsCurrency(orderForm),
+                                  )}
                               </TableCell>
                               <TableCell className="w-[24%]">
                                 <div className="flex flex-col gap-1 min-w-0">
@@ -751,7 +802,11 @@ export function Step1Budget({
                               </TableCell>
                               <TableCell className="w-[10%] font-semibold text-right text-sm">
                                 {orderForm.formattedProductFinalTotals[product.id] ||
-                                  formatCurrency(finalTotal, "Bs")}
+                                  formatStep1Money(
+                                    orderForm,
+                                    finalTotal,
+                                    getStep1TotalsCurrency(orderForm),
+                                  )}
                               </TableCell>
                               <TableCell className="w-[12%] text-right">
                                 {canEditProducts && (
@@ -799,7 +854,11 @@ export function Step1Budget({
                 </span>
                 <span className="block sm:inline sm:ml-1">
                   {orderForm.formattedSubtotal ||
-                    formatCurrency(orderForm.subtotal, "Bs")}
+                    formatStep1Money(
+                      orderForm,
+                      orderForm.subtotal,
+                      getStep1TotalsCurrency(orderForm),
+                    )}
                 </span>
               </div>
             </div>
