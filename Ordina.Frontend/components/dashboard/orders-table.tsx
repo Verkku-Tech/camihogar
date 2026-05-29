@@ -7,7 +7,13 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { getOrders, Order } from "@/lib/storage"
-import { formatCurrency, formatCurrencyWithUsdPrimaryFromOrder, getActiveExchangeRates } from "@/lib/currency-utils"
+import { formatCurrency, getActiveExchangeRates } from "@/lib/currency-utils"
+import {
+  commercialRatesToExchangeRatesInput,
+  formatCommercialDualDisplay,
+  getCommercialRatesFromOrder,
+} from "@/lib/order-currency-display"
+import { getOrderBaseCurrency } from "@/lib/order-line-pricing"
 import { apiClient } from "@/lib/api-client"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
@@ -121,12 +127,19 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
         const fallbackRates = await getActiveExchangeRates()
 
         for (const order of orders) {
-          const formattedAmount = await formatCurrencyWithUsdPrimaryFromOrder(
-            order.subtotal,
-            order,
-            fallbackRates
+          const baseCurrency = getOrderBaseCurrency(order)
+          const commercial = commercialRatesToExchangeRatesInput(
+            getCommercialRatesFromOrder(order),
           )
-          formatted[order.id] = formattedAmount
+          const live = commercialRatesToExchangeRatesInput({
+            USD: fallbackRates.USD,
+            EUR: fallbackRates.EUR,
+          })
+          formatted[order.id] = formatCommercialDualDisplay(
+            order.total,
+            baseCurrency,
+            { commercialRates: commercial, liveRates: live },
+          )
         }
 
         setFormattedAmounts(formatted)

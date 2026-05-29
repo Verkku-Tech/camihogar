@@ -12,6 +12,7 @@ import {
 import {
   getOrderBaseCurrency,
   getUsdRate,
+  inferOrderBaseCurrency,
   isUsdBaseOrder,
   type ExchangeRatesInput,
 } from "@/lib/order-line-pricing";
@@ -206,6 +207,49 @@ export function getFrozenCommercialTotalsFromOrder(
     subtotal: order.subtotal,
     taxAmount: order.taxAmount,
     total: order.total,
+  };
+}
+
+/** Restaura baseCurrency y líneas tras crear/lee del API (no persiste baseCurrency en backend). */
+export function applyOrderCurrencyMetadata(
+  persisted: Order,
+  source?: Pick<
+    Order,
+    "baseCurrency" | "exchangeRatesAtCreation" | "products"
+  >,
+): Order {
+  const exchangeRatesAtCreation =
+    persisted.exchangeRatesAtCreation ?? source?.exchangeRatesAtCreation;
+
+  const sourceProducts = source?.products ?? [];
+  const products = persisted.products.map((line, index) => {
+    const src = sourceProducts.find(
+      (p) => p.id === line.id || p.name === line.name,
+    ) ?? sourceProducts[index];
+    if (!src) return line;
+    return {
+      ...line,
+      priceCurrency: line.priceCurrency ?? src.priceCurrency,
+      price: line.price ?? src.price,
+      total: line.total ?? src.total,
+    };
+  });
+
+  const baseCurrency =
+    persisted.baseCurrency ??
+    source?.baseCurrency ??
+    inferOrderBaseCurrency({
+      ...persisted,
+      products,
+    });
+
+  return {
+    ...persisted,
+    baseCurrency,
+    products,
+    ...(exchangeRatesAtCreation
+      ? { exchangeRatesAtCreation }
+      : {}),
   };
 }
 
