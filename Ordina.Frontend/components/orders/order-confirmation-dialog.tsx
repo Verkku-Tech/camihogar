@@ -56,7 +56,10 @@ import {
   PAYMENT_BALANCE_EPSILON_USD,
   sumPaymentsToUsd,
 } from "@/lib/order-payments";
-import { ORDER_BASE_CURRENCY } from "@/lib/order-line-pricing";
+import {
+  ORDER_BASE_CURRENCY,
+  type ExchangeRatesInput,
+} from "@/lib/order-line-pricing";
 import { getSaleTypeLabel } from "@/components/orders/constants";
 import { useCurrency } from "@/contexts/currency-context";
 import {
@@ -756,20 +759,17 @@ export function OrderConfirmationDialog({
   };
 
   const baseCurrency = orderData.baseCurrency ?? ORDER_BASE_CURRENCY;
-  const commercialRatesInput = orderData.exchangeRatesAtCreation
+  const liveRatesInput: ExchangeRatesInput = {
+    USD: exchangeRates?.USD,
+    EUR: exchangeRates?.EUR,
+  };
+  const commercialRatesInput: ExchangeRatesInput = orderData.exchangeRatesAtCreation
     ? commercialRatesToExchangeRatesInput(
         getCommercialRatesFromOrder({
           exchangeRatesAtCreation: orderData.exchangeRatesAtCreation,
         }),
       )
-    : commercialRatesToExchangeRatesInput({
-        USD: exchangeRates?.USD,
-        EUR: exchangeRates?.EUR,
-      });
-  const liveRatesInput = commercialRatesToExchangeRatesInput({
-    USD: exchangeRates?.USD,
-    EUR: exchangeRates?.EUR,
-  });
+    : liveRatesInput;
 
   const paymentCtx = {
     baseCurrency,
