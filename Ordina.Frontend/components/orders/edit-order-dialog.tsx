@@ -39,7 +39,10 @@ import {
   type OrderProductDto,
 } from "@/lib/api-client";
 import { Currency } from "@/lib/currency-utils";
-import { ORDER_BASE_CURRENCY } from "@/lib/order-line-pricing";
+import {
+  isUsdBaseOrder,
+  ORDER_BASE_CURRENCY,
+} from "@/lib/order-line-pricing";
 import {
   buildExchangeRatesAtCreationPayload,
   getFrozenCommercialTotalsFromOrder,
@@ -48,7 +51,8 @@ import {
 import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
-  PAYMENT_BALANCE_EPSILON_BS,
+  casheaInStorePaymentsExceedTotal,
+  getCasheaTotalDueBs,
 } from "@/lib/order-payments";
 import { tryComputeOverpaymentUsd } from "@/lib/order-store-credit-usd";
 import { useCurrency } from "@/contexts/currency-context";
@@ -543,8 +547,29 @@ export function EditOrderDialog({
         }
       }
       if (paymentCondition === "cashea") {
-        const p = orderForm.payments[0];
-        if ((p.amount || 0) > orderForm.total + PAYMENT_BALANCE_EPSILON_BS) {
+        const useUsdTotals = isUsdBaseOrder({
+          baseCurrency: orderForm.formBaseCurrency,
+        });
+        if (
+          casheaInStorePaymentsExceedTotal(orderForm.payments, {
+            totalDueUsd: Math.max(
+              0,
+              orderForm.total - orderForm.appliedStoreCreditUsd,
+            ),
+            totalDueBsLegacy: Math.max(
+              0,
+              orderForm.total - orderForm.appliedCreditBsApprox,
+            ),
+            useUsdTotals,
+            order: {
+              baseCurrency: orderForm.formBaseCurrency,
+              exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+                orderForm.commercialExchangeRates,
+              ),
+            },
+            usdRate: orderForm.commercialExchangeRates.USD?.rate,
+          })
+        ) {
           toast.error(
             "El monto del pago inicial no puede superar el total del pedido.",
           );
@@ -554,13 +579,23 @@ export function EditOrderDialog({
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (paymentCondition === "cashea") {
-        const casheaTotalDueBs = Math.max(
-          0,
-          orderForm.total - orderForm.appliedCreditBsApprox,
-        );
+        const useUsdTotals = isUsdBaseOrder({
+          baseCurrency: orderForm.formBaseCurrency,
+        });
         paymentsNorm = buildCasheaPaymentsForSave(
           paymentsNorm,
-          casheaTotalDueBs,
+          getCasheaTotalDueBs({
+            totalDueUsd: Math.max(
+              0,
+              orderForm.total - orderForm.appliedStoreCreditUsd,
+            ),
+            totalDueBsLegacy: Math.max(
+              0,
+              orderForm.total - orderForm.appliedCreditBsApprox,
+            ),
+            useUsdTotals,
+            usdRate: orderForm.commercialExchangeRates.USD?.rate,
+          }),
         );
       }
       const multi = paymentsNorm.length > 1;
@@ -833,12 +868,28 @@ export function EditOrderDialog({
           }
         }
         if (orderForm.paymentCondition === "cashea") {
-          const p = orderForm.payments[0];
+          const useUsdTotals = isUsdBaseOrder({
+            baseCurrency: orderForm.formBaseCurrency,
+          });
           if (
-            (p.amount || 0) >
-            orderForm.total -
-              orderForm.appliedCreditBsApprox +
-              PAYMENT_BALANCE_EPSILON_BS
+            casheaInStorePaymentsExceedTotal(orderForm.payments, {
+              totalDueUsd: Math.max(
+                0,
+                orderForm.total - orderForm.appliedStoreCreditUsd,
+              ),
+              totalDueBsLegacy: Math.max(
+                0,
+                orderForm.total - orderForm.appliedCreditBsApprox,
+              ),
+              useUsdTotals,
+              order: {
+                baseCurrency: orderForm.formBaseCurrency,
+                exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+                  orderForm.commercialExchangeRates,
+                ),
+              },
+              usdRate: orderForm.commercialExchangeRates.USD?.rate,
+            })
           ) {
             toast.error(
               "El monto del pago inicial no puede superar el total del pedido.",
@@ -984,13 +1035,23 @@ export function EditOrderDialog({
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (orderForm.paymentCondition === "cashea") {
-        const casheaTotalDueBs = Math.max(
-          0,
-          orderForm.total - orderForm.appliedCreditBsApprox,
-        );
+        const useUsdTotals = isUsdBaseOrder({
+          baseCurrency: orderForm.formBaseCurrency,
+        });
         paymentsNorm = buildCasheaPaymentsForSave(
           paymentsNorm,
-          casheaTotalDueBs,
+          getCasheaTotalDueBs({
+            totalDueUsd: Math.max(
+              0,
+              orderForm.total - orderForm.appliedStoreCreditUsd,
+            ),
+            totalDueBsLegacy: Math.max(
+              0,
+              orderForm.total - orderForm.appliedCreditBsApprox,
+            ),
+            useUsdTotals,
+            usdRate: orderForm.commercialExchangeRates.USD?.rate,
+          }),
         );
       }
       const multi = paymentsNorm.length > 1;
