@@ -138,7 +138,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     client: OrderFormSelectedClient;
     reservationDto: OrderResponseDto;
   } | null>(null);
-  const [reservationToOpen, setReservationToOpen] = useState<Order | null>(null);
+  const [reservationToOpen, setReservationToOpen] = useState<Order | null>(
+    null,
+  );
   const reservationPromptClosingForLoadRef = useRef(false);
 
   const applySelectedClientToForm = (client: OrderFormSelectedClient) => {
@@ -163,8 +165,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         p.id === updatedProduct.id
           ? {
               ...updatedProduct,
-              locationStatus:
-                updatedProduct.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+              locationStatus: updatedProduct.locationStatus, //?? "DISPONIBILIDAD INMEDIATA",
             }
           : p,
       ),

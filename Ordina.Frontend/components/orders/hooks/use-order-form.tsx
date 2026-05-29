@@ -800,7 +800,12 @@ export function useOrderForm(
         )
       );
     }, 0);
-  }, [selectedProducts, productDiscountCurrencies, preferredCurrency, exchangeRates]);
+  }, [
+    selectedProducts,
+    productDiscountCurrencies,
+    preferredCurrency,
+    exchangeRates,
+  ]);
 
   const subtotalAfterProductDiscounts = useMemo(() => {
     return Math.max(productSubtotal - productDiscountTotal, 0);
@@ -930,9 +935,8 @@ export function useOrderForm(
       getOrderPendingTotal({
         total,
         baseCurrency: ORDER_BASE_CURRENCY,
-        exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
-          exchangeRates,
-        ),
+        exchangeRatesAtCreation:
+          buildExchangeRatesAtCreationPayload(exchangeRates),
         appliedStoreCreditUsd,
         partialPayments: payments,
       }),
@@ -1033,7 +1037,7 @@ export function useOrderForm(
         products.map((product) => ({
           ...product,
           discount: product.discount ?? 0,
-          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+          locationStatus: product.locationStatus, //?? "SELECCIONAR ESTADO",
         })),
       );
       const newTypes: Record<string, "monto" | "porcentaje"> = {};
@@ -1220,6 +1224,18 @@ export function useOrderForm(
           return;
         }
       }
+      if (currentStep === 2) {
+        const pending = selectedProducts.filter(
+          (p) => !p.locationStatus || p.locationStatus === "SELECCIONAR ESTADO",
+        );
+        if (pending.length > 0) {
+          toast.error(
+            "Selecciona el estado de ubicación de todos los productos",
+          );
+          return;
+        }
+      }
+
       setCurrentStep(currentStep + 1);
       setTimeout(() => {
         const dialogContent = document.querySelector('[role="dialog"]');
@@ -1286,12 +1302,18 @@ export function useOrderForm(
     setDraftResolution("none");
   }, [clearDraftStorage, resetForm]);
 
+  const isLocationStatusSelected = (status?: string) =>
+    !!status && status !== "SELECCIONAR ESTADO";
+
   // Validaciones
   const canGoToNextStep: boolean =
     currentStep === 1
       ? !!(step1SellerReady && selectedClient && selectedProducts.length > 0)
       : currentStep === 2
-        ? selectedProducts.length > 0
+        ? selectedProducts.length > 0 &&
+          selectedProducts.every((p) =>
+            isLocationStatusSelected(p.locationStatus),
+          )
         : true;
 
   const canCreateBudget: boolean =
