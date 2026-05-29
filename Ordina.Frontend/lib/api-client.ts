@@ -2285,6 +2285,7 @@ export interface CreateOrderDto {
     usd?: { rate: number; effectiveDate: string } | null;
     eur?: { rate: number; effectiveDate: string } | null;
   };
+  baseCurrency?: "Bs" | "USD" | "EUR";
   type?: string;
   /** Crédito de tienda a aplicar al crear el pedido (USD). */
   appliedStoreCreditUsd?: number;

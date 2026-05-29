@@ -31,46 +31,49 @@ import {
   type OrderProduct,
 } from "@/lib/storage"
 import { getGeneralDiscountSummaryLabel } from "@/lib/product-discount-ui"
-import { formatCurrency, type ExchangeRate } from "@/lib/currency-utils"
-import { useCurrency } from "@/contexts/currency-context"
+import { formatCurrency, type Currency, type ExchangeRate } from "@/lib/currency-utils"
+import {
+  commercialRatesToExchangeRatesInput,
+  formatDualCurrencyAmounts,
+  getCommercialRatesFromOrder,
+  getDisplayBaseCurrency,
+} from "@/lib/order-currency-display"
 import type { AttributeValue } from "@/lib/storage"
 import { getAll } from "@/lib/indexeddb"
 
-// Función helper para formatear moneda siempre en USD como principal, Bs como secundario
-const formatCurrencyWithUsdPrimary = (
-  amountInBs: number,
-  exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } }
-): { primary: string; secondary?: string } => {
-  // Intentar convertir a USD si hay tasa disponible
-  const usdRate = exchangeRates?.USD?.rate
-  
-  if (usdRate && usdRate > 0) {
-    const amountInUsd = amountInBs / usdRate
-    return {
-      primary: formatCurrency(amountInUsd, "USD"),
-      secondary: formatCurrency(amountInBs, "Bs"),
-    }
-  }
-  
-  // Si no hay tasa USD, mostrar solo en Bs
-  return {
-    primary: formatCurrency(amountInBs, "Bs"),
-  }
-}
+const formatBudgetDual = (
+  amount: number,
+  baseCurrency: Currency,
+  commercialRates?: { USD?: { rate: number }; EUR?: { rate: number } },
+  liveRates?: { USD?: { rate: number }; EUR?: { rate: number } },
+) =>
+  formatDualCurrencyAmounts(amount, baseCurrency, {
+    commercialRates,
+    liveRates: liveRates ?? commercialRates,
+  })
 
 // Componente para renderizar moneda con formato USD principal / Bs secundario
-const CurrencyDisplay = ({ 
-  amountInBs, 
+const CurrencyDisplay = ({
+  amount,
+  baseCurrency,
   exchangeRates,
+  liveRates,
   className = "",
-  inline = false
-}: { 
-  amountInBs: number
+  inline = false,
+}: {
+  amount: number
+  baseCurrency: Currency
   exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } }
+  liveRates?: { USD?: { rate: number }; EUR?: { rate: number } }
   className?: string
   inline?: boolean
 }) => {
-  const formatted = formatCurrencyWithUsdPrimary(amountInBs, exchangeRates)
+  const formatted = formatBudgetDual(
+    amount,
+    baseCurrency,
+    exchangeRates,
+    liveRates,
+  )
   
   if (inline) {
     return (
@@ -218,8 +221,8 @@ export default function BudgetDetailPage() {
   const params = useParams()
   const router = useRouter()
   const budgetNumber = params.budgetNumber as string
-  const { formatWithPreference } = useCurrency()
   const [budget, setBudget] = useState<Budget | null>(null)
+  const [displayBaseCurrency, setDisplayBaseCurrency] = useState<Currency>("USD")
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
@@ -258,6 +261,7 @@ export default function BudgetDetailPage() {
         const loadedBudget = await getBudgetByNumber(budgetNumber)
         if (loadedBudget) {
           setBudget(loadedBudget)
+          setDisplayBaseCurrency(getDisplayBaseCurrency(loadedBudget))
           
           // Cargar cliente
           const loadedClient = await getClient(loadedBudget.clientId)
@@ -351,48 +355,87 @@ export default function BudgetDetailPage() {
     }
   }, [budgetNumber])
 
-  // Formatear totales siempre en USD como principal, Bs como secundario
+  const commercialRatesInput = useMemo(
+    () =>
+      commercialRatesToExchangeRatesInput(getCommercialRatesFromOrder(budget)),
+    [budget],
+  )
+
+  const liveRatesInput = useMemo(
+    () =>
+      commercialRatesToExchangeRatesInput({
+        USD: localExchangeRates.USD,
+        EUR: localExchangeRates.EUR,
+      }),
+    [localExchangeRates],
+  )
+
+  // Formatear totales según moneda base del presupuesto
   useEffect(() => {
     const formatTotals = () => {
       if (!budget) return
 
       const totals: Record<string, { primary: string; secondary?: string }> = {}
-      
-      // Usar siempre USD como principal
-      totals.total = formatCurrencyWithUsdPrimary(budget.total, localExchangeRates)
-      totals.subtotal = formatCurrencyWithUsdPrimary(budget.subtotal, localExchangeRates)
-      totals.tax = formatCurrencyWithUsdPrimary(budget.taxAmount, localExchangeRates)
-      totals.subtotalBeforeDiscounts = formatCurrencyWithUsdPrimary(
-        budget.subtotalBeforeDiscounts || budget.subtotal,
-        localExchangeRates
+      const base = getDisplayBaseCurrency(budget)
+
+      totals.total = formatBudgetDual(
+        budget.total,
+        base,
+        commercialRatesInput,
+        liveRatesInput,
       )
-      
+      totals.subtotal = formatBudgetDual(
+        budget.subtotal,
+        base,
+        commercialRatesInput,
+        liveRatesInput,
+      )
+      totals.tax = formatBudgetDual(
+        budget.taxAmount,
+        base,
+        commercialRatesInput,
+        liveRatesInput,
+      )
+      totals.subtotalBeforeDiscounts = formatBudgetDual(
+        budget.subtotalBeforeDiscounts || budget.subtotal,
+        base,
+        commercialRatesInput,
+        liveRatesInput,
+      )
+
       if (budget.productDiscountTotal && budget.productDiscountTotal > 0) {
-        totals.productDiscountTotal = formatCurrencyWithUsdPrimary(
+        totals.productDiscountTotal = formatBudgetDual(
           budget.productDiscountTotal,
-          localExchangeRates
+          base,
+          commercialRatesInput,
+          liveRatesInput,
         )
       }
-      
+
       if (budget.generalDiscountAmount && budget.generalDiscountAmount > 0) {
-        totals.generalDiscountAmount = formatCurrencyWithUsdPrimary(
+        totals.generalDiscountAmount = formatBudgetDual(
           budget.generalDiscountAmount,
-          localExchangeRates
+          base,
+          commercialRatesInput,
+          liveRatesInput,
         )
       }
-      
+
       if (budget.deliveryCost > 0) {
-        totals.deliveryCost = formatCurrencyWithUsdPrimary(
+        totals.deliveryCost = formatBudgetDual(
           budget.deliveryCost,
-          localExchangeRates
+          base,
+          commercialRatesInput,
+          liveRatesInput,
         )
       }
-      
+
       setFormattedTotals(totals)
+      setDisplayBaseCurrency(base)
     }
 
     formatTotals()
-  }, [budget, localExchangeRates])
+  }, [budget, commercialRatesInput, liveRatesInput])
 
   // Formatear precios y descuentos de productos
   useEffect(() => {
@@ -402,17 +445,22 @@ export default function BudgetDetailPage() {
       const formattedDiscounts: Record<string, { primary: string; secondary?: string }> = {}
       const formattedTotals: Record<string, { primary: string; secondary?: string }> = {}
 
+      const base = getDisplayBaseCurrency(budget)
       for (const budgetProduct of budget.products) {
         if (budgetProduct.discount && budgetProduct.discount > 0) {
-          formattedDiscounts[budgetProduct.id] = formatCurrencyWithUsdPrimary(
+          formattedDiscounts[budgetProduct.id] = formatBudgetDual(
             budgetProduct.discount,
-            localExchangeRates
+            base,
+            commercialRatesInput,
+            liveRatesInput,
           )
         }
         const productTotal = budgetProduct.total - (budgetProduct.discount || 0)
-        formattedTotals[budgetProduct.id] = formatCurrencyWithUsdPrimary(
+        formattedTotals[budgetProduct.id] = formatBudgetDual(
           productTotal,
-          localExchangeRates
+          base,
+          commercialRatesInput,
+          liveRatesInput,
         )
       }
 
@@ -420,7 +468,7 @@ export default function BudgetDetailPage() {
       setFormattedProductTotals(formattedTotals)
     }
     formatProductData()
-  }, [budget, localExchangeRates])
+  }, [budget, commercialRatesInput, liveRatesInput])
 
   if (loading) {
     return (
@@ -678,9 +726,11 @@ export default function BudgetDetailPage() {
                       {formattedTotals.subtotalBeforeDiscounts ? (
                         <FormattedCurrencyDisplay formatted={formattedTotals.subtotalBeforeDiscounts} />
                       ) : (
-                        <CurrencyDisplay 
-                          amountInBs={budget.subtotalBeforeDiscounts || budget.subtotal} 
-                          exchangeRates={localExchangeRates}
+                        <CurrencyDisplay
+                          amount={budget.subtotalBeforeDiscounts || budget.subtotal}
+                          baseCurrency={displayBaseCurrency}
+                          exchangeRates={commercialRatesInput}
+                          liveRates={liveRatesInput}
                         />
                       )}
                     </div>
@@ -690,9 +740,11 @@ export default function BudgetDetailPage() {
                         {formattedTotals.productDiscountTotal ? (
                           <FormattedCurrencyDisplay formatted={formattedTotals.productDiscountTotal} />
                         ) : (
-                          <CurrencyDisplay 
-                            amountInBs={budget.productDiscountTotal} 
-                            exchangeRates={localExchangeRates}
+                          <CurrencyDisplay
+                            amount={budget.productDiscountTotal}
+                            baseCurrency={displayBaseCurrency}
+                            exchangeRates={commercialRatesInput}
+                          liveRates={liveRatesInput}
                           />
                         )}
                       </div>
@@ -703,9 +755,11 @@ export default function BudgetDetailPage() {
                       {formattedTotals.subtotal ? (
                         <FormattedCurrencyDisplay formatted={formattedTotals.subtotal} />
                       ) : (
-                        <CurrencyDisplay 
-                          amountInBs={budget.subtotal} 
-                          exchangeRates={localExchangeRates}
+                        <CurrencyDisplay
+                          amount={budget.subtotal}
+                          baseCurrency={displayBaseCurrency}
+                          exchangeRates={commercialRatesInput}
+                          liveRates={liveRatesInput}
                         />
                       )}
                     </div>
@@ -714,9 +768,11 @@ export default function BudgetDetailPage() {
                       {formattedTotals.tax ? (
                         <FormattedCurrencyDisplay formatted={formattedTotals.tax} />
                       ) : (
-                        <CurrencyDisplay 
-                          amountInBs={budget.taxAmount} 
-                          exchangeRates={localExchangeRates}
+                        <CurrencyDisplay
+                          amount={budget.taxAmount}
+                          baseCurrency={displayBaseCurrency}
+                          exchangeRates={commercialRatesInput}
+                          liveRates={liveRatesInput}
                         />
                       )}
                     </div>
@@ -726,9 +782,11 @@ export default function BudgetDetailPage() {
                         {formattedTotals.generalDiscountAmount ? (
                           <FormattedCurrencyDisplay formatted={formattedTotals.generalDiscountAmount} />
                         ) : (
-                          <CurrencyDisplay 
-                            amountInBs={budget.generalDiscountAmount} 
-                            exchangeRates={localExchangeRates}
+                          <CurrencyDisplay
+                            amount={budget.generalDiscountAmount}
+                            baseCurrency={displayBaseCurrency}
+                            exchangeRates={commercialRatesInput}
+                          liveRates={liveRatesInput}
                           />
                         )}
                       </div>
@@ -739,9 +797,11 @@ export default function BudgetDetailPage() {
                         {formattedTotals.deliveryCost ? (
                           <FormattedCurrencyDisplay formatted={formattedTotals.deliveryCost} />
                         ) : (
-                          <CurrencyDisplay 
-                            amountInBs={budget.deliveryCost} 
-                            exchangeRates={localExchangeRates}
+                          <CurrencyDisplay
+                            amount={budget.deliveryCost}
+                            baseCurrency={displayBaseCurrency}
+                            exchangeRates={commercialRatesInput}
+                          liveRates={liveRatesInput}
                           />
                         )}
                       </div>
@@ -752,9 +812,11 @@ export default function BudgetDetailPage() {
                       {formattedTotals.total ? (
                         <FormattedCurrencyDisplay formatted={formattedTotals.total} />
                       ) : (
-                        <CurrencyDisplay 
-                          amountInBs={budget.total} 
-                          exchangeRates={localExchangeRates}
+                        <CurrencyDisplay
+                          amount={budget.total}
+                          baseCurrency={displayBaseCurrency}
+                          exchangeRates={commercialRatesInput}
+                          liveRates={liveRatesInput}
                         />
                       )}
                     </div>

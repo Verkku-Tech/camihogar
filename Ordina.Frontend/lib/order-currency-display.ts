@@ -4,6 +4,7 @@
  */
 import {
   formatCurrency,
+  getActiveExchangeRates,
   normalizeExchangeRatesAtCreation,
   type Currency,
   type ExchangeRate,
@@ -31,6 +32,102 @@ export type CommercialRatesMap = {
   USD?: ExchangeRate;
   EUR?: ExchangeRate;
 };
+
+/** Pedido, presupuesto o fila con totales para display e inferencia de moneda base. */
+export type OrderAmountDisplayInput = {
+  total?: number;
+  baseCurrency?: Currency;
+  exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
+  products?: { priceCurrency?: Currency }[];
+};
+
+export function getDisplayBaseCurrency(
+  order: OrderAmountDisplayInput,
+): Currency {
+  return inferOrderBaseCurrency(order);
+}
+
+export function formatOrderAmountForDisplay(
+  amount: number,
+  order: OrderAmountDisplayInput,
+  liveRates?: ExchangeRatesInput,
+): string {
+  const base = getDisplayBaseCurrency(order);
+  const commercial = commercialRatesToExchangeRatesInput(
+    getCommercialRatesFromOrder(order),
+  );
+  const live =
+    liveRates ??
+    commercialRatesToExchangeRatesInput(getCommercialRatesFromOrder(order));
+  return formatCommercialDualDisplay(amount, base, {
+    commercialRates: commercial,
+    liveRates: live,
+  });
+}
+
+/** Solo USD comercial (sin Bs entre paréntesis). */
+export function formatOrderAmountUsdOnly(
+  amount: number,
+  order: OrderAmountDisplayInput,
+): string {
+  const base = getDisplayBaseCurrency(order);
+  if (base === "USD") {
+    return formatCurrency(amount, "USD");
+  }
+  const rate = getUsdRate(
+    commercialRatesToExchangeRatesInput(getCommercialRatesFromOrder(order)),
+  );
+  if (rate && rate > 0) {
+    return formatCurrency(amount / rate, "USD");
+  }
+  return formatCurrency(amount, "Bs");
+}
+
+export async function formatOrderAmountForDisplayAsync(
+  amount: number,
+  order: OrderAmountDisplayInput,
+  fallbackLiveRates?: CommercialRatesMap,
+): Promise<string> {
+  let live = fallbackLiveRates
+    ? commercialRatesToExchangeRatesInput(fallbackLiveRates)
+    : undefined;
+  if (!live?.USD?.rate) {
+    const active = await getActiveExchangeRates();
+    live = commercialRatesToExchangeRatesInput({
+      USD: active.USD,
+      EUR: active.EUR,
+    });
+  }
+  return formatOrderAmountForDisplay(amount, order, live);
+}
+
+export async function formatOrderAmountUsdOnlyAsync(
+  amount: number,
+  order: OrderAmountDisplayInput,
+): Promise<string> {
+  return formatOrderAmountUsdOnly(amount, order);
+}
+
+/**
+ * @deprecated Usar formatOrderAmountForDisplayAsync.
+ */
+export async function formatCurrencyWithUsdPrimaryFromOrder(
+  amount: number,
+  orderOrBudget?: OrderAmountDisplayInput,
+  fallbackRates?: CommercialRatesMap,
+): Promise<string> {
+  return formatOrderAmountForDisplayAsync(amount, orderOrBudget ?? {}, fallbackRates);
+}
+
+/**
+ * @deprecated Usar formatOrderAmountUsdOnlyAsync.
+ */
+export async function formatUsdOnlyFromOrderTotal(
+  amount: number,
+  orderOrBudget?: OrderAmountDisplayInput,
+): Promise<string> {
+  return formatOrderAmountUsdOnlyAsync(amount, orderOrBudget ?? {});
+}
 
 /** Tasas comerciales del pedido (día de creación), formato ExchangeRate. */
 export function getCommercialRatesFromOrder(

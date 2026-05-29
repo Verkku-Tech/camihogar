@@ -258,6 +258,7 @@ public class OrderService : IOrderService
                 DeliveryType = createDto.DeliveryType,
                 DeliveryZone = createDto.DeliveryZone,
                 ExchangeRatesAtCreation = createDto.ExchangeRatesAtCreation != null ? MapExchangeRatesFromDto(createDto.ExchangeRatesAtCreation) : null,
+                BaseCurrency = string.IsNullOrWhiteSpace(createDto.BaseCurrency) ? null : createDto.BaseCurrency.Trim(),
                 Type = isReservation ? OrderDocumentTypes.Reservation : createDto.Type,
                 OriginalProducts = isReservation ? CloneOrderProducts(mappedProducts) : null,
                 AppliedStoreCreditUsd = requiresPayment && createDto.AppliedStoreCreditUsd is > 0
@@ -656,6 +657,8 @@ public class OrderService : IOrderService
                 existingOrder.DeliveryZone = updateDto.DeliveryZone;
             if (updateDto.ExchangeRatesAtCreation != null)
                 existingOrder.ExchangeRatesAtCreation = MapExchangeRatesFromDto(updateDto.ExchangeRatesAtCreation);
+            if (!string.IsNullOrWhiteSpace(updateDto.BaseCurrency))
+                existingOrder.BaseCurrency = updateDto.BaseCurrency.Trim();
             if (!string.IsNullOrEmpty(updateDto.Type))
                 existingOrder.Type = updateDto.Type;
             if (updateDto.AppliedStoreCreditUsd.HasValue)
@@ -951,6 +954,7 @@ public class OrderService : IOrderService
             DeliveryType = order.DeliveryType,
             DeliveryZone = order.DeliveryZone,
             ExchangeRatesAtCreation = order.ExchangeRatesAtCreation != null ? MapExchangeRatesToDto(order.ExchangeRatesAtCreation) : null,
+            BaseCurrency = order.BaseCurrency,
             CreatedAt = order.CreatedAt,
             UpdatedAt = order.UpdatedAt,
             Type = order.Type,

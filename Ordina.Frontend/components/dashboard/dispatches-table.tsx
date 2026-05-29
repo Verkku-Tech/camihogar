@@ -7,7 +7,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { getUnifiedOrders, type UnifiedOrder } from "@/lib/storage"
 import { isSistemaApartado } from "@/lib/order-sa"
-import { formatCurrency, formatCurrencyWithUsdPrimaryFromOrder, getActiveExchangeRates } from "@/lib/currency-utils"
+import { formatCurrency, getActiveExchangeRates } from "@/lib/currency-utils"
+import {
+  commercialRatesToExchangeRatesInput,
+  formatOrderAmountForDisplay,
+} from "@/lib/order-currency-display"
 import { Eye } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
@@ -50,16 +54,19 @@ export function DispatchesTable() {
       }
 
       try {
+        const rates = await getActiveExchangeRates()
+        const live = commercialRatesToExchangeRatesInput({
+          USD: rates.USD,
+          EUR: rates.EUR,
+        })
         const formatted: Record<string, string> = {}
-        const fallbackRates = await getActiveExchangeRates()
-        
+
         for (const dispatch of dispatches) {
-          const formattedAmount = await formatCurrencyWithUsdPrimaryFromOrder(
+          formatted[dispatch.id] = formatOrderAmountForDisplay(
             dispatch.total,
             dispatch,
-            fallbackRates
+            live,
           )
-          formatted[dispatch.id] = formattedAmount
         }
         
         setFormattedAmounts(formatted)

@@ -4,53 +4,82 @@ import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { TrendingDown, TrendingUp, AlertTriangle } from "lucide-react"
 import { DashboardMetrics } from "@/lib/storage"
-import { formatCurrency, getActiveExchangeRates, type ExchangeRate } from "@/lib/currency-utils"
+import { formatCurrency, getActiveExchangeRates } from "@/lib/currency-utils"
+import {
+  commercialRatesToExchangeRatesInput,
+  formatCommercialDualDisplay,
+} from "@/lib/order-currency-display"
 
 interface MetricsCardsProps {
   metrics: DashboardMetrics
   isLoading?: boolean
 }
 
-// Función helper para formatear moneda siempre en USD como principal, Bs como secundario
-const formatCurrencyWithUsdPrimary = (
-  amountInBs: number,
-  exchangeRates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
-): string => {
-  // Intentar convertir a USD si hay tasa disponible
-  const usdRate = exchangeRates?.USD?.rate
+/** Monto ya en USD comercial (pendientes, ticket promedio, SA vencidos). */
+function formatMetricUsdAmount(
+  amountUsd: number,
+  liveRates?: { USD?: { rate: number }; EUR?: { rate: number } },
+): string {
+  return formatCommercialDualDisplay(amountUsd, "USD", {
+    commercialRates: liveRates,
+    liveRates,
+  })
+}
 
-  if (usdRate && usdRate > 0) {
-    const amountInUsd = amountInBs / usdRate
-    const usdFormatted = formatCurrency(amountInUsd, "USD")
-    const bsFormatted = formatCurrency(amountInBs, "Bs")
-    return `${usdFormatted} (${bsFormatted})`
+/** Totales legacy aún sumados en Bs (facturado, cobrado). */
+function formatMetricBsAmount(
+  amountBs: number,
+  liveRates?: { USD?: { rate: number }; EUR?: { rate: number } },
+): string {
+  const rate = liveRates?.USD?.rate
+  if (rate && rate > 0) {
+    return formatCommercialDualDisplay(amountBs / rate, "USD", {
+      commercialRates: liveRates,
+      liveRates,
+    })
   }
-
-  // Si no hay tasa USD, mostrar solo en Bs
-  return formatCurrency(amountInBs, "Bs")
+  return formatCurrency(amountBs, "Bs")
 }
 
 export function MetricsCards({ metrics, isLoading = false }: MetricsCardsProps) {
-  const [exchangeRates, setExchangeRates] = useState<{ USD?: ExchangeRate; EUR?: ExchangeRate }>({})
+  const [liveRatesInput, setLiveRatesInput] = useState<
+    { USD?: { rate: number }; EUR?: { rate: number } } | undefined
+  >()
   const [formattedPendingPayments, setFormattedPendingPayments] = useState<string>("")
   const [formattedAverageOrderValue, setFormattedAverageOrderValue] = useState<string>("")
 
-  // Cargar tasas de cambio
   useEffect(() => {
     const loadExchangeRates = async () => {
       const rates = await getActiveExchangeRates()
-      setExchangeRates(rates)
+      setLiveRatesInput(
+        commercialRatesToExchangeRatesInput({
+          USD: rates.USD,
+          EUR: rates.EUR,
+        }),
+      )
     }
-    loadExchangeRates()
+    void loadExchangeRates()
   }, [])
 
-  // Formatear valores monetarios cuando cambien las métricas o las tasas
   useEffect(() => {
-    setFormattedPendingPayments(formatCurrencyWithUsdPrimary(metrics.pendingPayments, exchangeRates))
-    setFormattedAverageOrderValue(formatCurrencyWithUsdPrimary(metrics.averageOrderValue, exchangeRates))
-  }, [metrics.pendingPayments, metrics.averageOrderValue, exchangeRates])
+    if (!liveRatesInput) return
+    setFormattedPendingPayments(
+      formatMetricUsdAmount(metrics.pendingPayments, liveRatesInput),
+    )
+    setFormattedAverageOrderValue(
+      formatMetricUsdAmount(metrics.averageOrderValue, liveRatesInput),
+    )
+  }, [metrics.pendingPayments, metrics.averageOrderValue, liveRatesInput])
 
-  const formatAmount = (amount: number) => formatCurrencyWithUsdPrimary(amount, exchangeRates)
+  const formatBsAmount = (amount: number) =>
+    liveRatesInput
+      ? formatMetricBsAmount(amount, liveRatesInput)
+      : formatCurrency(amount, "Bs")
+
+  const formatUsdAmount = (amount: number) =>
+    liveRatesInput
+      ? formatMetricUsdAmount(amount, liveRatesInput)
+      : formatCurrency(amount, "USD")
 
   const metricsData = [
     {
@@ -64,32 +93,32 @@ export function MetricsCards({ metrics, isLoading = false }: MetricsCardsProps) 
     {
       title: "Total Facturado",
       subtitle: "(base imponible)",
-      value: formatAmount(metrics.totalInvoiced || 0),
-      change: null, // TODO: Calcular histórico
+      value: formatBsAmount(metrics.totalInvoiced || 0),
+      change: null,
     },
     {
       title: "Total Cobrado",
       subtitle: "(ingresos reales)",
-      value: formatAmount(metrics.totalCollected || 0),
-      change: null, // TODO: Calcular histórico
+      value: formatBsAmount(metrics.totalCollected || 0),
+      change: null,
       icon: TrendingUp,
       iconColor: "text-green-500",
     },
     {
       title: "Ticket Promedio",
-      value: formattedAverageOrderValue || formatCurrency(metrics.averageOrderValue, "Bs"),
+      value: formattedAverageOrderValue || formatCurrency(metrics.averageOrderValue, "USD"),
       change: null,
     },
     {
       title: "Abonos por recaudar",
       subtitle: "(total pendiente)",
-      value: formattedPendingPayments || formatCurrency(metrics.pendingPayments, "Bs"),
+      value: formattedPendingPayments || formatCurrency(metrics.pendingPayments, "USD"),
       change: metrics.pendingPaymentsChange,
     },
     {
       title: "SA Vencidos",
       subtitle: `${metrics.expiredLayawaysCount || 0} apartados vencidos`,
-      value: formatAmount(metrics.expiredLayawaysAmount || 0),
+      value: formatUsdAmount(metrics.expiredLayawaysAmount || 0),
       change: null,
       icon: AlertTriangle,
       iconColor: "text-red-500",

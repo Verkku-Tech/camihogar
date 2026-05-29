@@ -34,10 +34,7 @@ import {
   ORDER_TYPE_RESERVATION,
 } from "@/lib/order-document-types";
 
-import {
-  formatUsdOnlyFromOrderTotal,
-  getActiveExchangeRates,
-} from "@/lib/currency-utils";
+import { formatOrderAmountUsdOnly } from "@/lib/order-currency-display";
 import {
   getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_BS,
@@ -297,17 +294,10 @@ export function ClientOrdersHistoryDialog({
       return;
     }
     let cancelled = false;
-    const run = async () => {
-      const fallbackRates = await getActiveExchangeRates();
-      if (cancelled) return;
+    const run = () => {
       const totals: Record<string, string> = {};
       for (const row of orders) {
-        const formatted = await formatUsdOnlyFromOrderTotal(
-          row.total,
-          row,
-          fallbackRates,
-        );
-        totals[row.id] = formatted;
+        totals[row.id] = formatOrderAmountUsdOnly(row.total, row);
       }
       if (!cancelled) setOrderTotalsUsd(totals);
     };

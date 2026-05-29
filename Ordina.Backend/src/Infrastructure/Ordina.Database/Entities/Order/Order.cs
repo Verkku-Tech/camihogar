@@ -138,6 +138,10 @@ public class Order
     [BsonElement("exchangeRatesAtCreation")]
     public ExchangeRatesAtCreation? ExchangeRatesAtCreation { get; set; } // Tasas de cambio del día en que se creó el pedido
 
+    /// <summary>Moneda comercial del total (USD en pedidos nuevos; Bs en legacy).</summary>
+    [BsonElement("baseCurrency")]
+    public string? BaseCurrency { get; set; }
+
     [BsonElement("createdAt")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

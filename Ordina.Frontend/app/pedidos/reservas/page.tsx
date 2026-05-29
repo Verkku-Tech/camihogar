@@ -28,10 +28,11 @@ import { Search, Eye, ClipboardCheck, Loader2, ClipboardList } from "lucide-reac
 import { toast } from "sonner";
 import { getReservations, getClients, type Order, type Client } from "@/lib/storage";
 import { buildClientFilterHaystack, digitsOnly } from "@/lib/order-client-search";
+import { getActiveExchangeRates } from "@/lib/currency-utils";
 import {
-  formatCurrencyWithUsdPrimaryFromOrder,
-  getActiveExchangeRates,
-} from "@/lib/currency-utils";
+  commercialRatesToExchangeRatesInput,
+  formatOrderAmountForDisplay,
+} from "@/lib/order-currency-display";
 import { useAuth } from "@/contexts/auth-context";
 import { usePagination } from "@/hooks/use-pagination";
 import { TablePagination } from "@/components/ui/table-pagination";
@@ -128,13 +129,17 @@ export default function ReservasPage() {
         setOrderTotals({});
         return;
       }
+      const rates = await getActiveExchangeRates();
+      const live = commercialRatesToExchangeRatesInput({
+        USD: rates.USD,
+        EUR: rates.EUR,
+      });
       const totals: Record<string, string> = {};
-      const fallbackRates = await getActiveExchangeRates();
       for (const order of reservations) {
-        totals[order.id] = await formatCurrencyWithUsdPrimaryFromOrder(
+        totals[order.id] = formatOrderAmountForDisplay(
           order.total,
           order,
-          fallbackRates,
+          live,
         );
       }
       setOrderTotals(totals);

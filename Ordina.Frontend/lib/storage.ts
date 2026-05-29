@@ -2,7 +2,11 @@ import * as db from "./indexeddb";
 import type { Currency } from "./currency-utils";
 import { normalizeExchangeRatesAtCreation } from "./currency-utils";
 import { inferOrderBaseCurrency } from "./order-line-pricing";
-import { applyOrderCurrencyMetadata } from "./order-currency-display";
+import {
+  applyOrderCurrencyMetadata,
+  getCommercialTotalUsd,
+  getOrderPendingUsd,
+} from "./order-currency-display";
 import { apiClient } from "./api-client";
 import { generateUUID } from "./utils";
 import {
@@ -2453,6 +2457,7 @@ export const orderToBackendDto = (
   deliveryZone: order.deliveryZone,
   deliveryServices: order.deliveryServices,
   exchangeRatesAtCreation: order.exchangeRatesAtCreation,
+  baseCurrency: order.baseCurrency,
   type: order.type ?? "Order",
   ...(order.appliedStoreCreditUsd != null && order.appliedStoreCreditUsd > 0
     ? { appliedStoreCreditUsd: order.appliedStoreCreditUsd }
@@ -4056,38 +4061,24 @@ export const calculateDashboardMetrics = async (
     return total + sumPayments;
   }, 0);
 
-  // 4. Abonos por recaudar (Deuda actual general de órdenes activas)
+  const isActiveForPending = (status: string) =>
+    status === "Generado" ||
+    status === "Generada" ||
+    status === "Fabricación" ||
+    status === "Por despachar";
+
+  // 4. Abonos por recaudar (deuda en USD comercial)
   const pendingPayments = orders.reduce((total, order) => {
-    if (
-      order.status === "Generado" ||
-      order.status === "Generada" ||
-      order.status === "Fabricación" ||
-      order.status === "Por despachar"
-    ) {
-      const paidAmount =
-        order.partialPayments?.reduce(
-          (sum, payment) => sum + (payment.amount || 0),
-          0,
-        ) || 0;
-      return total + Math.max(0, order.total - paidAmount);
+    if (isActiveForPending(order.status)) {
+      return total + getOrderPendingUsd(order);
     }
     return total;
   }, 0);
 
   const previousPendingPayments = previousPeriodOrders.reduce(
     (total, order) => {
-      if (
-        order.status === "Generado" ||
-        order.status === "Generada" ||
-        order.status === "Fabricación" ||
-        order.status === "Por despachar"
-      ) {
-        const paidAmount =
-          order.partialPayments?.reduce(
-            (sum, payment) => sum + (payment.amount || 0),
-            0,
-          ) || 0;
-        return total + Math.max(0, order.total - paidAmount);
+      if (isActiveForPending(order.status)) {
+        return total + getOrderPendingUsd(order);
       }
       return total;
     },
@@ -4124,7 +4115,7 @@ export const calculateDashboardMetrics = async (
 
   const expiredLayawaysCount = expiredLayawaysOrders.length;
   const expiredLayawaysAmount = expiredLayawaysOrders.reduce(
-    (total, order) => total + getOrderPendingTotal(order),
+    (total, order) => total + getOrderPendingUsd(order),
     0,
   );
 
@@ -4150,14 +4141,14 @@ export const calculateDashboardMetrics = async (
   }, 0);
 
   // Promedio de pedidos completados (Por despachar o Completada) - Métrica existente
-  const completedOrdersTotal = periodOrders
+  const completedOrdersTotalUsd = periodOrders
     .filter(
       (order) =>
         order.status === "Por despachar" || order.status === "Completada",
     )
-    .reduce((sum, order) => sum + order.total, 0);
+    .reduce((sum, order) => sum + getCommercialTotalUsd(order), 0);
   const averageOrderValue =
-    completedOrders > 0 ? completedOrdersTotal / completedOrders : 0;
+    completedOrders > 0 ? completedOrdersTotalUsd / completedOrders : 0;
 
   return {
     completedOrders,
