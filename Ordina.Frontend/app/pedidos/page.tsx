@@ -1,16 +1,29 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useMemo } from "react"
-import { Sidebar } from "@/components/dashboard/sidebar"
-import { ProtectedRoute } from "@/components/auth/protected-route"
-import { DashboardHeader } from "@/components/dashboard/dashboard-header"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { NewOrderDialog } from "@/components/orders/new-order-dialog"
-import { EditOrderDialog } from "@/components/orders/edit-order-dialog"
+import { useState, useEffect, useMemo } from "react";
+import { Sidebar } from "@/components/dashboard/sidebar";
+import { ProtectedRoute } from "@/components/auth/protected-route";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { NewOrderDialog } from "@/components/orders/new-order-dialog";
+import { EditOrderDialog } from "@/components/orders/edit-order-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,11 +33,17 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Search, Plus, Eye, Edit, Trash2, X } from "lucide-react"
-import { OrderPdfRowAction } from "@/components/orders/order-pdf-row-action"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { toast } from "sonner"
+} from "@/components/ui/alert-dialog";
+import { Search, Plus, Eye, Edit, Trash2, X } from "lucide-react";
+import { OrderPdfRowAction } from "@/components/orders/order-pdf-row-action";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
 import {
   deleteOrder,
   deleteBudget,
@@ -32,217 +51,261 @@ import {
   getClients,
   type UnifiedOrder,
   type Client,
-} from "@/lib/storage"
-import { buildClientFilterHaystack, digitsOnly } from "@/lib/order-client-search"
-import { getActiveExchangeRates } from "@/lib/currency-utils"
+} from "@/lib/storage";
+import {
+  buildClientFilterHaystack,
+  digitsOnly,
+} from "@/lib/order-client-search";
+import { getActiveExchangeRates } from "@/lib/currency-utils";
 import {
   commercialRatesToExchangeRatesInput,
   formatCommercialDualDisplay,
+  formatCurrencyWithUsdPrimaryFromOrder,
   getCommercialRatesFromOrder,
-} from "@/lib/order-currency-display"
-import { getOrderBaseCurrency } from "@/lib/order-line-pricing"
-import { useAuth } from "@/contexts/auth-context"
-import { usePagination } from "@/hooks/use-pagination"
-import { TablePagination } from "@/components/ui/table-pagination"
+} from "@/lib/order-currency-display";
+import { getOrderBaseCurrency } from "@/lib/order-line-pricing";
+import { useAuth } from "@/contexts/auth-context";
+import { usePagination } from "@/hooks/use-pagination";
+import { TablePagination } from "@/components/ui/table-pagination";
 import {
   buildOrderStatusFilterOptions,
   PURCHASE_TYPES,
-} from "@/components/orders/constants"
+} from "@/components/orders/constants";
 import {
   isSistemaApartado,
   isSaWarehouseHighlight,
   purchaseTypeLabel,
-} from "@/lib/order-sa"
-import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility"
-import { toLocalDateKey } from "@/lib/date-utils"
+  getOrderPendingTotal,
+} from "@/lib/order-sa";
+import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility";
+import { toLocalDateKey } from "@/lib/date-utils";
 
 const getStatusColor = (status: string) => {
   switch (status) {
     case "Presupuesto":
-      return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300"
+      return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300";
     case "Validado":
-      return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300"
+      return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300";
     case "Por Fabricar":
-      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
+      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
     case "En Fabricación":
     case "Fabricación":
     case "Fabricándose":
-      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300"
+      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
     case "Almacén":
     case "En Almacén":
-      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
     case "Despacho":
     case "Por despachar":
     case "En Ruta":
-      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
+      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
     case "Entregado":
     case "Completada":
     case "Completado":
-      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
     case "Declinado":
     case "Cancelado":
-      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300";
     case "Generado":
     case "Generada":
-      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
     default:
-      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
   }
-}
+};
 
 export default function PedidosPage() {
-  const { user, hasPermission } = useAuth()
-  const [orders, setOrders] = useState<UnifiedOrder[]>([])
-  const [searchTerm, setSearchTerm] = useState("")
-  const [clientSearch, setClientSearch] = useState("")
+  const { user, hasPermission } = useAuth();
+  const [orders, setOrders] = useState<UnifiedOrder[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [clientSearch, setClientSearch] = useState("");
   const [filters, setFilters] = useState({
     vendor: "all",
     status: "all",
     saleType: "all",
-  })
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
-  const [isNewOrderOpen, setIsNewOrderOpen] = useState(false)
-  const [isEditOrderOpen, setIsEditOrderOpen] = useState(false)
-  const [orderToEdit, setOrderToEdit] = useState<UnifiedOrder | null>(null)
-  const [editMode, setEditMode] = useState<"full" | "payments">("full")
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [orderToDelete, setOrderToDelete] = useState<UnifiedOrder | null>(null)
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
-  const [itemsPerPage, setItemsPerPage] = useState(10)
-  const [clientById, setClientById] = useState<Map<string, Client>>(new Map())
+  });
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
+  const [isEditOrderOpen, setIsEditOrderOpen] = useState(false);
+  const [orderToEdit, setOrderToEdit] = useState<UnifiedOrder | null>(null);
+  const [editMode, setEditMode] = useState<"full" | "payments">("full");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [orderToDelete, setOrderToDelete] = useState<UnifiedOrder | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [orderTotals, setOrderTotals] = useState<Record<string, string>>({});
+  const [orderPendingTotals, setOrderPendingTotals] = useState<
+    Record<string, string>
+  >({});
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [clientById, setClientById] = useState<Map<string, Client>>(new Map());
 
   useEffect(() => {
     const loadClients = async () => {
       try {
-        const list = await getClients()
-        const map = new Map<string, Client>()
+        const list = await getClients();
+        const map = new Map<string, Client>();
         for (const c of list) {
-          map.set(c.id, c)
+          map.set(c.id, c);
         }
-        setClientById(map)
+        setClientById(map);
       } catch (e) {
-        console.error("Error cargando clientes para filtro:", e)
+        console.error("Error cargando clientes para filtro:", e);
       }
-    }
-    void loadClients()
-  }, [])
+    };
+    void loadClients();
+  }, []);
 
   useEffect(() => {
     const loadOrders = async () => {
       try {
-        setIsLoading(true)
-        const loadedOrders = await getUnifiedOrders()
-        setOrders(loadedOrders)
+        setIsLoading(true);
+        const loadedOrders = await getUnifiedOrders();
+        setOrders(loadedOrders);
       } catch (error) {
-        console.error("Error loading orders:", error)
+        console.error("Error loading orders:", error);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    loadOrders()
-  }, [])
+    loadOrders();
+  }, []);
 
   // Totales: misma lógica que detalle del pedido (baseCurrency USD vs legacy Bs)
   useEffect(() => {
     const updateTotals = async () => {
       if (orders.length === 0) {
-        setOrderTotals({})
-        return
+        setOrderTotals({});
+        setOrderPendingTotals({});
+        return;
       }
-      const totals: Record<string, string> = {}
-      const fallbackRates = await getActiveExchangeRates()
+      const totals: Record<string, string> = {};
+      const pendingTotals: Record<string, string> = {};
+      const fallbackRates = await getActiveExchangeRates();
       const live = commercialRatesToExchangeRatesInput({
         USD: fallbackRates.USD,
         EUR: fallbackRates.EUR,
-      })
+      });
       for (const order of orders) {
-        const baseCurrency = getOrderBaseCurrency(order)
+        const baseCurrency = getOrderBaseCurrency(order);
         const commercial = commercialRatesToExchangeRatesInput(
           getCommercialRatesFromOrder(order),
-        )
-        totals[order.id] = formatCommercialDualDisplay(order.total, baseCurrency, {
-          commercialRates: commercial,
-          liveRates: live,
-        })
+        );
+        totals[order.id] = formatCommercialDualDisplay(
+          order.total,
+          baseCurrency,
+          {
+            commercialRates: commercial,
+            liveRates: live,
+          },
+        );
+
+        pendingTotals[order.id] = formatCommercialDualDisplay(
+          getOrderPendingTotal(order),
+          baseCurrency,
+          {
+            commercialRates: commercial,
+            liveRates: live,
+          },
+        );
       }
-      setOrderTotals(totals)
-    }
-    void updateTotals()
-  }, [orders])
+      setOrderTotals(totals);
+      setOrderPendingTotals(pendingTotals);
+    };
+    void updateTotals();
+  }, [orders]);
+
+  // const totals: Record<string, string> = {};
+  // const pendingTotals: Record<string, string> = {};
+  // const fallbackRates = await getActiveExchangeRates();
+  // for (const order of orders) {
+  //   totals[order.id] = await formatCurrencyWithUsdPrimaryFromOrder(
+  //     order.total,
+  //     order,
+  //     fallbackRates,
+  //   );
+
+  //   pendingTotals[order.id] = await formatCurrencyWithUsdPrimaryFromOrder(
+  //     getOrderPendingTotal(order),
+  //     order,
+  //     fallbackRates,
+  //   );
 
   // Función para refrescar después de crear un pedido
   const handleOrderCreated = async () => {
-    const loadedOrders = await getUnifiedOrders()
-    setOrders(loadedOrders)
-    setIsNewOrderOpen(false)
-  }
+    const loadedOrders = await getUnifiedOrders();
+    setOrders(loadedOrders);
+    setIsNewOrderOpen(false);
+  };
 
   // Obtener total formateado para el pedido a eliminar
   const getDeleteOrderTotal = () => {
-    if (!orderToDelete) return ""
-    return orderTotals[orderToDelete.id] || `Bs.${orderToDelete.total.toFixed(2)}`
-  }
+    if (!orderToDelete) return "";
+    return (
+      orderTotals[orderToDelete.id] || `Bs.${orderToDelete.total.toFixed(2)}`
+    );
+  };
 
   // Obtener valores únicos para los filtros
-  const uniqueVendors = Array.from(new Set(orders.map((o) => o.vendorName))).sort()
+  const uniqueVendors = Array.from(
+    new Set(orders.map((o) => o.vendorName)),
+  ).sort();
 
   const statusFilterOptions = useMemo(
     () => buildOrderStatusFilterOptions(orders.map((o) => o.status)),
     [orders],
-  )
+  );
 
-  let rangeFrom = dateFrom
-  let rangeTo = dateTo
+  let rangeFrom = dateFrom;
+  let rangeTo = dateTo;
   if (rangeFrom && rangeTo && rangeFrom > rangeTo) {
-    ;[rangeFrom, rangeTo] = [rangeTo, rangeFrom]
+    [rangeFrom, rangeTo] = [rangeTo, rangeFrom];
   }
 
   const filteredOrders = orders.filter((order) => {
-    if (
-      user?.role === "Online Seller" &&
-      order.type === "order"
-    ) {
-      const uid = user?.id?.trim()
-      if (!uid) return false
-      if (!isOrderVisibleToOnlineSeller(order, uid)) return false
+    if (user?.role === "Online Seller" && order.type === "order") {
+      const uid = user?.id?.trim();
+      if (!uid) return false;
+      if (!isOrderVisibleToOnlineSeller(order, uid)) return false;
     }
 
     // Filtro de búsqueda general (existente)
-    const on = (order.orderNumber ?? "").toLowerCase()
+    const on = (order.orderNumber ?? "").toLowerCase();
     const matchesSearch =
       on.includes(searchTerm.toLowerCase()) ||
       order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
+      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase());
 
     // Filtros por columna
-    const matchesVendor = filters.vendor === "all" || order.vendorName === filters.vendor
-    const matchesStatus = filters.status === "all" || order.status === filters.status
+    const matchesVendor =
+      filters.vendor === "all" || order.vendorName === filters.vendor;
+    const matchesStatus =
+      filters.status === "all" || order.status === filters.status;
     // Presupuestos unificados suelen no tener saleType; no coinciden con un tipo concreto.
     const matchesSaleType =
       filters.saleType === "all" ||
-      (order.saleType !== undefined && order.saleType === filters.saleType)
+      (order.saleType !== undefined && order.saleType === filters.saleType);
 
-    const orderDay = toLocalDateKey(order.createdAt)
-    const matchesDateFrom = !rangeFrom || orderDay >= rangeFrom
-    const matchesDateTo = !rangeTo || orderDay <= rangeTo
+    const orderDay = toLocalDateKey(order.createdAt);
+    const matchesDateFrom = !rangeFrom || orderDay >= rangeFrom;
+    const matchesDateTo = !rangeTo || orderDay <= rangeTo;
 
-    const q = clientSearch.trim().toLowerCase()
+    const q = clientSearch.trim().toLowerCase();
     const haystack = buildClientFilterHaystack(
       order.clientName,
       clientById.get(order.clientId),
-    ).toLowerCase()
+    ).toLowerCase();
     const matchesClient =
       q === "" ||
       haystack.includes(q) ||
       (digitsOnly(clientSearch) !== "" &&
-        digitsOnly(haystack).includes(digitsOnly(clientSearch)))
+        digitsOnly(haystack).includes(digitsOnly(clientSearch)));
 
     const isConvertedBudget =
-      order.type === "budget" && order.status.trim().toLowerCase() === "convertido"
+      order.type === "budget" &&
+      order.status.trim().toLowerCase() === "convertido";
 
     return (
       matchesSearch &&
@@ -253,8 +316,8 @@ export default function PedidosPage() {
       matchesDateTo &&
       matchesClient &&
       !isConvertedBudget
-    )
-  })
+    );
+  });
 
   // Paginación
   const {
@@ -268,91 +331,91 @@ export default function PedidosPage() {
   } = usePagination({
     data: filteredOrders,
     itemsPerPage,
-  })
+  });
 
   const handleDelete = async () => {
-    if (!orderToDelete) return
+    if (!orderToDelete) return;
     if (!canDeleteOrder(orderToDelete)) {
-      toast.error("No tienes permiso para eliminar este registro.")
-      setIsDeleteDialogOpen(false)
-      setOrderToDelete(null)
-      return
+      toast.error("No tienes permiso para eliminar este registro.");
+      setIsDeleteDialogOpen(false);
+      setOrderToDelete(null);
+      return;
     }
 
     try {
       // Eliminar según el tipo (pedido o presupuesto)
       if (orderToDelete.type === "order") {
-        await deleteOrder(orderToDelete.id)
+        await deleteOrder(orderToDelete.id);
       } else {
-        await deleteBudget(orderToDelete.id)
+        await deleteBudget(orderToDelete.id);
       }
       // Refrescar la lista de pedidos
-      const loadedOrders = await getUnifiedOrders()
-      setOrders(loadedOrders)
-      setIsDeleteDialogOpen(false)
-      setOrderToDelete(null)
-      toast.success("Eliminado exitosamente")
+      const loadedOrders = await getUnifiedOrders();
+      setOrders(loadedOrders);
+      setIsDeleteDialogOpen(false);
+      setOrderToDelete(null);
+      toast.success("Eliminado exitosamente");
     } catch (error) {
-      console.error("Error deleting order:", error)
-      toast.error("Error al eliminar. Por favor intenta nuevamente.")
+      console.error("Error deleting order:", error);
+      toast.error("Error al eliminar. Por favor intenta nuevamente.");
     }
-  }
+  };
 
   const handleView = async (order: UnifiedOrder) => {
     // Redirigir según el tipo (pedido o presupuesto)
     if (order.type === "order") {
-      window.location.href = `/pedidos/${order.orderNumber}`
+      window.location.href = `/pedidos/${order.orderNumber}`;
     } else {
-      window.location.href = `/presupuestos/${order.orderNumber}`
+      window.location.href = `/presupuestos/${order.orderNumber}`;
     }
-  }
+  };
 
-  const canEditOrderFull = hasPermission("orders.update")
-  const canConvertBudget = hasPermission("budgets.convert_to_order")
-  const canEditOrderPaymentsOnly = hasPermission("orders.payments.manage")
+  const canEditOrderFull = hasPermission("orders.update");
+  const canConvertBudget = hasPermission("budgets.convert_to_order");
+  const canEditOrderPaymentsOnly = hasPermission("orders.payments.manage");
 
   const handleEdit = (order: UnifiedOrder) => {
     if (order.type === "budget" && (canConvertBudget || canEditOrderFull)) {
-      setOrderToEdit(order)
-      setEditMode("full")
-      setIsEditOrderOpen(true)
-      return
+      setOrderToEdit(order);
+      setEditMode("full");
+      setIsEditOrderOpen(true);
+      return;
     }
     if (order.type === "order" && canEditOrderFull) {
-      setOrderToEdit(order)
-      setEditMode("full")
-      setIsEditOrderOpen(true)
-      return
+      setOrderToEdit(order);
+      setEditMode("full");
+      setIsEditOrderOpen(true);
+      return;
     }
     if (canEditOrderPaymentsOnly && order.type === "order") {
-      setOrderToEdit(order)
-      setEditMode("payments")
-      setIsEditOrderOpen(true)
-      return
+      setOrderToEdit(order);
+      setEditMode("payments");
+      setIsEditOrderOpen(true);
+      return;
     }
     toast.error("Acceso denegado", {
       description: "No tienes permisos para editar este pedido o presupuesto.",
-    })
-  }
+    });
+  };
 
   const canEditOrder = (order: UnifiedOrder) =>
     (order.type === "budget" && (canConvertBudget || canEditOrderFull)) ||
     (order.type === "order" && canEditOrderFull) ||
-    (canEditOrderPaymentsOnly && order.type === "order")
+    (canEditOrderPaymentsOnly && order.type === "order");
 
   const canDeleteOrder = (order: UnifiedOrder) =>
     order.type === "order"
       ? hasPermission("orders.delete")
-      : hasPermission("budgets.delete")
+      : hasPermission("budgets.delete");
 
   const handleDeleteClick = (order: UnifiedOrder) => {
     if (!canDeleteOrder(order)) {
-      toast.error("No tienes permiso para eliminar este registro.")
-      return
+      toast.error("No tienes permiso para eliminar este registro.");
+      return;
     }
-    setOrderToDelete(order)
-    setIsDeleteDialogOpen(true)
-  }
+    setOrderToDelete(order);
+    setIsDeleteDialogOpen(true);
+  };
 
   return (
     <ProtectedRoute>
@@ -457,7 +520,9 @@ export default function PedidosPage() {
                 </Select>
 
                 <div className="flex items-center gap-1">
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">Desde</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    Desde
+                  </span>
                   <Input
                     type="date"
                     value={dateFrom}
@@ -467,7 +532,9 @@ export default function PedidosPage() {
                   />
                 </div>
                 <div className="flex items-center gap-1">
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">Hasta</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    Hasta
+                  </span>
                   <Input
                     type="date"
                     value={dateTo}
@@ -487,10 +554,14 @@ export default function PedidosPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setFilters({ vendor: "all", status: "all", saleType: "all" })
-                      setClientSearch("")
-                      setDateFrom("")
-                      setDateTo("")
+                      setFilters({
+                        vendor: "all",
+                        status: "all",
+                        saleType: "all",
+                      });
+                      setClientSearch("");
+                      setDateFrom("");
+                      setDateTo("");
                     }}
                     className="gap-2"
                   >
@@ -503,14 +574,18 @@ export default function PedidosPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Lista de Pedidos</CardTitle>
-                  <CardDescription>Gestiona todos los pedidos del sistema</CardDescription>
+                  <CardDescription>
+                    Gestiona todos los pedidos del sistema
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {isLoading ? (
                     <div className="text-center py-8">Cargando pedidos...</div>
                   ) : filteredOrders.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
-                      {searchTerm ? "No se encontraron pedidos" : "No hay pedidos registrados"}
+                      {searchTerm
+                        ? "No se encontraron pedidos"
+                        : "No hay pedidos registrados"}
                     </div>
                   ) : (
                     <Table>
@@ -520,6 +595,7 @@ export default function PedidosPage() {
                           <TableHead>Cliente</TableHead>
                           <TableHead>Vendedor</TableHead>
                           <TableHead>Total</TableHead>
+                          <TableHead>Saldo Pendiente</TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead>Tipo</TableHead>
                           <TableHead>Método de Pago</TableHead>
@@ -555,16 +631,28 @@ export default function PedidosPage() {
                             <TableCell>{order.clientName}</TableCell>
                             <TableCell>{order.vendorName}</TableCell>
                             <TableCell>
-                              {orderTotals[order.id] || `Bs.${order.total.toFixed(2)}`}
+                              {orderTotals[order.id] ||
+                                `Bs.${order.total.toFixed(2)}`}
                             </TableCell>
                             <TableCell>
-                              <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+                              {orderPendingTotals[order.id] ||
+                                `Bs.${getOrderPendingTotal(order).toFixed(2)}`}
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={getStatusColor(order.status)}>
+                                {order.status}
+                              </Badge>
                             </TableCell>
                             <TableCell className="text-muted-foreground max-w-[200px]">
                               {purchaseTypeLabel(order.saleType) ?? "—"}
                             </TableCell>
-                            <TableCell>{order.paymentMethod || (order.type === "budget" ? "N/A" : "-")}</TableCell>
-                            <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                            <TableCell>
+                              {order.paymentMethod ||
+                                (order.type === "budget" ? "N/A" : "-")}
+                            </TableCell>
+                            <TableCell>
+                              {new Date(order.createdAt).toLocaleDateString()}
+                            </TableCell>
                             <TableCell>{order.products.length}</TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
@@ -642,10 +730,10 @@ export default function PedidosPage() {
       <NewOrderDialog
         open={isNewOrderOpen}
         onOpenChange={(open) => {
-          setIsNewOrderOpen(open)
+          setIsNewOrderOpen(open);
           if (!open) {
             // Refrescar cuando se cierra el diálogo
-            handleOrderCreated()
+            handleOrderCreated();
           }
         }}
       />
@@ -653,11 +741,11 @@ export default function PedidosPage() {
       <EditOrderDialog
         open={isEditOrderOpen}
         onOpenChange={(open) => {
-          setIsEditOrderOpen(open)
+          setIsEditOrderOpen(open);
           if (!open) {
-            setOrderToEdit(null)
-            setEditMode("full")
-            handleOrderCreated()
+            setOrderToEdit(null);
+            setEditMode("full");
+            handleOrderCreated();
           }
         }}
         order={orderToEdit as any}
@@ -665,15 +753,24 @@ export default function PedidosPage() {
       />
 
       {/* Dialog de confirmación de eliminación */}
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar {orderToDelete?.type === "order" ? "pedido" : "presupuesto"}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              ¿Eliminar{" "}
+              {orderToDelete?.type === "order" ? "pedido" : "presupuesto"}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Estás seguro de que deseas eliminar el {orderToDelete?.type === "order" ? "pedido" : "presupuesto"} "{orderToDelete?.orderNumber}"?
+              ¿Estás seguro de que deseas eliminar el{" "}
+              {orderToDelete?.type === "order" ? "pedido" : "presupuesto"} "
+              {orderToDelete?.orderNumber}"?
               <br />
               <span className="text-sm text-muted-foreground mt-2 block">
-                Cliente: {orderToDelete?.clientName} - Total: {getDeleteOrderTotal()}
+                Cliente: {orderToDelete?.clientName} - Total:{" "}
+                {getDeleteOrderTotal()}
               </span>
               <br />
               <span className="text-sm font-medium text-red-600 mt-2 block">
@@ -695,5 +792,5 @@ export default function PedidosPage() {
         </AlertDialogContent>
       </AlertDialog>
     </ProtectedRoute>
-  )
+  );
 }
