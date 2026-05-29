@@ -1684,6 +1684,7 @@ export interface OrderProduct {
   refabricationHistory?: RefabricationRecord[]; // Historial de refabricaciones
   // Estado de ubicación del producto
   locationStatus?:
+    | "SELECCIONAR ESTADO"
     | "DISPONIBILIDAD INMEDIATA"
     | "EN TIENDA"
     | "FABRICACION"
@@ -2884,8 +2885,7 @@ export const getOrdersByStatus = async (status: string): Promise<Order[]> => {
 
 const sortOrdersByCreatedDesc = (list: Order[]): Order[] =>
   [...list].sort(
-    (a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
 
 const dedupeReservationOrders = (list: Order[]): Order[] => {
@@ -5493,9 +5493,7 @@ const convertAdjustmentToTarget = (
   let amountInBs = adjustment;
   if (from !== "Bs") {
     const fromRate =
-      from === "USD"
-        ? exchangeRates?.USD?.rate
-        : exchangeRates?.EUR?.rate;
+      from === "USD" ? exchangeRates?.USD?.rate : exchangeRates?.EUR?.rate;
     if (!fromRate || fromRate <= 0) return adjustment;
     amountInBs = adjustment * fromRate;
   }
@@ -5539,7 +5537,12 @@ export const calculateProductUnitPriceWithAttributes = (
   let totalAdjustment = 0;
 
   const convertAdjustment = (adjustment: number, currency?: string): number =>
-    convertAdjustmentToTarget(adjustment, currency, targetCurrency, exchangeRates);
+    convertAdjustmentToTarget(
+      adjustment,
+      currency,
+      targetCurrency,
+      exchangeRates,
+    );
 
   Object.entries(productAttributes).forEach(([attrKey, selectedValue]) => {
     const categoryAttribute = category.attributes.find(
