@@ -42,6 +42,10 @@ import {
 import { Currency } from "@/lib/currency-utils";
 import { ORDER_BASE_CURRENCY } from "@/lib/order-line-pricing";
 import {
+  buildExchangeRatesAtCreationPayload,
+  commercialRatesToExchangeRatesInput,
+} from "@/lib/order-currency-display";
+import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
   PAYMENT_BALANCE_EPSILON_BS,
@@ -832,6 +836,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         observations: orderForm.generalObservations.trim() || undefined,
         dispatchObservations:
           orderForm.dispatchObservations.trim() || undefined,
+        baseCurrency: ORDER_BASE_CURRENCY,
+        exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+          commercialRatesToExchangeRatesInput(orderForm.exchangeRates),
+        ),
+        appliedStoreCreditUsd:
+          orderForm.appliedStoreCreditUsd > 0
+            ? orderForm.appliedStoreCreditUsd
+            : undefined,
       };
 
       setPendingOrderData(orderDataForConfirmation);

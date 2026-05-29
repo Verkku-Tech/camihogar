@@ -1,19 +1,36 @@
 /**
- * Conversión de abonos y total a USD alineada con OrderPaymentUsdConverter (backend).
+ * Conversión de abonos y total a USD alineada con order-payments y order-currency-display.
  */
-import type { Order, PartialPayment } from "@/lib/storage";
+import type { Order } from "@/lib/storage";
 import { normalizeExchangeRatesAtCreation } from "@/lib/currency-utils";
-import { getActivePaymentsList } from "@/lib/order-payments";
+import { getCommercialTotalUsd } from "@/lib/order-currency-display";
+import {
+  getActivePaymentsList,
+  PAYMENT_BALANCE_EPSILON_USD,
+  sumPaymentsToUsd,
+} from "@/lib/order-payments";
+import { isUsdBaseOrder } from "@/lib/order-line-pricing";
 
 export type OrderLikeForUsdCredit = Pick<
   Order,
-  "total" | "exchangeRatesAtCreation" | "paymentDetails" | "partialPayments" | "mixedPayments" | "paymentMethod"
+  | "total"
+  | "baseCurrency"
+  | "exchangeRatesAtCreation"
+  | "paymentDetails"
+  | "partialPayments"
+  | "mixedPayments"
+  | "paymentMethod"
+  | "appliedStoreCreditUsd"
 >;
 
-export function getBsPerUsdFromOrder(order: Pick<Order, "exchangeRatesAtCreation">): number {
+export function getBsPerUsdFromOrder(
+  order: Pick<Order, "exchangeRatesAtCreation">,
+): number {
   const n = normalizeExchangeRatesAtCreation(order.exchangeRatesAtCreation);
   const r = n?.USD?.rate ?? 0;
-  if (r <= 0) throw new Error("El pedido no tiene tasa USD (exchangeRatesAtCreation.USD.rate).");
+  if (r <= 0) {
+    throw new Error("El pedido no tiene tasa USD (exchangeRatesAtCreation.USD.rate).");
+  }
   return r;
 }
 
@@ -31,48 +48,56 @@ function convertAmountToUsd(
   if (cur.toUpperCase() === "EUR") {
     const n = normalizeExchangeRatesAtCreation(order.exchangeRatesAtCreation);
     const bsPerEur = n?.EUR?.rate ?? 0;
-    if (bsPerEur <= 0) throw new Error("El pedido no tiene tasa EUR para convertir el pago.");
+    if (bsPerEur <= 0) {
+      throw new Error("El pedido no tiene tasa EUR para convertir el pago.");
+    }
     const bs = amount * bsPerEur;
     return bs / bsPerUsd;
   }
 
-  const rate = paymentBsPerUsdOrNull != null && paymentBsPerUsdOrNull > 0 ? paymentBsPerUsdOrNull : bsPerUsd;
+  const rate =
+    paymentBsPerUsdOrNull != null && paymentBsPerUsdOrNull > 0
+      ? paymentBsPerUsdOrNull
+      : bsPerUsd;
   return amount / rate;
 }
 
-export function paymentLineToUsd(payment: PartialPayment, order: OrderLikeForUsdCredit): number {
-  const det = payment.paymentDetails;
-  const monto = det?.originalAmount ?? det?.cashReceived ?? payment.amount;
-  const mon = det?.originalCurrency ?? det?.cashCurrency ?? "Bs";
-  return convertAmountToUsd(monto ?? 0, mon, det?.exchangeRate, order);
-}
-
-export function mainPaymentToUsd(order: OrderLikeForUsdCredit): number {
+/** Fallback legacy: pago único sin lista de abonos. */
+function mainPaymentToUsd(order: OrderLikeForUsdCredit): number {
   const det = order.paymentDetails;
   const monto = det?.originalAmount ?? det?.cashReceived ?? order.total;
-  const mon = det?.originalCurrency ?? det?.cashCurrency ?? "Bs";
+  const mon =
+    det?.originalCurrency ??
+    det?.cashCurrency ??
+    (isUsdBaseOrder(order) ? "USD" : "Bs");
   return convertAmountToUsd(monto ?? 0, mon, det?.exchangeRate, order);
 }
 
 export function orderTotalToUsd(order: OrderLikeForUsdCredit): number {
-  return order.total / getBsPerUsdFromOrder(order);
+  return getCommercialTotalUsd(order);
 }
 
 export function sumPaymentsUsd(order: OrderLikeForUsdCredit): number {
   const list = getActivePaymentsList(order);
-  if (list.length > 0) return list.reduce((s, p) => s + paymentLineToUsd(p, order), 0);
+  if (list.length > 0) {
+    return sumPaymentsToUsd(list, order);
+  }
   if (order.paymentMethod?.trim()) return mainPaymentToUsd(order);
   return 0;
 }
 
 export function computeOverpaymentUsd(order: OrderLikeForUsdCredit): number {
-  const totalUsd = orderTotalToUsd(order);
+  const totalUsd = getCommercialTotalUsd(order);
   const paidUsd = sumPaymentsUsd(order);
-  const excess = paidUsd - totalUsd;
-  return excess > 0 ? Math.round(excess * 100) / 100 : 0;
+  const credit = order.appliedStoreCreditUsd ?? 0;
+  const excess = paidUsd + credit - totalUsd;
+  if (excess <= PAYMENT_BALANCE_EPSILON_USD) return 0;
+  return Math.round(excess * 100) / 100;
 }
 
-export function tryComputeOverpaymentUsd(order: OrderLikeForUsdCredit): number | null {
+export function tryComputeOverpaymentUsd(
+  order: OrderLikeForUsdCredit,
+): number | null {
   try {
     return computeOverpaymentUsd(order);
   } catch {
@@ -80,7 +105,10 @@ export function tryComputeOverpaymentUsd(order: OrderLikeForUsdCredit): number |
   }
 }
 
-export function appliedUsdToBs(appliedUsd: number, order: Pick<Order, "exchangeRatesAtCreation">): number {
+export function appliedUsdToBs(
+  appliedUsd: number,
+  order: Pick<Order, "exchangeRatesAtCreation">,
+): number {
   if (appliedUsd <= 0) return 0;
   return appliedUsd * getBsPerUsdFromOrder(order);
 }

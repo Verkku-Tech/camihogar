@@ -44,7 +44,19 @@ import {
   formatCurrency,
   type Currency,
   convertFromBs,
+  type ExchangeRatesAtCreationRaw,
 } from "@/lib/currency-utils";
+import {
+  commercialRatesToExchangeRatesInput,
+  formatDualCurrencyAmounts,
+  getCommercialRatesFromOrder,
+} from "@/lib/order-currency-display";
+import {
+  getOrderPendingTotal,
+  PAYMENT_BALANCE_EPSILON_USD,
+  sumPaymentsToUsd,
+} from "@/lib/order-payments";
+import { ORDER_BASE_CURRENCY } from "@/lib/order-line-pricing";
 import { getSaleTypeLabel } from "@/components/orders/constants";
 import { useCurrency } from "@/contexts/currency-context";
 import {
@@ -367,6 +379,9 @@ interface OrderConfirmationDialogProps {
       servicioArmado?: { enabled: boolean; cost: number; currency: Currency };
     };
     observations?: string;
+    baseCurrency?: Currency;
+    exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
+    appliedStoreCreditUsd?: number;
   };
   /** Textos del diálogo al convertir un presupuesto en pedido ORD. */
   isBudgetConversion?: boolean;
@@ -740,31 +755,40 @@ export function OrderConfirmationDialog({
     return currencies;
   };
 
-  // Función helper para renderizar celda de moneda con USD arriba y Bs abajo
-  const renderCurrencyCell = (amountInBs: number, className?: string) => {
-    // Intentar convertir a USD si hay tasa disponible
-    const usdRate = exchangeRates?.USD?.rate;
-    
-    if (usdRate && usdRate > 0) {
-      const amountInUsd = amountInBs / usdRate;
-      return (
-        <TableCell className={`text-right ${className || ""}`}>
-          <div className="font-medium">
-            {formatCurrency(amountInUsd, "USD")}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {formatCurrency(amountInBs, "Bs")}
-          </div>
-        </TableCell>
-      );
-    }
-    
-    // Si no hay tasa USD, mostrar solo en Bs
+  const baseCurrency = orderData.baseCurrency ?? ORDER_BASE_CURRENCY;
+  const commercialRatesInput = orderData.exchangeRatesAtCreation
+    ? commercialRatesToExchangeRatesInput(
+        getCommercialRatesFromOrder({
+          exchangeRatesAtCreation: orderData.exchangeRatesAtCreation,
+        }),
+      )
+    : commercialRatesToExchangeRatesInput({
+        USD: exchangeRates?.USD,
+        EUR: exchangeRates?.EUR,
+      });
+  const liveRatesInput = commercialRatesToExchangeRatesInput({
+    USD: exchangeRates?.USD,
+    EUR: exchangeRates?.EUR,
+  });
+
+  const paymentCtx = {
+    baseCurrency,
+    exchangeRatesAtCreation: orderData.exchangeRatesAtCreation,
+  };
+
+  const renderCurrencyCell = (amount: number, className?: string) => {
+    const formatted = formatDualCurrencyAmounts(amount, baseCurrency, {
+      commercialRates: commercialRatesInput,
+      liveRates: liveRatesInput,
+    });
     return (
       <TableCell className={`text-right ${className || ""}`}>
-        <div className="font-medium">
-          {formatCurrency(amountInBs, "Bs")}
-        </div>
+        <div className="font-medium">{formatted.primary}</div>
+        {formatted.secondary && (
+          <div className="text-xs text-muted-foreground">
+            {formatted.secondary}
+          </div>
+        )}
       </TableCell>
     );
   };
@@ -1012,16 +1036,18 @@ export function OrderConfirmationDialog({
 
       case "products": {
         const availableCurrenciesProducts = getAvailableCurrencies();
-        const paidInStoreProducts = orderData.payments.reduce(
-          (sum, p) => sum + (p.amount || 0),
-          0
-        );
         const isCasheaConfirmation = orderData.paymentCondition === "cashea";
-        const displayedPaidConfirmation = paidInStoreProducts;
-        const displayedRemainingConfirmation = Math.max(
-          0,
-          orderData.total - paidInStoreProducts,
+        const displayedPaidConfirmation = sumPaymentsToUsd(
+          orderData.payments,
+          paymentCtx,
         );
+        const displayedRemainingConfirmation = getOrderPendingTotal({
+          total: orderData.total,
+          partialPayments: orderData.payments,
+          baseCurrency,
+          exchangeRatesAtCreation: orderData.exchangeRatesAtCreation,
+          appliedStoreCreditUsd: orderData.appliedStoreCreditUsd,
+        });
         return (
           <Card>
             <CardHeader>
@@ -1282,7 +1308,8 @@ export function OrderConfirmationDialog({
                           </TableCell>
                           {renderCurrencyCell(
                             displayedRemainingConfirmation,
-                            displayedRemainingConfirmation < 0.01
+                            displayedRemainingConfirmation <
+                              PAYMENT_BALANCE_EPSILON_USD
                               ? "text-sm sm:text-base font-semibold text-green-600"
                               : "text-sm sm:text-base font-semibold"
                           )}
