@@ -50,9 +50,9 @@ import {
   commercialRatesToExchangeRatesInput,
   formatDualCurrencyAmounts,
   getCommercialRatesFromOrder,
+  getCommercialTotalUsd,
 } from "@/lib/order-currency-display";
 import {
-  getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_USD,
   sumPaymentsToUsd,
 } from "@/lib/order-payments";
@@ -793,6 +793,24 @@ export function OrderConfirmationDialog({
     );
   };
 
+  /** Cobros y saldo: montos en USD reales (no reinterpretar como Bs en pedidos legacy). */
+  const renderPaymentTotalCell = (amountUsd: number, className?: string) => {
+    const formatted = formatDualCurrencyAmounts(amountUsd, "USD", {
+      commercialRates: commercialRatesInput,
+      liveRates: liveRatesInput,
+    });
+    return (
+      <TableCell className={`text-right ${className || ""}`}>
+        <div className="font-medium">{formatted.primary}</div>
+        {formatted.secondary && (
+          <div className="text-xs text-muted-foreground">
+            {formatted.secondary}
+          </div>
+        )}
+      </TableCell>
+    );
+  };
+
   const currentStepIndex = steps.indexOf(currentStep);
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === steps.length - 1;
@@ -1010,13 +1028,14 @@ export function OrderConfirmationDialog({
           orderData.payments,
           paymentCtx,
         );
-        const displayedRemainingConfirmation = getOrderPendingTotal({
+        const totalUsdConfirmation = getCommercialTotalUsd({
           total: orderData.total,
-          partialPayments: orderData.payments,
           baseCurrency,
           exchangeRatesAtCreation: orderData.exchangeRatesAtCreation,
-          appliedStoreCreditUsd: orderData.appliedStoreCreditUsd,
         });
+        const creditUsdConfirmation = orderData.appliedStoreCreditUsd ?? 0;
+        const displayedRemainingConfirmationUsd =
+          totalUsdConfirmation - creditUsdConfirmation - displayedPaidConfirmation;
         return (
           <Card>
             <CardHeader>
@@ -1255,9 +1274,9 @@ export function OrderConfirmationDialog({
                               ? "Pago inicial en tienda:"
                               : "Total pagado:"}
                           </TableCell>
-                          {renderCurrencyCell(
+                          {renderPaymentTotalCell(
                             displayedPaidConfirmation,
-                            "font-semibold"
+                            "font-semibold",
                           )}
                         </TableRow>
 
@@ -1275,12 +1294,12 @@ export function OrderConfirmationDialog({
                               ? "Resto vía Cashea (se registrará al confirmar):"
                               : "Falta:"}
                           </TableCell>
-                          {renderCurrencyCell(
-                            displayedRemainingConfirmation,
-                            displayedRemainingConfirmation <
+                          {renderPaymentTotalCell(
+                            Math.abs(displayedRemainingConfirmationUsd),
+                            Math.abs(displayedRemainingConfirmationUsd) <
                               PAYMENT_BALANCE_EPSILON_USD
                               ? "text-sm sm:text-base font-semibold text-green-600"
-                              : "text-sm sm:text-base font-semibold"
+                              : "text-sm sm:text-base font-semibold",
                           )}
                         </TableRow>
                       </TableBody>
