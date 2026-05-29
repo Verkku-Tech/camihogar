@@ -41,10 +41,7 @@ import {
 } from "@/lib/order-document-types";
 import { Currency } from "@/lib/currency-utils";
 import { ORDER_BASE_CURRENCY } from "@/lib/order-line-pricing";
-import {
-  buildExchangeRatesAtCreationPayload,
-  commercialRatesToExchangeRatesInput,
-} from "@/lib/order-currency-display";
+import { buildExchangeRatesAtCreationPayload } from "@/lib/order-currency-display";
 import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
@@ -838,7 +835,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           orderForm.dispatchObservations.trim() || undefined,
         baseCurrency: ORDER_BASE_CURRENCY,
         exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
-          commercialRatesToExchangeRatesInput(orderForm.exchangeRates),
+          orderForm.exchangeRates,
         ),
         appliedStoreCreditUsd:
           orderForm.appliedStoreCreditUsd > 0
