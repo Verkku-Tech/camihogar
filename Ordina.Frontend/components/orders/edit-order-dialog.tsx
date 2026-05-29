@@ -951,6 +951,19 @@ export function EditOrderDialog({
             }
           : undefined,
         observations: orderForm.generalObservations.trim() || undefined,
+        baseCurrency: orderForm.formBaseCurrency,
+        exchangeRatesAtCreation: order
+          ? resolveExchangeRatesAtCreationForUpdate(
+              order,
+              orderForm.commercialExchangeRates,
+            )
+          : buildExchangeRatesAtCreationPayload(
+              orderForm.commercialExchangeRates,
+            ),
+        appliedStoreCreditUsd:
+          orderForm.appliedStoreCreditUsd > 0
+            ? orderForm.appliedStoreCreditUsd
+            : undefined,
       };
 
       setPendingOrderData(orderDataForConfirmation);
