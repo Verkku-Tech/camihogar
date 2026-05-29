@@ -28,6 +28,7 @@ import {
   DollarSign,
   Layers,
   Filter,
+  Loader2,
 } from "lucide-react";
 import {
   getProducts,
