@@ -216,7 +216,11 @@ export interface UseOrderFormReturn {
   generalDiscountAmount: number;
   total: number;
   totalPaidInBs: number;
+  /** Total cobrado en tienda en USD (resumen de pagos). */
+  totalPaidUsd: number;
   remainingAmount: number;
+  /** Saldo pendiente en USD (resumen de pagos). */
+  remainingAmountUsd: number;
   isPaymentsValid: boolean;
 
   /** Crédito de tienda (USD): saldo del cliente y monto a aplicar al pedido. */
@@ -270,6 +274,10 @@ export interface UseOrderFormReturn {
   ) => React.ReactElement;
   renderCurrencyCellNegative: (
     amountInBs: number,
+    className?: string,
+  ) => React.ReactElement;
+  renderPaymentTotalCell: (
+    amountUsd: number,
     className?: string,
   ) => React.ReactElement;
 
@@ -948,6 +956,9 @@ export function useOrderForm(
       }),
     [total, exchangeRates, appliedStoreCreditUsd, payments],
   );
+
+  const remainingAmountUsd = remainingAmount;
+
   const isPaymentsValid =
     paymentCondition === "pago_a_entrega" ||
     paymentCondition === "pagara_en_tienda"
@@ -1454,6 +1465,8 @@ export function useOrderForm(
     [commercialRatesInput, liveRatesInput],
   );
 
+  const renderPaymentTotalCell = renderCurrencyCell;
+
   // Cargar dirección del cliente cuando se activa delivery
   useEffect(() => {
     if (hasDelivery && selectedClient?.address && !formData.deliveryAddress) {
@@ -1541,7 +1554,9 @@ export function useOrderForm(
     generalDiscountAmount,
     total,
     totalPaidInBs,
+    totalPaidUsd: totalPaidInUsd,
     remainingAmount,
+    remainingAmountUsd,
     isPaymentsValid,
     appliedStoreCreditUsd,
     setAppliedStoreCreditUsd,
@@ -1572,6 +1587,7 @@ export function useOrderForm(
     calculateDeliveryCost,
     renderCurrencyCell,
     renderCurrencyCellNegative,
+    renderPaymentTotalCell,
     mockVendors: vendors,
     mockReferrers: referrers,
     needsDraftPrompt: draftResolution === "pending",

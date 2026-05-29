@@ -43,6 +43,7 @@ import {
   formatCommercialDualDisplay,
   formatDualCurrencyAmounts,
   getCommercialRatesFromOrder,
+  getCommercialTotalUsd,
   getFrozenCommercialTotalsFromOrder,
   shouldFreezeCommercialTotals,
 } from "@/lib/order-currency-display";
@@ -220,7 +221,11 @@ export interface UseOrderFormReturn {
   generalDiscountAmount: number;
   total: number;
   totalPaidInBs: number;
+  /** Total cobrado en tienda expresado en USD (para resumen de pagos). */
+  totalPaidUsd: number;
   remainingAmount: number;
+  /** Saldo pendiente en USD (display resumen de pagos en pedidos legacy). */
+  remainingAmountUsd: number;
   isPaymentsValid: boolean;
 
   appliedStoreCreditUsd: number;
@@ -271,6 +276,11 @@ export interface UseOrderFormReturn {
   ) => React.ReactElement;
   renderCurrencyCellNegative: (
     amountInBs: number,
+    className?: string,
+  ) => React.ReactElement;
+  /** Resumen de pagos: primario USD + Bs informativo (tasa viva). */
+  renderPaymentTotalCell: (
+    amountUsd: number,
     className?: string,
   ) => React.ReactElement;
 
@@ -968,16 +978,8 @@ export function useEditOrderForm(
   );
 
   useEffect(() => {
-    if (formUsesUsdTotals) {
-      setTotalPaidInBs(totalPaidInUsd);
-    } else {
-      let totalInBs = 0;
-      for (const payment of payments) {
-        totalInBs += payment.amount || 0;
-      }
-      setTotalPaidInBs(totalInBs);
-    }
-  }, [payments, formUsesUsdTotals, totalPaidInUsd]);
+    setTotalPaidInBs(totalPaidInUsd);
+  }, [totalPaidInUsd]);
 
   const casheaInStorePayments = payments.filter(
     (p) => !p.paymentDetails?.casheaFinancedPortion,
@@ -1012,6 +1014,23 @@ export function useEditOrderForm(
       appliedStoreCreditUsd,
       payments,
     ],
+  );
+
+  const totalUsd = useMemo(
+    () =>
+      getCommercialTotalUsd({
+        total,
+        baseCurrency: formBaseCurrency,
+        exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+          commercialExchangeRates,
+        ),
+      }),
+    [total, formBaseCurrency, commercialExchangeRates],
+  );
+
+  const remainingAmountUsd = useMemo(
+    () => totalUsd - appliedStoreCreditUsd - totalPaidInUsd,
+    [totalUsd, appliedStoreCreditUsd, totalPaidInUsd],
   );
   const isPaymentsValid =
     paymentCondition === "pago_a_entrega" ||
@@ -1405,6 +1424,26 @@ export function useEditOrderForm(
     [formBaseCurrency, commercialRatesInput, liveRatesInput],
   );
 
+  const renderPaymentTotalCell = useCallback(
+    (amountUsd: number, className?: string) => {
+      const formatted = formatDualCurrencyAmounts(amountUsd, "USD", {
+        commercialRates: commercialRatesInput,
+        liveRates: liveRatesInput,
+      });
+      return (
+        <div className={`text-right ${className || ""}`}>
+          <div className="font-medium">{formatted.primary}</div>
+          {formatted.secondary && (
+            <div className="text-xs text-muted-foreground">
+              {formatted.secondary}
+            </div>
+          )}
+        </div>
+      );
+    },
+    [commercialRatesInput, liveRatesInput],
+  );
+
   // Cargar dirección del cliente cuando se activa delivery
   useEffect(() => {
     if (hasDelivery && selectedClient?.address && !formData.deliveryAddress) {
@@ -1493,7 +1532,9 @@ export function useEditOrderForm(
     generalDiscountAmount,
     total,
     totalPaidInBs,
+    totalPaidUsd: totalPaidInUsd,
     remainingAmount,
+    remainingAmountUsd,
     isPaymentsValid,
     appliedStoreCreditUsd,
     setAppliedStoreCreditUsd,
@@ -1524,6 +1565,7 @@ export function useEditOrderForm(
     calculateDeliveryCost,
     renderCurrencyCell,
     renderCurrencyCellNegative,
+    renderPaymentTotalCell,
     mockVendors: vendors,
     mockReferrers: referrers,
     needsDraftPrompt: false,
