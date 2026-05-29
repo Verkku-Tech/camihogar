@@ -235,6 +235,58 @@ export function buildCasheaPaymentsForSave(
   return [...inStore, stub];
 }
 
+function casheaInStorePayments(payments: PartialPayment[]): PartialPayment[] {
+  return payments.filter(
+    (p) =>
+      !p.paymentDetails?.casheaFinancedPortion &&
+      p.method !== CASHEA_FINANCED_METHOD_LABEL,
+  );
+}
+
+/** Total a cubrir (inicial + financiación Cashea) en Bs para `buildCasheaPaymentsForSave`. */
+export function getCasheaTotalDueBs(options: {
+  totalDueUsd: number;
+  totalDueBsLegacy?: number;
+  useUsdTotals: boolean;
+  usdRate?: number | null;
+}): number {
+  const dueUsd = Math.max(0, options.totalDueUsd);
+  if (!options.useUsdTotals) {
+    return Math.max(0, options.totalDueBsLegacy ?? dueUsd);
+  }
+  const rate = options.usdRate;
+  if (rate && rate > 0) return dueUsd * rate;
+  return dueUsd;
+}
+
+/** true si los cobros en tienda superan el total del pedido (respeta USD comercial vs Bs legacy). */
+export function casheaInStorePaymentsExceedTotal(
+  payments: PartialPayment[],
+  options: {
+    totalDueUsd: number;
+    totalDueBsLegacy?: number;
+    useUsdTotals: boolean;
+    order?: PaymentOrderContext | null;
+    usdRate?: number | null;
+  },
+): boolean {
+  const inStore = casheaInStorePayments(payments);
+  if (options.useUsdTotals) {
+    const paidUsd = sumPaymentsToUsd(inStore, options.order);
+    const capUsd =
+      Math.max(0, options.totalDueUsd) + PAYMENT_BALANCE_EPSILON_USD;
+    return paidUsd > capUsd;
+  }
+  const capBs =
+    getCasheaTotalDueBs({
+      totalDueUsd: options.totalDueUsd,
+      totalDueBsLegacy: options.totalDueBsLegacy,
+      useUsdTotals: false,
+    }) + PAYMENT_BALANCE_EPSILON_BS;
+  const paidBs = inStore.reduce((s, p) => s + (p.amount || 0), 0);
+  return paidBs > capBs;
+}
+
 /** Suma solo lo cobrado en tienda (excluye la porción financiada automática en Cashea). */
 export function sumPaymentsInStoreBs(payments: PartialPayment[]): number {
   return payments.reduce((sum, p) => {

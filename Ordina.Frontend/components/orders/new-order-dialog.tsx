@@ -45,8 +45,8 @@ import { buildExchangeRatesAtCreationPayload } from "@/lib/order-currency-displa
 import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
-  PAYMENT_BALANCE_EPSILON_BS,
-  PAYMENT_BALANCE_EPSILON_USD,
+  casheaInStorePaymentsExceedTotal,
+  getCasheaTotalDueBs,
 } from "@/lib/order-payments";
 import { tryComputeOverpaymentUsd } from "@/lib/order-store-credit-usd";
 import { useCurrency } from "@/contexts/currency-context";
@@ -714,12 +714,22 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           }
         }
         if (orderForm.paymentCondition === "cashea") {
-          const p = orderForm.payments[0];
+          const paymentCtx = {
+            baseCurrency: ORDER_BASE_CURRENCY,
+            exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+              orderForm.exchangeRates,
+            ),
+          };
           if (
-            (p.amount || 0) >
-            orderForm.total -
-              orderForm.appliedStoreCreditUsd +
-              PAYMENT_BALANCE_EPSILON_USD
+            casheaInStorePaymentsExceedTotal(orderForm.payments, {
+              totalDueUsd: Math.max(
+                0,
+                orderForm.total - orderForm.appliedStoreCreditUsd,
+              ),
+              useUsdTotals: true,
+              order: paymentCtx,
+              usdRate: orderForm.exchangeRates.USD?.rate,
+            })
           ) {
             toast.error(
               "El monto del pago inicial no puede superar el total del pedido.",
@@ -863,12 +873,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           0,
           orderForm.total - orderForm.appliedStoreCreditUsd,
         );
-        const usdRate = orderForm.exchangeRates.USD?.rate;
-        const casheaTotalDueBs =
-          usdRate && usdRate > 0 ? dueUsd * usdRate : dueUsd;
         paymentsNorm = buildCasheaPaymentsForSave(
           paymentsNorm,
-          casheaTotalDueBs,
+          getCasheaTotalDueBs({
+            totalDueUsd: dueUsd,
+            useUsdTotals: true,
+            usdRate: orderForm.exchangeRates.USD?.rate,
+          }),
         );
       }
       const multi = paymentsNorm.length > 1;
