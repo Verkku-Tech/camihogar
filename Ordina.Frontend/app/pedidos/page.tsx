@@ -35,10 +35,13 @@ import {
   type Order,
 } from "@/lib/storage"
 import { buildClientFilterHaystack, digitsOnly } from "@/lib/order-client-search"
+import { getActiveExchangeRates } from "@/lib/currency-utils"
 import {
-  formatCurrencyWithUsdPrimaryFromOrder,
-  getActiveExchangeRates,
-} from "@/lib/currency-utils"
+  commercialRatesToExchangeRatesInput,
+  formatCommercialDualDisplay,
+  getCommercialRatesFromOrder,
+} from "@/lib/order-currency-display"
+import { getOrderBaseCurrency } from "@/lib/order-line-pricing"
 import { useAuth } from "@/contexts/auth-context"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
@@ -173,7 +176,7 @@ export default function PedidosPage() {
     loadOrders()
   }, [])
 
-  // Totales: USD (y Bs) con tasa del día del pedido; fallback a tasa activa solo si no hay tasa guardada
+  // Totales: misma lógica que detalle del pedido (baseCurrency USD vs legacy Bs)
   useEffect(() => {
     const updateTotals = async () => {
       if (orders.length === 0) {
@@ -182,13 +185,19 @@ export default function PedidosPage() {
       }
       const totals: Record<string, string> = {}
       const fallbackRates = await getActiveExchangeRates()
+      const live = commercialRatesToExchangeRatesInput({
+        USD: fallbackRates.USD,
+        EUR: fallbackRates.EUR,
+      })
       for (const order of orders) {
-        const formatted = await formatCurrencyWithUsdPrimaryFromOrder(
-          order.total,
-          order,
-          fallbackRates,
+        const baseCurrency = getOrderBaseCurrency(order)
+        const commercial = commercialRatesToExchangeRatesInput(
+          getCommercialRatesFromOrder(order),
         )
-        totals[order.id] = formatted
+        totals[order.id] = formatCommercialDualDisplay(order.total, baseCurrency, {
+          commercialRates: commercial,
+          liveRates: live,
+        })
       }
       setOrderTotals(totals)
     }

@@ -49,6 +49,20 @@ export function inferOrderBaseCurrency(
     }
   }
 
+  // API sin baseCurrency: pedidos nuevos guardan total en USD (ej. 330, 464).
+  // Legacy en Bs suele ser montos altos (ej. 200.177). Umbral separa ambos.
+  if (
+    order.exchangeRatesAtCreation &&
+    order.total != null &&
+    order.total > 0 &&
+    order.total <= 100_000
+  ) {
+    const n = normalizeExchangeRatesAtCreation(order.exchangeRatesAtCreation);
+    if (n?.USD?.rate && n.USD.rate > 0) {
+      return "USD";
+    }
+  }
+
   return "Bs";
 }
 
