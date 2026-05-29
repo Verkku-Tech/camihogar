@@ -37,7 +37,7 @@ import type { UseOrderFormReturn } from "../hooks/use-order-form";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import { toast } from "sonner";
 import { type ProductImage } from "@/lib/storage";
-import { PAYMENT_BALANCE_EPSILON_BS } from "@/lib/order-payments";
+import { PAYMENT_BALANCE_EPSILON_USD } from "@/lib/order-payments";
 import { formatPercentForDisplay } from "@/lib/product-discount-ui";
 import { ImageUploader } from "../ImageUploader";
 import {
@@ -3068,8 +3068,8 @@ export function Step3OrderDetails({
                         <TableCell className="text-xs sm:text-sm">
                           Total pagado (cobros en tienda):
                         </TableCell>
-                        {orderForm.renderCurrencyCell(
-                          orderForm.totalPaidInBs,
+                        {orderForm.renderPaymentTotalCell(
+                          orderForm.totalPaidUsd,
                           orderForm.isPaymentsValid
                             ? "text-green-600 font-semibold"
                             : "font-semibold",
@@ -3101,24 +3101,25 @@ export function Step3OrderDetails({
                         className={`font-semibold border-t ${
                           orderForm.isPaymentsValid
                             ? "text-green-600"
-                            : orderForm.remainingAmount > 0
+                            : orderForm.remainingAmountUsd > 0
                               ? "text-orange-600"
                               : "text-blue-600"
                         }`}
                       >
                         <TableCell className="text-sm sm:text-base">
-                          {orderForm.remainingAmount === 0
+                          {Math.abs(orderForm.remainingAmountUsd) <
+                          PAYMENT_BALANCE_EPSILON_USD
                             ? "Estado:"
-                            : orderForm.remainingAmount > 0
+                            : orderForm.remainingAmountUsd > 0
                               ? "Falta:"
                               : "Cambio/Vuelto:"}
                         </TableCell>
-                        {orderForm.renderCurrencyCell(
-                          Math.abs(orderForm.remainingAmount),
+                        {orderForm.renderPaymentTotalCell(
+                          Math.abs(orderForm.remainingAmountUsd),
                           `text-sm sm:text-base font-semibold ${
                             orderForm.isPaymentsValid
                               ? "text-green-600"
-                              : orderForm.remainingAmount > 0
+                              : orderForm.remainingAmountUsd > 0
                                 ? "text-orange-600"
                                 : "text-blue-600"
                           }`,
@@ -3126,8 +3127,8 @@ export function Step3OrderDetails({
                       </TableRow>
                     </TableBody>
                   </Table>
-                  {Math.abs(orderForm.remainingAmount) <
-                    PAYMENT_BALANCE_EPSILON_BS && (
+                  {Math.abs(orderForm.remainingAmountUsd) <
+                    PAYMENT_BALANCE_EPSILON_USD && (
                     <p className="text-xs text-green-600 text-center mt-2">
                       (Pagado completo)
                     </p>
