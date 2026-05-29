@@ -7,7 +7,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { getExpiredLayaways, type Order } from "@/lib/storage"
 import { getActivePaymentsList } from "@/lib/order-payments"
-import { formatCurrency, formatCurrencyWithUsdPrimaryFromOrder, getActiveExchangeRates } from "@/lib/currency-utils"
+import { formatCurrency, getActiveExchangeRates } from "@/lib/currency-utils"
+import {
+  commercialRatesToExchangeRatesInput,
+  formatOrderAmountForDisplay,
+} from "@/lib/order-currency-display"
 import { Eye, Download, AlertTriangle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
@@ -43,16 +47,19 @@ export function ExpiredLayawaysTable() {
       }
 
       try {
+        const rates = await getActiveExchangeRates()
+        const live = commercialRatesToExchangeRatesInput({
+          USD: rates.USD,
+          EUR: rates.EUR,
+        })
         const formatted: Record<string, string> = {}
-        const fallbackRates = await getActiveExchangeRates()
-        
+
         for (const order of expiredLayaways) {
-          const formattedAmount = await formatCurrencyWithUsdPrimaryFromOrder(
+          formatted[order.id] = formatOrderAmountForDisplay(
             order.pendingAmount,
             order,
-            fallbackRates
+            live,
           )
-          formatted[order.id] = formattedAmount
         }
         
         setFormattedAmounts(formatted)

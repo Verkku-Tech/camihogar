@@ -257,80 +257,8 @@ export const convertAttributeAdjustmentToBs = async (
   return convertProductPriceToBs(adjustment, currency, rates);
 };
 
-/**
- * Formatea un monto en USD como moneda principal, usando la tasa del pedido si está disponible
- * @param amountInBs - Monto en bolívares
- * @param orderOrBudget - Pedido o presupuesto que contiene exchangeRatesAtCreation
- * @param fallbackRates - Tasas de cambio activas actuales (opcional, se obtienen si no se proporcionan)
- * @returns String formateado como "USD (Bs)" o solo "USD" si no hay tasa
- */
-export const formatCurrencyWithUsdPrimaryFromOrder = async (
-  amountInBs: number,
-  orderOrBudget?: {
-    exchangeRatesAtCreation?: ExchangeRatesAtCreationNormalized | ExchangeRatesAtCreationRaw;
-  },
-  fallbackRates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
-): Promise<string> => {
-  let usdRate: number | null = null;
-
-  const fromOrder = normalizeExchangeRatesAtCreation(
-    orderOrBudget?.exchangeRatesAtCreation as ExchangeRatesAtCreationRaw
-  );
-  if (fromOrder?.USD?.rate && fromOrder.USD.rate > 0) {
-    usdRate = fromOrder.USD.rate;
-  }
-
-  // PRIORIDAD 2: Usar tasas activas actuales si no hay tasa del pedido
-  if (!usdRate) {
-    if (!fallbackRates) {
-      fallbackRates = await getActiveExchangeRates();
-    }
-    usdRate = fallbackRates?.USD?.rate || null;
-  }
-
-  // Si hay tasa, convertir y mostrar en USD
-  if (usdRate && usdRate > 0) {
-    const amountInUsd = amountInBs / usdRate;
-    const usdFormatted = formatCurrency(amountInUsd, "USD");
-    const bsFormatted = formatCurrency(amountInBs, "Bs");
-    return `${usdFormatted} (${bsFormatted})`;
-  }
-
-  // Si no hay tasa disponible, mostrar solo en Bs
-  return formatCurrency(amountInBs, "Bs");
-};
-
-/**
- * Total en USD solo (sin Bs entre paréntesis). Misma resolución de tasa que formatCurrencyWithUsdPrimaryFromOrder.
- */
-export const formatUsdOnlyFromOrderTotal = async (
-  amountInBs: number,
-  orderOrBudget?: {
-    exchangeRatesAtCreation?: ExchangeRatesAtCreationNormalized | ExchangeRatesAtCreationRaw;
-  },
-  fallbackRates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
-): Promise<string> => {
-  let usdRate: number | null = null;
-
-  const fromOrder = normalizeExchangeRatesAtCreation(
-    orderOrBudget?.exchangeRatesAtCreation as ExchangeRatesAtCreationRaw
-  );
-  if (fromOrder?.USD?.rate && fromOrder.USD.rate > 0) {
-    usdRate = fromOrder.USD.rate;
-  }
-
-  if (!usdRate) {
-    if (!fallbackRates) {
-      fallbackRates = await getActiveExchangeRates();
-    }
-    usdRate = fallbackRates?.USD?.rate || null;
-  }
-
-  if (usdRate && usdRate > 0) {
-    const amountInUsd = amountInBs / usdRate;
-    return formatCurrency(amountInUsd, "USD");
-  }
-
-  return formatCurrency(amountInBs, "Bs");
-};
+export {
+  formatCurrencyWithUsdPrimaryFromOrder,
+  formatUsdOnlyFromOrderTotal,
+} from "@/lib/order-currency-display";
 

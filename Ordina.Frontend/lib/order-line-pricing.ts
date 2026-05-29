@@ -4,6 +4,7 @@
  */
 import {
   formatCurrency,
+  normalizeExchangeRatesAtCreation,
   type Currency,
   type ExchangeRate,
   type ExchangeRatesAtCreationNormalized,

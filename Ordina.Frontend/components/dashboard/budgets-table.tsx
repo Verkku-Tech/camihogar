@@ -6,7 +6,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { getBudgets, Budget } from "@/lib/storage"
-import { formatCurrency, formatCurrencyWithUsdPrimaryFromOrder, getActiveExchangeRates } from "@/lib/currency-utils"
+import { formatCurrency, getActiveExchangeRates } from "@/lib/currency-utils"
+import {
+  commercialRatesToExchangeRatesInput,
+  formatOrderAmountForDisplay,
+} from "@/lib/order-currency-display"
 import { FileText, Calendar, Clock } from "lucide-react"
 
 function getStatusColor(status: string) {
@@ -60,16 +64,19 @@ export function BudgetsTable() {
       }
 
       try {
+        const rates = await getActiveExchangeRates()
+        const live = commercialRatesToExchangeRatesInput({
+          USD: rates.USD,
+          EUR: rates.EUR,
+        })
         const formatted: Record<string, string> = {}
-        const fallbackRates = await getActiveExchangeRates()
-        
+
         for (const budget of budgets) {
-          const formattedAmount = await formatCurrencyWithUsdPrimaryFromOrder(
+          formatted[budget.id] = formatOrderAmountForDisplay(
             budget.total,
             budget,
-            fallbackRates
+            live,
           )
-          formatted[budget.id] = formattedAmount
         }
         
         setFormattedAmounts(formatted)

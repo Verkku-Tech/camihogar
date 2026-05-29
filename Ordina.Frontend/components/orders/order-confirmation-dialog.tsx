@@ -793,37 +793,6 @@ export function OrderConfirmationDialog({
     );
   };
 
-  // Función helper para renderizar celdas de moneda con signo negativo (descuentos)
-  const renderCurrencyCellsNegative = (
-    amountInBs: number,
-    className?: string
-  ) => {
-    const availableCurrencies = getAvailableCurrencies();
-    return getCurrencyOrder().map((currency) => {
-      if (!availableCurrencies.includes(currency)) return null;
-
-      let amount = amountInBs;
-      let rate: number | undefined;
-
-      if (currency === "USD") {
-        rate = exchangeRates?.USD?.rate;
-        if (rate) amount = amountInBs / rate;
-      } else if (currency === "EUR") {
-        rate = exchangeRates?.EUR?.rate;
-        if (rate) amount = amountInBs / rate;
-      }
-
-      const defaultClass = className ? "" : "text-xs sm:text-sm";
-      const finalClass = className || defaultClass;
-
-      return (
-        <TableCell key={currency} className={`text-right ${finalClass}`}>
-          {currency !== "Bs" && !rate ? "-" : `-${formatCurrency(amount, currency)}`}
-        </TableCell>
-      );
-    });
-  };
-
   const currentStepIndex = steps.indexOf(currentStep);
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === steps.length - 1;

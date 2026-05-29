@@ -41,6 +41,10 @@ public class OrderResponseDto
     public string? DeliveryType { get; set; }
     public string? DeliveryZone { get; set; }
     public ExchangeRatesAtCreationDto? ExchangeRatesAtCreation { get; set; }
+
+    /// <summary>Moneda comercial del total: USD, Bs o EUR.</summary>
+    public string? BaseCurrency { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public string Type { get; set; } = "Order";
