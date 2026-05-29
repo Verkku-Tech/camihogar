@@ -7,6 +7,7 @@ import {
   type Currency,
   type ExchangeRate,
   type ExchangeRatesAtCreationNormalized,
+  type ExchangeRatesAtCreationRaw,
 } from "@/lib/currency-utils";
 import {
   calculateProductUnitPriceWithAttributes,
@@ -27,10 +28,39 @@ export function getLinePriceCurrency(line: OrderProduct): Currency {
   return line.priceCurrency ?? "Bs";
 }
 
-export function getOrderBaseCurrency(
-  order?: { baseCurrency?: Currency } | null,
+/** Infiere moneda base cuando el API no devuelve baseCurrency (pedidos nuevos en USD). */
+export function inferOrderBaseCurrency(
+  order?: {
+    baseCurrency?: Currency;
+    products?: { priceCurrency?: Currency }[];
+    exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
+    total?: number;
+  } | null,
 ): Currency {
-  return order?.baseCurrency ?? "Bs";
+  if (!order) return "Bs";
+  if (order.baseCurrency) return order.baseCurrency;
+
+  const lines = order.products ?? [];
+  if (lines.length > 0) {
+    const currencies = lines.map((l) => l.priceCurrency ?? "Bs");
+    if (currencies.every((c) => c === "USD")) return "USD";
+    if (currencies.some((c) => c === "USD") && !currencies.some((c) => c === "Bs")) {
+      return "USD";
+    }
+  }
+
+  return "Bs";
+}
+
+export function getOrderBaseCurrency(
+  order?: {
+    baseCurrency?: Currency;
+    products?: { priceCurrency?: Currency }[];
+    exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
+    total?: number;
+  } | null,
+): Currency {
+  return inferOrderBaseCurrency(order);
 }
 
 export function isUsdBaseOrder(

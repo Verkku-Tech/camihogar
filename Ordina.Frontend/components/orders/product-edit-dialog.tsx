@@ -37,6 +37,7 @@ import { getActiveExchangeRates, formatCurrency, type Currency } from "@/lib/cur
 import {
   convertAmountBetweenOrKeep,
   getLinePriceCurrency,
+  ORDER_BASE_CURRENCY,
 } from "@/lib/order-line-pricing";
 import { useCurrency } from "@/contexts/currency-context";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1295,21 +1296,15 @@ export function ProductEditDialog({
     const updateFormattedTotals = async () => {
       if (!product || !currentCategory) return;
 
-      // Usar el precio original del producto si está disponible, sino usar el precio convertido
-      let basePriceInBs = product.price;
-      if (originalProduct) {
-        const originalPrice = originalProduct.price;
-        const originalCurrency = originalProduct.priceCurrency || "Bs";
-        if (originalCurrency === "Bs") {
-          basePriceInBs = originalPrice;
-        } else if (originalCurrency === "USD" && exchangeRates?.USD?.rate) {
-          basePriceInBs = originalPrice * exchangeRates.USD.rate;
-        } else if (originalCurrency === "EUR" && exchangeRates?.EUR?.rate) {
-          basePriceInBs = originalPrice * exchangeRates.EUR.rate;
-        } else {
-          basePriceInBs = originalPrice;
-        }
-      }
+      const lineCurrency = (
+        mode === "add"
+          ? ORDER_BASE_CURRENCY
+          : originalProduct?.priceCurrency || product.priceCurrency || "Bs"
+      ) as Currency;
+      const basePriceNative = originalProduct?.price ?? product.price;
+      const basePriceCurrency = (
+        originalProduct?.priceCurrency || product.priceCurrency || "Bs"
+      ) as Currency;
 
       // Calcular ajustes detallados de atributos normales
       const attributeAdjustments = calculateDetailedAttributeAdjustments(
@@ -1330,14 +1325,17 @@ export function ProductEditDialog({
       );
       setDetailedAttributeAdjustments(formattedAttributeAdjustments);
 
-      // Calcular el precio base con ajustes normales
       const basePriceWithAdjustments = calculateProductUnitPriceWithAttributes(
-        basePriceInBs,
+        basePriceNative,
         attributes,
         currentCategory,
         exchangeRates,
         allProducts,
-        categories
+        categories,
+        {
+          targetCurrency: lineCurrency,
+          basePriceCurrency,
+        },
       );
 
       // Calcular ajustes detallados de productos-atributos
@@ -1428,34 +1426,45 @@ export function ProductEditDialog({
       }
       setDetailedProductAttributeAdjustments(productAttrAdjustments);
 
-      // Calcular sobreprecio en Bs (viene en USD)
-      let surchargeInBs = 0;
+      let surchargeNative = 0;
       if (surchargeEnabled && surchargeAmount > 0) {
-        const usdRate = exchangeRates?.USD?.rate;
-        surchargeInBs = usdRate && usdRate > 0 ? surchargeAmount * usdRate : surchargeAmount;
+        surchargeNative = convertAmountBetweenOrKeep(
+          surchargeAmount,
+          "USD",
+          lineCurrency,
+          exchangeRates,
+        );
       }
 
       const unitPrice = basePriceWithAdjustments;
-      const total = (unitPrice * quantity) + surchargeInBs;
-      const adjustment = basePriceWithAdjustments - basePriceInBs;
+      const total = unitPrice * quantity + surchargeNative;
+      const adjustment =
+        basePriceWithAdjustments -
+        convertAmountBetweenOrKeep(
+          basePriceNative,
+          basePriceCurrency,
+          lineCurrency,
+          exchangeRates,
+        );
 
-      // Guardar los valores calculados para usar en el render
-      setCalculatedBasePriceInBs(basePriceInBs);
+      setCalculatedBasePriceInBs(
+        convertAmountBetweenOrKeep(
+          basePriceNative,
+          basePriceCurrency,
+          lineCurrency,
+          exchangeRates,
+        ),
+      );
       setCalculatedBasePriceWithAdjustments(basePriceWithAdjustments);
       setCalculatedProductAttributesTotal(productAttributesTotal);
       setCalculatedUnitPrice(unitPrice);
       setCalculatedAdjustment(adjustment);
 
-      // Formatear en la moneda preferida
-      // Para el precio base, usar el precio original del producto con su moneda original
-      const basePriceToFormat = originalProduct 
-        ? originalProduct.price 
-        : product.price;
-      const basePriceCurrency = originalProduct?.priceCurrency || "Bs";
-      
+      const basePriceToFormat = basePriceNative;
+
       const [formattedTotal, formattedUnit, formattedBase] = await Promise.all([
-        formatWithPreference(total, "Bs"),
-        formatWithPreference(unitPrice, "Bs"),
+        formatWithPreference(total, lineCurrency),
+        formatWithPreference(unitPrice, lineCurrency),
         formatWithPreference(basePriceToFormat, basePriceCurrency),
       ]);
 
@@ -1469,7 +1478,7 @@ export function ProductEditDialog({
     if (product && currentCategory && allProducts.length > 0) {
       updateFormattedTotals();
     }
-  }, [product, quantity, attributes, currentCategory, productAttributes, exchangeRates, preferredCurrency, formatWithPreference, originalProduct, allProducts, categories, surchargeEnabled, surchargeAmount]);
+  }, [product, quantity, attributes, currentCategory, productAttributes, exchangeRates, preferredCurrency, formatWithPreference, originalProduct, allProducts, categories, surchargeEnabled, surchargeAmount, mode]);
 
   // Obtener la categoría del producto seleccionado para editar sus atributos
   const productCategoryForEdit = selectedProductForEdit
@@ -1659,13 +1668,13 @@ export function ProductEditDialog({
     }
 
     const lineCurrency = (
-      originalProduct?.priceCurrency ||
-      product.priceCurrency ||
-      "Bs"
+      mode === "add"
+        ? ORDER_BASE_CURRENCY
+        : originalProduct?.priceCurrency || product.priceCurrency || "Bs"
     ) as Currency;
     const basePrice = originalProduct ? originalProduct.price : product.price;
     const basePriceCurrency = (
-      originalProduct?.priceCurrency || getLinePriceCurrency(product)
+      originalProduct?.priceCurrency || product.priceCurrency || "Bs"
     ) as Currency;
 
     const unitPrice = calculateProductUnitPriceWithAttributes(
@@ -1677,7 +1686,7 @@ export function ProductEditDialog({
       categories,
       {
         targetCurrency: lineCurrency,
-        basePriceCurrency: basePriceCurrency,
+        basePriceCurrency,
       },
     );
 
@@ -1742,7 +1751,7 @@ export function ProductEditDialog({
     // Preservar locationStatus del producto original o establecer por defecto "DISPONIBILIDAD INMEDIATA"
     const updatedProduct: OrderProduct = {
       ...product,
-      price: basePrice,
+      price: unitPrice,
       priceCurrency: lineCurrency,
       quantity,
       total,
@@ -2338,20 +2347,32 @@ export function ProductEditDialog({
               const productAttributesTotal = calculatedProductAttributesTotal || 0;
               const unitPrice = calculatedUnitPrice || product.price;
               const adjustment = calculatedAdjustment || 0;
-              // Calcular sobreprecio en Bs
-              let surchargeInBs = 0;
+              const lineCurrencyDisplay = (
+                mode === "add"
+                  ? ORDER_BASE_CURRENCY
+                  : originalProduct?.priceCurrency ||
+                    product.priceCurrency ||
+                    "Bs"
+              ) as Currency;
+              let surchargeNativeDisplay = 0;
               if (surchargeEnabled && surchargeAmount > 0) {
-                const usdRate = exchangeRates?.USD?.rate;
-                surchargeInBs = usdRate && usdRate > 0 ? surchargeAmount * usdRate : surchargeAmount;
+                surchargeNativeDisplay = convertAmountBetweenOrKeep(
+                  surchargeAmount,
+                  "USD",
+                  lineCurrencyDisplay,
+                  exchangeRates,
+                );
               }
-              const total = (unitPrice * quantity) + surchargeInBs;
+              const total =
+                unitPrice * quantity + surchargeNativeDisplay;
 
               return (
                 <>
                   <div className="flex justify-between items-center">
                     <span className="font-medium">Total:</span>
                     <span className="text-lg font-semibold">
-                      {totalFormatted || formatCurrency(total, "Bs")}
+                      {totalFormatted ||
+                        formatCurrency(total, lineCurrencyDisplay)}
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground space-y-1">

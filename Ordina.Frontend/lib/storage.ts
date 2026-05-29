@@ -1,6 +1,8 @@
 import * as db from "./indexeddb";
 import type { Currency } from "./currency-utils";
 import { normalizeExchangeRatesAtCreation } from "./currency-utils";
+import { inferOrderBaseCurrency } from "./order-line-pricing";
+import { applyOrderCurrencyMetadata } from "./order-currency-display";
 import { apiClient } from "./api-client";
 import { generateUUID } from "./utils";
 import {
@@ -1966,7 +1968,8 @@ function paymentConditionFromOrderDto(
   return undefined;
 }
 
-export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
+export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
+  const mapped: Order = {
   id: dto.id,
   orderNumber:
     dto.orderNumber ??
@@ -2210,7 +2213,7 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   exchangeRatesAtCreation: normalizeExchangeRatesAtCreation(
     dto.exchangeRatesAtCreation,
   ),
-  baseCurrency: dto.baseCurrency,
+  baseCurrency: dto.baseCurrency as Order["baseCurrency"],
   dispatchDate: dto.dispatchDate,
   completedAt: dto.completedAt,
   appliedStoreCreditUsd:
@@ -2238,7 +2241,12 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   })),
   sourceReservationVendorId: dto.sourceReservationVendorId,
   sourceReservationVendorName: dto.sourceReservationVendorName,
-});
+  };
+  return {
+    ...mapped,
+    baseCurrency: mapped.baseCurrency ?? inferOrderBaseCurrency(mapped),
+  };
+};
 
 export const orderToBackendDto = (
   order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">,
@@ -2728,7 +2736,10 @@ export const addOrder = async (
     try {
       const createDto = orderToBackendDto(order);
       const backendOrder = await apiClient.createOrder(createDto);
-      newOrder = orderFromBackendDto(backendOrder);
+      newOrder = applyOrderCurrencyMetadata(
+        orderFromBackendDto(backendOrder),
+        order,
+      );
 
       console.log("✅ Pedido guardado en backend:", newOrder.orderNumber);
       syncedToBackend = true;
@@ -2747,14 +2758,17 @@ export const addOrder = async (
     const orders = await db.getAll<Order>("orders");
     const orderNumber = `ORD-${String(orders.length + 1).padStart(3, "0")}`;
 
-    newOrder = {
-      ...order,
-      id: Date.now().toString(),
-      orderNumber,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      status: order.status || "Generado", // Estado inicial para pedidos normales
-    };
+    newOrder = applyOrderCurrencyMetadata(
+      {
+        ...order,
+        id: Date.now().toString(),
+        orderNumber,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        status: order.status || "Generado", // Estado inicial para pedidos normales
+      } as Order,
+      order,
+    );
 
     // DEBUG: Verificar imágenes antes de guardar
     newOrder.products.forEach((p, idx) => {
