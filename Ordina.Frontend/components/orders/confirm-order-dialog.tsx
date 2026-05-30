@@ -41,8 +41,10 @@ import { PAYMENT_CONDITIONS } from "@/components/orders/new-order-dialog";
 import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
-  PAYMENT_BALANCE_EPSILON_BS,
+  casheaInStorePaymentsExceedTotal,
+  getCasheaTotalDueBs,
 } from "@/lib/order-payments";
+import { ORDER_BASE_CURRENCY } from "@/lib/order-line-pricing";
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
 import type { Currency } from "@/lib/currency-utils";
@@ -334,8 +336,20 @@ export function ConfirmOrderDialog({
       }
     }
     if (paymentCondition === "cashea") {
-      const paidSumBs = payments.reduce((s, p) => s + (p.amount || 0), 0);
-      if (paidSumBs > total + PAYMENT_BALANCE_EPSILON_BS) {
+      const usdRate =
+        exchangeRatesAtCreation?.USD?.rate ??
+        exchangeRatesAtCreation?.usd?.rate;
+      if (
+        casheaInStorePaymentsExceedTotal(payments, {
+          totalDueUsd: total,
+          useUsdTotals: true,
+          order: {
+            baseCurrency: ORDER_BASE_CURRENCY,
+            exchangeRatesAtCreation: exchangeRatesAtCreation ?? undefined,
+          },
+          usdRate,
+        })
+      ) {
         toast.error(
           "La suma de los cobros en tienda no puede superar el total del pedido.",
         );
@@ -366,7 +380,17 @@ export function ConfirmOrderDialog({
 
     let paymentsNorm = normalizePaymentsForSave(payments);
     if (paymentCondition === "cashea") {
-      paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, total);
+      const usdRate =
+        exchangeRatesAtCreation?.USD?.rate ??
+        exchangeRatesAtCreation?.usd?.rate;
+      paymentsNorm = buildCasheaPaymentsForSave(
+        paymentsNorm,
+        getCasheaTotalDueBs({
+          totalDueUsd: total,
+          useUsdTotals: true,
+          usdRate,
+        }),
+      );
     }
     const multi = paymentsNorm.length > 1;
 

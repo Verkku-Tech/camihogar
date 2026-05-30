@@ -40,10 +40,13 @@ import {
   ORDER_TYPE_RESERVATION,
 } from "@/lib/order-document-types";
 import { Currency } from "@/lib/currency-utils";
+import { ORDER_BASE_CURRENCY } from "@/lib/order-line-pricing";
+import { buildExchangeRatesAtCreationPayload } from "@/lib/order-currency-display";
 import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
-  PAYMENT_BALANCE_EPSILON_BS,
+  casheaInStorePaymentsExceedTotal,
+  getCasheaTotalDueBs,
 } from "@/lib/order-payments";
 import { tryComputeOverpaymentUsd } from "@/lib/order-store-credit-usd";
 import { useCurrency } from "@/contexts/currency-context";
@@ -135,7 +138,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     client: OrderFormSelectedClient;
     reservationDto: OrderResponseDto;
   } | null>(null);
-  const [reservationToOpen, setReservationToOpen] = useState<Order | null>(null);
+  const [reservationToOpen, setReservationToOpen] = useState<Order | null>(
+    null,
+  );
   const reservationPromptClosingForLoadRef = useRef(false);
 
   const applySelectedClientToForm = (client: OrderFormSelectedClient) => {
@@ -160,8 +165,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         p.id === updatedProduct.id
           ? {
               ...updatedProduct,
-              locationStatus:
-                updatedProduct.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+              locationStatus: updatedProduct.locationStatus, //?? "DISPONIBILIDAD INMEDIATA",
             }
           : p,
       ),
@@ -411,7 +415,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         observations: orderForm.generalObservations.trim() || undefined,
         dispatchObservations:
           orderForm.dispatchObservations.trim() || undefined,
-        baseCurrency: preferredCurrency,
+        baseCurrency: ORDER_BASE_CURRENCY,
         exchangeRatesAtCreation: orderForm.exchangeRates,
         validForDays: 30,
       };
@@ -560,7 +564,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         observations: orderForm.generalObservations.trim() || undefined,
         dispatchObservations:
           orderForm.dispatchObservations.trim() || undefined,
-        baseCurrency: preferredCurrency,
+        baseCurrency: ORDER_BASE_CURRENCY,
         exchangeRatesAtCreation: orderForm.exchangeRates,
         productMarkups: orderForm.productMarkups,
         createSupplierOrder: orderForm.createSupplierOrder,
@@ -710,12 +714,22 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           }
         }
         if (orderForm.paymentCondition === "cashea") {
-          const p = orderForm.payments[0];
+          const paymentCtx = {
+            baseCurrency: ORDER_BASE_CURRENCY,
+            exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+              orderForm.exchangeRates,
+            ),
+          };
           if (
-            (p.amount || 0) >
-            orderForm.total -
-              orderForm.appliedCreditBsApprox +
-              PAYMENT_BALANCE_EPSILON_BS
+            casheaInStorePaymentsExceedTotal(orderForm.payments, {
+              totalDueUsd: Math.max(
+                0,
+                orderForm.total - orderForm.appliedStoreCreditUsd,
+              ),
+              useUsdTotals: true,
+              order: paymentCtx,
+              usdRate: orderForm.exchangeRates.USD?.rate,
+            })
           ) {
             toast.error(
               "El monto del pago inicial no puede superar el total del pedido.",
@@ -830,6 +844,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         observations: orderForm.generalObservations.trim() || undefined,
         dispatchObservations:
           orderForm.dispatchObservations.trim() || undefined,
+        baseCurrency: ORDER_BASE_CURRENCY,
+        exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+          orderForm.exchangeRates,
+        ),
+        appliedStoreCreditUsd:
+          orderForm.appliedStoreCreditUsd > 0
+            ? orderForm.appliedStoreCreditUsd
+            : undefined,
       };
 
       setPendingOrderData(orderDataForConfirmation);
@@ -847,13 +869,17 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (orderForm.paymentCondition === "cashea") {
-        const casheaTotalDueBs = Math.max(
+        const dueUsd = Math.max(
           0,
-          orderForm.total - orderForm.appliedCreditBsApprox,
+          orderForm.total - orderForm.appliedStoreCreditUsd,
         );
         paymentsNorm = buildCasheaPaymentsForSave(
           paymentsNorm,
-          casheaTotalDueBs,
+          getCasheaTotalDueBs({
+            totalDueUsd: dueUsd,
+            useUsdTotals: true,
+            usdRate: orderForm.exchangeRates.USD?.rate,
+          }),
         );
       }
       const multi = paymentsNorm.length > 1;
@@ -999,7 +1025,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         observations: orderForm.generalObservations.trim() || undefined,
         dispatchObservations:
           orderForm.dispatchObservations.trim() || undefined,
-        baseCurrency: "Bs",
+        baseCurrency: ORDER_BASE_CURRENCY,
         exchangeRatesAtCreation: {
           USD: orderForm.exchangeRates.USD
             ? {

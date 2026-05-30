@@ -27,6 +27,17 @@ import { toast } from "sonner"
 import { getUnifiedOrders, getCategories, updateOrder, type UnifiedOrder, type OrderProduct, type Category, type AttributeValue } from "@/lib/storage"
 import { isSistemaApartado } from "@/lib/order-sa"
 import { useCurrency } from "@/contexts/currency-context"
+import { getActiveExchangeRates } from "@/lib/currency-utils"
+import {
+  commercialRatesToExchangeRatesInput,
+  formatCommercialDualDisplay,
+  formatOrderAmountForDisplay,
+  getCommercialRatesFromOrder,
+} from "@/lib/order-currency-display"
+import {
+  getLinePriceCurrency,
+  type ExchangeRatesInput,
+} from "@/lib/order-line-pricing"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import { DELIVERY_TYPES, DELIVERY_ZONES } from "@/components/orders/new-order-dialog"
@@ -173,7 +184,7 @@ export default function DespachosPage() {
   const { user } = useAuth()
   const canMutateDispatchStatus =
     user?.role === "Super Administrator" || user?.role === "Administrator"
-  const { formatWithPreference, preferredCurrency, exchangeRates } = useCurrency()
+  const { exchangeRates } = useCurrency()
   const router = useRouter()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -328,17 +339,21 @@ export default function DespachosPage() {
 
   useEffect(() => {
     const updateTotals = async () => {
+      const rates = await getActiveExchangeRates()
+      const live = commercialRatesToExchangeRatesInput({
+        USD: rates.USD,
+        EUR: rates.EUR,
+      })
       const totals: Record<string, string> = {}
       for (const order of orders) {
-        const formatted = await formatWithPreference(order.total, "Bs")
-        totals[order.id] = formatted
+        totals[order.id] = formatOrderAmountForDisplay(order.total, order, live)
       }
       setOrderTotals(totals)
     }
     if (orders.length > 0) {
-      updateTotals()
+      void updateTotals()
     }
-  }, [orders, preferredCurrency, formatWithPreference])
+  }, [orders])
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
@@ -409,7 +424,18 @@ export default function DespachosPage() {
     const rows: string[][] = []
     try {
       for (const { order, product } of deliveredRows) {
-        const precioVenta = await formatWithPreference(product.total, "Bs")
+        const commercial = commercialRatesToExchangeRatesInput(
+          getCommercialRatesFromOrder(order),
+        )
+        const live: ExchangeRatesInput = {
+          USD: exchangeRates?.USD,
+          EUR: exchangeRates?.EUR,
+        }
+        const precioVenta = formatCommercialDualDisplay(
+          product.total,
+          getLinePriceCurrency(product),
+          { commercialRates: commercial, liveRates: live },
+        )
         rows.push([
           order.orderNumber,
           order.clientName,
@@ -445,7 +471,7 @@ export default function DespachosPage() {
       console.error("Error exportando CSV de despachados:", error)
       toast.error("No se pudo generar el CSV")
     }
-  }, [deliveredRows, formatWithPreference])
+  }, [deliveredRows, exchangeRates])
 
   // Paginación: por pedido (almacén / en ruta) o por fila entregada (despachados)
   const ordersPagination = usePagination({
@@ -491,26 +517,32 @@ export default function DespachosPage() {
     if (pageRows.length === 0) return
 
     let cancelled = false
-    const run = async () => {
+    const run = () => {
+      const live: ExchangeRatesInput = {
+        USD: exchangeRates?.USD,
+        EUR: exchangeRates?.EUR,
+      }
       const next: Record<string, string> = {}
       for (const { order, product } of pageRows) {
         const k = `${order.id}|${product.id}`
-        next[k] = await formatWithPreference(product.total, "Bs")
+        const commercial = commercialRatesToExchangeRatesInput(
+          getCommercialRatesFromOrder(order),
+        )
+        next[k] = formatCommercialDualDisplay(
+          product.total,
+          getLinePriceCurrency(product),
+          { commercialRates: commercial, liveRates: live },
+        )
       }
       if (!cancelled) {
         setLineTotalLabels((prev) => ({ ...prev, ...next }))
       }
     }
-    void run()
+    run()
     return () => {
       cancelled = true
     }
-  }, [
-    activeTab,
-    deliveredPageLineTotalsSignature,
-    preferredCurrency,
-    formatWithPreference,
-  ])
+  }, [activeTab, deliveredPageLineTotalsSignature, exchangeRates])
 
   // Manejar selección individual de productos relevantes a la pestaña
   const handleToggleSelect = (orderId: string) => {

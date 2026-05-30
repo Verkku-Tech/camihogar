@@ -1,6 +1,12 @@
 import * as db from "./indexeddb";
 import type { Currency } from "./currency-utils";
 import { normalizeExchangeRatesAtCreation } from "./currency-utils";
+import { inferOrderBaseCurrency } from "./order-line-pricing";
+import {
+  applyOrderCurrencyMetadata,
+  getCommercialTotalUsd,
+  getOrderPendingUsd,
+} from "./order-currency-display";
 import { apiClient } from "./api-client";
 import { generateUUID } from "./utils";
 import {
@@ -1654,6 +1660,8 @@ export interface OrderProduct {
   id: string;
   name: string;
   price: number;
+  /** Moneda en la que están expresados price y total de la línea. Legacy: omitido = Bs. */
+  priceCurrency?: Currency;
   quantity: number;
   total: number;
   category: string;
@@ -1676,6 +1684,7 @@ export interface OrderProduct {
   refabricationHistory?: RefabricationRecord[]; // Historial de refabricaciones
   // Estado de ubicación del producto
   locationStatus?:
+    | "SELECCIONAR ESTADO"
     | "DISPONIBILIDAD INMEDIATA"
     | "EN TIENDA"
     | "FABRICACION"
@@ -1990,7 +1999,8 @@ function paymentConditionFromOrderDto(
   return undefined;
 }
 
-export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
+export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
+  const mapped: Order = {
   id: dto.id,
   orderNumber:
     dto.orderNumber ??
@@ -2009,6 +2019,9 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     id: p.id,
     name: p.name,
     price: p.price,
+    priceCurrency: (p as { priceCurrency?: Currency }).priceCurrency as
+      | Currency
+      | undefined,
     quantity: p.quantity,
     total: p.total,
     category: p.category,
@@ -2231,7 +2244,7 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   exchangeRatesAtCreation: normalizeExchangeRatesAtCreation(
     dto.exchangeRatesAtCreation,
   ),
-  baseCurrency: dto.baseCurrency,
+  baseCurrency: dto.baseCurrency as Order["baseCurrency"],
   dispatchDate: dto.dispatchDate,
   completedAt: dto.completedAt,
   appliedStoreCreditUsd:
@@ -2244,6 +2257,9 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
     id: p.id,
     name: p.name,
     price: p.price,
+    priceCurrency: (p as { priceCurrency?: Currency }).priceCurrency as
+      | Currency
+      | undefined,
     quantity: p.quantity,
     total: p.total,
     category: p.category,
@@ -2256,7 +2272,12 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => ({
   })),
   sourceReservationVendorId: dto.sourceReservationVendorId,
   sourceReservationVendorName: dto.sourceReservationVendorName,
-});
+  };
+  return {
+    ...mapped,
+    baseCurrency: mapped.baseCurrency ?? inferOrderBaseCurrency(mapped),
+  };
+};
 
 export const orderToBackendDto = (
   order: Omit<Order, "id" | "orderNumber" | "createdAt" | "updatedAt">,
@@ -2273,6 +2294,7 @@ export const orderToBackendDto = (
     id: p.id,
     name: p.name,
     price: p.price,
+    priceCurrency: p.priceCurrency,
     quantity: p.quantity,
     total: p.total,
     category: p.category,
@@ -2436,6 +2458,7 @@ export const orderToBackendDto = (
   deliveryZone: order.deliveryZone,
   deliveryServices: order.deliveryServices,
   exchangeRatesAtCreation: order.exchangeRatesAtCreation,
+  baseCurrency: order.baseCurrency,
   type: order.type ?? "Order",
   ...(order.appliedStoreCreditUsd != null && order.appliedStoreCreditUsd > 0
     ? { appliedStoreCreditUsd: order.appliedStoreCreditUsd }
@@ -2862,8 +2885,7 @@ export const getOrdersByStatus = async (status: string): Promise<Order[]> => {
 
 const sortOrdersByCreatedDesc = (list: Order[]): Order[] =>
   [...list].sort(
-    (a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
 
 const dedupeReservationOrders = (list: Order[]): Order[] => {
@@ -2969,7 +2991,10 @@ export const addOrder = async (
     try {
       const createDto = orderToBackendDto(order);
       const backendOrder = await apiClient.createOrder(createDto);
-      newOrder = orderFromBackendDto(backendOrder);
+      newOrder = applyOrderCurrencyMetadata(
+        orderFromBackendDto(backendOrder),
+        order,
+      );
 
       console.log("✅ Pedido guardado en backend:", newOrder.orderNumber);
       syncedToBackend = true;
@@ -2988,14 +3013,17 @@ export const addOrder = async (
     const orders = await db.getAll<Order>("orders");
     const orderNumber = nextOfflineOrderNumber(orders);
 
-    newOrder = {
-      ...order,
-      id: newLocalOrderId(),
-      orderNumber,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      status: order.status || "Generado", // Estado inicial para pedidos normales
-    };
+    newOrder = applyOrderCurrencyMetadata(
+      {
+        ...order,
+        id: Date.now().toString(),
+        orderNumber,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        status: order.status || "Generado", // Estado inicial para pedidos normales
+      } as Order,
+      order,
+    );
 
     // DEBUG: Verificar imágenes antes de guardar
     newOrder.products.forEach((p, idx) => {
@@ -3108,6 +3136,7 @@ export const updateOrder = async (
                     id: p.id,
                     name: p.name,
                     price: p.price,
+                    priceCurrency: p.priceCurrency,
                     quantity: p.quantity,
                     total: p.total,
                     category: p.category,
@@ -3445,6 +3474,7 @@ export const updateOrder = async (
             id: p.id,
             name: p.name,
             price: p.price,
+            priceCurrency: p.priceCurrency,
             quantity: p.quantity,
             total: p.total,
             category: p.category,
@@ -4031,38 +4061,24 @@ export const calculateDashboardMetrics = async (
     return total + sumPayments;
   }, 0);
 
-  // 4. Abonos por recaudar (Deuda actual general de órdenes activas)
+  const isActiveForPending = (status: string) =>
+    status === "Generado" ||
+    status === "Generada" ||
+    status === "Fabricación" ||
+    status === "Por despachar";
+
+  // 4. Abonos por recaudar (deuda en USD comercial)
   const pendingPayments = orders.reduce((total, order) => {
-    if (
-      order.status === "Generado" ||
-      order.status === "Generada" ||
-      order.status === "Fabricación" ||
-      order.status === "Por despachar"
-    ) {
-      const paidAmount =
-        order.partialPayments?.reduce(
-          (sum, payment) => sum + (payment.amount || 0),
-          0,
-        ) || 0;
-      return total + Math.max(0, order.total - paidAmount);
+    if (isActiveForPending(order.status)) {
+      return total + getOrderPendingUsd(order);
     }
     return total;
   }, 0);
 
   const previousPendingPayments = previousPeriodOrders.reduce(
     (total, order) => {
-      if (
-        order.status === "Generado" ||
-        order.status === "Generada" ||
-        order.status === "Fabricación" ||
-        order.status === "Por despachar"
-      ) {
-        const paidAmount =
-          order.partialPayments?.reduce(
-            (sum, payment) => sum + (payment.amount || 0),
-            0,
-          ) || 0;
-        return total + Math.max(0, order.total - paidAmount);
+      if (isActiveForPending(order.status)) {
+        return total + getOrderPendingUsd(order);
       }
       return total;
     },
@@ -4099,7 +4115,7 @@ export const calculateDashboardMetrics = async (
 
   const expiredLayawaysCount = expiredLayawaysOrders.length;
   const expiredLayawaysAmount = expiredLayawaysOrders.reduce(
-    (total, order) => total + getOrderPendingTotal(order),
+    (total, order) => total + getOrderPendingUsd(order),
     0,
   );
 
@@ -4125,14 +4141,14 @@ export const calculateDashboardMetrics = async (
   }, 0);
 
   // Promedio de pedidos completados (Por despachar o Completada) - Métrica existente
-  const completedOrdersTotal = periodOrders
+  const completedOrdersTotalUsd = periodOrders
     .filter(
       (order) =>
         order.status === "Por despachar" || order.status === "Completada",
     )
-    .reduce((sum, order) => sum + order.total, 0);
+    .reduce((sum, order) => sum + getCommercialTotalUsd(order), 0);
   const averageOrderValue =
-    completedOrders > 0 ? completedOrdersTotal / completedOrders : 0;
+    completedOrders > 0 ? completedOrdersTotalUsd / completedOrders : 0;
 
   return {
     completedOrders,
@@ -5458,6 +5474,40 @@ export const calculateProductTotalWithAttributes = (
  * @param exchangeRates - Tasas de cambio para convertir ajustes de atributos (opcional)
  * @returns Precio unitario calculado (precio base + ajustes de atributos convertidos)
  */
+export type CalculateUnitPriceOptions = {
+  /** Moneda del basePrice (default Bs, legacy). */
+  basePriceCurrency?: Currency;
+  /** Moneda del resultado (default Bs, legacy). */
+  targetCurrency?: Currency;
+};
+
+const convertAdjustmentToTarget = (
+  adjustment: number,
+  fromCurrency: string | undefined,
+  targetCurrency: Currency,
+  exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } },
+): number => {
+  const from = (fromCurrency || "Bs") as Currency;
+  if (from === targetCurrency) return adjustment;
+
+  let amountInBs = adjustment;
+  if (from !== "Bs") {
+    const fromRate =
+      from === "USD" ? exchangeRates?.USD?.rate : exchangeRates?.EUR?.rate;
+    if (!fromRate || fromRate <= 0) return adjustment;
+    amountInBs = adjustment * fromRate;
+  }
+
+  if (targetCurrency === "Bs") return amountInBs;
+
+  const toRate =
+    targetCurrency === "USD"
+      ? exchangeRates?.USD?.rate
+      : exchangeRates?.EUR?.rate;
+  if (!toRate || toRate <= 0) return adjustment;
+  return amountInBs / toRate;
+};
+
 export const calculateProductUnitPriceWithAttributes = (
   basePrice: number,
   productAttributes: Record<string, string | number | string[]> | undefined,
@@ -5465,24 +5515,34 @@ export const calculateProductUnitPriceWithAttributes = (
   exchangeRates?: { USD?: any; EUR?: any },
   allProducts: Product[] = [],
   categories: Category[] = [],
+  options?: CalculateUnitPriceOptions,
 ): number => {
+  const targetCurrency: Currency = options?.targetCurrency ?? "Bs";
+  const basePriceCurrency: Currency = options?.basePriceCurrency ?? "Bs";
+
+  let normalizedBase = basePrice;
+  if (basePriceCurrency !== targetCurrency) {
+    normalizedBase = convertAdjustmentToTarget(
+      basePrice,
+      basePriceCurrency,
+      targetCurrency,
+      exchangeRates,
+    );
+  }
+
   if (!productAttributes || !category || !category.attributes) {
-    return basePrice;
+    return normalizedBase;
   }
 
   let totalAdjustment = 0;
 
-  // Función helper para convertir ajuste a Bs
-  const convertAdjustment = (adjustment: number, currency?: string): number => {
-    if (!currency || currency === "Bs") return adjustment;
-    if (currency === "USD" && exchangeRates?.USD?.rate) {
-      return adjustment * exchangeRates.USD.rate;
-    }
-    if (currency === "EUR" && exchangeRates?.EUR?.rate) {
-      return adjustment * exchangeRates.EUR.rate;
-    }
-    return adjustment; // Si no hay tasa, usar valor original
-  };
+  const convertAdjustment = (adjustment: number, currency?: string): number =>
+    convertAdjustmentToTarget(
+      adjustment,
+      currency,
+      targetCurrency,
+      exchangeRates,
+    );
 
   Object.entries(productAttributes).forEach(([attrKey, selectedValue]) => {
     const categoryAttribute = category.attributes.find(
@@ -5504,26 +5564,19 @@ export const calculateProductUnitPriceWithAttributes = (
           (p) => p.id === productIdNum || p.backendId === productId.toString(),
         );
         if (foundProduct) {
-          // Convertir precio del producto a Bs
-          let pPrice = foundProduct.price;
-          if (
-            foundProduct.priceCurrency &&
-            foundProduct.priceCurrency !== "Bs" &&
-            exchangeRates
-          ) {
-            if (foundProduct.priceCurrency === "USD" && exchangeRates.USD?.rate)
-              pPrice *= exchangeRates.USD.rate;
-            else if (
-              foundProduct.priceCurrency === "EUR" &&
-              exchangeRates.EUR?.rate
-            )
-              pPrice *= exchangeRates.EUR.rate;
-          }
+          const pCurrency = (foundProduct.priceCurrency || "Bs") as Currency;
+          const pPrice = convertAdjustmentToTarget(
+            foundProduct.price,
+            pCurrency,
+            targetCurrency,
+            exchangeRates,
+          );
           totalAdjustment += pPrice;
 
-          // Sumar ajustes de los atributos del sub-producto si están presentes en productAttributes
           const subAttrKey = `${attrKey}_${foundProduct.id}`;
-          const subAttrs = (productAttributes as any)[subAttrKey];
+          const subAttrs = (productAttributes as Record<string, unknown>)[
+            subAttrKey
+          ] as Record<string, string | number | string[]> | undefined;
           if (subAttrs) {
             const subCategory = categories.find(
               (c) => c.name === foundProduct.category,
@@ -5536,6 +5589,7 @@ export const calculateProductUnitPriceWithAttributes = (
                 exchangeRates,
                 allProducts,
                 categories,
+                { targetCurrency, basePriceCurrency: targetCurrency },
               );
             }
           }
@@ -5571,7 +5625,6 @@ export const calculateProductUnitPriceWithAttributes = (
         }
       });
     } else {
-      // Manejar valores simples (selección única)
       const selectedValueStr = selectedValue.toString();
       const attributeValue = categoryAttribute.values.find((val) => {
         if (typeof val === "string") {
@@ -5592,7 +5645,7 @@ export const calculateProductUnitPriceWithAttributes = (
     }
   });
 
-  return basePrice + totalAdjustment;
+  return normalizedBase + totalAdjustment;
 };
 
 // ===== USERS STORAGE (IndexedDB) =====

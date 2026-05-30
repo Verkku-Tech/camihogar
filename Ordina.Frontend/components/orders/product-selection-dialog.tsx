@@ -1,26 +1,58 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Label } from "@/components/ui/label"
-import { Search, Plus, Package, DollarSign, Layers, Filter, Loader2 } from "lucide-react"
+import { useState, useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  Search,
+  Plus,
+  Package,
+  DollarSign,
+  Layers,
+  Filter,
+  Loader2,
+} from "lucide-react";
 import {
   getProducts,
+  getOrders,
   getCategories,
   type OrderProduct,
   type Product,
   type Category,
-} from "@/lib/storage"
-import { ProductEditDialog } from "@/components/orders/product-edit-dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getActiveExchangeRates, convertProductPriceToBs, formatCurrency, type Currency } from "@/lib/currency-utils"
-import { useCurrency } from "@/contexts/currency-context"
-import { toast } from "sonner"
+} from "@/lib/storage";
+import { ProductEditDialog } from "@/components/orders/product-edit-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  getActiveExchangeRates,
+  formatCurrency,
+  type Currency,
+} from "@/lib/currency-utils";
+import { useCurrency } from "@/contexts/currency-context";
+import { toast } from "sonner";
 
 interface ProductSelectionDialogProps {
   open: boolean
@@ -126,273 +158,283 @@ export function ProductSelectionDialog({
   // Actualizar precios cuando cambien los productos o la moneda preferida
   useEffect(() => {
     const updatePrices = async () => {
-      const prices: Record<number, string> = {}
+      const prices: Record<number, string> = {};
       for (const product of products) {
-        const formatted = await formatWithPreference(product.price, product.priceCurrency || "Bs")
-        prices[product.id] = formatted
+        const formatted = await formatWithPreference(
+          product.price,
+          product.priceCurrency || "Bs",
+        );
+        prices[product.id] = formatted;
       }
-      setProductPrices(prices)
-    }
+      setProductPrices(prices);
+    };
     if (products.length > 0) {
-      updatePrices()
+      updatePrices();
     }
-  }, [products, preferredCurrency])
+  }, [products, preferredCurrency]);
 
   // Filtrar y ordenar productos
   const filteredAndSortedProducts = products
     .filter((product) => {
       // Filtro por búsqueda
-      const searchTerms = searchTerm.toLowerCase().trim().split(/\s+/).filter(Boolean)
-      const matchesSearch = searchTerms.length === 0 || searchTerms.every(term => 
-        product.name.toLowerCase().includes(term) ||
-        product.category.toLowerCase().includes(term) ||
-        (product.sku && product.sku.toLowerCase().includes(term))
-      )
-      
+      const searchTerms = searchTerm
+        .toLowerCase()
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      const matchesSearch =
+        searchTerms.length === 0 ||
+        searchTerms.every(
+          (term) =>
+            product.name.toLowerCase().includes(term) ||
+            product.category.toLowerCase().includes(term) ||
+            (product.sku && product.sku.toLowerCase().includes(term)),
+        );
+
       // Filtro por categoría
       const matchesCategory =
-        selectedCategory === "all" || product.category === selectedCategory
+        selectedCategory === "all" || product.category === selectedCategory;
 
-      return matchesSearch && matchesCategory
+      return matchesSearch && matchesCategory;
     })
     .sort((a, b) => {
       // Ordenar por ventas (mayor a menor)
-      const salesA = productSales[a.id.toString()] || 0
-      const salesB = productSales[b.id.toString()] || 0
-      return salesB - salesA
-    })
+      const salesA = productSales[a.id.toString()] || 0;
+      const salesB = productSales[b.id.toString()] || 0;
+      return salesB - salesA;
+    });
 
   // Resetear página al filtrar
   useEffect(() => {
-    setCurrentPage(1)
-  }, [searchTerm, selectedCategory])
+    setCurrentPage(1);
+  }, [searchTerm, selectedCategory]);
 
-  const totalPages = Math.ceil(filteredAndSortedProducts.length / ITEMS_PER_PAGE)
+  const totalPages = Math.ceil(
+    filteredAndSortedProducts.length / ITEMS_PER_PAGE,
+  );
   const paginatedProducts = filteredAndSortedProducts.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  )
+    currentPage * ITEMS_PER_PAGE,
+  );
   const handleQuantityChange = (productId: string, quantity: number) => {
     setQuantities((prev) => ({
       ...prev,
       [productId]: Math.max(0, quantity),
-    }))
-  }
+    }));
+  };
 
   const handleAddProduct = async (product: Product) => {
-    const productBaseId = product.id.toString()
-    const quantity = quantities[productBaseId] || 1
-    
+    const productBaseId = product.id.toString();
+    const quantity = quantities[productBaseId] || 1;
+
     // Generar ID único para esta instancia del producto
     // Formato: {productId}-{timestamp}-{randomString}
     // Esto permite agregar el mismo producto múltiples veces con diferentes atributos
-    const uniqueId = `${productBaseId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    
+    const uniqueId = `${productBaseId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     const cloneAttributes = (attrs?: Record<string, any>) => {
-      if (!attrs) return {}
-      const cloned: Record<string, any> = {}
+      if (!attrs) return {};
+      const cloned: Record<string, any> = {};
       Object.entries(attrs).forEach(([key, value]) => {
         if (Array.isArray(value)) {
-          cloned[key] = [...value]
+          cloned[key] = [...value];
         } else if (value && typeof value === "object") {
-          cloned[key] = { ...value }
+          cloned[key] = { ...value };
         } else {
-          cloned[key] = value
+          cloned[key] = value;
         }
-      })
-      return cloned
-    }
-    const mergedAttributes = cloneAttributes(product.attributes)
-    
-    // Convertir precio del producto a Bs si está en otra moneda
-    const productCurrency = product.priceCurrency || "Bs"
-    const priceInBs = await convertProductPriceToBs(
-      product.price,
-      productCurrency,
-      exchangeRates
-    )
+      });
+      return cloned;
+    };
+    const mergedAttributes = cloneAttributes(product.attributes);
 
-    if (priceInBs === null) {
-      toast.error(
-        "No hay tasa de cambio activa para USD/EUR. Configura la tasa BCV antes de agregar este producto al pedido.",
-      )
-      return
-    }
+    const productCurrency = (product.priceCurrency || "Bs") as Currency;
 
-    // Preparar producto y abrir modal de edición
-    // IMPORTANTE: Guardamos el precio convertido a Bs para todos los cálculos
     const newProduct: OrderProduct = {
-      id: uniqueId, // ID único para esta instancia
+      id: uniqueId,
       name: product.name,
-      price: priceInBs, // Precio ya convertido a Bs
+      price: product.price,
+      priceCurrency: productCurrency,
       quantity,
-      total: priceInBs * quantity,
+      total: product.price * quantity,
       category: product.category,
-      stock: 0, // Los productos se crean bajo demanda, no hay stock
+      stock: 0,
       attributes: mergedAttributes,
-      discount: 0, // Inicializar sin descuento
-      locationStatus: "DISPONIBILIDAD INMEDIATA", // Establecer por defecto "DISPONIBILIDAD INMEDIATA"
-    }
-    
-    setProductToEdit(newProduct)
-    setIsEditDialogOpen(true)
-  }
+      discount: 0,
+      locationStatus: "SELECCIONAR ESTADO",
+      catalogProductId: product.backendId ?? product.id.toString(),
+    };
+
+    setProductToEdit(newProduct);
+    setIsEditDialogOpen(true);
+  };
 
   const handleConfirmAdd = (product: OrderProduct) => {
     // Siempre agregar como nueva instancia ya que cada producto tiene un ID único
     // Esto permite agregar el mismo producto múltiples veces con diferentes atributos
-    const updatedProducts = [...selectedProducts, product]
+    const updatedProducts = [...selectedProducts, product];
 
-    onProductsSelect(updatedProducts)
-    setIsEditDialogOpen(false)
-    setProductToEdit(null)
-    
+    onProductsSelect(updatedProducts);
+    setIsEditDialogOpen(false);
+    setProductToEdit(null);
+
     // Resetear cantidad para este producto base (extraer ID base antes del primer guión)
-    const productBaseId = product.id.split('-')[0]
-    setQuantities((prev) => ({ ...prev, [productBaseId]: 1 }))
-  }
+    const productBaseId = product.id.split("-")[0];
+    setQuantities((prev) => ({ ...prev, [productBaseId]: 1 }));
+  };
 
   const isProductSelected = (productId: string) => {
     // Verificar si algún producto seleccionado tiene este ID base
     // Los IDs únicos tienen formato: {productId}-{timestamp}-{random}
     // Extraemos el ID base (antes del primer guión) para comparar
     return selectedProducts.some((p) => {
-      const baseId = p.id.split('-')[0]
-      return baseId === productId
-    })
-  }
+      const baseId = p.id.split("-")[0];
+      return baseId === productId;
+    });
+  };
 
   const getSelectedQuantity = (productId: string) => {
     // Contar la cantidad total de este producto (puede haber múltiples instancias)
     // Los IDs únicos tienen formato: {productId}-{timestamp}-{random}
     // Sumamos las cantidades de todas las instancias que coinciden con este ID base
     const matchingProducts = selectedProducts.filter((p) => {
-      const baseId = p.id.split('-')[0]
-      return baseId === productId
-    })
-    return matchingProducts.reduce((sum, p) => sum + (p.quantity || 0), 0)
-  }
+      const baseId = p.id.split("-")[0];
+      return baseId === productId;
+    });
+    return matchingProducts.reduce((sum, p) => sum + (p.quantity || 0), 0);
+  };
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-4xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4">
           <DialogHeader className="pb-2 sm:pb-4">
-            <DialogTitle className="text-lg sm:text-xl">Seleccionar Productos</DialogTitle>
+            <DialogTitle className="text-lg sm:text-xl">
+              Seleccionar Productos
+            </DialogTitle>
             <DialogDescription>
               Busca y selecciona los productos que deseas agregar al pedido
             </DialogDescription>
           </DialogHeader>
 
-        <div className="space-y-3 sm:space-y-4">
-          {/* Filtros: Búsqueda y Categoría */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              placeholder="Buscar productos..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-full"
-              />
-            </div>
-            <div className="w-full sm:w-[200px]">
-              <div className="relative">
-                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 z-10" />
-                <Select
-                  value={selectedCategory}
-                  onValueChange={setSelectedCategory}
-                >
-                  <SelectTrigger className="w-full pl-10">
-                    <SelectValue placeholder="Todas las categorías" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas las categorías</SelectItem>
-                    {categories
-                      .filter((category) => category.name && category.name.trim() !== "")
-                      .map((category) => (
-                        <SelectItem key={category.id} value={category.name}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+          <div className="space-y-3 sm:space-y-4">
+            {/* Filtros: Búsqueda y Categoría */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="Buscar productos..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 w-full"
+                />
+              </div>
+              <div className="w-full sm:w-[200px]">
+                <div className="relative">
+                  <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 z-10" />
+                  <Select
+                    value={selectedCategory}
+                    onValueChange={setSelectedCategory}
+                  >
+                    <SelectTrigger className="w-full pl-10">
+                      <SelectValue placeholder="Todas las categorías" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las categorías</SelectItem>
+                      {categories
+                        .filter(
+                          (category) =>
+                            category.name && category.name.trim() !== "",
+                        )
+                        .map((category) => (
+                          <SelectItem key={category.id} value={category.name}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Vista de tarjetas para móvil */}
-          <div className="space-y-3 sm:hidden">
-            {paginatedProducts.map((product) => {
-              const productId = product.id.toString()
-              const quantity = quantities[productId] || 1
-              const isSelected = isProductSelected(productId)
-              const selectedQty = getSelectedQuantity(productId)
-              
-              return (
-                <Card key={product.id} className="p-4">
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <div className="font-medium text-base mb-1">{product.name}</div>
-                        <Badge variant="outline" className="text-xs">
-                          {product.category}
-                        </Badge>
-                      </div>
-                      {isSelected && (
-                        <Badge className="bg-green-100 text-green-800 text-xs">
-                          {selectedQty} unidades
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    <div className="grid grid-cols-1 gap-3 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4" />
-                        <span>
-                          {formatCurrency(product.price, product.priceCurrency || "Bs")}
-                          {product.priceCurrency && product.priceCurrency !== "Bs" && (
-                            <span className="text-xs text-muted-foreground ml-1">
-                              (se convertirá a Bs)
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    </div>
+            {/* Vista de tarjetas para móvil */}
+            <div className="space-y-3 sm:hidden">
+              {paginatedProducts.map((product) => {
+                const productId = product.id.toString();
+                const quantity = quantities[productId] || 1;
+                const isSelected = isProductSelected(productId);
+                const selectedQty = getSelectedQuantity(productId);
 
-                    <div className="space-y-2">
-                      <Label htmlFor={`qty-${productId}`} className="text-sm">
-                        Cantidad
-                      </Label>
-                      <Input
-                        id={`qty-${productId}`}
-                        type="number"
-                        min="1"
-                        value={quantity}
-                        onChange={(e) =>
-                          handleQuantityChange(
-                            productId,
-                            Number.parseInt(e.target.value) || 1,
-                          )
-                        }
+                return (
+                  <Card key={product.id} className="p-4">
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <div className="font-medium text-base mb-1">
+                            {product.name}
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {product.category}
+                          </Badge>
+                        </div>
+                        {isSelected && (
+                          <Badge className="bg-green-100 text-green-800 text-xs">
+                            {selectedQty} unidades
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="w-4 h-4" />
+                          <span>
+                            {formatCurrency(
+                              product.price,
+                              product.priceCurrency || "Bs",
+                            )}
+                            {product.priceCurrency &&
+                              product.priceCurrency !== "Bs" && (
+                                <span className="text-xs text-muted-foreground ml-1">
+                                  (se convertirá a Bs)
+                                </span>
+                              )}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor={`qty-${productId}`} className="text-sm">
+                          Cantidad
+                        </Label>
+                        <Input
+                          id={`qty-${productId}`}
+                          type="number"
+                          min="1"
+                          value={quantity}
+                          onChange={(e) =>
+                            handleQuantityChange(
+                              productId,
+                              Number.parseInt(e.target.value) || 1,
+                            )
+                          }
+                          className="w-full"
+                        />
+                      </div>
+
+                      <Button
+                        onClick={() => handleAddProduct(product)}
+                        variant="default"
                         className="w-full"
-                      />
+                        size="sm"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Agregar
+                      </Button>
                     </div>
-
-                    <Button
-                      onClick={() => handleAddProduct(product)}
-                      variant="default"
-                      className="w-full"
-                      size="sm"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Agregar
-                    </Button>
-                  </div>
-                </Card>
-              )
-            })}
-          </div>
+                  </Card>
+                );
+              })}
+            </div>
 
           {/* Vista de tabla para desktop */}
           <div className="hidden sm:block overflow-x-auto">
@@ -473,43 +515,48 @@ export function ProductSelectionDialog({
             </div>
           )}
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between py-2 border-t mt-4 pt-4">
-              <span className="text-sm text-muted-foreground">
-                Página {currentPage} de {totalPages}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Anterior
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  Siguiente
-                </Button>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between py-2 border-t mt-4 pt-4">
+                <span className="text-sm text-muted-foreground">
+                  Página {currentPage} de {totalPages}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Anterior
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {selectedProducts.length > 0 && (
-            <div className="p-3 sm:p-4 bg-muted rounded-lg">
-              <div className="text-xs sm:text-sm font-medium">
-                Productos seleccionados: {selectedProducts.length}
+            {selectedProducts.length > 0 && (
+              <div className="p-3 sm:p-4 bg-muted rounded-lg">
+                <div className="text-xs sm:text-sm font-medium">
+                  Productos seleccionados: {selectedProducts.length}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
           <div className="flex justify-end pt-3 sm:pt-4 border-t">
-            <Button onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
+            <Button
+              onClick={() => onOpenChange(false)}
+              className="w-full sm:w-auto"
+            >
               Cerrar
             </Button>
           </div>
@@ -524,5 +571,5 @@ export function ProductSelectionDialog({
         mode="add"
       />
     </>
-  )
+  );
 }
