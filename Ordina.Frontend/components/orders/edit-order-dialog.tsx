@@ -218,8 +218,10 @@ export function EditOrderDialog({
   const orderForm = useEditOrderForm(open, order);
   const isPaymentsOnly = mode === "payments";
   const isConfirmingReservation = mode === "confirm-reservation";
-  const isStoreSellerConfirming =
-    isConfirmingReservation && user?.role === "Store Seller";
+  // PIN DESHABILITADO TEMPORALMENTE - vendedores de tienda pueden editar libremente
+  // const isStoreSellerConfirming =
+  //   isConfirmingReservation && user?.role === "Store Seller";
+  const isStoreSellerConfirming = false;
   const pinSession = usePinSession(
     order?.id ?? null,
     isStoreSellerConfirming && open,
@@ -1471,6 +1473,7 @@ export function EditOrderDialog({
               </Button>
 
               <div className="flex flex-col sm:flex-row gap-3">
+                {/* OCULTO TEMPORALMENTE - creación de presupuestos desde paso 1
                 {orderForm.currentStep === 1 && (
                   <Button
                     onClick={handleCreateBudget}
@@ -1482,6 +1485,7 @@ export function EditOrderDialog({
                     Presupuesto
                   </Button>
                 )}
+                */}
 
                 {orderForm.currentStep < 3 ? (
                   <Button

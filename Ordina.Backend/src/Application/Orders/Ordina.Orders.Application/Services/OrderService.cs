@@ -314,15 +314,15 @@ public class OrderService : IOrderService
         else
             finalProducts = CloneOrderProducts(pcf.Products);
 
-        var structureChanged = HasProductStructureChanges(baseline, finalProducts);
-
-        if (structureChanged && !IsAdministratorOrSuperAdministrator(callerRole))
-        {
-            var hasSession = await _accessPinService.HasActiveSessionAsync(pendingOrderId, userId);
-            if (!hasSession)
-                throw new ArgumentException(
-                    "Se requiere PIN de acceso para modificar productos de la reserva. Solicita un PIN al administrador.");
-        }
+        // PIN DESHABILITADO TEMPORALMENTE - vendedores de tienda pueden confirmar reservas con cambios de productos sin PIN
+        // var structureChanged = HasProductStructureChanges(baseline, finalProducts);
+        // if (structureChanged && !IsAdministratorOrSuperAdministrator(callerRole))
+        // {
+        //     var hasSession = await _accessPinService.HasActiveSessionAsync(pendingOrderId, userId);
+        //     if (!hasSession)
+        //         throw new ArgumentException(
+        //             "Se requiere PIN de acceso para modificar productos de la reserva. Solicita un PIN al administrador.");
+        // }
 
         CommissionLineClassifier.ClassifyLines(baseline, finalProducts);
 
