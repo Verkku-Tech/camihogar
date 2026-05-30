@@ -1473,6 +1473,7 @@ export function EditOrderDialog({
               </Button>
 
               <div className="flex flex-col sm:flex-row gap-3">
+                {/* OCULTO TEMPORALMENTE - creación de presupuestos desde paso 1
                 {orderForm.currentStep === 1 && (
                   <Button
                     onClick={handleCreateBudget}
@@ -1484,6 +1485,7 @@ export function EditOrderDialog({
                     Presupuesto
                   </Button>
                 )}
+                */}
 
                 {orderForm.currentStep < 3 ? (
                   <Button
