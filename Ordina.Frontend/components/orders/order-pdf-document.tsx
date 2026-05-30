@@ -7,10 +7,7 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 import type { Order, Client, PartialPayment } from "@/lib/storage";
-import {
-  getActivePaymentsList,
-  getOrderPendingTotal,
-} from "@/lib/order-payments";
+import { getActivePaymentsList } from "@/lib/order-payments";
 import {
   formatCurrency,
   normalizeExchangeRatesAtCreation,
@@ -27,6 +24,8 @@ import {
   formatDualCurrencyAmounts,
   getCommercialRatesFromOrder,
   getDisplayBaseCurrency,
+  getOrderPaidUsd,
+  getOrderPendingUsd,
 } from "@/lib/order-currency-display";
 
 /** Ajuste en UI o variables de entorno según tienda; valores por defecto para encabezado del PDF. */
@@ -316,8 +315,8 @@ export function OrderPdfDocument({
   const payments = getActivePaymentsList(order);
   const usdRate = getUsdRateFromOrder(order);
   const orderBaseCurrency = getDisplayBaseCurrency(order);
-  const pendingAmount = getOrderPendingTotal(order);
-  const paidAmount = Math.max(0, order.total - pendingAmount);
+  const pendingAmountUsd = getOrderPendingUsd(order);
+  const paidAmountUsd = getOrderPaidUsd(order);
 
   const addressForDelivery =
     order.deliveryAddress?.trim() ||
@@ -474,17 +473,17 @@ export function OrderPdfDocument({
           <View style={styles.totalRow}>
             <Text>Pagado</Text>
             <OrderAmountBlock
-              amount={paidAmount}
+              amount={paidAmountUsd}
               order={order}
-              currency={orderBaseCurrency}
+              currency="USD"
             />
           </View>
           <View style={styles.totalRow}>
             <Text>Resta por pagar</Text>
             <OrderAmountBlock
-              amount={pendingAmount}
+              amount={pendingAmountUsd}
               order={order}
-              currency={orderBaseCurrency}
+              currency="USD"
             />
           </View>
         </View>

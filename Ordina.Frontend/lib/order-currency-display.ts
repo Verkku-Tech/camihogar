@@ -18,7 +18,9 @@ import {
   type ExchangeRatesInput,
 } from "@/lib/order-line-pricing";
 import {
+  getActivePaymentsList,
   getOrderPendingTotal,
+  sumPaymentsToUsd,
   type PartialMixedPaymentsSource,
 } from "@/lib/order-payments";
 import type { Order, OrderProduct } from "@/lib/storage";
@@ -240,7 +242,17 @@ export function getCommercialTotalUsd(order: {
   return order.total;
 }
 
-/** Saldo pendiente en USD comercial. */
+/** Total cobrado en tienda en USD (respeta originalCurrency / cashReceived por pago). */
+export function getOrderPaidUsd(
+  order: PartialMixedPaymentsSource & {
+    baseCurrency?: Currency;
+    exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
+  },
+): number {
+  return sumPaymentsToUsd(getActivePaymentsList(order), order);
+}
+
+/** Saldo pendiente en USD comercial (total USD − crédito − pagado USD). */
 export function getOrderPendingUsd(
   order: PartialMixedPaymentsSource & {
     total: number;
@@ -249,15 +261,33 @@ export function getOrderPendingUsd(
     appliedStoreCreditUsd?: number;
   },
 ): number {
-  const pending = getOrderPendingTotal(order);
-  if (isUsdBaseOrder(order)) return pending;
-  const rate = getUsdRate(
-    commercialRatesToExchangeRatesInput(
-      getCommercialRatesFromOrder(order),
-    ),
+  if (isUsdBaseOrder(order)) {
+    return getOrderPendingTotal(order);
+  }
+  const credit = order.appliedStoreCreditUsd ?? 0;
+  const totalUsd = getCommercialTotalUsd(order);
+  const paidUsd = getOrderPaidUsd(order);
+  return Math.max(0, totalUsd - credit - paidUsd);
+}
+
+/** Formato dual para montos de pago/saldo: primario USD real + Bs informativo (tasa viva). */
+export function formatOrderPaymentUsdForDisplay(
+  amountUsd: number,
+  order?: {
+    exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
+  } | null,
+  liveRates?: ExchangeRatesInput,
+): string {
+  const commercial = commercialRatesToExchangeRatesInput(
+    getCommercialRatesFromOrder(order),
   );
-  if (rate && rate > 0) return pending / rate;
-  return 0;
+  const live =
+    liveRates ??
+    commercialRatesToExchangeRatesInput(getCommercialRatesFromOrder(order));
+  return formatCommercialDualDisplay(amountUsd, "USD", {
+    commercialRates: commercial,
+    liveRates: live,
+  });
 }
 
 function lineSnapshotKey(p: OrderProduct): string {
