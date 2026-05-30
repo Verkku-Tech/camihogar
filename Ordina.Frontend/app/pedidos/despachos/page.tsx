@@ -182,8 +182,12 @@ function AttributesGrid({ pairs, productName }: AttributesGridProps) {
 
 export default function DespachosPage() {
   const { user } = useAuth()
+  const isOnlineSeller = user?.role === "Online Seller"
   const canMutateDispatchStatus =
-    user?.role === "Super Administrator" || user?.role === "Administrator"
+    user?.role === "Super Administrator" ||
+    user?.role === "Administrator" ||
+    isOnlineSeller
+  const canOnlyDispatchToRoute = isOnlineSeller
   const { exchangeRates } = useCurrency()
   const router = useRouter()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
@@ -916,7 +920,10 @@ export default function DespachosPage() {
                         <Truck className="mr-2 h-4 w-4" /> Despachar Seleccionados ({selectedOrders.size})
                       </Button>
                     )}
-                    {canMutateDispatchStatus && selectedOrders.size > 0 && activeTab === "en_despacho" && (
+                    {canMutateDispatchStatus &&
+                      !canOnlyDispatchToRoute &&
+                      selectedOrders.size > 0 &&
+                      activeTab === "en_despacho" && (
                       <div className="flex gap-2 w-full sm:w-auto mt-4 sm:mt-0">
                         <Button onClick={() => handleBulkActionClick("to_delivered")} className="bg-green-600 hover:bg-green-700">
                           <CheckCircle className="mr-2 h-4 w-4" /> Entregar ({selectedOrders.size})
@@ -1133,7 +1140,10 @@ export default function DespachosPage() {
                                       <Truck className="w-3 h-3 mr-1" /> A Ruta
                                     </Button>
                                   )}
-                                  {activeTab === "en_despacho" && activeProducts.length > 0 && canMutateDispatchStatus && (
+                                  {activeTab === "en_despacho" &&
+                                    activeProducts.length > 0 &&
+                                    canMutateDispatchStatus &&
+                                    !canOnlyDispatchToRoute && (
                                     <>
                                       <Button
                                         variant="ghost"

@@ -1610,7 +1610,6 @@ export default function OrderDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {/* Información del Cliente - Agrupada */}
                     <div>
                       <p className="text-sm text-muted-foreground">Cliente</p>
                       <p className="font-medium">{order.clientName}</p>
@@ -1620,33 +1619,26 @@ export default function OrderDetailPage() {
                         </p>
                       )}
                     </div>
-                    {client?.telefono && (
+                    {order.saleType && (
                       <div>
                         <p className="text-sm text-muted-foreground">
-                          Teléfono del cliente
+                          Tipo de Venta
                         </p>
-                        <p className="font-medium">{client.telefono}</p>
+                        <p className="font-medium">
+                          {getSaleTypeLabel(order.saleType)}
+                        </p>
                       </div>
                     )}
-                    {client?.email && (
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          Email del cliente
-                        </p>
-                        <p className="font-medium">{client.email}</p>
-                      </div>
-                    )}
-                    {/* Información del Vendedor y otros - Agrupada */}
                     <div>
                       <p className="text-sm text-muted-foreground">Vendedor</p>
                       <p className="font-medium">{order.vendorName}</p>
                     </div>
-                    {order.referrerName && (
+                    {client?.telefono && (
                       <div>
                         <p className="text-sm text-muted-foreground">
-                          Referidor
+                          Teléfono
                         </p>
-                        <p className="font-medium">{order.referrerName}</p>
+                        <p className="font-medium">{client.telefono}</p>
                       </div>
                     )}
                     {order.paymentCondition && (
@@ -1661,14 +1653,20 @@ export default function OrderDetailPage() {
                         </p>
                       </div>
                     )}
-                    {order.saleType && (
+                    {order.referrerName && (
                       <div>
                         <p className="text-sm text-muted-foreground">
-                          Tipo de Venta
+                          Referidor
                         </p>
-                        <p className="font-medium">
-                          {getSaleTypeLabel(order.saleType)}
+                        <p className="font-medium">{order.referrerName}</p>
+                      </div>
+                    )}
+                    {client?.direccion && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Dirección
                         </p>
+                        <p className="font-medium">{client.direccion}</p>
                       </div>
                     )}
                     <div>
@@ -1677,14 +1675,6 @@ export default function OrderDetailPage() {
                       </p>
                       <p className="font-medium">{order.paymentMethod}</p>
                     </div>
-                    {client?.direccion && (
-                      <div className="col-span-2 md:col-span-3">
-                        <p className="text-sm text-muted-foreground">
-                          Dirección del cliente
-                        </p>
-                        <p className="font-medium">{client.direccion}</p>
-                      </div>
-                    )}
                     <div>
                       <p className="text-sm text-muted-foreground">
                         Fecha de Creación
