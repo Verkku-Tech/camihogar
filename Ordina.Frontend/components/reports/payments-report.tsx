@@ -129,6 +129,7 @@ export function PaymentsReport() {
   const [endDate, setEndDate] = useState<string>("")
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("Todos")
   const [selectedAccount, setSelectedAccount] = useState<string>("Todos")
+  const [conciliationFilter, setConciliationFilter] = useState<string>("Todos")
   const [reportData, setReportData] = useState<PaymentReportRow[]>([])
   const [isDownloading, setIsDownloading] = useState(false)
   const [isOnline, setIsOnline] = useState(true)
@@ -139,9 +140,17 @@ export function PaymentsReport() {
   const effectiveCurrencyFilter = effectiveCashCurrencyFilter(selectedPaymentMethod)
 
   const filteredReportData = useMemo(() => {
-    if (!effectiveCurrencyFilter) return reportData
-    return reportData.filter((r) => r.monedaOriginal === effectiveCurrencyFilter)
-  }, [reportData, effectiveCurrencyFilter])
+    let data = reportData
+    if (effectiveCurrencyFilter) {
+      data = data.filter((r) => r.monedaOriginal === effectiveCurrencyFilter)
+    }
+    if (conciliationFilter === "Conciliados") {
+      data = data.filter((r) => r.isConciliated)
+    } else if (conciliationFilter === "Pendientes") {
+      data = data.filter((r) => !r.isConciliated)
+    }
+    return data
+  }, [reportData, effectiveCurrencyFilter, conciliationFilter])
 
   const reportTotals = useMemo(() => {
     const rows = filteredReportData
@@ -195,7 +204,7 @@ export function PaymentsReport() {
   // Limpiar selección al cambiar filtros (nueva consulta)
   useEffect(() => {
     setSelectedRowIds(new Set())
-  }, [startDate, endDate, selectedPaymentMethod, selectedAccount])
+  }, [startDate, endDate, selectedPaymentMethod, selectedAccount, conciliationFilter])
 
   // Detectar estado de conexión
   useEffect(() => {
@@ -801,7 +810,7 @@ export function PaymentsReport() {
           <CardTitle>Filtros del Reporte</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Fecha inicio */}
             <div className="space-y-2">
               <Label htmlFor="startDate">Fecha Inicio</Label>
@@ -859,6 +868,26 @@ export function PaymentsReport() {
                           : `${account.label || account.code || ""}`}
                       </SelectItem>
                     ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Conciliación */}
+            <div className="space-y-2">
+              <Label htmlFor="conciliationFilter">Conciliación</Label>
+              <Select
+                value={conciliationFilter}
+                onValueChange={setConciliationFilter}
+              >
+                <SelectTrigger id="conciliationFilter">
+                  <SelectValue placeholder="Estado de conciliación" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Todos">Todos</SelectItem>
+                  <SelectItem value="Conciliados">Conciliados</SelectItem>
+                  <SelectItem value="Pendientes">
+                    Pendientes por conciliar
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>

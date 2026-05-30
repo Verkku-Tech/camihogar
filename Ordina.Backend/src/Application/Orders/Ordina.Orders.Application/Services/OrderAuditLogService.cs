@@ -309,9 +309,7 @@ public class OrderAuditLogService : IOrderAuditLogService
         DiffPartialPayments(changes, "partialPayments", oldOrder.PartialPayments, newOrder.PartialPayments);
         DiffPartialPayments(changes, "mixedPayments", oldOrder.MixedPayments, newOrder.MixedPayments);
 
-        var oldProductsSig = ProductsSignature(oldOrder.Products);
-        var newProductsSig = ProductsSignature(newOrder.Products);
-        AddIfChanged("products", oldProductsSig, newProductsSig);
+        DiffProductStatuses(changes, oldOrder.Products, newOrder.Products);
 
         return changes;
     }
@@ -370,23 +368,77 @@ public class OrderAuditLogService : IOrderAuditLogService
         }
     }
 
-    private static string ProductsSignature(List<OrderProduct> products)
+    private static void DiffProductStatuses(
+        List<AuditChange> changes,
+        List<OrderProduct>? oldProducts,
+        List<OrderProduct>? newProducts)
     {
-        if (products == null || products.Count == 0)
+        oldProducts ??= new List<OrderProduct>();
+        newProducts ??= new List<OrderProduct>();
+
+        var oldById = oldProducts.ToDictionary(p => p.Id, p => p);
+        var newById = newProducts.ToDictionary(p => p.Id, p => p);
+
+        foreach (var id in oldById.Keys.Except(newById.Keys))
         {
-            return "(sin productos)";
+            var op = oldById[id];
+            var label = string.IsNullOrWhiteSpace(op.Name) ? op.Id : op.Name;
+            changes.Add(new AuditChange
+            {
+                Field = $"producto[{label}]",
+                OldValue = $"{label} × {op.Quantity} — {op.LogisticStatus}",
+                NewValue = "(eliminado)"
+            });
         }
 
-        return string.Join(
-            "\n",
-            products
-                .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(p => p.Id, StringComparer.Ordinal)
-                .Select(p =>
+        foreach (var id in newById.Keys.Except(oldById.Keys))
+        {
+            var np = newById[id];
+            var label = string.IsNullOrWhiteSpace(np.Name) ? np.Id : np.Name;
+            changes.Add(new AuditChange
+            {
+                Field = $"producto[{label}]",
+                OldValue = null,
+                NewValue = $"{label} × {np.Quantity} — {np.LogisticStatus}"
+            });
+        }
+
+        foreach (var id in oldById.Keys.Intersect(newById.Keys))
+        {
+            var op = oldById[id];
+            var np = newById[id];
+            var label = string.IsNullOrWhiteSpace(np.Name) ? np.Id : np.Name;
+
+            if (op.Quantity != np.Quantity)
+            {
+                changes.Add(new AuditChange
                 {
-                    var label = string.IsNullOrWhiteSpace(p.Name) ? p.Id : p.Name;
-                    return $"{label} × {p.Quantity} — {p.LogisticStatus}";
-                }));
+                    Field = $"producto[{label}].cantidad",
+                    OldValue = op.Quantity.ToString(CultureInfo.InvariantCulture),
+                    NewValue = np.Quantity.ToString(CultureInfo.InvariantCulture)
+                });
+            }
+
+            if (!string.Equals(op.LogisticStatus, np.LogisticStatus, StringComparison.Ordinal))
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].logisticStatus",
+                    OldValue = op.LogisticStatus ?? "(sin estado)",
+                    NewValue = np.LogisticStatus ?? "(sin estado)"
+                });
+            }
+
+            if (!string.Equals(op.LocationStatus, np.LocationStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].locationStatus",
+                    OldValue = op.LocationStatus ?? "(sin estado)",
+                    NewValue = np.LocationStatus ?? "(sin estado)"
+                });
+            }
+        }
     }
 
     /// <summary>

@@ -157,6 +157,7 @@ export function Dashboard() {
                   </span>
                 ) : (
                   <>
+                    {/* OCULTO TEMPORALMENTE - Presupuestos (lógica preservada)
                     <button
                       onClick={() => setActiveTab("presupuestos")}
                       className={`px-4 py-2 text-sm rounded-md transition-colors ${
@@ -167,6 +168,7 @@ export function Dashboard() {
                     >
                       Presupuestos
                     </button>
+                    */}
                     <button
                       onClick={() => setActiveTab("pedidos")}
                       className={`px-4 py-2 text-sm rounded-md transition-colors ${
@@ -231,9 +233,11 @@ export function Dashboard() {
               ) : (
                 <OrdersTable prefetchedOrders={sharedOrders} />
               ))}
+            {/* OCULTO TEMPORALMENTE - Presupuestos
             {!isOnlineSeller && activeTab === "presupuestos" && (
               <BudgetsTable />
             )}
+            */}
             {!isOnlineSeller && activeTab === "fabricacion" && (
               <ManufacturingProductsTable />
             )}

@@ -31,7 +31,7 @@ export function RemoveProductDialog({ open, onOpenChange, product, onConfirm }: 
             ¿Estás seguro de que deseas eliminar "{product.name}" del pedido?
             <br />
             <span className="text-sm text-muted-foreground mt-2 block">
-              Cantidad: {product.quantity} unidades - Total: ${product.total.toFixed(2)}
+              Cantidad: {product.quantity} unidad(es)
             </span>
           </AlertDialogDescription>
         </AlertDialogHeader>
