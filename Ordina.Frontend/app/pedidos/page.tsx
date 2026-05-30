@@ -63,6 +63,7 @@ import {
   formatCommercialDualDisplay,
   formatCurrencyWithUsdPrimaryFromOrder,
   getCommercialRatesFromOrder,
+  getOrderPendingUsd,
 } from "@/lib/order-currency-display";
 import { getOrderBaseCurrency } from "@/lib/order-line-pricing";
 import { useAuth } from "@/contexts/auth-context";
@@ -233,8 +234,8 @@ export default function PedidosPage() {
         );
 
         pendingTotals[order.id] = formatCommercialDualDisplay(
-          getOrderPendingTotal(order),
-          baseCurrency,
+          getOrderPendingUsd(order),
+          "USD",
           {
             commercialRates: commercial,
             liveRates: live,

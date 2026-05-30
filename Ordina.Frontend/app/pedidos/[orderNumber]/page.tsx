@@ -48,9 +48,12 @@ import {
   getOrderBaseCurrency,
   isUsdBaseOrder,
 } from "@/lib/order-line-pricing";
-import { formatDualCurrencyAmounts } from "@/lib/order-currency-display";
 import {
-  getOrderPendingTotal,
+  formatDualCurrencyAmounts,
+  getOrderPaidUsd,
+  getOrderPendingUsd,
+} from "@/lib/order-currency-display";
+import {
   sumPaymentsToUsd,
   PAYMENT_BALANCE_EPSILON_USD,
 } from "@/lib/order-payments";
@@ -60,10 +63,7 @@ import { getAll } from "@/lib/indexeddb";
 import { apiClient } from "@/lib/api-client";
 import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility";
 import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
-import {
-  sumPaymentsInStoreBs,
-  CASHEA_FINANCED_METHOD_LABEL,
-} from "@/lib/order-payments";
+import { CASHEA_FINANCED_METHOD_LABEL } from "@/lib/order-payments";
 import { appliedUsdToBs } from "@/lib/order-store-credit-usd";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -564,25 +564,58 @@ export default function OrderDetailPage() {
 
   const orderBaseCurrency = order ? getOrderBaseCurrency(order) : "Bs";
 
-  const pendingBalanceInBase = useMemo(() => {
+  const pendingBalanceUsd = useMemo(() => {
     if (!order) return 0;
-    return getOrderPendingTotal(order);
+    return getOrderPendingUsd(order);
   }, [order]);
 
   const hasMeaningfulPendingBalance = useMemo(() => {
     if (!order) return false;
-    return isUsdBaseOrder(order)
-      ? pendingBalanceInBase > PAYMENT_BALANCE_EPSILON_USD
-      : pendingBalanceInBase > PENDING_BALANCE_EPSILON_BS;
-  }, [order, pendingBalanceInBase]);
+    return pendingBalanceUsd > PAYMENT_BALANCE_EPSILON_USD;
+  }, [order, pendingBalanceUsd]);
 
-  const totalPaidInBase = useMemo(() => {
+  const totalPaidUsd = useMemo(() => {
     if (!order) return 0;
-    if (isUsdBaseOrder(order)) {
-      return sumPaymentsToUsd(activePayments, order);
+    return getOrderPaidUsd(order);
+  }, [order]);
+
+  /** Cobros y saldo: monto ya en USD (no reinterpretar como Bs en pedidos legacy). */
+  const OrderPaymentCurrency = ({
+    amountUsd,
+    className,
+    inline,
+  }: {
+    amountUsd: number;
+    className?: string;
+    inline?: boolean;
+  }) => {
+    const formatted = formatDualCurrencyAmounts(amountUsd, "USD", {
+      commercialRates: localExchangeRates,
+      liveRates: liveExchangeRates,
+    });
+    if (inline) {
+      return (
+        <span className={className}>
+          <span className="font-medium">{formatted.primary}</span>
+          {formatted.secondary && (
+            <span className="text-xs text-muted-foreground ml-1">
+              ({formatted.secondary})
+            </span>
+          )}
+        </span>
+      );
     }
-    return activePayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  }, [order, activePayments]);
+    return (
+      <div className={`text-right ${className || ""}`}>
+        <div className="font-medium">{formatted.primary}</div>
+        {formatted.secondary && (
+          <div className="text-xs text-muted-foreground">
+            {formatted.secondary}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const OrderCurrency = ({
     amount,
@@ -627,9 +660,14 @@ export default function OrderDetailPage() {
     );
   };
 
-  const casheaPaidInStoreBs = useMemo(() => {
+  const casheaPaidInStoreUsd = useMemo(() => {
     if (!order || order.paymentCondition !== "cashea") return 0;
-    return sumPaymentsInStoreBs(activePayments);
+    const inStore = activePayments.filter(
+      (p) =>
+        !p.paymentDetails?.casheaFinancedPortion &&
+        p.method !== CASHEA_FINANCED_METHOD_LABEL,
+    );
+    return sumPaymentsToUsd(inStore, order);
   }, [order, activePayments]);
 
   const casheaHasFinancedLine = useMemo(
@@ -1056,37 +1094,27 @@ export default function OrderDetailPage() {
 
       if (selectedCurrency && selectedCurrency !== "Bs") {
         const totalPaidFormatted = await formatWithSelectedCurrency(
-          totalPaidInBase,
-          isUsdBaseOrder(order) ? "USD" : "Bs",
+          totalPaidUsd,
+          "USD",
         );
         setFormattedTotalPaid(totalPaidFormatted);
       } else {
-        setFormattedTotalPaid(
-          formatCurrency(
-            totalPaidInBase,
-            isUsdBaseOrder(order) ? "USD" : "Bs",
-          ),
-        );
+        setFormattedTotalPaid(formatCurrency(totalPaidUsd, "USD"));
       }
 
-      if (pendingBalanceInBase > PENDING_BALANCE_EPSILON_BS) {
-        // Hay saldo pendiente
+      if (pendingBalanceUsd > PAYMENT_BALANCE_EPSILON_USD) {
         if (selectedCurrency && selectedCurrency !== "Bs") {
           const pendingFormatted = await formatWithSelectedCurrency(
-            pendingBalanceInBase,
-            isUsdBaseOrder(order) ? "USD" : "Bs",
+            pendingBalanceUsd,
+            "USD",
           );
           setFormattedPendingBalance(pendingFormatted);
         } else {
           setFormattedPendingBalance(
-            formatCurrency(
-              pendingBalanceInBase,
-              isUsdBaseOrder(order) ? "USD" : "Bs",
-            ),
+            formatCurrency(pendingBalanceUsd, "USD"),
           );
         }
       } else {
-        // El pedido está completamente pagado
         setFormattedPendingBalance("");
       }
 
@@ -1100,8 +1128,8 @@ export default function OrderDetailPage() {
     selectedCurrency,
     formatWithSelectedCurrency,
     localExchangeRates,
-    totalPaidInBase,
-    pendingBalanceInBase,
+    totalPaidUsd,
+    pendingBalanceUsd,
   ]);
 
   // Formatear precios, descuentos, totales y calcular desglose detallado de productos
@@ -1509,8 +1537,8 @@ export default function OrderDetailPage() {
                               <span className="text-muted-foreground">
                                 Saldo pendiente:
                               </span>{" "}
-                              <OrderCurrency
-                                amount={pendingBalanceInBase}
+                              <OrderPaymentCurrency
+                                amountUsd={pendingBalanceUsd}
                                 inline
                                 className="inline font-medium"
                               />
@@ -2540,7 +2568,9 @@ export default function OrderDetailPage() {
                         casheaHasFinancedLine && (
                           <div className="flex justify-between text-sm text-muted-foreground">
                             <span>Pago inicial en tienda:</span>
-                            <OrderCurrency amount={casheaPaidInStoreBs} />
+                            <OrderPaymentCurrency
+                              amountUsd={casheaPaidInStoreUsd}
+                            />
                           </div>
                         )}
                       <div className="flex justify-between font-semibold">
@@ -2550,7 +2580,7 @@ export default function OrderDetailPage() {
                             ? "Total cubierto (inicial + financiación Cashea):"
                             : "Total Pagado:"}
                         </span>
-                        <OrderCurrency amount={totalPaidInBase} />
+                        <OrderPaymentCurrency amountUsd={totalPaidUsd} />
                       </div>
                       {(order.appliedStoreCreditUsd ?? 0) > 0 && (
                         <div className="flex justify-between text-sm text-muted-foreground">
@@ -2575,8 +2605,8 @@ export default function OrderDetailPage() {
                                   </span>
                                 </div>
                                 <div className="text-right">
-                                  <OrderCurrency
-                                    amount={pendingBalanceInBase}
+                                  <OrderPaymentCurrency
+                                    amountUsd={pendingBalanceUsd}
                                     className="font-bold text-lg text-red-700 dark:text-red-300"
                                   />
                                 </div>
@@ -2628,8 +2658,8 @@ export default function OrderDetailPage() {
                           <span className="font-semibold text-red-700 dark:text-red-300">
                             Total pendiente:
                           </span>
-                          <OrderCurrency
-                            amount={pendingBalanceInBase}
+                          <OrderPaymentCurrency
+                            amountUsd={pendingBalanceUsd}
                             className="font-bold text-lg text-red-700 dark:text-red-300"
                           />
                         </div>
