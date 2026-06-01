@@ -53,6 +53,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { matchesLocalDateRange } from "@/lib/date-utils"
+import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility"
 
 type TabType = "por_despachar" | "en_despacho" | "despachados"
 type ActionType = "to_dispatch" | "to_delivered" | "to_store"
@@ -188,6 +189,7 @@ export default function DespachosPage() {
     user?.role === "Administrator" ||
     isOnlineSeller
   const canOnlyDispatchToRoute = isOnlineSeller
+  const onlineSellerUserId = isOnlineSeller ? user?.id?.trim() ?? "" : ""
   const { exchangeRates } = useCurrency()
   const router = useRouter()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
@@ -247,6 +249,24 @@ export default function DespachosPage() {
   useEffect(() => {
     loadOrders()
   }, [])
+
+  /** Online Seller: solo pedidos donde es vendedor o referidor. */
+  const visibleOrders = useMemo(() => {
+    if (!isOnlineSeller) return orders
+    if (!onlineSellerUserId) return []
+    return orders.filter((o) =>
+      isOrderVisibleToOnlineSeller(o, onlineSellerUserId),
+    )
+  }, [orders, isOnlineSeller, onlineSellerUserId])
+
+  const canOnlineSellerActOnOrder = useCallback(
+    (order: UnifiedOrder): boolean => {
+      if (!isOnlineSeller) return true
+      if (!onlineSellerUserId) return false
+      return isOrderVisibleToOnlineSeller(order, onlineSellerUserId)
+    },
+    [isOnlineSeller, onlineSellerUserId],
+  )
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -349,18 +369,18 @@ export default function DespachosPage() {
         EUR: rates.EUR,
       })
       const totals: Record<string, string> = {}
-      for (const order of orders) {
+      for (const order of visibleOrders) {
         totals[order.id] = formatOrderAmountForDisplay(order.total, order, live)
       }
       setOrderTotals(totals)
     }
-    if (orders.length > 0) {
+    if (visibleOrders.length > 0) {
       void updateTotals()
     }
-  }, [orders])
+  }, [visibleOrders])
 
   const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
+    return visibleOrders.filter((order) => {
       // 1. Filtrar por tab activo
       if (!isOrderInTab(order, activeTab)) return false
 
@@ -383,7 +403,7 @@ export default function DespachosPage() {
       return matchesSearch && matchesDeliveryType && matchesDeliveryZone
     })
   }, [
-    orders,
+    visibleOrders,
     activeTab,
     searchTerm,
     deliveryTypeFilter,
@@ -550,7 +570,7 @@ export default function DespachosPage() {
 
   // Manejar selección individual de productos relevantes a la pestaña
   const handleToggleSelect = (orderId: string) => {
-    const order = orders.find(o => o.id === orderId)
+    const order = visibleOrders.find(o => o.id === orderId)
     if (!order) return
 
     const activeProducts = order.products.filter(p => getProductDispatchStatus(p) === activeTab)
@@ -607,6 +627,16 @@ export default function DespachosPage() {
       toast.error("Solo administradores pueden modificar el despacho.")
       return
     }
+    if (!canOnlineSellerActOnOrder(order)) {
+      toast.error(
+        "Solo puedes despachar pedidos donde eres el vendedor o el referidor.",
+      )
+      return
+    }
+    if (canOnlyDispatchToRoute && action !== "to_dispatch") {
+      toast.error("Solo puedes enviar a ruta tus propios pedidos.")
+      return
+    }
     setOrderToActOn(order)
     setActionType(action)
     setIsActionDialogOpen(true)
@@ -615,6 +645,10 @@ export default function DespachosPage() {
   const handleBulkActionClick = (action: ActionType) => {
     if (!canMutateDispatchStatus) {
       toast.error("Solo administradores pueden modificar el despacho.")
+      return
+    }
+    if (canOnlyDispatchToRoute && action !== "to_dispatch") {
+      toast.error("Solo puedes enviar a ruta tus propios pedidos.")
       return
     }
     if (selectedOrders.size === 0) {
@@ -633,6 +667,19 @@ export default function DespachosPage() {
       return
     }
     if (!orderToActOn || !actionType) return
+
+    if (!canOnlineSellerActOnOrder(orderToActOn)) {
+      toast.error(
+        "Solo puedes despachar pedidos donde eres el vendedor o el referidor.",
+      )
+      setIsActionDialogOpen(false)
+      return
+    }
+    if (canOnlyDispatchToRoute && actionType !== "to_dispatch") {
+      toast.error("Solo puedes enviar a ruta tus propios pedidos.")
+      setIsActionDialogOpen(false)
+      return
+    }
 
     try {
       const selectedProductIds = Array.from(selectedOrders)
@@ -712,6 +759,12 @@ export default function DespachosPage() {
     }
     if (selectedOrders.size === 0 || !actionType) return
 
+    if (canOnlyDispatchToRoute && actionType !== "to_dispatch") {
+      toast.error("Solo puedes enviar a ruta tus propios pedidos.")
+      setIsBulkActionDialogOpen(false)
+      return
+    }
+
     try {
       setIsLoading(true)
       const selectedItems = Array.from(selectedOrders)
@@ -729,8 +782,14 @@ export default function DespachosPage() {
       let updatedCount = 0
 
       for (const [orderId, pIds] of Object.entries(productsByOrder)) {
-        const order = orders.find(o => o.id === orderId)
+        const order = visibleOrders.find(o => o.id === orderId)
         if (!order) continue
+        if (!canOnlineSellerActOnOrder(order)) {
+          toast.error(
+            `No puedes modificar el pedido ${order.orderNumber}: no es tuyo.`,
+          )
+          continue
+        }
 
         const updatedProducts = order.products.map(p =>
           pIds.includes(p.id) ? applyDispatchProductUpdate(p, actionType) : p
