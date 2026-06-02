@@ -639,54 +639,40 @@ export function Step3OrderDetails({
                       )}
 
                       {/* Servicios complementarios (se suman después del impuesto) */}
-                      {orderForm.deliveryServices.deliveryExpress?.enabled &&
-                        orderForm.deliveryServices.deliveryExpress.cost > 0 && (
-                          <TableRow>
+                      {(
+                        [
+                          {
+                            label: "Delivery Express:",
+                            line: orderForm.deliveryServices.deliveryExpress,
+                          },
+                          {
+                            label: "Servicio de Acarreo:",
+                            line: orderForm.deliveryServices.servicioAcarreo,
+                          },
+                          {
+                            label: "Servicio de Armado:",
+                            line: orderForm.deliveryServices.servicioArmado,
+                          },
+                        ] as const
+                      )
+                        .filter(
+                          (row) =>
+                            row.line?.enabled &&
+                            row.line.cost != null &&
+                            row.line.cost > 0,
+                        )
+                        .map((row) => (
+                          <TableRow key={row.label}>
                             <TableCell className="text-xs sm:text-sm font-medium">
-                              Delivery Express:
+                              {row.label}
                             </TableCell>
-                            <TableCell className="text-right text-xs sm:text-sm">
-                              {formatCurrency(
-                                orderForm.deliveryServices.deliveryExpress.cost,
-                                orderForm.deliveryServices.deliveryExpress
-                                  .currency || "USD",
-                              )}
-                            </TableCell>
+                            {orderForm.renderServiceLineCell(
+                              row.line!.cost!,
+                              row.line!.currency || "USD",
+                              "text-xs sm:text-sm",
+                            )}
                           </TableRow>
-                        )}
-
-                      {orderForm.deliveryServices.servicioAcarreo?.enabled &&
-                        orderForm.deliveryServices.servicioAcarreo.cost &&
-                        orderForm.deliveryServices.servicioAcarreo.cost > 0 && (
-                          <TableRow>
-                            <TableCell className="text-xs sm:text-sm font-medium">
-                              Servicio de Acarreo:
-                            </TableCell>
-                            <TableCell className="text-right text-xs sm:text-sm">
-                              {formatCurrency(
-                                orderForm.deliveryServices.servicioAcarreo.cost,
-                                orderForm.deliveryServices.servicioAcarreo
-                                  .currency || "USD",
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        )}
-
-                      {orderForm.deliveryServices.servicioArmado?.enabled &&
-                        orderForm.deliveryServices.servicioArmado.cost > 0 && (
-                          <TableRow>
-                            <TableCell className="text-xs sm:text-sm font-medium">
-                              Servicio de Armado:
-                            </TableCell>
-                            <TableCell className="text-right text-xs sm:text-sm">
-                              {formatCurrency(
-                                orderForm.deliveryServices.servicioArmado.cost,
-                                orderForm.deliveryServices.servicioArmado
-                                  .currency || "USD",
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        )}
+                        ))}
 
                       {/* Total */}
                       <TableRow className="font-medium border-t">
