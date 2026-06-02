@@ -91,6 +91,25 @@ namespace Ordina.Payments.Infrastructure.Repositories
             return MapToDomain(result);
         }
 
+        public async Task<DomainExchangeRate?> GetRateForDateAsync(
+            string fromCurrency,
+            string toCurrency,
+            DateTime asOfDate)
+        {
+            var asOf = asOfDate.Date;
+            var endOfAsOfDay = asOf.AddDays(1).AddTicks(-1);
+
+            var filter = Builders<MongoExchangeRate>.Filter.And(
+                Builders<MongoExchangeRate>.Filter.Eq(r => r.FromCurrency, fromCurrency),
+                Builders<MongoExchangeRate>.Filter.Eq(r => r.ToCurrency, toCurrency),
+                Builders<MongoExchangeRate>.Filter.Lte(r => r.EffectiveDate, endOfAsOfDay));
+
+            var sort = Builders<MongoExchangeRate>.Sort.Descending(r => r.EffectiveDate);
+            var result = await _context.ExchangeRates.Find(filter).Sort(sort).FirstOrDefaultAsync();
+
+            return MapToDomain(result);
+        }
+
         public async Task<IEnumerable<DomainExchangeRate>> GetHistoryAsync(int days = 30)
         {
             if (days < 1) days = 1;

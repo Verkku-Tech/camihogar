@@ -31,6 +31,23 @@ namespace Ordina.Payments.Application.Services
             return await _repository.GetLatestRateAsync(fromCurrency, toCurrency);
         }
 
+        public async Task<ExchangeRate?> GetRateForDateAsync(
+            string fromCurrency,
+            string toCurrency,
+            DateTime asOfDate)
+        {
+            var veToday = DateTime.UtcNow.AddHours(-4).Date;
+            var asOf = asOfDate.Date;
+            if (asOf > veToday)
+            {
+                throw new ArgumentException(
+                    "La fecha no puede ser futura respecto al día actual (hora Venezuela).",
+                    nameof(asOfDate));
+            }
+
+            return await _repository.GetRateForDateAsync(fromCurrency, toCurrency, asOf);
+        }
+
         public async Task<ExchangeRate> SetExchangeRateAsync(string fromCurrency, string toCurrency, decimal rate)
         {
             if (rate <= 0)

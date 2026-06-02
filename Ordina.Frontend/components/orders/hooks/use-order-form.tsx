@@ -35,15 +35,18 @@ import {
   type Currency,
 } from "@/lib/currency-utils";
 import {
+  CASHEA_FINANCED_METHOD_LABEL,
   getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_BS,
   PAYMENT_BALANCE_EPSILON_USD,
+  sumPaymentsCollectedInBs,
   sumPaymentsToUsd,
 } from "@/lib/order-payments";
 import {
   buildExchangeRatesAtCreationPayload,
   commercialRatesToExchangeRatesInput,
   formatDualCurrencyAmounts,
+  formatOrderPaymentTotalsDisplay,
 } from "@/lib/order-currency-display";
 import {
   ORDER_BASE_CURRENCY,
@@ -279,6 +282,8 @@ export interface UseOrderFormReturn {
   renderPaymentTotalCell: (
     amountUsd: number,
     className?: string,
+    /** Si true, el secundario es la suma real de Bs cobrados (fila Total pagado). */
+    showCollectedBs?: boolean,
   ) => React.ReactElement;
 
   // Mock data (compatibilidad)
@@ -446,8 +451,6 @@ export function useOrderForm(
   const [formattedProductFinalTotals, setFormattedProductFinalTotals] =
     useState<Record<string, string>>({});
   const [formattedSubtotal, setFormattedSubtotal] = useState<string>("");
-  const [totalPaidInBs, setTotalPaidInBs] = useState(0);
-
   // Cargar datos
   useEffect(() => {
     if (!open) return;
@@ -860,8 +863,19 @@ export function useOrderForm(
             }
           : undefined,
       },
+      liveRates: commercialRatesToExchangeRatesInput(exchangeRates),
     }),
     [exchangeRates.USD, exchangeRates.EUR],
+  );
+
+  const inStorePaymentsForDisplay = useMemo(
+    () =>
+      payments.filter(
+        (p) =>
+          !p.paymentDetails?.casheaFinancedPortion &&
+          p.method !== CASHEA_FINANCED_METHOD_LABEL,
+      ),
+    [payments],
   );
 
   const maxApplicableStoreCreditUsd = useMemo(() => {
@@ -931,13 +945,12 @@ export function useOrderForm(
     [payments, orderPaymentContext],
   );
 
-  useEffect(() => {
-    setTotalPaidInBs(totalPaidInUsd);
-  }, [totalPaidInUsd]);
-
-  const casheaInStorePayments = payments.filter(
-    (p) => !p.paymentDetails?.casheaFinancedPortion,
+  const totalPaidInBs = useMemo(
+    () => sumPaymentsCollectedInBs(inStorePaymentsForDisplay),
+    [inStorePaymentsForDisplay],
   );
+
+  const casheaInStorePayments = inStorePaymentsForDisplay;
   const casheaPaidSumUsd = useMemo(
     () => sumPaymentsToUsd(casheaInStorePayments, orderPaymentContext),
     [casheaInStorePayments, orderPaymentContext],
@@ -1465,7 +1478,30 @@ export function useOrderForm(
     [commercialRatesInput, liveRatesInput],
   );
 
-  const renderPaymentTotalCell = renderCurrencyCell;
+  const renderPaymentTotalCell = useCallback(
+    (amountUsd: number, className?: string, showCollectedBs?: boolean) => {
+      const formatted = showCollectedBs
+        ? formatOrderPaymentTotalsDisplay(
+            amountUsd,
+            inStorePaymentsForDisplay,
+          )
+        : formatDualCurrencyAmounts(amountUsd, "USD", {
+            commercialRates: commercialRatesInput,
+            liveRates: liveRatesInput,
+          });
+      return (
+        <div className={`text-right ${className || ""}`}>
+          <div className="font-medium">{formatted.primary}</div>
+          {formatted.secondary && (
+            <div className="text-xs text-muted-foreground">
+              {formatted.secondary}
+            </div>
+          )}
+        </div>
+      );
+    },
+    [commercialRatesInput, liveRatesInput, inStorePaymentsForDisplay],
+  );
 
   // Cargar dirección del cliente cuando se activa delivery
   useEffect(() => {

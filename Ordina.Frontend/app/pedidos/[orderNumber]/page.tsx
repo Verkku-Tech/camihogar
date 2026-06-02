@@ -50,6 +50,7 @@ import {
 } from "@/lib/order-line-pricing";
 import {
   formatDualCurrencyAmounts,
+  formatOrderPaymentTotalsDisplay,
   getOrderPaidUsd,
   getOrderPendingUsd,
 } from "@/lib/order-currency-display";
@@ -579,20 +580,37 @@ export default function OrderDetailPage() {
     return getOrderPaidUsd(order);
   }, [order]);
 
-  /** Cobros y saldo: monto ya en USD (no reinterpretar como Bs en pedidos legacy). */
+  const inStorePaymentsForDisplay = useMemo(
+    () =>
+      activePayments.filter(
+        (p) =>
+          !p.paymentDetails?.casheaFinancedPortion &&
+          p.method !== CASHEA_FINANCED_METHOD_LABEL,
+      ),
+    [activePayments],
+  );
+
+  /** Cobros y saldo: USD comercial; con showCollectedBs el secundario es la suma real de Bs. */
   const OrderPaymentCurrency = ({
     amountUsd,
     className,
     inline,
+    showCollectedBs,
   }: {
     amountUsd: number;
     className?: string;
     inline?: boolean;
+    showCollectedBs?: boolean;
   }) => {
-    const formatted = formatDualCurrencyAmounts(amountUsd, "USD", {
-      commercialRates: localExchangeRates,
-      liveRates: liveExchangeRates,
-    });
+    const formatted = showCollectedBs
+      ? formatOrderPaymentTotalsDisplay(
+          amountUsd,
+          inStorePaymentsForDisplay,
+        )
+      : formatDualCurrencyAmounts(amountUsd, "USD", {
+          commercialRates: localExchangeRates,
+          liveRates: liveExchangeRates,
+        });
     if (inline) {
       return (
         <span className={className}>
@@ -2560,6 +2578,7 @@ export default function OrderDetailPage() {
                             <span>Pago inicial en tienda:</span>
                             <OrderPaymentCurrency
                               amountUsd={casheaPaidInStoreUsd}
+                              showCollectedBs
                             />
                           </div>
                         )}
@@ -2570,7 +2589,10 @@ export default function OrderDetailPage() {
                             ? "Total cubierto (inicial + financiación Cashea):"
                             : "Total Pagado:"}
                         </span>
-                        <OrderPaymentCurrency amountUsd={totalPaidUsd} />
+                        <OrderPaymentCurrency
+                          amountUsd={totalPaidUsd}
+                          showCollectedBs
+                        />
                       </div>
                       {(order.appliedStoreCreditUsd ?? 0) > 0 && (
                         <div className="flex justify-between text-sm text-muted-foreground">
