@@ -13,6 +13,7 @@ public class ReportsController : ControllerBase
     private static readonly HashSet<string> ManufacturingStatuses = new HashSet<string>(new[]
     {
         "debe_fabricar",
+        "por_fabricar",
         "fabricando",
         "almacen_no_fabricado"
     }, System.StringComparer.OrdinalIgnoreCase);
@@ -56,7 +57,7 @@ public class ReportsController : ControllerBase
             if (string.IsNullOrWhiteSpace(status) ||
                 !ManufacturingStatuses.Contains(status))
             {
-                return BadRequest(new { message = "El estado debe ser: debe_fabricar, fabricando, fabricado o almacen_no_fabricado" });
+                return BadRequest(new { message = "El estado debe ser: debe_fabricar, por_fabricar, fabricando o almacen_no_fabricado" });
             }
 
             // Parsear fechas
@@ -92,7 +93,8 @@ public class ReportsController : ControllerBase
             var normalizedStatus = status.ToLowerInvariant();
             var statusName = normalizedStatus switch
             {
-                "debe_fabricar" => "PorFabricar",
+                "debe_fabricar" => "DebeFabricar",
+                "por_fabricar" => "PorFabricar",
                 "fabricando" => "Fabricando",
                 "almacen_no_fabricado" => "EnAlmacen",
                 _ => "Fabricacion"
@@ -143,7 +145,7 @@ public class ReportsController : ControllerBase
             if (string.IsNullOrWhiteSpace(status) ||
                 !ManufacturingStatuses.Contains(status))
             {
-                return BadRequest(new { message = "El estado debe ser: debe_fabricar, fabricando, fabricado o almacen_no_fabricado" });
+                return BadRequest(new { message = "El estado debe ser: debe_fabricar, por_fabricar, fabricando o almacen_no_fabricado" });
             }
 
             // Parsear fechas

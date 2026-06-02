@@ -76,6 +76,7 @@ public class ReportService : IReportService
     private static readonly HashSet<string> ValidManufacturingStatuses = new HashSet<string>(new[]
     {
         "debe_fabricar",
+        "por_fabricar",
         "fabricando",
         "almacen_no_fabricado"
     }, StringComparer.OrdinalIgnoreCase);
@@ -148,7 +149,7 @@ public class ReportService : IReportService
         if (string.IsNullOrWhiteSpace(status) ||
             !ValidManufacturingStatuses.Contains(status))
         {
-            throw new ArgumentException("El estado debe ser: debe_fabricar, fabricando o almacen_no_fabricado", nameof(status));
+            throw new ArgumentException("El estado debe ser: debe_fabricar, por_fabricar, fabricando o almacen_no_fabricado", nameof(status));
         }
 
         try
@@ -198,7 +199,7 @@ public class ReportService : IReportService
         if (string.IsNullOrWhiteSpace(status) ||
             !ValidManufacturingStatuses.Contains(status))
         {
-            throw new ArgumentException("El estado debe ser: debe_fabricar, fabricando o almacen_no_fabricado", nameof(status));
+            throw new ArgumentException("El estado debe ser: debe_fabricar, por_fabricar, fabricando o almacen_no_fabricado", nameof(status));
         }
 
         try
@@ -401,7 +402,8 @@ public class ReportService : IReportService
                     // Obtener etiqueta del estado
                     var estadoLabel = productStatus switch
                     {
-                        "debe_fabricar" => "Por Fabricar",
+                        "debe_fabricar" => "Debe fabricar",
+                        "por_fabricar" => "Por fabricar",
                         "fabricando" => "Fabricando",
                         "almacen_no_fabricado" => "En almacén",
                         "fabricado" => "En almacén", // legacy

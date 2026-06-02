@@ -1091,8 +1091,12 @@ export function OrderConfirmationDialog({
                               badgeText = "En Fabricación";
                               badgeVariant = "secondary";
                               badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+                            } else if (product.manufacturingStatus === "por_fabricar") {
+                              badgeText = "Por fabricar";
+                              badgeVariant = "secondary";
+                              badgeClassName = "text-sm bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200";
                             } else {
-                              badgeText = "Mandar a Fabricar";
+                              badgeText = "Debe fabricar";
                               badgeVariant = "outline";
                               badgeClassName = "text-sm text-foreground border-0";
                             }

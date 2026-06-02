@@ -1646,7 +1646,7 @@ export interface OrderProduct {
   images?: ProductImage[]; // Imágenes de referencia del producto
   // Campos de fabricación
   availabilityStatus?: "disponible" | "no_disponible"; // Estado de disponibilidad
-  manufacturingStatus?: "debe_fabricar" | "fabricando" | "almacen_no_fabricado"; // Estado de fabricación (solo si no_disponible): 3 estados, último = En almacén
+  manufacturingStatus?: "debe_fabricar" | "por_fabricar" | "fabricando" | "almacen_no_fabricado";
   manufacturingProviderId?: string; // ID del proveedor asignado
   manufacturingProviderName?: string; // Nombre del proveedor (para display)
   manufacturingStartedAt?: string; // Fecha de inicio de fabricación
@@ -2022,9 +2022,14 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
       if (
         s === "almacen_no_fabricado" ||
         s === "debe_fabricar" ||
+        s === "por_fabricar" ||
         s === "fabricando"
       )
-        return s as "debe_fabricar" | "fabricando" | "almacen_no_fabricado";
+        return s as
+          | "debe_fabricar"
+          | "por_fabricar"
+          | "fabricando"
+          | "almacen_no_fabricado";
       return undefined;
     })(),
     manufacturingProviderId: p.manufacturingProviderId,
@@ -3885,7 +3890,10 @@ export const calculateDashboardMetrics = async (
         }
         const manufacturingStatus =
           product.manufacturingStatus || "debe_fabricar";
-        return manufacturingStatus !== "almacen_no_fabricado";
+        return (
+          manufacturingStatus === "por_fabricar" ||
+          manufacturingStatus === "fabricando"
+        );
       }).length
     );
   }, 0);
