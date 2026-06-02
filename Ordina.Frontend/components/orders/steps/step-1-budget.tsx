@@ -277,8 +277,6 @@ export function Step1Budget({
                   {orderForm.selectedProducts.map((product) => {
                     const lineBase = orderForm.getProductLineBase(product);
                     const lineSurcharge = orderForm.getProductLineSurcharge(product);
-                    const lineSubtotal =
-                      orderForm.getProductLineSubtotalDisplay(product);
                     const discount = product.discount || 0;
                     const discountInputCurrency =
                       orderForm.productDiscountCurrencies[product.id] || preferredCurrency;
@@ -369,7 +367,7 @@ export function Step1Budget({
                                 {orderForm.formattedProductTotals[product.id] ||
                                   formatStep1Money(
                                     orderForm,
-                                    lineSubtotal,
+                                    lineBase,
                                     formBase,
                                   )}
                               </span>
@@ -612,8 +610,6 @@ export function Step1Budget({
                           const lineBase = orderForm.getProductLineBase(product);
                           const lineSurcharge =
                             orderForm.getProductLineSurcharge(product);
-                          const lineSubtotal =
-                            orderForm.getProductLineSubtotalDisplay(product);
                           const discount = product.discount || 0;
                           const discountInputCurrency =
                             orderForm.productDiscountCurrencies[product.id] || preferredCurrency;
@@ -676,7 +672,7 @@ export function Step1Budget({
                                 {orderForm.formattedProductTotals[product.id] ||
                                   formatStep1Money(
                                     orderForm,
-                                    lineSubtotal,
+                                    lineBase,
                                     formBase,
                                   )}
                               </TableCell>
