@@ -364,7 +364,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               ? product.discount
               : undefined,
         })),
-        subtotalBeforeDiscounts: orderForm.productSubtotal,
+        subtotalBeforeDiscounts: orderForm.productSubtotalBase,
         productDiscountTotal:
           orderForm.productDiscountTotal > 0
             ? orderForm.productDiscountTotal
@@ -502,7 +502,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               : undefined,
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
-        subtotalBeforeDiscounts: orderForm.productSubtotal,
+        subtotalBeforeDiscounts: orderForm.productSubtotalBase,
         productDiscountTotal:
           orderForm.productDiscountTotal > 0
             ? orderForm.productDiscountTotal
@@ -792,6 +792,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
         subtotal: orderForm.subtotal,
+        productSurchargeTotal:
+          orderForm.productSurchargeTotal > 0
+            ? orderForm.productSurchargeTotal
+            : undefined,
         productDiscountTotal:
           orderForm.productDiscountTotal > 0
             ? orderForm.productDiscountTotal
@@ -908,7 +912,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               : undefined,
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
-        subtotalBeforeDiscounts: orderForm.productSubtotal,
+        subtotalBeforeDiscounts: orderForm.productSubtotalBase,
         productDiscountTotal:
           orderForm.productDiscountTotal > 0
             ? orderForm.productDiscountTotal

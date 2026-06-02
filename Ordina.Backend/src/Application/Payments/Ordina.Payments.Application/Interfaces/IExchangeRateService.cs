@@ -1,4 +1,5 @@
 using Ordina.Payments.Domain.Entities;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -10,5 +11,6 @@ namespace Ordina.Payments.Application.Interfaces
         Task<IEnumerable<ExchangeRate>> GetHistoryAsync(int days = 30);
         Task<ExchangeRate> SetExchangeRateAsync(string fromCurrency, string toCurrency, decimal rate);
         Task<ExchangeRate?> GetLatestRateAsync(string fromCurrency, string toCurrency);
+        Task<ExchangeRate?> GetRateForDateAsync(string fromCurrency, string toCurrency, DateTime asOfDate);
     }
 }

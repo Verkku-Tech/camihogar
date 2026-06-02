@@ -13,8 +13,14 @@ import { getProviders, getOrders, type Provider, type Order, type OrderProduct }
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { usePagination } from "@/hooks/use-pagination"
+import { TablePagination } from "@/components/ui/table-pagination"
 
-type ManufacturingStatus = "debe_fabricar" | "fabricando" | "almacen_no_fabricado"
+type ManufacturingStatus =
+  | "debe_fabricar"
+  | "por_fabricar"
+  | "fabricando"
+  | "almacen_no_fabricado"
 
 interface ManufacturingReportRow {
   fecha: string
@@ -27,6 +33,26 @@ interface ManufacturingReportRow {
   observacionesVendedor: string
   observacionesFabricante: string
   notasRefabricacion: string
+}
+
+function usesOrderDateFilters(tab: ManufacturingStatus): boolean {
+  return tab === "debe_fabricar" || tab === "por_fabricar"
+}
+
+function orderHasProductInManufacturingStatus(
+  order: Order,
+  status: ManufacturingStatus,
+): boolean {
+  if (order.status === "Generado" || order.status === "Generada") {
+    return false
+  }
+  return order.products.some((product) => {
+    if (product.locationStatus !== "FABRICACION") {
+      return false
+    }
+    const productStatus = product.manufacturingStatus || "debe_fabricar"
+    return productStatus === status
+  })
 }
 
 export function ManufacturingReport() {
@@ -44,6 +70,20 @@ export function ManufacturingReport() {
   const [isLoadingPreview, setIsLoadingPreview] = useState(false)
   const [previewData, setPreviewData] = useState<ManufacturingReportRow[]>([])
   const [isOnline, setIsOnline] = useState(true)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedPreviewData,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems: previewTotalItems,
+  } = usePagination({
+    data: previewData,
+    itemsPerPage,
+  })
 
   // Detectar estado de conexión
   useEffect(() => {
@@ -106,8 +146,7 @@ export function ManufacturingReport() {
           params.append("searchTerm", searchTerm.trim())
         }
 
-        // Para "Por Fabricar": pedido y fechas
-        if (activeTab === "debe_fabricar") {
+        if (usesOrderDateFilters(activeTab)) {
           if (orderNumber.trim()) {
             params.append("orderNumber", orderNumber.trim())
           }
@@ -117,11 +156,8 @@ export function ManufacturingReport() {
           if (endDate) {
             params.append("endDate", endDate)
           }
-        } else {
-          // Para "Fabricando" y "Fabricado": solo fabricante
-          if (selectedManufacturer !== "all") {
-            params.append("manufacturerId", selectedManufacturer)
-          }
+        } else if (selectedManufacturer !== "all") {
+          params.append("manufacturerId", selectedManufacturer)
         }
 
         const url = `/api/proxy/orders/api/Reports/Manufacturing/Preview?${params.toString()}`
@@ -176,49 +212,18 @@ export function ManufacturingReport() {
         console.log("📦 Pedidos cargados:", loadedOrders.length)
         setOrders(loadedOrders)
         
-        // Solo filtrar números de pedido para la pestaña "Por fabricar" (necesitamos el combobox)
-        if (activeTab === "debe_fabricar") {
-          // Filtrar pedidos que tienen productos "Por fabricar"
-          const ordersWithPendingManufacturing = loadedOrders.filter(order => {
-            if (order.status === "Generado" || order.status === "Generada") {
-              return false
-            }
-            return order.products.some(product => {
-              // Solo productos que deben mandarse a fabricar
-              if (product.locationStatus !== "FABRICACION") {
-                return false
-              }
-              // Determinar el estado real del producto
-              const productStatus = product.manufacturingStatus || "debe_fabricar"
-              // Solo "debe_fabricar" (Por fabricar)
-              return productStatus === "debe_fabricar"
-            })
-          })
-          
-          console.log("✅ Pedidos con productos 'Por fabricar':", ordersWithPendingManufacturing.length)
-          console.log("📋 Productos encontrados:", ordersWithPendingManufacturing.flatMap(o => 
-            o.products.filter(p => {
-              if (p.locationStatus !== "FABRICACION") return false
-              const status = p.manufacturingStatus || "debe_fabricar"
-              return status === "debe_fabricar"
-            }).map(p => ({
-              order: o.orderNumber,
-              product: p.name,
-              locationStatus: p.locationStatus,
-              manufacturingStatus: p.manufacturingStatus
-            }))
-          ))
-          
-          // Extraer números de pedido únicos para el combobox
-          const orderNumbers = ordersWithPendingManufacturing
-            .map(order => order.orderNumber)
+        if (usesOrderDateFilters(activeTab)) {
+          const ordersForCombobox = loadedOrders.filter((order) =>
+            orderHasProductInManufacturingStatus(order, activeTab),
+          )
+
+          const orderNumbers = ordersForCombobox
+            .map((order) => order.orderNumber)
             .filter((value, index, self) => self.indexOf(value) === index)
             .sort()
-          
-          console.log("🔢 Números de pedido filtrados:", orderNumbers)
+
           setFilteredOrderNumbers(orderNumbers)
         } else {
-          // Para otras pestañas, no necesitamos filtrar números de pedido (no hay combobox)
           setFilteredOrderNumbers([])
         }
       } catch (error) {
@@ -265,24 +270,18 @@ export function ManufacturingReport() {
         params.append("searchTerm", searchTerm.trim())
       }
       
-      // Para "Por Fabricar": pedido y fechas
-      if (activeTab === "debe_fabricar") {
+      if (usesOrderDateFilters(activeTab)) {
         if (orderNumber.trim()) {
           params.append("orderNumber", orderNumber.trim())
         }
-        
         if (startDate) {
           params.append("startDate", startDate)
         }
-        
         if (endDate) {
           params.append("endDate", endDate)
         }
-      } else {
-        // Para "Fabricando" y "Fabricado": solo fabricante
-        if (selectedManufacturer !== "all") {
-          params.append("manufacturerId", selectedManufacturer)
-        }
+      } else if (selectedManufacturer !== "all") {
+        params.append("manufacturerId", selectedManufacturer)
       }
 
       // Usar el proxy de Next.js para evitar problemas de CORS
@@ -354,7 +353,9 @@ export function ManufacturingReport() {
   const getStatusLabel = (status: ManufacturingStatus): string => {
     switch (status) {
       case "debe_fabricar":
-        return "Por Fabricar"
+        return "Debe fabricar"
+      case "por_fabricar":
+        return "Por fabricar"
       case "fabricando":
         return "Fabricando"
       case "almacen_no_fabricado":
@@ -458,21 +459,7 @@ export function ManufacturingReport() {
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {isOnline ? (
-                <>
-                  <Wifi className="w-4 h-4 text-green-600" />
-                  <span className="text-sm text-muted-foreground">
-                    Conectado - El reporte se genera desde el servidor
-                  </span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="w-4 h-4 text-orange-600" />
-                  <span className="text-sm text-muted-foreground">
-                    Sin conexión - Los reportes requieren conexión al servidor
-                  </span>
-                </>
-              )}
+              
             </div>
             <Badge variant={isOnline ? "default" : "secondary"}>
               {isOnline ? "Online" : "Offline"}
@@ -528,15 +515,16 @@ export function ManufacturingReport() {
                     <SelectValue placeholder="Seleccionar estado" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="debe_fabricar">Por Fabricar</SelectItem>
+                    <SelectItem value="debe_fabricar">Debe fabricar</SelectItem>
+                    <SelectItem value="por_fabricar">Por fabricar</SelectItem>
                     <SelectItem value="fabricando">Fabricando</SelectItem>
                     <SelectItem value="almacen_no_fabricado">En almacén</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
-              {/* Para "Por Fabricar": Pedido y Fechas */}
-              {activeTab === "debe_fabricar" && (
+              {/* Debe fabricar / Por fabricar: pedido y fechas */}
+              {usesOrderDateFilters(activeTab) && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Filtro por Pedido - Combobox */}
                   <div>
@@ -630,8 +618,8 @@ export function ManufacturingReport() {
                 </div>
               )}
 
-              {/* Para estados distintos de "Por Fabricar": filtro por Fabricante */}
-              {activeTab !== "debe_fabricar" && (
+              {/* Fabricando y En almacén: filtro por fabricante */}
+              {!usesOrderDateFilters(activeTab) && (
                 <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">
@@ -676,7 +664,7 @@ export function ManufacturingReport() {
               <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
                 <p className="text-sm text-blue-900 dark:text-blue-100">
                   <strong>Nota:</strong> Este reporte muestra productos con estado "{getStatusLabel(activeTab)}". 
-                  {activeTab === "debe_fabricar"
+                  {usesOrderDateFilters(activeTab)
                     ? " Puedes filtrar por pedido y rango de fechas."
                     : " Puedes filtrar por fabricante."}
                 </p>
@@ -738,8 +726,8 @@ export function ManufacturingReport() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {previewData.map((row, index) => (
-                      <TableRow key={`${row.pedido}-${index}`}>
+                    {paginatedPreviewData.map((row, index) => (
+                      <TableRow key={`${row.pedido}-${startIndex}-${index}`}>
                         <TableCell className="text-sm">
                           {row.fecha ? (() => {
                             // Intentar parsear la fecha (puede venir como "yyyy-MM-dd" o Date ISO string)
@@ -785,9 +773,20 @@ export function ManufacturingReport() {
                     ))}
                   </TableBody>
                 </Table>
+                <TablePagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  totalItems={previewTotalItems}
+                  startIndex={startIndex}
+                  endIndex={endIndex}
+                  onPageChange={goToPage}
+                  itemsPerPage={itemsPerPage}
+                  onItemsPerPageChange={setItemsPerPage}
+                />
                 <div className="p-4 bg-muted/50 text-sm text-muted-foreground text-center">
-                  Mostrando <strong>{previewData.length}</strong> producto(s) - La vista previa se genera desde el servidor. 
-                  Usa el botón "Descargar Excel" para exportar el reporte completo con los filtros aplicados.
+                  Total: <strong>{previewTotalItems}</strong> producto(s) — La vista previa se genera desde el
+                  servidor. Usa &quot;Descargar Excel&quot; para exportar el reporte completo con los filtros
+                  aplicados.
                 </div>
               </div>
             )}

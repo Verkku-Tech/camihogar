@@ -40,6 +40,7 @@ import {
 } from "@/lib/order-currency-display"
 import type { AttributeValue } from "@/lib/storage"
 import { getAll } from "@/lib/indexeddb"
+import { getProductLineSurchargeInBaseCurrency } from "@/lib/order-line-pricing"
 
 const formatBudgetDual = (
   amount: number,
@@ -370,6 +371,22 @@ export default function BudgetDetailPage() {
     [localExchangeRates],
   )
 
+  const productSurchargeTotal = useMemo(() => {
+    if (!budget?.products?.length) return 0
+    const base = getDisplayBaseCurrency(budget)
+    return budget.products.reduce(
+      (sum, p) =>
+        sum +
+        getProductLineSurchargeInBaseCurrency(p, {
+          baseCurrency: base,
+          exchangeRates: commercialRatesInput,
+          categories,
+          allProducts,
+        }),
+      0,
+    )
+  }, [budget, commercialRatesInput, categories, allProducts])
+
   // Formatear totales según moneda base del presupuesto
   useEffect(() => {
     const formatTotals = () => {
@@ -396,6 +413,14 @@ export default function BudgetDetailPage() {
         commercialRatesInput,
         liveRatesInput,
       )
+      if (productSurchargeTotal > 0) {
+        totals.productSurchargeTotal = formatBudgetDual(
+          productSurchargeTotal,
+          base,
+          commercialRatesInput,
+          liveRatesInput,
+        )
+      }
       totals.subtotalBeforeDiscounts = formatBudgetDual(
         budget.subtotalBeforeDiscounts || budget.subtotal,
         base,
@@ -435,7 +460,7 @@ export default function BudgetDetailPage() {
     }
 
     formatTotals()
-  }, [budget, commercialRatesInput, liveRatesInput])
+  }, [budget, commercialRatesInput, liveRatesInput, productSurchargeTotal])
 
   // Formatear precios y descuentos de productos
   useEffect(() => {
@@ -776,6 +801,23 @@ export default function BudgetDetailPage() {
                         />
                       )}
                     </div>
+                    {productSurchargeTotal > 0 && (
+                      <div className="flex justify-between">
+                        <span>Sobreprecio:</span>
+                        {formattedTotals.productSurchargeTotal ? (
+                          <FormattedCurrencyDisplay
+                            formatted={formattedTotals.productSurchargeTotal}
+                          />
+                        ) : (
+                          <CurrencyDisplay
+                            amount={productSurchargeTotal}
+                            baseCurrency={displayBaseCurrency}
+                            exchangeRates={commercialRatesInput}
+                            liveRates={liveRatesInput}
+                          />
+                        )}
+                      </div>
+                    )}
                     {budget.generalDiscountAmount && budget.generalDiscountAmount > 0 && (
                       <div className="flex justify-between text-red-600">
                         <span>{generalDiscountSummaryLabel}</span>

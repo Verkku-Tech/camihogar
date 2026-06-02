@@ -438,6 +438,16 @@ public class OrderAuditLogService : IOrderAuditLogService
                     NewValue = np.LocationStatus ?? "(sin estado)"
                 });
             }
+
+            if (!string.Equals(op.ManufacturingStatus, np.ManufacturingStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].manufacturingStatus",
+                    OldValue = op.ManufacturingStatus ?? "(sin estado)",
+                    NewValue = np.ManufacturingStatus ?? "(sin estado)"
+                });
+            }
         }
     }
 

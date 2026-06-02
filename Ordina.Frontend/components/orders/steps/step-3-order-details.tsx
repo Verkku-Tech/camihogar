@@ -34,10 +34,21 @@ import {
 } from "@/components/ui/table";
 import { Plus, Trash2 } from "lucide-react";
 import type { UseOrderFormReturn } from "../hooks/use-order-form";
+import { DeliveryServiceCostInput } from "../delivery-service-cost-input";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import { toast } from "sonner";
-import { type ProductImage } from "@/lib/storage";
+import { type PartialPayment, type ProductImage } from "@/lib/storage";
 import { PAYMENT_BALANCE_EPSILON_USD } from "@/lib/order-payments";
+import {
+  todayPaymentDateYyyyMmDd,
+  validatePaymentDateNotFuture,
+} from "@/lib/exchange-rate-for-date";
+import {
+  applyBsOnlyPaymentAmountForDate,
+  getEffectivePaymentDateYmd,
+  resolvePaymentExchangeRate,
+  syncPaymentRateOnDateChange,
+} from "@/lib/order-payment-input";
 import { formatPercentForDisplay } from "@/lib/product-discount-ui";
 import { ImageUploader } from "../ImageUploader";
 import {
@@ -80,6 +91,27 @@ function paymentDateToInputValue(date: string | undefined): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function PaymentCobroRateHint({
+  paymentDate,
+  exchangeRate,
+  currency = "USD",
+}: {
+  paymentDate?: string;
+  exchangeRate?: number;
+  currency?: "USD" | "EUR";
+}) {
+  const dateYmd = paymentDateToInputValue(paymentDate);
+  if (!dateYmd || exchangeRate == null || exchangeRate <= 0) return null;
+  const [y, m, d] = dateYmd.split("-");
+  const formattedDate = `${d}/${m}/${y}`;
+  return (
+    <p className="text-xs text-muted-foreground col-span-full">
+      Tasa del cobro ({formattedDate}): 1 {currency} ={" "}
+      {exchangeRate.toFixed(2)} Bs
+    </p>
+  );
 }
 
 interface Step3OrderDetailsProps {
@@ -158,6 +190,47 @@ export function Step3OrderDetails({
 
   const casheaOneLineOnly =
     orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1;
+
+  const handlePaymentDateChange = async (
+    payment: PartialPayment,
+    dateValue: string,
+  ) => {
+    if (payment.paymentDetails?.isConciliated) {
+      toast.error("No se puede cambiar la fecha de un pago conciliado.");
+      return;
+    }
+    if (dateValue && !validatePaymentDateNotFuture(dateValue)) {
+      toast.error("La fecha del cobro no puede ser futura.");
+      return;
+    }
+    updatePayment?.(payment.id, "date", dateValue);
+    await syncPaymentRateOnDateChange(
+      payment,
+      dateValue || todayPaymentDateYyyyMmDd(),
+      {
+        updatePayment,
+        updatePaymentDetails,
+        recalcForeignAmountInBs: true,
+        showFallbackToast: true,
+      },
+    );
+  };
+
+  const resolveRateForPaymentLine = async (
+    payment: PartialPayment,
+    toCurrency: "USD" | "EUR",
+  ): Promise<number | null> => {
+    const { rate, usedFallbackToToday } = await resolvePaymentExchangeRate(
+      payment.date,
+      toCurrency,
+    );
+    if (usedFallbackToToday) {
+      toast.warning(
+        "No hay tasa registrada para esa fecha; se usó la tasa activa de hoy.",
+      );
+    }
+    return rate;
+  };
 
   const [storeCreditOfferOpen, setStoreCreditOfferOpen] = useState(false);
   const [storeCreditOfferDismissed, setStoreCreditOfferDismissed] =
@@ -368,115 +441,27 @@ export function Step3OrderDetails({
                         </Label>
                       </div>
                       {orderForm.deliveryServices.deliveryExpress?.enabled && (
-                        <div className="space-y-2 pl-6">
-                          <Label className="text-xs text-muted-foreground">
-                            Gastos de Entrega
-                          </Label>
-                          <div className="flex gap-2">
-                            <Select
-                              value={
-                                orderForm.deliveryServices.deliveryExpress
-                                  .currency
-                              }
-                              onValueChange={(value: Currency) => {
-                                orderForm.setDeliveryServices((prev) => {
-                                  if (!prev.deliveryExpress) {
-                                    return {
-                                      ...prev,
-                                      deliveryExpress: {
-                                        enabled: true,
-                                        cost: 0,
-                                        currency: value,
-                                      },
-                                    };
-                                  }
-                                  const converted =
-                                    orderForm.convertCurrencyValue(
-                                      prev.deliveryExpress.cost || 0,
-                                      prev.deliveryExpress.currency,
-                                      value,
-                                    );
-                                  if (converted === null) {
-                                    toast.error(
-                                      "No hay tasa BCV para convertir el monto a esa moneda.",
-                                    );
-                                    return prev;
-                                  }
-                                  return {
-                                    ...prev,
-                                    deliveryExpress: {
-                                      ...prev.deliveryExpress,
-                                      currency: value,
-                                      cost: converted,
-                                    },
-                                  };
-                                });
-                              }}
-                            >
-                              <SelectTrigger className="w-24">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Bs">Bs</SelectItem>
-                                <SelectItem value="USD">USD</SelectItem>
-                                <SelectItem value="EUR">EUR</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={(() => {
-                                const cost =
-                                  orderForm.deliveryServices.deliveryExpress
-                                    ?.cost || 0;
-                                const currency =
-                                  orderForm.deliveryServices.deliveryExpress
-                                    ?.currency || "USD";
-                                if (cost === 0) return "";
-                                if (currency === "Bs") return cost;
-                                const rate =
-                                  currency === "USD"
-                                    ? orderForm.exchangeRates.USD?.rate
-                                    : orderForm.exchangeRates.EUR?.rate;
-                                const rawValue =
-                                  rate && rate > 0 ? cost / rate : cost;
-                                return Number(rawValue.toFixed(2));
-                              })()}
-                              onChange={(e) => {
-                                const inputValue =
-                                  Number.parseFloat(e.target.value) || 0;
-                                const currency =
-                                  orderForm.deliveryServices.deliveryExpress
-                                    ?.currency || "USD";
-                                let valueInBs = inputValue;
-                                if (currency !== "Bs") {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    valueInBs = inputValue * rate;
-                                  }
-                                }
-                                orderForm.setDeliveryServices((prev) => ({
-                                  ...prev,
-                                  deliveryExpress: prev.deliveryExpress
-                                    ? {
-                                        ...prev.deliveryExpress,
-                                        cost: valueInBs,
-                                      }
-                                    : {
-                                        enabled: true,
-                                        cost: valueInBs,
-                                        currency: "Bs",
-                                      },
-                                }));
-                              }}
-                              placeholder="0.00"
-                              className="flex-1"
-                            />
-                          </div>
-                        </div>
+                        <DeliveryServiceCostInput
+                          label="Gastos de Entrega"
+                          cost={
+                            orderForm.deliveryServices.deliveryExpress.cost || 0
+                          }
+                          currency={
+                            orderForm.deliveryServices.deliveryExpress
+                              .currency || "USD"
+                          }
+                          convertCurrencyValue={orderForm.convertCurrencyValue}
+                          onChange={(cost, currency) => {
+                            orderForm.setDeliveryServices((prev) => ({
+                              ...prev,
+                              deliveryExpress: {
+                                enabled: true,
+                                cost: cost ?? 0,
+                                currency,
+                              },
+                            }));
+                          }}
+                        />
                       )}
                     </div>
 
@@ -511,124 +496,27 @@ export function Step3OrderDetails({
                         </Label>
                       </div>
                       {orderForm.deliveryServices.servicioAcarreo?.enabled && (
-                        <div className="space-y-2 pl-6">
-                          <Label className="text-xs text-muted-foreground">
-                            Precio (opcional)
-                          </Label>
-                          <div className="flex gap-2">
-                            <Select
-                              value={
-                                orderForm.deliveryServices.servicioAcarreo
-                                  .currency
-                              }
-                              onValueChange={(value: Currency) => {
-                                orderForm.setDeliveryServices((prev) => {
-                                  if (!prev.servicioAcarreo) {
-                                    return {
-                                      ...prev,
-                                      servicioAcarreo: {
-                                        enabled: true,
-                                        cost: undefined,
-                                        currency: value,
-                                      },
-                                    };
-                                  }
-                                  let nextCost = prev.servicioAcarreo.cost;
-                                  if (prev.servicioAcarreo.cost != null) {
-                                    const converted =
-                                      orderForm.convertCurrencyValue(
-                                        prev.servicioAcarreo.cost,
-                                        prev.servicioAcarreo.currency,
-                                        value,
-                                      );
-                                    if (converted === null) {
-                                      toast.error(
-                                        "No hay tasa BCV para convertir el monto a esa moneda.",
-                                      );
-                                      return prev;
-                                    }
-                                    nextCost = converted;
-                                  }
-                                  return {
-                                    ...prev,
-                                    servicioAcarreo: {
-                                      ...prev.servicioAcarreo,
-                                      currency: value,
-                                      cost: nextCost,
-                                    },
-                                  };
-                                });
-                              }}
-                            >
-                              <SelectTrigger className="w-24">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Bs">Bs</SelectItem>
-                                <SelectItem value="USD">USD</SelectItem>
-                                <SelectItem value="EUR">EUR</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={(() => {
-                                const cost =
-                                  orderForm.deliveryServices.servicioAcarreo
-                                    ?.cost;
-                                if (cost === undefined || cost === 0) return "";
-                                const currency =
-                                  orderForm.deliveryServices.servicioAcarreo
-                                    ?.currency || "USD";
-                                if (currency === "Bs") return cost;
-                                const rate =
-                                  currency === "USD"
-                                    ? orderForm.exchangeRates.USD?.rate
-                                    : orderForm.exchangeRates.EUR?.rate;
-                                const rawValue =
-                                  rate && rate > 0 ? cost / rate : cost;
-                                return Number(rawValue.toFixed(2));
-                              })()}
-                              onChange={(e) => {
-                                const inputValue =
-                                  e.target.value === ""
-                                    ? undefined
-                                    : Number.parseFloat(e.target.value) || 0;
-                                const currency =
-                                  orderForm.deliveryServices.servicioAcarreo
-                                    ?.currency || "USD";
-                                let valueInBs: number | undefined = inputValue;
-                                if (
-                                  inputValue !== undefined &&
-                                  currency !== "Bs"
-                                ) {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    valueInBs = inputValue * rate;
-                                  }
-                                }
-                                orderForm.setDeliveryServices((prev) => ({
-                                  ...prev,
-                                  servicioAcarreo: prev.servicioAcarreo
-                                    ? {
-                                        ...prev.servicioAcarreo,
-                                        cost: valueInBs,
-                                      }
-                                    : {
-                                        enabled: true,
-                                        cost: valueInBs,
-                                        currency: "Bs",
-                                      },
-                                }));
-                              }}
-                              placeholder="0.00 (opcional)"
-                              className="flex-1"
-                            />
-                          </div>
-                        </div>
+                        <DeliveryServiceCostInput
+                          label="Precio (opcional)"
+                          cost={orderForm.deliveryServices.servicioAcarreo.cost}
+                          currency={
+                            orderForm.deliveryServices.servicioAcarreo
+                              .currency || "USD"
+                          }
+                          convertCurrencyValue={orderForm.convertCurrencyValue}
+                          allowEmpty
+                          placeholder="0.00 (opcional)"
+                          onChange={(cost, currency) => {
+                            orderForm.setDeliveryServices((prev) => ({
+                              ...prev,
+                              servicioAcarreo: {
+                                enabled: true,
+                                cost,
+                                currency,
+                              },
+                            }));
+                          }}
+                        />
                       )}
                     </div>
 
@@ -663,116 +551,28 @@ export function Step3OrderDetails({
                         </Label>
                       </div>
                       {orderForm.deliveryServices.servicioArmado?.enabled && (
-                        <div className="space-y-2 pl-6">
-                          <Label className="text-xs text-muted-foreground">
-                            Precio (obligatorio)
-                          </Label>
-                          <div className="flex gap-2">
-                            <Select
-                              value={
-                                orderForm.deliveryServices.servicioArmado
-                                  .currency
-                              }
-                              onValueChange={(value: Currency) => {
-                                orderForm.setDeliveryServices((prev) => {
-                                  if (!prev.servicioArmado) {
-                                    return {
-                                      ...prev,
-                                      servicioArmado: {
-                                        enabled: true,
-                                        cost: 0,
-                                        currency: value,
-                                      },
-                                    };
-                                  }
-                                  const converted =
-                                    orderForm.convertCurrencyValue(
-                                      prev.servicioArmado.cost || 0,
-                                      prev.servicioArmado.currency,
-                                      value,
-                                    );
-                                  if (converted === null) {
-                                    toast.error(
-                                      "No hay tasa BCV para convertir el monto a esa moneda.",
-                                    );
-                                    return prev;
-                                  }
-                                  return {
-                                    ...prev,
-                                    servicioArmado: {
-                                      ...prev.servicioArmado,
-                                      currency: value,
-                                      cost: converted,
-                                    },
-                                  };
-                                });
-                              }}
-                            >
-                              <SelectTrigger className="w-24">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Bs">Bs</SelectItem>
-                                <SelectItem value="USD">USD</SelectItem>
-                                <SelectItem value="EUR">EUR</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              required
-                              value={(() => {
-                                const cost =
-                                  orderForm.deliveryServices.servicioArmado
-                                    ?.cost || 0;
-                                const currency =
-                                  orderForm.deliveryServices.servicioArmado
-                                    ?.currency || "USD";
-                                if (cost === 0) return "";
-                                if (currency === "Bs") return cost;
-                                const rate =
-                                  currency === "USD"
-                                    ? orderForm.exchangeRates.USD?.rate
-                                    : orderForm.exchangeRates.EUR?.rate;
-                                const rawValue =
-                                  rate && rate > 0 ? cost / rate : cost;
-                                return Number(rawValue.toFixed(2));
-                              })()}
-                              onChange={(e) => {
-                                const inputValue =
-                                  Number.parseFloat(e.target.value) || 0;
-                                const currency =
-                                  orderForm.deliveryServices.servicioArmado
-                                    ?.currency || "USD";
-                                let valueInBs = inputValue;
-                                if (currency !== "Bs") {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    valueInBs = inputValue * rate;
-                                  }
-                                }
-                                orderForm.setDeliveryServices((prev) => ({
-                                  ...prev,
-                                  servicioArmado: prev.servicioArmado
-                                    ? {
-                                        ...prev.servicioArmado,
-                                        cost: valueInBs,
-                                      }
-                                    : {
-                                        enabled: true,
-                                        cost: valueInBs,
-                                        currency: "Bs",
-                                      },
-                                }));
-                              }}
-                              placeholder="0.00"
-                              className="flex-1"
-                            />
-                          </div>
-                        </div>
+                        <DeliveryServiceCostInput
+                          label="Precio (obligatorio)"
+                          cost={
+                            orderForm.deliveryServices.servicioArmado.cost || 0
+                          }
+                          currency={
+                            orderForm.deliveryServices.servicioArmado
+                              .currency || "USD"
+                          }
+                          convertCurrencyValue={orderForm.convertCurrencyValue}
+                          required
+                          onChange={(cost, currency) => {
+                            orderForm.setDeliveryServices((prev) => ({
+                              ...prev,
+                              servicioArmado: {
+                                enabled: true,
+                                cost: cost ?? 0,
+                                currency,
+                              },
+                            }));
+                          }}
+                        />
                       )}
                     </div>
                   </div>
@@ -827,106 +627,52 @@ export function Step3OrderDetails({
                         )}
                       </TableRow>
 
+                      {orderForm.productSurchargeTotal > 0 && (
+                        <TableRow>
+                          <TableCell className="text-xs sm:text-sm font-medium">
+                            Sobreprecio:
+                          </TableCell>
+                          {orderForm.renderCurrencyCell(
+                            orderForm.productSurchargeTotal,
+                          )}
+                        </TableRow>
+                      )}
+
                       {/* Servicios complementarios (se suman después del impuesto) */}
-                      {orderForm.deliveryServices.deliveryExpress?.enabled &&
-                        orderForm.deliveryServices.deliveryExpress.cost > 0 && (
-                          <TableRow>
+                      {(
+                        [
+                          {
+                            label: "Delivery Express:",
+                            line: orderForm.deliveryServices.deliveryExpress,
+                          },
+                          {
+                            label: "Servicio de Acarreo:",
+                            line: orderForm.deliveryServices.servicioAcarreo,
+                          },
+                          {
+                            label: "Servicio de Armado:",
+                            line: orderForm.deliveryServices.servicioArmado,
+                          },
+                        ] as const
+                      )
+                        .filter(
+                          (row) =>
+                            row.line?.enabled &&
+                            row.line.cost != null &&
+                            row.line.cost > 0,
+                        )
+                        .map((row) => (
+                          <TableRow key={row.label}>
                             <TableCell className="text-xs sm:text-sm font-medium">
-                              Delivery Express:
+                              {row.label}
                             </TableCell>
-                            <TableCell className="text-right text-xs sm:text-sm">
-                              {(() => {
-                                const cost =
-                                  orderForm.deliveryServices.deliveryExpress
-                                    .cost;
-                                const currency =
-                                  orderForm.deliveryServices.deliveryExpress
-                                    .currency || "USD";
-                                if (currency !== "Bs") {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    const costInOriginalCurrency = cost / rate;
-                                    return formatCurrency(
-                                      costInOriginalCurrency,
-                                      currency,
-                                    );
-                                  }
-                                }
-                                return formatCurrency(cost, currency);
-                              })()}
-                            </TableCell>
+                            {orderForm.renderServiceLineCell(
+                              row.line!.cost!,
+                              row.line!.currency || "USD",
+                              "text-xs sm:text-sm",
+                            )}
                           </TableRow>
-                        )}
-
-                      {orderForm.deliveryServices.servicioAcarreo?.enabled &&
-                        orderForm.deliveryServices.servicioAcarreo.cost &&
-                        orderForm.deliveryServices.servicioAcarreo.cost > 0 && (
-                          <TableRow>
-                            <TableCell className="text-xs sm:text-sm font-medium">
-                              Servicio de Acarreo:
-                            </TableCell>
-                            <TableCell className="text-right text-xs sm:text-sm">
-                              {(() => {
-                                const cost =
-                                  orderForm.deliveryServices.servicioAcarreo
-                                    .cost;
-                                const currency =
-                                  orderForm.deliveryServices.servicioAcarreo
-                                    .currency || "USD";
-                                if (currency !== "Bs") {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    const costInOriginalCurrency = cost / rate;
-                                    return formatCurrency(
-                                      costInOriginalCurrency,
-                                      currency,
-                                    );
-                                  }
-                                }
-                                return formatCurrency(cost, currency);
-                              })()}
-                            </TableCell>
-                          </TableRow>
-                        )}
-
-                      {orderForm.deliveryServices.servicioArmado?.enabled &&
-                        orderForm.deliveryServices.servicioArmado.cost > 0 && (
-                          <TableRow>
-                            <TableCell className="text-xs sm:text-sm font-medium">
-                              Servicio de Armado:
-                            </TableCell>
-                            <TableCell className="text-right text-xs sm:text-sm">
-                              {(() => {
-                                const cost =
-                                  orderForm.deliveryServices.servicioArmado
-                                    .cost;
-                                const currency =
-                                  orderForm.deliveryServices.servicioArmado
-                                    .currency || "USD";
-                                if (currency !== "Bs") {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    const costInOriginalCurrency = cost / rate;
-                                    return formatCurrency(
-                                      costInOriginalCurrency,
-                                      currency,
-                                    );
-                                  }
-                                }
-                                return formatCurrency(cost, currency);
-                              })()}
-                            </TableCell>
-                          </TableRow>
-                        )}
+                        ))}
 
                       {/* Total */}
                       <TableRow className="font-medium border-t">
@@ -994,44 +740,19 @@ export function Step3OrderDetails({
                     <Select
                       value={orderForm.generalDiscountCurrency}
                       onValueChange={(value: Currency) => {
-                        // Convertir el valor actual a la nueva moneda (similar a delivery)
                         if (orderForm.generalDiscount > 0) {
-                          let newValue = orderForm.generalDiscount;
-                          if (orderForm.generalDiscountCurrency === "Bs") {
-                            // De Bs a otra moneda
-                            const rate =
-                              value === "USD"
-                                ? orderForm.exchangeRates.USD?.rate
-                                : orderForm.exchangeRates.EUR?.rate;
-                            if (rate && rate > 0) {
-                              newValue = orderForm.generalDiscount / rate;
-                            }
-                          } else if (value === "Bs") {
-                            // De otra moneda a Bs
-                            const rate =
-                              orderForm.generalDiscountCurrency === "USD"
-                                ? orderForm.exchangeRates.USD?.rate
-                                : orderForm.exchangeRates.EUR?.rate;
-                            if (rate && rate > 0) {
-                              newValue = orderForm.generalDiscount * rate;
-                            }
-                          } else {
-                            // Entre USD y EUR
-                            const currentRate =
-                              orderForm.generalDiscountCurrency === "USD"
-                                ? orderForm.exchangeRates.USD?.rate
-                                : orderForm.exchangeRates.EUR?.rate;
-                            const newRate =
-                              value === "USD"
-                                ? orderForm.exchangeRates.USD?.rate
-                                : orderForm.exchangeRates.EUR?.rate;
-                            if (currentRate && newRate && currentRate > 0) {
-                              newValue =
-                                (orderForm.generalDiscount * currentRate) /
-                                newRate;
-                            }
+                          const converted = orderForm.convertCurrencyValue(
+                            orderForm.generalDiscount,
+                            orderForm.generalDiscountCurrency,
+                            value,
+                          );
+                          if (converted === null) {
+                            toast.error(
+                              "No hay tasa BCV para convertir el monto a esa moneda.",
+                            );
+                            return;
                           }
-                          orderForm.setGeneralDiscount(newValue);
+                          orderForm.setGeneralDiscount(converted);
                         }
                         orderForm.setGeneralDiscountCurrency(value);
                       }}
@@ -1087,26 +808,7 @@ export function Step3OrderDetails({
                           value={
                             orderForm.generalDiscount === 0
                               ? ""
-                              : (() => {
-                                  if (
-                                    orderForm.generalDiscountCurrency === "Bs"
-                                  ) {
-                                    return orderForm.generalDiscount;
-                                  }
-                                  const rate =
-                                    orderForm.generalDiscountCurrency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    return (
-                                      Math.round(
-                                        (orderForm.generalDiscount / rate) *
-                                          100,
-                                      ) / 100
-                                    );
-                                  }
-                                  return orderForm.generalDiscount;
-                                })()
+                              : orderForm.generalDiscount
                           }
                           onChange={(e) => {
                             const raw = e.target.value;
@@ -1115,17 +817,7 @@ export function Step3OrderDetails({
                               if (raw === "") orderForm.setGeneralDiscount(0);
                               return;
                             }
-                            let valueInBs = inputValue;
-                            if (orderForm.generalDiscountCurrency !== "Bs") {
-                              const rate =
-                                orderForm.generalDiscountCurrency === "USD"
-                                  ? orderForm.exchangeRates.USD?.rate
-                                  : orderForm.exchangeRates.EUR?.rate;
-                              if (rate && rate > 0) {
-                                valueInBs = inputValue * rate;
-                              }
-                            }
-                            orderForm.setGeneralDiscount(valueInBs);
+                            orderForm.setGeneralDiscount(inputValue);
                           }}
                           placeholder="0.00"
                           disabled={orderForm.selectedProducts.length === 0}
@@ -1413,24 +1105,28 @@ export function Step3OrderDetails({
                                 "USD",
                               );
 
-                              // Si ya hay un monto, reconvertirlo de USD a Bs
                               if (payment.paymentDetails?.originalAmount) {
-                                const rate = orderForm.exchangeRates.USD?.rate;
-                                if (rate && rate > 0) {
-                                  const valueInBs =
-                                    payment.paymentDetails.originalAmount *
-                                    rate;
-                                  updatePayment?.(
-                                    payment.id,
-                                    "amount",
-                                    valueInBs,
+                                void (async () => {
+                                  const rate = await resolveRateForPaymentLine(
+                                    payment,
+                                    "USD",
                                   );
-                                  updatePaymentDetails?.(
-                                    payment.id,
-                                    "exchangeRate",
-                                    rate,
-                                  );
-                                }
+                                  if (rate && rate > 0) {
+                                    const valueInBs =
+                                      payment.paymentDetails!.originalAmount! *
+                                      rate;
+                                    updatePayment?.(
+                                      payment.id,
+                                      "amount",
+                                      valueInBs,
+                                    );
+                                    updatePaymentDetails?.(
+                                      payment.id,
+                                      "exchangeRate",
+                                      rate,
+                                    );
+                                  }
+                                })();
                               }
                             }
                             // Si se cambia a método solo Bs (Pago Móvil, Transferencia, TDD, TDC), forzar Bs
@@ -1441,13 +1137,15 @@ export function Step3OrderDetails({
                                 "originalCurrency",
                                 "Bs",
                               );
-                              updatePaymentDetails?.(
-                                payment.id,
-                                "exchangeRate",
-                                undefined,
+                              void syncPaymentRateOnDateChange(
+                                payment,
+                                getEffectivePaymentDateYmd(payment.date),
+                                {
+                                  updatePaymentDetails,
+                                  showFallbackToast: true,
+                                },
                               );
 
-                              // Si hay monto original, usarlo directamente como Bs
                               if (payment.paymentDetails?.originalAmount) {
                                 updatePayment?.(
                                   payment.id,
@@ -1474,43 +1172,56 @@ export function Step3OrderDetails({
                                   currentCurrency,
                                 );
                               }
-                              // Si hay una tasa de cambio disponible, guardarla
-                              if (
-                                currentCurrency !== "Bs" &&
-                                orderForm.exchangeRates[currentCurrency]?.rate
-                              ) {
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "exchangeRate",
-                                  orderForm.exchangeRates[currentCurrency].rate,
-                                );
-                              }
-                              if (
-                                efectivoCashExcludesManualBs(currentCurrency)
-                              ) {
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "useCustomRate",
-                                  false,
-                                );
+                              void (async () => {
                                 const received =
                                   payment.paymentDetails?.cashReceived || 0;
-                                if (received > 0) {
+                                if (currentCurrency === "Bs") {
+                                  await syncPaymentRateOnDateChange(
+                                    payment,
+                                    getEffectivePaymentDateYmd(payment.date),
+                                    {
+                                      updatePaymentDetails,
+                                      showFallbackToast: true,
+                                    },
+                                  );
+                                  if (received > 0) {
+                                    updatePayment?.(
+                                      payment.id,
+                                      "amount",
+                                      received,
+                                    );
+                                  }
+                                } else {
+                                  const toCur =
+                                    currentCurrency === "EUR" ? "EUR" : "USD";
                                   const rate =
-                                    orderForm.exchangeRates[currentCurrency]
-                                      ?.rate || 1;
+                                    (await resolveRateForPaymentLine(
+                                      payment,
+                                      toCur,
+                                    )) ?? 1;
                                   updatePaymentDetails?.(
                                     payment.id,
                                     "exchangeRate",
                                     rate,
                                   );
-                                  updatePayment?.(
-                                    payment.id,
-                                    "amount",
-                                    received * rate,
-                                  );
+                                  if (
+                                    efectivoCashExcludesManualBs(currentCurrency)
+                                  ) {
+                                    updatePaymentDetails?.(
+                                      payment.id,
+                                      "useCustomRate",
+                                      false,
+                                    );
+                                  }
+                                  if (received > 0) {
+                                    updatePayment?.(
+                                      payment.id,
+                                      "amount",
+                                      received * rate,
+                                    );
+                                  }
                                 }
-                              }
+                              })();
                             } else {
                               // Si se cambia a un método diferente a Efectivo y había cashReceived, limpiarlo
                               updatePaymentDetails?.(
@@ -1555,9 +1266,13 @@ export function Step3OrderDetails({
                         <Input
                           type="date"
                           value={paymentDateToInputValue(payment.date)}
-                          onChange={(e) =>
-                            updatePayment?.(payment.id, "date", e.target.value)
-                          }
+                          disabled={!!payment.paymentDetails?.isConciliated}
+                          onChange={(e) => {
+                            void handlePaymentDateChange(
+                              payment,
+                              e.target.value,
+                            );
+                          }}
                           className="w-full"
                         />
                       </div>
@@ -1584,6 +1299,16 @@ export function Step3OrderDetails({
                         </Badge>
                       )}
                     </div>
+                    <PaymentCobroRateHint
+                      paymentDate={payment.date}
+                      exchangeRate={payment.paymentDetails?.exchangeRate}
+                      currency={
+                        payment.paymentDetails?.cashCurrency === "EUR" ||
+                        payment.paymentDetails?.originalCurrency === "EUR"
+                          ? "EUR"
+                          : "USD"
+                      }
+                    />
 
                     {/* Campos condicionales según método de pago */}
                     {payment.method === "Pago Móvil" && (
@@ -1615,28 +1340,19 @@ export function Step3OrderDetails({
                               onChange={(e) => {
                                 const inputValue =
                                   Number.parseFloat(e.target.value) || 0;
-                                // Pago Móvil siempre es en Bs
-                                updatePayment?.(
+                                void applyBsOnlyPaymentAmountForDate(
                                   payment.id,
-                                  "amount",
                                   inputValue,
-                                );
-                                updatePayment?.(payment.id, "currency", "Bs");
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "originalAmount",
-                                  inputValue,
-                                );
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "originalCurrency",
-                                  "Bs",
-                                );
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "exchangeRate",
-                                  undefined,
-                                );
+                                  payment.date,
+                                  updatePayment,
+                                  updatePaymentDetails,
+                                ).then(({ usedFallbackToToday }) => {
+                                  if (usedFallbackToToday) {
+                                    toast.warning(
+                                      "No hay tasa para la fecha del cobro; se usó la tasa de hoy.",
+                                    );
+                                  }
+                                });
                               }}
                               placeholder="0.00"
                             />
@@ -1768,28 +1484,19 @@ export function Step3OrderDetails({
                               onChange={(e) => {
                                 const inputValue =
                                   Number.parseFloat(e.target.value) || 0;
-                                // Transferencia siempre es en Bs
-                                updatePayment?.(
+                                void applyBsOnlyPaymentAmountForDate(
                                   payment.id,
-                                  "amount",
                                   inputValue,
-                                );
-                                updatePayment?.(payment.id, "currency", "Bs");
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "originalAmount",
-                                  inputValue,
-                                );
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "originalCurrency",
-                                  "Bs",
-                                );
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "exchangeRate",
-                                  undefined,
-                                );
+                                  payment.date,
+                                  updatePayment,
+                                  updatePaymentDetails,
+                                ).then(({ usedFallbackToToday }) => {
+                                  if (usedFallbackToToday) {
+                                    toast.warning(
+                                      "No hay tasa para la fecha del cobro; se usó la tasa de hoy.",
+                                    );
+                                  }
+                                });
                               }}
                               placeholder="0.00"
                             />
@@ -1923,27 +1630,19 @@ export function Step3OrderDetails({
                               onChange={(e) => {
                                 const inputValue =
                                   Number.parseFloat(e.target.value) || 0;
-                                updatePayment?.(
+                                void applyBsOnlyPaymentAmountForDate(
                                   payment.id,
-                                  "amount",
                                   inputValue,
-                                );
-                                updatePayment?.(payment.id, "currency", "Bs");
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "originalAmount",
-                                  inputValue,
-                                );
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "originalCurrency",
-                                  "Bs",
-                                );
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "exchangeRate",
-                                  undefined,
-                                );
+                                  payment.date,
+                                  updatePayment,
+                                  updatePaymentDetails,
+                                ).then(({ usedFallbackToToday }) => {
+                                  if (usedFallbackToToday) {
+                                    toast.warning(
+                                      "No hay tasa para la fecha del cobro; se usó la tasa de hoy.",
+                                    );
+                                  }
+                                });
                               }}
                               placeholder="0.00"
                             />
@@ -2042,27 +1741,19 @@ export function Step3OrderDetails({
                               onChange={(e) => {
                                 const inputValue =
                                   Number.parseFloat(e.target.value) || 0;
-                                updatePayment?.(
+                                void applyBsOnlyPaymentAmountForDate(
                                   payment.id,
-                                  "amount",
                                   inputValue,
-                                );
-                                updatePayment?.(payment.id, "currency", "Bs");
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "originalAmount",
-                                  inputValue,
-                                );
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "originalCurrency",
-                                  "Bs",
-                                );
-                                updatePaymentDetails?.(
-                                  payment.id,
-                                  "exchangeRate",
-                                  undefined,
-                                );
+                                  payment.date,
+                                  updatePayment,
+                                  updatePaymentDetails,
+                                ).then(({ usedFallbackToToday }) => {
+                                  if (usedFallbackToToday) {
+                                    toast.warning(
+                                      "No hay tasa para la fecha del cobro; se usó la tasa de hoy.",
+                                    );
+                                  }
+                                });
                               }}
                               placeholder="0.00"
                             />
@@ -2193,65 +1884,65 @@ export function Step3OrderDetails({
                                         // Si el monto original está en otra moneda, mantenerlo pero recalcular Bs
                                         // Si cambia a la misma moneda que ya tiene el originalAmount, mantenerlo
                                         if (value !== currentOriginalCurrency) {
-                                          // Si cambia de moneda, mantener el originalAmount actual
-                                          // y recalcular el amount en Bs basado en la nueva moneda
-                                          let valueInBs = currentOriginalAmount;
+                                          void (async () => {
+                                            let valueInBs = currentOriginalAmount;
+                                            if (value !== "Bs") {
+                                              const toCur =
+                                                value === "EUR" ? "EUR" : "USD";
+                                              const rate =
+                                                await resolveRateForPaymentLine(
+                                                  payment,
+                                                  toCur,
+                                                );
+                                              if (rate && rate > 0) {
+                                                valueInBs =
+                                                  currentOriginalAmount * rate;
+                                                updatePaymentDetails?.(
+                                                  payment.id,
+                                                  "exchangeRate",
+                                                  rate,
+                                                );
+                                              }
+                                            }
+                                            updatePayment?.(
+                                              payment.id,
+                                              "amount",
+                                              valueInBs,
+                                            );
+                                          })();
+                                        }
+                                      } else if (payment.amount > 0) {
+                                        void (async () => {
+                                          let originalAmount = payment.amount;
                                           if (value !== "Bs") {
+                                            const toCur =
+                                              value === "EUR" ? "EUR" : "USD";
                                             const rate =
-                                              value === "USD"
-                                                ? orderForm.exchangeRates.USD
-                                                    ?.rate
-                                                : orderForm.exchangeRates.EUR
-                                                    ?.rate;
+                                              await resolveRateForPaymentLine(
+                                                payment,
+                                                toCur,
+                                              );
                                             if (rate && rate > 0) {
-                                              valueInBs =
-                                                currentOriginalAmount * rate;
+                                              originalAmount =
+                                                payment.amount / rate;
                                               updatePaymentDetails?.(
                                                 payment.id,
                                                 "exchangeRate",
                                                 rate,
                                               );
                                             }
-                                          } else {
-                                            // Si cambia a Bs, el originalAmount ya está en Bs
-                                            valueInBs = currentOriginalAmount;
                                           }
-                                          updatePayment?.(
+                                          updatePaymentDetails?.(
                                             payment.id,
-                                            "amount",
-                                            valueInBs,
+                                            "originalAmount",
+                                            originalAmount,
                                           );
-                                        }
-                                      } else if (payment.amount > 0) {
-                                        // Si no hay originalAmount guardado pero hay amount, calcular desde amount
-                                        let originalAmount = payment.amount;
-                                        if (value !== "Bs") {
-                                          const rate =
-                                            value === "USD"
-                                              ? orderForm.exchangeRates.USD
-                                                  ?.rate
-                                              : orderForm.exchangeRates.EUR
-                                                  ?.rate;
-                                          if (rate && rate > 0) {
-                                            originalAmount =
-                                              payment.amount / rate;
-                                            updatePaymentDetails?.(
-                                              payment.id,
-                                              "exchangeRate",
-                                              rate,
-                                            );
-                                          }
-                                        }
-                                        updatePaymentDetails?.(
-                                          payment.id,
-                                          "originalAmount",
-                                          originalAmount,
-                                        );
-                                        updatePaymentDetails?.(
-                                          payment.id,
-                                          "originalCurrency",
-                                          value,
-                                        );
+                                          updatePaymentDetails?.(
+                                            payment.id,
+                                            "originalCurrency",
+                                            value,
+                                          );
+                                        })();
                                       } else {
                                         // Si no hay monto aún, solo actualizar la moneda
                                         updatePaymentDetails?.(
@@ -2329,27 +2020,32 @@ export function Step3OrderDetails({
                                               );
                                               // Al desactivar, recalculamos basado en la tasa oficial
                                               if (!checked) {
-                                                const rate =
-                                                  paymentCurrency === "USD"
-                                                    ? orderForm.exchangeRates
-                                                        .USD?.rate
-                                                    : orderForm.exchangeRates
-                                                        .EUR?.rate;
-                                                const origAmt =
-                                                  payment.paymentDetails
-                                                    ?.originalAmount || 0;
-                                                if (rate && rate > 0) {
-                                                  updatePaymentDetails?.(
-                                                    payment.id,
-                                                    "exchangeRate",
-                                                    rate,
-                                                  );
-                                                  updatePayment?.(
-                                                    payment.id,
-                                                    "amount",
-                                                    origAmt * rate,
-                                                  );
-                                                }
+                                                void (async () => {
+                                                  const toCur =
+                                                    paymentCurrency === "EUR"
+                                                      ? "EUR"
+                                                      : "USD";
+                                                  const rate =
+                                                    await resolveRateForPaymentLine(
+                                                      payment,
+                                                      toCur,
+                                                    );
+                                                  const origAmt =
+                                                    payment.paymentDetails
+                                                      ?.originalAmount || 0;
+                                                  if (rate && rate > 0) {
+                                                    updatePaymentDetails?.(
+                                                      payment.id,
+                                                      "exchangeRate",
+                                                      rate,
+                                                    );
+                                                    updatePayment?.(
+                                                      payment.id,
+                                                      "amount",
+                                                      origAmt * rate,
+                                                    );
+                                                  }
+                                                })();
                                               }
                                             }}
                                           />
@@ -2439,38 +2135,35 @@ export function Step3OrderDetails({
                                               paymentCurrency,
                                             );
 
-                                            // Si tiene tasa custom, calculamos la tasa implícita (si ya hay Bs asignado)
-                                            // En realidad, si es custom mode, solo actualizamos el originalAmount.
-                                            // El usuario actualizará los Bs en el otro input.
-                                            // Pero si está escribiendo dólares, por conveniencia le sugerimos los bs
-                                            // usando la tasa oficial actual si los bs estaban en 0.
-                                            if (
-                                              payment.paymentDetails
-                                                ?.useCustomRate &&
-                                              !hideManualBs
-                                            ) {
-                                              if (payment.amount === 0) {
-                                                const rate =
-                                                  paymentCurrency === "USD"
-                                                    ? orderForm.exchangeRates
-                                                        .USD?.rate
-                                                    : orderForm.exchangeRates
-                                                        .EUR?.rate;
-                                                if (rate && rate > 0) {
-                                                  updatePayment?.(
-                                                    payment.id,
-                                                    "amount",
-                                                    inputValue * rate,
-                                                  );
-                                                  updatePaymentDetails?.(
-                                                    payment.id,
-                                                    "exchangeRate",
-                                                    rate,
-                                                  );
-                                                }
-                                              } else {
-                                                // Ya hay un monto en Bs establecido. Recalculamos la tasa custom implícita
-                                                if (inputValue > 0) {
+                                            void (async () => {
+                                              if (
+                                                payment.paymentDetails
+                                                  ?.useCustomRate &&
+                                                !hideManualBs
+                                              ) {
+                                                if (payment.amount === 0) {
+                                                  const toCur =
+                                                    paymentCurrency === "EUR"
+                                                      ? "EUR"
+                                                      : "USD";
+                                                  const rate =
+                                                    await resolveRateForPaymentLine(
+                                                      payment,
+                                                      toCur,
+                                                    );
+                                                  if (rate && rate > 0) {
+                                                    updatePayment?.(
+                                                      payment.id,
+                                                      "amount",
+                                                      inputValue * rate,
+                                                    );
+                                                    updatePaymentDetails?.(
+                                                      payment.id,
+                                                      "exchangeRate",
+                                                      rate,
+                                                    );
+                                                  }
+                                                } else if (inputValue > 0) {
                                                   updatePaymentDetails?.(
                                                     payment.id,
                                                     "exchangeRate",
@@ -2482,26 +2175,34 @@ export function Step3OrderDetails({
                                                     ),
                                                   );
                                                 }
+                                                return;
                                               }
-                                              return;
-                                            }
 
-                                            // Comportamiento normal (sin custom rate)
-                                            let valueInBs = inputValue;
-                                            if (paymentCurrency !== "Bs") {
-                                              const rate =
-                                                paymentCurrency === "USD"
-                                                  ? orderForm.exchangeRates.USD
-                                                      ?.rate
-                                                  : orderForm.exchangeRates.EUR
-                                                      ?.rate;
-                                              if (rate && rate > 0) {
-                                                valueInBs = inputValue * rate;
-                                                updatePaymentDetails?.(
-                                                  payment.id,
-                                                  "exchangeRate",
-                                                  rate,
-                                                );
+                                              let valueInBs = inputValue;
+                                              if (paymentCurrency !== "Bs") {
+                                                const toCur =
+                                                  paymentCurrency === "EUR"
+                                                    ? "EUR"
+                                                    : "USD";
+                                                const rate =
+                                                  await resolveRateForPaymentLine(
+                                                    payment,
+                                                    toCur,
+                                                  );
+                                                if (rate && rate > 0) {
+                                                  valueInBs = inputValue * rate;
+                                                  updatePaymentDetails?.(
+                                                    payment.id,
+                                                    "exchangeRate",
+                                                    rate,
+                                                  );
+                                                } else {
+                                                  updatePaymentDetails?.(
+                                                    payment.id,
+                                                    "exchangeRate",
+                                                    undefined,
+                                                  );
+                                                }
                                               } else {
                                                 updatePaymentDetails?.(
                                                   payment.id,
@@ -2509,18 +2210,12 @@ export function Step3OrderDetails({
                                                   undefined,
                                                 );
                                               }
-                                            } else {
-                                              updatePaymentDetails?.(
+                                              updatePayment?.(
                                                 payment.id,
-                                                "exchangeRate",
-                                                undefined,
+                                                "amount",
+                                                valueInBs,
                                               );
-                                            }
-                                            updatePayment?.(
-                                              payment.id,
-                                              "amount",
-                                              valueInBs,
-                                            );
+                                            })();
                                           }}
                                           placeholder="0.00"
                                         />
@@ -2733,45 +2428,58 @@ export function Step3OrderDetails({
                                 orderForm.getDefaultCurrencyFromSelection()
                               }
                               onValueChange={(value: Currency) => {
-                                // Actualizar cashCurrency
                                 updatePaymentDetails?.(
                                   payment.id,
                                   "cashCurrency",
                                   value,
                                 );
-
-                                // ACTUALIZAR payment.currency también
                                 updatePayment?.(payment.id, "currency", value);
 
-                                // Actualizar la tasa de cambio si es necesario
-                                const rate =
-                                  value !== "Bs" &&
-                                  orderForm.exchangeRates[value]
-                                    ? orderForm.exchangeRates[value]?.rate || 1
-                                    : 1;
-
-                                if (value !== "Bs") {
-                                  updatePaymentDetails?.(
-                                    payment.id,
-                                    "exchangeRate",
-                                    rate,
-                                  );
-                                }
-
-                                // Recalcular el amount en Bs basado en cashReceived
-                                const cashReceived =
-                                  payment.paymentDetails?.cashReceived || 0;
-                                if (cashReceived > 0) {
-                                  const amountInBs =
-                                    value === "Bs"
-                                      ? cashReceived
-                                      : cashReceived * rate;
-                                  updatePayment?.(
-                                    payment.id,
-                                    "amount",
-                                    amountInBs,
-                                  );
-                                }
+                                void (async () => {
+                                  const cashReceived =
+                                    payment.paymentDetails?.cashReceived || 0;
+                                  if (value === "Bs") {
+                                    await resolveRateForPaymentLine(
+                                      payment,
+                                      "USD",
+                                    ).then((usdRate) => {
+                                      if (usdRate && usdRate > 0) {
+                                        updatePaymentDetails?.(
+                                          payment.id,
+                                          "exchangeRate",
+                                          usdRate,
+                                        );
+                                      }
+                                    });
+                                    if (cashReceived > 0) {
+                                      updatePayment?.(
+                                        payment.id,
+                                        "amount",
+                                        cashReceived,
+                                      );
+                                    }
+                                  } else {
+                                    const toCur =
+                                      value === "EUR" ? "EUR" : "USD";
+                                    const rate =
+                                      (await resolveRateForPaymentLine(
+                                        payment,
+                                        toCur,
+                                      )) ?? 1;
+                                    updatePaymentDetails?.(
+                                      payment.id,
+                                      "exchangeRate",
+                                      rate,
+                                    );
+                                    if (cashReceived > 0) {
+                                      updatePayment?.(
+                                        payment.id,
+                                        "amount",
+                                        cashReceived * rate,
+                                      );
+                                    }
+                                  }
+                                })();
 
                                 if (efectivoCashExcludesManualBs(value)) {
                                   updatePaymentDetails?.(
@@ -2813,42 +2521,65 @@ export function Step3OrderDetails({
                                 const received =
                                   parseFloat(e.target.value) || 0;
 
-                                // Guardar el monto recibido
                                 updatePaymentDetails?.(
                                   payment.id,
                                   "cashReceived",
                                   received,
                                 );
 
-                                // Calcular y actualizar el amount en Bs automáticamente
                                 const currency =
                                   payment.paymentDetails?.cashCurrency || "Bs";
-                                const rate =
-                                  currency !== "Bs"
-                                    ? orderForm.exchangeRates[currency]?.rate ||
-                                      1
-                                    : 1;
 
-                                // El amount siempre se guarda en Bs
-                                const amountInBs =
-                                  currency === "Bs"
-                                    ? received
-                                    : received * rate;
-
-                                updatePayment?.(
+                                updatePaymentDetails?.(
                                   payment.id,
-                                  "amount",
-                                  amountInBs,
+                                  "originalAmount",
+                                  received,
+                                );
+                                updatePaymentDetails?.(
+                                  payment.id,
+                                  "originalCurrency",
+                                  currency,
                                 );
 
-                                // Guardar/actualizar la tasa
-                                if (currency !== "Bs") {
-                                  updatePaymentDetails?.(
-                                    payment.id,
-                                    "exchangeRate",
-                                    rate,
-                                  );
-                                }
+                                void (async () => {
+                                  if (currency === "Bs") {
+                                    const usdRate =
+                                      await resolveRateForPaymentLine(
+                                        payment,
+                                        "USD",
+                                      );
+                                    if (usdRate && usdRate > 0) {
+                                      updatePaymentDetails?.(
+                                        payment.id,
+                                        "exchangeRate",
+                                        usdRate,
+                                      );
+                                    }
+                                    updatePayment?.(
+                                      payment.id,
+                                      "amount",
+                                      received,
+                                    );
+                                  } else {
+                                    const toCur =
+                                      currency === "EUR" ? "EUR" : "USD";
+                                    const rate =
+                                      (await resolveRateForPaymentLine(
+                                        payment,
+                                        toCur,
+                                      )) ?? 1;
+                                    updatePaymentDetails?.(
+                                      payment.id,
+                                      "exchangeRate",
+                                      rate,
+                                    );
+                                    updatePayment?.(
+                                      payment.id,
+                                      "amount",
+                                      received * rate,
+                                    );
+                                  }
+                                })();
                               }}
                               placeholder="0.00"
                             />
@@ -3073,6 +2804,7 @@ export function Step3OrderDetails({
                           orderForm.isPaymentsValid
                             ? "text-green-600 font-semibold"
                             : "font-semibold",
+                          true,
                         )}
                       </TableRow>
 

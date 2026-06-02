@@ -64,18 +64,21 @@ function computeReportMontoBs(
   return montoOriginal * (exchangeRate ?? 1)
 }
 
-/** USD equivalente para filas en Bs usando tasas guardadas en el pedido */
+/** USD equivalente para filas en Bs: tasa del abono, si no la del pedido al crear. */
 function computeMontoUsdForBsPayment(
   order: Order,
   monedaOriginal: string,
   montoBs: number | null,
+  paymentExchangeRate?: number | null,
 ): number | undefined {
   if (monedaOriginal !== "Bs" || montoBs == null) return undefined
   const ex = order.exchangeRatesAtCreation as
     | { USD?: { rate: number }; usd?: { rate: number } }
     | undefined
-  if (!ex) return undefined
-  const rate = ex.USD?.rate ?? ex.usd?.rate
+  const rate =
+    paymentExchangeRate != null && paymentExchangeRate > 0
+      ? paymentExchangeRate
+      : ex?.USD?.rate ?? ex?.usd?.rate
   if (rate == null || rate <= 0) return undefined
   return Math.round((montoBs / rate) * 100) / 100
 }
@@ -437,7 +440,12 @@ export function PaymentsReport() {
               montoOriginal: montoOriginal,
               monedaOriginal: monedaOriginal,
               montoBs: montoBs,
-              montoUsd: computeMontoUsdForBsPayment(order, monedaOriginal, montoBs),
+              montoUsd: computeMontoUsdForBsPayment(
+                order,
+                monedaOriginal,
+                montoBs,
+                payment.paymentDetails?.exchangeRate,
+              ),
               referencia: referencia,
               cuenta: cuenta,
               orderId: order.id,
@@ -499,7 +507,12 @@ export function PaymentsReport() {
             montoOriginal: montoOriginal,
             monedaOriginal: monedaOriginal,
             montoBs: montoBs,
-            montoUsd: computeMontoUsdForBsPayment(order, monedaOriginal, montoBs),
+            montoUsd: computeMontoUsdForBsPayment(
+              order,
+              monedaOriginal,
+              montoBs,
+              order.paymentDetails?.exchangeRate,
+            ),
             referencia: referencia,
             cuenta: cuenta,
             orderId: order.id,

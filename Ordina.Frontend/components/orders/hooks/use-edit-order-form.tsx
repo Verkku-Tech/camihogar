@@ -30,11 +30,13 @@ import {
   type Currency,
 } from "@/lib/currency-utils";
 import {
+  CASHEA_FINANCED_METHOD_LABEL,
   getActivePaymentsList,
   filterCasheaStubForEditForm,
   getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_BS,
   PAYMENT_BALANCE_EPSILON_USD,
+  sumPaymentsCollectedInBs,
   sumPaymentsToUsd,
 } from "@/lib/order-payments";
 import {
@@ -42,6 +44,7 @@ import {
   commercialRatesToExchangeRatesInput,
   formatCommercialDualDisplay,
   formatDualCurrencyAmounts,
+  formatOrderPaymentTotalsDisplay,
   getCommercialRatesFromOrder,
   getCommercialTotalUsd,
   getFrozenCommercialTotalsFromOrder,
@@ -50,11 +53,21 @@ import {
 import { getBsPerUsdFromOrder } from "@/lib/order-store-credit-usd";
 import {
   getLineDiscountInBaseCurrency,
+  getProductDiscountCurrencyForTotals,
+  computeProductDiscountStoredAmount,
+  normalizeProductLineDiscountFromLegacy,
   getLinePriceCurrency,
   getOrderBaseCurrency,
-  getProductLineBaseTotalInBaseCurrency,
+  getProductLineBaseWithoutSurchargeInBaseCurrency,
+  getProductLineSurchargeInBaseCurrency,
+  getProductLineSubtotalDisplayInBaseCurrency,
+  getProductLineTotalAfterDiscountInBaseCurrency,
   isUsdBaseOrder,
   sumDeliveryServicesToBaseCurrency,
+  normalizeDeliveryServicesFromLegacy,
+  getGeneralDiscountInBaseCurrency,
+  normalizeMonetaryAmountFromLegacy,
+  convertAmountBetweenOrKeep,
 } from "@/lib/order-line-pricing";
 import { apiClient } from "@/lib/api-client";
 import {
@@ -211,6 +224,8 @@ export interface UseOrderFormReturn {
   setTaxEnabled: (enabled: boolean) => void;
 
   // Valores calculados
+  productSubtotalBase: number;
+  productSurchargeTotal: number;
   productSubtotal: number;
   productDiscountTotal: number;
   subtotalAfterProductDiscounts: number;
@@ -249,6 +264,9 @@ export interface UseOrderFormReturn {
   handleNext: () => void;
   handleBack: () => void;
   resetForm: () => void;
+  getProductLineBase: (product: OrderProduct) => number;
+  getProductLineSurcharge: (product: OrderProduct) => number;
+  getProductLineSubtotalDisplay: (product: OrderProduct) => number;
   getProductBaseTotal: (product: OrderProduct) => number;
   convertCurrencyValue: (
     value: number,
@@ -278,10 +296,16 @@ export interface UseOrderFormReturn {
     amountInBs: number,
     className?: string,
   ) => React.ReactElement;
+  renderServiceLineCell: (
+    amount: number,
+    currency: Currency,
+    className?: string,
+  ) => React.ReactElement;
   /** Resumen de pagos: primario USD + Bs informativo (tasa viva). */
   renderPaymentTotalCell: (
     amountUsd: number,
     className?: string,
+    showCollectedBs?: boolean,
   ) => React.ReactElement;
 
   // Mock data (compatibilidad)
@@ -438,8 +462,6 @@ export function useEditOrderForm(
   const [formattedProductFinalTotals, setFormattedProductFinalTotals] =
     useState<Record<string, string>>({});
   const [formattedSubtotal, setFormattedSubtotal] = useState<string>("");
-  const [totalPaidInBs, setTotalPaidInBs] = useState(0);
-
   // Cargar datos
   useEffect(() => {
     if (!open) return;
@@ -509,6 +531,9 @@ export function useEditOrderForm(
 
       // 2. Productos (legacy: si hay descuento en Bs pero no attributes UI, persistir monto + moneda)
       const pref = (preferredCurrency as Currency) || "Bs";
+      const ratesForProductNormalize = commercialRatesToExchangeRatesInput(
+        getCommercialRatesFromOrder(initialOrder),
+      );
       const productsHydrated = (initialOrder.products || []).map((p) => {
         const discountNum = Number(p.discount);
         const hasDiscount = Number.isFinite(discountNum) && discountNum > 0;
@@ -522,8 +547,10 @@ export function useEditOrderForm(
               p.attributes,
               "discountUiPercent",
             ));
+        const ui = readDiscountUiFromProduct(p, pref);
+        let line: OrderProduct = p;
         if (!hasStoredDiscountUi && hasDiscount) {
-          return {
+          line = {
             ...p,
             attributes: mergeDiscountUiIntoAttributes(
               p.attributes,
@@ -532,7 +559,14 @@ export function useEditOrderForm(
             ),
           };
         }
-        return p;
+        const discType = hasStoredDiscountUi ? ui.type : "monto";
+        const discCurr = hasStoredDiscountUi ? ui.currency : pref;
+        return normalizeProductLineDiscountFromLegacy(
+          line,
+          discCurr,
+          discType,
+          ratesForProductNormalize,
+        );
       });
       setSelectedProducts(productsHydrated);
 
@@ -564,23 +598,31 @@ export function useEditOrderForm(
 
       // 5. Servicios de delivery
       if (initialOrder.deliveryServices) {
-        setDeliveryServices({
-          deliveryExpress: initialOrder.deliveryServices.deliveryExpress || {
-            enabled: false,
-            cost: 0,
-            currency: "USD",
-          },
-          servicioAcarreo: initialOrder.deliveryServices.servicioAcarreo || {
-            enabled: false,
-            cost: undefined,
-            currency: "USD",
-          },
-          servicioArmado: initialOrder.deliveryServices.servicioArmado || {
-            enabled: false,
-            cost: 0,
-            currency: "USD",
-          },
-        });
+        const ratesForNormalize = commercialRatesToExchangeRatesInput(
+          getCommercialRatesFromOrder(initialOrder),
+        );
+        setDeliveryServices(
+          normalizeDeliveryServicesFromLegacy(
+            {
+              deliveryExpress: initialOrder.deliveryServices.deliveryExpress || {
+                enabled: false,
+                cost: 0,
+                currency: "USD",
+              },
+              servicioAcarreo: initialOrder.deliveryServices.servicioAcarreo || {
+                enabled: false,
+                cost: undefined,
+                currency: "USD",
+              },
+              servicioArmado: initialOrder.deliveryServices.servicioArmado || {
+                enabled: false,
+                cost: 0,
+                currency: "USD",
+              },
+            },
+            ratesForNormalize,
+          ),
+        );
       }
 
       // 6. Abonos (misma regla que detalle: partial si tiene ítems, si no mixed)
@@ -608,7 +650,17 @@ export function useEditOrderForm(
           setGeneralDiscountType("porcentaje");
           setGeneralDiscount(pct);
         } else {
-          setGeneralDiscount(initialOrder.generalDiscountAmount);
+          const base = getOrderBaseCurrency(initialOrder);
+          setGeneralDiscountCurrency(base);
+          setGeneralDiscount(
+            normalizeMonetaryAmountFromLegacy(
+              initialOrder.generalDiscountAmount,
+              base,
+              commercialRatesToExchangeRatesInput(
+                getCommercialRatesFromOrder(initialOrder),
+              ),
+            ),
+          );
           setGeneralDiscountType("monto");
         }
       }
@@ -789,35 +841,113 @@ export function useEditOrderForm(
     return initialOrder?.deliveryCost ?? 0;
   }, [calculateDeliveryCost, initialOrder?.deliveryCost]);
 
-  const getProductBaseTotal = useCallback(
-    (product: OrderProduct): number => {
-      return getProductLineBaseTotalInBaseCurrency(product, {
-        baseCurrency: formBaseCurrency,
-        exchangeRates: commercialRatesInput,
-        categories,
-        allProducts,
-        markup: productMarkups[product.id] || 0,
-      });
-    },
+  const getLinePricingOptions = useCallback(
+    (product: OrderProduct) => ({
+      baseCurrency: formBaseCurrency,
+      exchangeRates: commercialRatesInput,
+      categories,
+      allProducts,
+      markup: productMarkups[product.id] || 0,
+    }),
     [productMarkups, categories, allProducts, commercialRatesInput, formBaseCurrency],
   );
 
-  // Valores calculados
-  const productSubtotalComputed = useMemo(() => {
-    return selectedProducts.reduce((sum, product) => {
-      return sum + getProductBaseTotal(product);
-    }, 0);
-  }, [selectedProducts, getProductBaseTotal]);
+  const getProductLineBase = useCallback(
+    (product: OrderProduct): number =>
+      getProductLineBaseWithoutSurchargeInBaseCurrency(
+        product,
+        getLinePricingOptions(product),
+      ),
+    [getLinePricingOptions],
+  );
 
-  const productSubtotal =
-    frozenCommercialTotals?.productSubtotal ?? productSubtotalComputed;
+  const getProductLineSurcharge = useCallback(
+    (product: OrderProduct): number =>
+      getProductLineSurchargeInBaseCurrency(
+        product,
+        getLinePricingOptions(product),
+      ),
+    [getLinePricingOptions],
+  );
+
+  const getProductLineSubtotalDisplay = useCallback(
+    (product: OrderProduct): number =>
+      getProductLineSubtotalDisplayInBaseCurrency(
+        product,
+        getLinePricingOptions(product),
+      ),
+    [getLinePricingOptions],
+  );
+
+  const getLineDiscountInBaseForProduct = useCallback(
+    (product: OrderProduct): number => {
+      const disc = product.discount || 0;
+      if (disc <= 0) return 0;
+      const discCurrency = getProductDiscountCurrencyForTotals(product, {
+        productDiscountTypes,
+        productDiscountCurrencies,
+        preferredCurrency,
+      });
+      return getLineDiscountInBaseCurrency(
+        product,
+        disc,
+        discCurrency,
+        formBaseCurrency,
+        commercialRatesInput,
+      );
+    },
+    [
+      productDiscountTypes,
+      productDiscountCurrencies,
+      preferredCurrency,
+      formBaseCurrency,
+      commercialRatesInput,
+    ],
+  );
+
+  const getProductBaseTotal = useCallback(
+    (product: OrderProduct): number =>
+      getProductLineTotalAfterDiscountInBaseCurrency(
+        product,
+        getLineDiscountInBaseForProduct(product),
+        getLinePricingOptions(product),
+      ),
+    [getLinePricingOptions, getLineDiscountInBaseForProduct],
+  );
+
+  // Valores calculados
+  const productSubtotalBaseComputed = useMemo(() => {
+    return selectedProducts.reduce(
+      (sum, product) => sum + getProductLineBase(product),
+      0,
+    );
+  }, [selectedProducts, getProductLineBase]);
+
+  const productSurchargeTotalComputed = useMemo(() => {
+    return selectedProducts.reduce(
+      (sum, product) => sum + getProductLineSurcharge(product),
+      0,
+    );
+  }, [selectedProducts, getProductLineSurcharge]);
+
+  const productSubtotalBase =
+    frozenCommercialTotals?.productSubtotal ?? productSubtotalBaseComputed;
+
+  const productSurchargeTotal =
+    frozenCommercialTotals?.productSurchargeTotal ??
+    productSurchargeTotalComputed;
+
+  const productSubtotal = productSubtotalBase;
 
   const productDiscountTotalComputed = useMemo(() => {
     return selectedProducts.reduce((sum, product) => {
       const disc = product.discount || 0;
       if (disc <= 0) return sum;
-      const discCurrency =
-        productDiscountCurrencies[product.id] || preferredCurrency;
+      const discCurrency = getProductDiscountCurrencyForTotals(product, {
+        productDiscountTypes,
+        productDiscountCurrencies,
+        preferredCurrency,
+      });
       return (
         sum +
         getLineDiscountInBaseCurrency(
@@ -831,6 +961,7 @@ export function useEditOrderForm(
     }, 0);
   }, [
     selectedProducts,
+    productDiscountTypes,
     productDiscountCurrencies,
     preferredCurrency,
     commercialRatesInput,
@@ -841,7 +972,7 @@ export function useEditOrderForm(
     frozenCommercialTotals?.productDiscountTotal ?? productDiscountTotalComputed;
 
   const subtotalAfterProductDiscounts = Math.max(
-    productSubtotal - productDiscountTotal,
+    productSubtotalBase - productDiscountTotal,
     0,
   );
 
@@ -851,7 +982,9 @@ export function useEditOrderForm(
   const taxAmountComputed = taxEnabled ? subtotal * 0.16 : 0;
   const taxAmount = frozenCommercialTotals?.taxAmount ?? taxAmountComputed;
 
-  const totalBeforeGeneralDiscount = subtotal + taxAmount + deliveryCost;
+  const totalBeforeGeneralDiscount = frozenCommercialTotals
+    ? subtotal + taxAmount + deliveryCost
+    : subtotal + taxAmount + productSurchargeTotal + deliveryCost;
   const generalDiscountAmount = useMemo(() => {
     if (frozenCommercialTotals) {
       return initialOrder?.generalDiscountAmount ?? 0;
@@ -860,12 +993,21 @@ export function useEditOrderForm(
       const p = Math.min(Math.max(generalDiscount, 0), 100);
       return (totalBeforeGeneralDiscount * p) / 100;
     }
-    return Math.min(Math.max(generalDiscount, 0), totalBeforeGeneralDiscount);
+    const inBase = getGeneralDiscountInBaseCurrency(
+      generalDiscount,
+      generalDiscountCurrency,
+      formBaseCurrency,
+      commercialRatesInput,
+    );
+    return Math.min(Math.max(inBase, 0), totalBeforeGeneralDiscount);
   }, [
     frozenCommercialTotals,
     initialOrder?.generalDiscountAmount,
     generalDiscountType,
     generalDiscount,
+    generalDiscountCurrency,
+    formBaseCurrency,
+    commercialRatesInput,
     totalBeforeGeneralDiscount,
   ]);
   const totalComputed = Math.max(
@@ -968,8 +1110,19 @@ export function useEditOrderForm(
     () => ({
       baseCurrency: formBaseCurrency,
       exchangeRatesAtCreation: orderSnapshotForCreditRates.exchangeRatesAtCreation,
+      liveRates: liveRatesInput,
     }),
-    [formBaseCurrency, orderSnapshotForCreditRates],
+    [formBaseCurrency, orderSnapshotForCreditRates, liveRatesInput],
+  );
+
+  const inStorePaymentsForDisplay = useMemo(
+    () =>
+      payments.filter(
+        (p) =>
+          !p.paymentDetails?.casheaFinancedPortion &&
+          p.method !== CASHEA_FINANCED_METHOD_LABEL,
+      ),
+    [payments],
   );
 
   const totalPaidInUsd = useMemo(
@@ -977,13 +1130,12 @@ export function useEditOrderForm(
     [payments, orderPaymentContext],
   );
 
-  useEffect(() => {
-    setTotalPaidInBs(totalPaidInUsd);
-  }, [totalPaidInUsd]);
-
-  const casheaInStorePayments = payments.filter(
-    (p) => !p.paymentDetails?.casheaFinancedPortion,
+  const totalPaidInBs = useMemo(
+    () => sumPaymentsCollectedInBs(inStorePaymentsForDisplay),
+    [inStorePaymentsForDisplay],
   );
+
+  const casheaInStorePayments = inStorePaymentsForDisplay;
   const casheaPaidSumUsd = useMemo(
     () => sumPaymentsToUsd(casheaInStorePayments, orderPaymentContext),
     [casheaInStorePayments, orderPaymentContext],
@@ -1066,17 +1218,8 @@ export function useEditOrderForm(
     };
 
     for (const product of selectedProducts) {
-      const baseTotal = getProductBaseTotal(product);
-      const discCurrency =
-        productDiscountCurrencies[product.id] || preferredCurrency;
-      const discountInBase = getLineDiscountInBaseCurrency(
-        product,
-        product.discount || 0,
-        discCurrency,
-        formBaseCurrency,
-        commercialRatesInput,
-      );
-      const finalTotal = Math.max(baseTotal - discountInBase, 0);
+      const lineBase = getProductLineBase(product);
+      const finalTotal = getProductBaseTotal(product);
 
       prices[product.id] = formatCommercialDualDisplay(
         product.price,
@@ -1084,7 +1227,7 @@ export function useEditOrderForm(
         dualOpts,
       );
       totals[product.id] = formatCommercialDualDisplay(
-        baseTotal,
+        lineBase,
         formBaseCurrency,
         dualOpts,
       );
@@ -1110,6 +1253,7 @@ export function useEditOrderForm(
     allProducts,
     productDiscountTypes,
     getProductBaseTotal,
+    getProductLineBase,
   ]);
 
   useEffect(() => {
@@ -1173,52 +1317,26 @@ export function useEditOrderForm(
           if (product.id !== productId) {
             return product;
           }
-          const baseTotal = getProductBaseTotal(product);
+          const baseTotal = getProductLineBase(product);
           const discountType = productDiscountTypes[productId] || "monto";
           const discountCurrency =
             opts?.inputCurrency ??
             productDiscountCurrencies[productId] ??
             preferredCurrency;
 
-          let discountAmount: number;
-          if (discountType === "porcentaje") {
-            const percentage = Math.max(0, Math.min(value, 100));
-            discountAmount =
-              Math.round(((baseTotal * percentage) / 100) * 100) / 100;
-          } else {
-            let discountInBs = value;
-            if (discountCurrency !== "Bs") {
-              const rate =
-                discountCurrency === "USD"
-                  ? liveExchangeRates.USD?.rate
-                  : liveExchangeRates.EUR?.rate;
-              if (rate && rate > 0) {
-                discountInBs = value * rate;
-              }
-            }
-            discountInBs = Math.round(discountInBs * 100) / 100;
-            discountAmount = Math.max(0, Math.min(discountInBs, baseTotal));
-
-            const category = categories.find(
-              (cat) => cat.name === product.category,
-            );
-            if (category && category.maxDiscount > 0) {
-              let maxDiscountInBs = category.maxDiscount;
-              if (
-                category.maxDiscountCurrency &&
-                category.maxDiscountCurrency !== "Bs"
-              ) {
-                const rate =
-                  category.maxDiscountCurrency === "USD"
-                    ? liveExchangeRates.USD?.rate
-                    : liveExchangeRates.EUR?.rate;
-                if (rate && rate > 0) {
-                  maxDiscountInBs = category.maxDiscount * rate;
-                }
-              }
-              discountAmount = Math.min(discountAmount, maxDiscountInBs);
-            }
-          }
+          const category = categories.find(
+            (cat) => cat.name === product.category,
+          );
+          const discountAmount = computeProductDiscountStoredAmount({
+            inputValue: value,
+            discountType,
+            discountCurrency,
+            baseTotalInBase: baseTotal,
+            rates: liveExchangeRates,
+            maxDiscount: category?.maxDiscount,
+            maxDiscountCurrency: category?.maxDiscountCurrency,
+            baseCurrency: formBaseCurrency,
+          });
 
           const percentForAttrs =
             discountType === "porcentaje"
@@ -1239,12 +1357,13 @@ export function useEditOrderForm(
       );
     },
     [
-      getProductBaseTotal,
+      getProductLineBase,
       productDiscountTypes,
       productDiscountCurrencies,
       preferredCurrency,
       liveExchangeRates,
       categories,
+      formBaseCurrency,
     ],
   );
 
@@ -1424,12 +1543,30 @@ export function useEditOrderForm(
     [formBaseCurrency, commercialRatesInput, liveRatesInput],
   );
 
+  const renderServiceLineCell = useCallback(
+    (amount: number, currency: Currency, className?: string) => {
+      const inBase = convertAmountBetweenOrKeep(
+        amount,
+        currency,
+        formBaseCurrency,
+        commercialRatesInput,
+      );
+      return renderCurrencyCell(inBase, className);
+    },
+    [formBaseCurrency, commercialRatesInput, renderCurrencyCell],
+  );
+
   const renderPaymentTotalCell = useCallback(
-    (amountUsd: number, className?: string) => {
-      const formatted = formatDualCurrencyAmounts(amountUsd, "USD", {
-        commercialRates: commercialRatesInput,
-        liveRates: liveRatesInput,
-      });
+    (amountUsd: number, className?: string, showCollectedBs?: boolean) => {
+      const formatted = showCollectedBs
+        ? formatOrderPaymentTotalsDisplay(
+            amountUsd,
+            inStorePaymentsForDisplay,
+          )
+        : formatDualCurrencyAmounts(amountUsd, "USD", {
+            commercialRates: commercialRatesInput,
+            liveRates: liveRatesInput,
+          });
       return (
         <div className={`text-right ${className || ""}`}>
           <div className="font-medium">{formatted.primary}</div>
@@ -1441,7 +1578,7 @@ export function useEditOrderForm(
         </div>
       );
     },
-    [commercialRatesInput, liveRatesInput],
+    [commercialRatesInput, liveRatesInput, inStorePaymentsForDisplay],
   );
 
   // Cargar dirección del cliente cuando se activa delivery
@@ -1522,6 +1659,8 @@ export function useEditOrderForm(
     commercialExchangeRates,
     formBaseCurrency,
     commercialTotalsFrozen,
+    productSubtotalBase,
+    productSurchargeTotal,
     productSubtotal,
     productDiscountTotal,
     subtotalAfterProductDiscounts,
@@ -1553,6 +1692,9 @@ export function useEditOrderForm(
     handleNext,
     handleBack,
     resetForm,
+    getProductLineBase,
+    getProductLineSurcharge,
+    getProductLineSubtotalDisplay,
     getProductBaseTotal,
     convertCurrencyValue,
     getDefaultCurrencyFromSelection,
@@ -1565,6 +1707,7 @@ export function useEditOrderForm(
     calculateDeliveryCost,
     renderCurrencyCell,
     renderCurrencyCellNegative,
+    renderServiceLineCell,
     renderPaymentTotalCell,
     mockVendors: vendors,
     mockReferrers: referrers,

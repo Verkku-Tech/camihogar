@@ -6,14 +6,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { getOrders, Order, OrderProduct } from "@/lib/storage"
-import { CheckCircle2, AlertCircle, Clock, Package, Eye } from "lucide-react"
+import { Clock, Package, Eye } from "lucide-react"
 
 interface ManufacturingProduct {
   orderId: string
   orderNumber: string
   clientName: string
   product: OrderProduct
-  status: "debe_fabricar" | "fabricando" | "almacen_no_fabricado"
+  status: "por_fabricar" | "fabricando"
 }
 
 export function ManufacturingProductsTable() {
@@ -37,33 +37,23 @@ export function ManufacturingProductsTable() {
               return
             }
 
-            // Determinar estado del producto (3 estados: debe_fabricar, fabricando, almacen_no_fabricado = En almacén)
-            let status: "debe_fabricar" | "fabricando" | "almacen_no_fabricado"
             const ms = product.manufacturingStatus
-            if (ms === "almacen_no_fabricado" || (ms as string) === "fabricado") {
-              status = "almacen_no_fabricado" // fabricado legacy → En almacén
-            } else if (ms === "fabricando") {
-              status = "fabricando"
-            } else {
-              status = "debe_fabricar"
+            if (ms !== "por_fabricar" && ms !== "fabricando") {
+              return
             }
 
-            // Solo mostrar los que aún no están en almacén (por fabricar o fabricando)
-            if (status !== "almacen_no_fabricado") {
-              manufacturingProducts.push({
-                orderId: order.id,
-                orderNumber: order.orderNumber,
-                clientName: order.clientName,
-                product,
-                status,
-              })
-            }
+            manufacturingProducts.push({
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              clientName: order.clientName,
+              product,
+              status: ms,
+            })
           })
         })
 
-        // Ordenar por estado (debe_fabricar primero, luego fabricando)
         manufacturingProducts.sort((a, b) => {
-          const statusOrder = { debe_fabricar: 0, fabricando: 1, almacen_no_fabricado: 2 }
+          const statusOrder = { por_fabricar: 0, fabricando: 1 }
           if (statusOrder[a.status] !== statusOrder[b.status]) {
             return statusOrder[a.status] - statusOrder[b.status]
           }
@@ -83,11 +73,11 @@ export function ManufacturingProductsTable() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "debe_fabricar":
+      case "por_fabricar":
         return (
-          <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300">
-            <AlertCircle className="w-3 h-3 mr-1" />
-            Debe Fabricar
+          <Badge className="bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200">
+            <Package className="w-3 h-3 mr-1" />
+            Por Fabricar
           </Badge>
         )
       case "fabricando":
@@ -95,13 +85,6 @@ export function ManufacturingProductsTable() {
           <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300">
             <Clock className="w-3 h-3 mr-1" />
             Fabricando
-          </Badge>
-        )
-      case "almacen_no_fabricado":
-        return (
-          <Badge className="bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300">
-            <Package className="w-3 h-3 mr-1" />
-            En almacén
           </Badge>
         )
       default:
@@ -154,7 +137,7 @@ export function ManufacturingProductsTable() {
             <Package className="w-12 h-12 mx-auto text-muted-foreground" />
             <p className="text-muted-foreground">No hay productos en fabricación</p>
             <p className="text-sm text-muted-foreground">
-              Los productos marcados como "Mandar a Fabricar" aparecerán aquí
+              Los productos en Por fabricar o Fabricando aparecerán aquí
             </p>
           </div>
         </CardContent>

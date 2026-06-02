@@ -10,6 +10,7 @@ import {
   type ExchangeRatesAtCreationNormalized,
   type ExchangeRatesAtCreationRaw,
 } from "@/lib/currency-utils";
+import { readDiscountUiFromProduct } from "@/lib/product-discount-ui";
 import {
   calculateProductUnitPriceWithAttributes,
   type Category,
@@ -216,11 +217,15 @@ export type ProductLineTotalOptions = {
   markup?: number;
 };
 
-/** Total de línea (unitario×cantidad + markup + sobreprecio) en moneda base del pedido. */
-export function getProductLineBaseTotalInBaseCurrency(
+type ProductLinePartsInBase = {
+  baseInBase: number;
+  surchargeInBase: number;
+};
+
+function getProductLinePartsInBaseCurrency(
   product: OrderProduct,
   options: ProductLineTotalOptions,
-): number {
+): ProductLinePartsInBase {
   const baseCurrency = options.baseCurrency ?? ORDER_BASE_CURRENCY;
   const rates = options.exchangeRates;
   const lineCurrency = getLinePriceCurrency(product);
@@ -228,23 +233,6 @@ export function getProductLineBaseTotalInBaseCurrency(
   const category = options.categories.find(
     (cat) => cat.name === product.category,
   );
-
-  let lineTotalNative: number;
-
-  if (!category) {
-    lineTotalNative = product.total;
-  } else {
-    const unitPrice = calculateProductUnitPriceWithAttributes(
-      product.price,
-      product.attributes,
-      category,
-      rates,
-      options.allProducts,
-      options.categories,
-      { targetCurrency: lineCurrency, basePriceCurrency: lineCurrency },
-    );
-    lineTotalNative = unitPrice * product.quantity;
-  }
 
   let surchargeNative = 0;
   if (product.surchargeEnabled && product.surchargeAmount) {
@@ -256,17 +244,192 @@ export function getProductLineBaseTotalInBaseCurrency(
     );
   }
 
-  const lineWithExtras =
+  const qty = product.quantity || 1;
+  let lineTotalNative: number;
+
+  if (!category) {
+    lineTotalNative = Math.max(0, (product.total ?? 0) - surchargeNative);
+  } else {
+    const storedLine = (product.price ?? 0) * qty;
+    const recalcUnit = calculateProductUnitPriceWithAttributes(
+      product.price,
+      product.attributes,
+      category,
+      rates,
+      options.allProducts,
+      options.categories,
+      { targetCurrency: lineCurrency, basePriceCurrency: lineCurrency },
+    );
+    const recalcLine = recalcUnit * qty;
+
+    // product.price del modal/API ya incluye atributos; no sumar atributos otra vez.
+    if (storedLine > 0 && recalcLine > storedLine + 0.005) {
+      lineTotalNative = storedLine;
+    } else if ((product.total ?? 0) > surchargeNative + 0.005) {
+      lineTotalNative = Math.max(0, product.total! - surchargeNative);
+    } else {
+      lineTotalNative = recalcLine;
+    }
+  }
+
+  const baseNative =
     lineTotalNative +
-    convertAmountBetweenOrKeep(markup, baseCurrency, lineCurrency, rates) +
-    surchargeNative;
+    convertAmountBetweenOrKeep(markup, baseCurrency, lineCurrency, rates);
+
+  return {
+    baseInBase: convertAmountBetweenOrKeep(
+      baseNative,
+      lineCurrency,
+      baseCurrency,
+      rates,
+    ),
+    surchargeInBase: convertAmountBetweenOrKeep(
+      surchargeNative,
+      lineCurrency,
+      baseCurrency,
+      rates,
+    ),
+  };
+}
+
+/** Precio×cantidad + markup en moneda base (sin sobreprecio; base imponible y descuentos). */
+export function getProductLineBaseWithoutSurchargeInBaseCurrency(
+  product: OrderProduct,
+  options: ProductLineTotalOptions,
+): number {
+  return getProductLinePartsInBaseCurrency(product, options).baseInBase;
+}
+
+/** Sobreprecio de línea en moneda base (0 si no aplica). */
+export function getProductLineSurchargeInBaseCurrency(
+  product: OrderProduct,
+  options: ProductLineTotalOptions,
+): number {
+  return getProductLinePartsInBaseCurrency(product, options).surchargeInBase;
+}
+
+/** Subtotal de línea para tabla: base + sobreprecio (antes de descontar). */
+export function getProductLineSubtotalDisplayInBaseCurrency(
+  product: OrderProduct,
+  options: ProductLineTotalOptions,
+): number {
+  const { baseInBase, surchargeInBase } = getProductLinePartsInBaseCurrency(
+    product,
+    options,
+  );
+  return baseInBase + surchargeInBase;
+}
+
+/** Total de línea tras descuento: (base − descuento) + sobreprecio. */
+export function getProductLineTotalAfterDiscountInBaseCurrency(
+  product: OrderProduct,
+  discountInBase: number,
+  options: ProductLineTotalOptions,
+): number {
+  const { baseInBase, surchargeInBase } = getProductLinePartsInBaseCurrency(
+    product,
+    options,
+  );
+  return Math.max(baseInBase - discountInBase, 0) + surchargeInBase;
+}
+
+/**
+ * @deprecated Usar funciones específicas (base / surcharge / subtotal / total tras descuento).
+ * Equivale a subtotal display (base + sobreprecio, sin descontar).
+ */
+export function getProductLineBaseTotalInBaseCurrency(
+  product: OrderProduct,
+  options: ProductLineTotalOptions,
+): number {
+  return getProductLineSubtotalDisplayInBaseCurrency(product, options);
+}
+
+/** Moneda en que está guardado `product.discount` (porcentaje → moneda base). */
+export function getProductDiscountCurrencyForTotals(
+  product: OrderProduct,
+  options: {
+    productDiscountTypes?: Record<string, "monto" | "porcentaje">;
+    productDiscountCurrencies?: Record<string, Currency>;
+    preferredCurrency?: Currency;
+  },
+): Currency {
+  const ui = readDiscountUiFromProduct(
+    product,
+    options.preferredCurrency ?? ORDER_BASE_CURRENCY,
+  );
+  const type = options.productDiscountTypes?.[product.id] ?? ui.type;
+  if (type === "porcentaje") return ORDER_BASE_CURRENCY;
+  return (
+    options.productDiscountCurrencies?.[product.id] ?? ui.currency
+  );
+}
+
+/** Monto a persistir en `product.discount` (nativo para monto; base para %). */
+export function computeProductDiscountStoredAmount(params: {
+  inputValue: number;
+  discountType: "monto" | "porcentaje";
+  discountCurrency: Currency;
+  baseTotalInBase: number;
+  rates?: ExchangeRatesInput;
+  maxDiscount?: number;
+  maxDiscountCurrency?: Currency;
+  baseCurrency?: Currency;
+}): number {
+  const base = params.baseCurrency ?? ORDER_BASE_CURRENCY;
+  if (params.discountType === "porcentaje") {
+    const percentage = Math.max(0, Math.min(params.inputValue, 100));
+    return Math.round(((params.baseTotalInBase * percentage) / 100) * 100) / 100;
+  }
+
+  const native = normalizeMonetaryAmountFromLegacy(
+    params.inputValue,
+    params.discountCurrency,
+    params.rates,
+  );
+  let inBase = convertAmountBetweenOrKeep(
+    native,
+    params.discountCurrency,
+    base,
+    params.rates,
+  );
+  inBase = Math.max(0, Math.min(inBase, params.baseTotalInBase));
+
+  if (params.maxDiscount && params.maxDiscount > 0) {
+    const maxCurr = params.maxDiscountCurrency ?? "Bs";
+    const maxInBase = convertAmountBetweenOrKeep(
+      params.maxDiscount,
+      maxCurr,
+      base,
+      params.rates,
+    );
+    if (maxInBase > 0) inBase = Math.min(inBase, maxInBase);
+  }
 
   return convertAmountBetweenOrKeep(
-    lineWithExtras,
-    lineCurrency,
-    baseCurrency,
-    rates,
+    inBase,
+    base,
+    params.discountCurrency,
+    params.rates,
   );
+}
+
+export function normalizeProductLineDiscountFromLegacy(
+  line: OrderProduct,
+  discountCurrency: Currency,
+  discountType: "monto" | "porcentaje",
+  rates?: ExchangeRatesInput,
+): OrderProduct {
+  if (!line.discount || line.discount <= 0 || discountType === "porcentaje") {
+    return line;
+  }
+  return {
+    ...line,
+    discount: normalizeMonetaryAmountFromLegacy(
+      line.discount,
+      discountCurrency,
+      rates,
+    ),
+  };
 }
 
 /** Descuento de línea en moneda base del pedido. */
@@ -290,17 +453,23 @@ export function sumProductLinesToBaseCurrency(
   products: OrderProduct[],
   options: ProductLineTotalOptions & {
     productMarkups?: Record<string, number>;
+    includeSurcharge?: boolean;
     getDiscountForProduct?: (
       product: OrderProduct,
     ) => { amount: number; currency: Currency };
   },
 ): number {
   const baseCurrency = options.baseCurrency ?? ORDER_BASE_CURRENCY;
+  const includeSurcharge = options.includeSurcharge !== false;
   return products.reduce((sum, product) => {
-    const base = getProductLineBaseTotalInBaseCurrency(product, {
+    const lineOpts = {
       ...options,
       markup: options.productMarkups?.[product.id] ?? 0,
-    });
+    };
+    const base = getProductLineBaseWithoutSurchargeInBaseCurrency(
+      product,
+      lineOpts,
+    );
     const disc = options.getDiscountForProduct?.(product);
     const discountInBase = disc
       ? getLineDiscountInBaseCurrency(
@@ -317,6 +486,12 @@ export function sumProductLinesToBaseCurrency(
           baseCurrency,
           options.exchangeRates,
         );
+    const lineTotal = getProductLineTotalAfterDiscountInBaseCurrency(
+      product,
+      discountInBase,
+      lineOpts,
+    );
+    if (includeSurcharge) return sum + lineTotal;
     return sum + Math.max(base - discountInBase, 0);
   }, 0);
 }
@@ -360,6 +535,107 @@ export function sumDeliveryServicesToBaseCurrency(
     );
   }
   return total;
+}
+
+export type DeliveryServiceLine = {
+  enabled: boolean;
+  cost?: number;
+  currency?: Currency;
+};
+
+/**
+ * Antes el formulario guardaba montos en Bs con `currency` USD/EUR.
+ * Convierte a monto nativo cuando el valor parece Bs mal etiquetado.
+ */
+export function normalizeMonetaryAmountFromLegacy(
+  amount: number,
+  currency: Currency | undefined,
+  rates?: ExchangeRatesInput,
+): number {
+  if (!Number.isFinite(amount) || amount <= 0) return amount;
+  const c = currency ?? ORDER_BASE_CURRENCY;
+  if (c === "Bs") return amount;
+
+  const rate = c === "USD" ? rates?.USD?.rate : rates?.EUR?.rate;
+  if (!rate || rate <= 0) return amount;
+
+  const impliedNative = amount / rate;
+  if (amount > rate * 20 && impliedNative > 0 && impliedNative < 10_000) {
+    return Math.round(impliedNative * 100) / 100;
+  }
+  return amount;
+}
+
+export type NormalizedDeliveryServices = {
+  deliveryExpress?: { enabled: boolean; cost: number; currency: Currency };
+  servicioAcarreo?: { enabled: boolean; cost?: number; currency: Currency };
+  servicioArmado?: { enabled: boolean; cost: number; currency: Currency };
+};
+
+function normalizeDeliveryLine(
+  line: DeliveryServiceLine | undefined,
+  rates?: ExchangeRatesInput,
+):
+  | { enabled: boolean; cost: number; currency: Currency }
+  | { enabled: boolean; cost?: number; currency: Currency }
+  | undefined {
+  if (!line) return undefined;
+  const currency = line.currency ?? ORDER_BASE_CURRENCY;
+  if (!line.enabled || line.cost == null || line.cost <= 0) {
+    return { ...line, currency };
+  }
+  return {
+    ...line,
+    currency,
+    cost: normalizeMonetaryAmountFromLegacy(line.cost, currency, rates),
+  };
+}
+
+export function normalizeDeliveryServicesFromLegacy(
+  services: {
+    deliveryExpress?: DeliveryServiceLine & { cost: number };
+    servicioAcarreo?: DeliveryServiceLine;
+    servicioArmado?: DeliveryServiceLine & { cost: number };
+  },
+  rates?: ExchangeRatesInput,
+): NormalizedDeliveryServices {
+  const deliveryExpress = normalizeDeliveryLine(
+    services.deliveryExpress,
+    rates,
+  );
+  const servicioAcarreo = normalizeDeliveryLine(
+    services.servicioAcarreo,
+    rates,
+  );
+  const servicioArmado = normalizeDeliveryLine(
+    services.servicioArmado,
+    rates,
+  );
+  return {
+    deliveryExpress: deliveryExpress as
+      | { enabled: boolean; cost: number; currency: Currency }
+      | undefined,
+    servicioAcarreo,
+    servicioArmado: servicioArmado as
+      | { enabled: boolean; cost: number; currency: Currency }
+      | undefined,
+  };
+}
+
+/** Descuento general en monto fijo → moneda base del pedido (USD comercial). */
+export function getGeneralDiscountInBaseCurrency(
+  amount: number,
+  currency: Currency,
+  baseCurrency: Currency = ORDER_BASE_CURRENCY,
+  rates?: ExchangeRatesInput,
+): number {
+  const normalized = normalizeMonetaryAmountFromLegacy(amount, currency, rates);
+  return convertAmountBetweenOrKeep(
+    normalized,
+    currency,
+    baseCurrency,
+    rates,
+  );
 }
 
 export function ratesFromOrder(
