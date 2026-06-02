@@ -67,6 +67,7 @@ import {
   normalizeDeliveryServicesFromLegacy,
   getGeneralDiscountInBaseCurrency,
   normalizeMonetaryAmountFromLegacy,
+  convertAmountBetweenOrKeep,
 } from "@/lib/order-line-pricing";
 import { apiClient } from "@/lib/api-client";
 import {
@@ -293,6 +294,11 @@ export interface UseOrderFormReturn {
   ) => React.ReactElement;
   renderCurrencyCellNegative: (
     amountInBs: number,
+    className?: string,
+  ) => React.ReactElement;
+  renderServiceLineCell: (
+    amount: number,
+    currency: Currency,
     className?: string,
   ) => React.ReactElement;
   /** Resumen de pagos: primario USD + Bs informativo (tasa viva). */
@@ -1537,6 +1543,19 @@ export function useEditOrderForm(
     [formBaseCurrency, commercialRatesInput, liveRatesInput],
   );
 
+  const renderServiceLineCell = useCallback(
+    (amount: number, currency: Currency, className?: string) => {
+      const inBase = convertAmountBetweenOrKeep(
+        amount,
+        currency,
+        formBaseCurrency,
+        commercialRatesInput,
+      );
+      return renderCurrencyCell(inBase, className);
+    },
+    [formBaseCurrency, commercialRatesInput, renderCurrencyCell],
+  );
+
   const renderPaymentTotalCell = useCallback(
     (amountUsd: number, className?: string, showCollectedBs?: boolean) => {
       const formatted = showCollectedBs
@@ -1688,6 +1707,7 @@ export function useEditOrderForm(
     calculateDeliveryCost,
     renderCurrencyCell,
     renderCurrencyCellNegative,
+    renderServiceLineCell,
     renderPaymentTotalCell,
     mockVendors: vendors,
     mockReferrers: referrers,
