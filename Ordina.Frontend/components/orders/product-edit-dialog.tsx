@@ -2822,8 +2822,9 @@ export function ProductEditDialog({
                   </div>
                   {surchargeAmount > 0 && (
                     <p className="text-xs text-orange-600 dark:text-orange-400 font-medium">
-                      +{formatCurrency(surchargeAmount, "USD")} se sumará al
-                      total del producto
+                      +{formatCurrency(surchargeAmount, "USD")} aparecerá en la
+                      columna Sobreprecio del pedido y se sumará después del
+                      impuesto (16%).
                     </p>
                   )}
                 </div>
@@ -2893,12 +2894,31 @@ export function ProductEditDialog({
                     exchangeRates,
                   );
                 }
-                const total = unitPrice * quantity + surchargeNativeDisplay;
+                const lineBaseTotal = unitPrice * quantity;
+                const total = lineBaseTotal + surchargeNativeDisplay;
 
                 return (
                   <>
                     <div className="flex justify-between items-center">
-                      <span className="font-medium">Total:</span>
+                      <span className="font-medium">Precio de línea:</span>
+                      <span className="text-lg font-semibold">
+                        {formatCurrency(lineBaseTotal, lineCurrencyDisplay)}
+                      </span>
+                    </div>
+                    {surchargeNativeDisplay > 0 && (
+                      <div className="flex justify-between items-center text-orange-600 dark:text-orange-400">
+                        <span className="font-medium">Sobreprecio:</span>
+                        <span className="text-lg font-semibold">
+                          +
+                          {formatCurrency(
+                            surchargeNativeDisplay,
+                            lineCurrencyDisplay,
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center border-t pt-2">
+                      <span className="font-medium">Subtotal (base + sobreprecio):</span>
                       <span className="text-lg font-semibold">
                         {totalFormatted ||
                           formatCurrency(total, lineCurrencyDisplay)}

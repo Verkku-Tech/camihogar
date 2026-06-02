@@ -86,7 +86,7 @@ function resolveCommercialTotalsFieldsForUpdate(
   existingOrder: Order,
   orderForm: {
     commercialTotalsFrozen: boolean;
-    productSubtotal: number;
+    productSubtotalBase: number;
     productDiscountTotal: number;
     subtotal: number;
     taxAmount: number;
@@ -107,7 +107,7 @@ function resolveCommercialTotalsFieldsForUpdate(
     };
   }
   return {
-    subtotalBeforeDiscounts: orderForm.productSubtotal,
+    subtotalBeforeDiscounts: orderForm.productSubtotalBase,
     productDiscountTotal:
       orderForm.productDiscountTotal > 0
         ? orderForm.productDiscountTotal
@@ -671,7 +671,7 @@ export function EditOrderDialog({
               ? product.discount
               : undefined,
         })),
-        subtotalBeforeDiscounts: orderForm.productSubtotal,
+        subtotalBeforeDiscounts: orderForm.productSubtotalBase,
         productDiscountTotal:
           orderForm.productDiscountTotal > 0
             ? orderForm.productDiscountTotal

@@ -44,7 +44,14 @@ import {
   casheaInStorePaymentsExceedTotal,
   getCasheaTotalDueBs,
 } from "@/lib/order-payments";
-import { ORDER_BASE_CURRENCY } from "@/lib/order-line-pricing";
+import {
+  ORDER_BASE_CURRENCY,
+  convertAmountBetweenOrKeep,
+  getLineDiscountInBaseCurrency,
+  getProductDiscountCurrencyForTotals,
+} from "@/lib/order-line-pricing";
+import { readDiscountUiFromProduct } from "@/lib/product-discount-ui";
+import { normalizeExchangeRatesAtCreation } from "@/lib/currency-utils";
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
 import type { Currency } from "@/lib/currency-utils";
@@ -276,15 +283,73 @@ export function ConfirmOrderDialog({
     };
   }, [open, pendingOrderId, resetState]);
 
-  const productSubtotal = useMemo(
-    () => products.reduce((s, p) => s + (p.total || 0), 0),
-    [products],
+  const commercialRatesInput = useMemo(() => {
+    if (!exchangeRatesAtCreation) return undefined;
+    const n = normalizeExchangeRatesAtCreation(exchangeRatesAtCreation);
+    if (!n) return undefined;
+    return { USD: n.USD, EUR: n.EUR };
+  }, [exchangeRatesAtCreation]);
+
+  const productSurchargeTotal = useMemo(
+    () =>
+      products.reduce((s, p) => {
+        if (!p.surchargeEnabled || !p.surchargeAmount) return s;
+        return (
+          s +
+          convertAmountBetweenOrKeep(
+            p.surchargeAmount,
+            "USD",
+            ORDER_BASE_CURRENCY,
+            commercialRatesInput,
+          )
+        );
+      }, 0),
+    [products, commercialRatesInput],
   );
-  const subtotal = productSubtotal;
+
+  const productSubtotalBase = useMemo(
+    () =>
+      products.reduce((s, p) => s + (p.total || 0), 0) - productSurchargeTotal,
+    [products, productSurchargeTotal],
+  );
+
+  const productDiscountTotalComputed = useMemo(
+    () =>
+      products.reduce((s, p) => {
+        const disc = p.discount || 0;
+        if (disc <= 0) return s;
+        const { type, currency } = readDiscountUiFromProduct(
+          p,
+          ORDER_BASE_CURRENCY,
+        );
+        const discCurrency =
+          type === "porcentaje" ? ORDER_BASE_CURRENCY : currency;
+        return (
+          s +
+          getLineDiscountInBaseCurrency(
+            p,
+            disc,
+            discCurrency,
+            ORDER_BASE_CURRENCY,
+            commercialRatesInput,
+          )
+        );
+      }, 0),
+    [products, commercialRatesInput],
+  );
+
+  const subtotal = Math.max(
+    productSubtotalBase - productDiscountTotalComputed,
+    0,
+  );
   const taxAmount = taxEnabled ? subtotal * 0.16 : 0;
   const total = Math.max(
     0,
-    subtotal + taxAmount + deliveryCost - generalDiscountAmount,
+    subtotal +
+      taxAmount +
+      productSurchargeTotal +
+      deliveryCost -
+      generalDiscountAmount,
   );
 
   const addPayment = () => {
@@ -588,6 +653,17 @@ export function ConfirmOrderDialog({
                     minimumFractionDigits: 2,
                   })}
                 </div>
+                {productSurchargeTotal > 0 && (
+                  <>
+                    <div>Sobreprecio</div>
+                    <div className="text-right tabular-nums">
+                      Bs.{" "}
+                      {productSurchargeTotal.toLocaleString("es-VE", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </div>
+                  </>
+                )}
                 <div>Delivery</div>
                 <div className="text-right tabular-nums">
                   Bs.{" "}

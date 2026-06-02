@@ -340,6 +340,7 @@ export function shouldFreezeCommercialTotals(
 export type FrozenCommercialTotals = {
   productSubtotal: number;
   productDiscountTotal: number;
+  productSurchargeTotal?: number;
   subtotal: number;
   taxAmount: number;
   total: number;

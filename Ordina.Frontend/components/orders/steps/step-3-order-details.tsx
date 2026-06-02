@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { Plus, Trash2 } from "lucide-react";
 import type { UseOrderFormReturn } from "../hooks/use-order-form";
+import { DeliveryServiceCostInput } from "../delivery-service-cost-input";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import { toast } from "sonner";
 import { type PartialPayment, type ProductImage } from "@/lib/storage";
@@ -440,115 +441,27 @@ export function Step3OrderDetails({
                         </Label>
                       </div>
                       {orderForm.deliveryServices.deliveryExpress?.enabled && (
-                        <div className="space-y-2 pl-6">
-                          <Label className="text-xs text-muted-foreground">
-                            Gastos de Entrega
-                          </Label>
-                          <div className="flex gap-2">
-                            <Select
-                              value={
-                                orderForm.deliveryServices.deliveryExpress
-                                  .currency
-                              }
-                              onValueChange={(value: Currency) => {
-                                orderForm.setDeliveryServices((prev) => {
-                                  if (!prev.deliveryExpress) {
-                                    return {
-                                      ...prev,
-                                      deliveryExpress: {
-                                        enabled: true,
-                                        cost: 0,
-                                        currency: value,
-                                      },
-                                    };
-                                  }
-                                  const converted =
-                                    orderForm.convertCurrencyValue(
-                                      prev.deliveryExpress.cost || 0,
-                                      prev.deliveryExpress.currency,
-                                      value,
-                                    );
-                                  if (converted === null) {
-                                    toast.error(
-                                      "No hay tasa BCV para convertir el monto a esa moneda.",
-                                    );
-                                    return prev;
-                                  }
-                                  return {
-                                    ...prev,
-                                    deliveryExpress: {
-                                      ...prev.deliveryExpress,
-                                      currency: value,
-                                      cost: converted,
-                                    },
-                                  };
-                                });
-                              }}
-                            >
-                              <SelectTrigger className="w-24">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Bs">Bs</SelectItem>
-                                <SelectItem value="USD">USD</SelectItem>
-                                <SelectItem value="EUR">EUR</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={(() => {
-                                const cost =
-                                  orderForm.deliveryServices.deliveryExpress
-                                    ?.cost || 0;
-                                const currency =
-                                  orderForm.deliveryServices.deliveryExpress
-                                    ?.currency || "USD";
-                                if (cost === 0) return "";
-                                if (currency === "Bs") return cost;
-                                const rate =
-                                  currency === "USD"
-                                    ? orderForm.exchangeRates.USD?.rate
-                                    : orderForm.exchangeRates.EUR?.rate;
-                                const rawValue =
-                                  rate && rate > 0 ? cost / rate : cost;
-                                return Number(rawValue.toFixed(2));
-                              })()}
-                              onChange={(e) => {
-                                const inputValue =
-                                  Number.parseFloat(e.target.value) || 0;
-                                const currency =
-                                  orderForm.deliveryServices.deliveryExpress
-                                    ?.currency || "USD";
-                                let valueInBs = inputValue;
-                                if (currency !== "Bs") {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    valueInBs = inputValue * rate;
-                                  }
-                                }
-                                orderForm.setDeliveryServices((prev) => ({
-                                  ...prev,
-                                  deliveryExpress: prev.deliveryExpress
-                                    ? {
-                                        ...prev.deliveryExpress,
-                                        cost: valueInBs,
-                                      }
-                                    : {
-                                        enabled: true,
-                                        cost: valueInBs,
-                                        currency: "Bs",
-                                      },
-                                }));
-                              }}
-                              placeholder="0.00"
-                              className="flex-1"
-                            />
-                          </div>
-                        </div>
+                        <DeliveryServiceCostInput
+                          label="Gastos de Entrega"
+                          cost={
+                            orderForm.deliveryServices.deliveryExpress.cost || 0
+                          }
+                          currency={
+                            orderForm.deliveryServices.deliveryExpress
+                              .currency || "USD"
+                          }
+                          convertCurrencyValue={orderForm.convertCurrencyValue}
+                          onChange={(cost, currency) => {
+                            orderForm.setDeliveryServices((prev) => ({
+                              ...prev,
+                              deliveryExpress: {
+                                enabled: true,
+                                cost: cost ?? 0,
+                                currency,
+                              },
+                            }));
+                          }}
+                        />
                       )}
                     </div>
 
@@ -583,124 +496,27 @@ export function Step3OrderDetails({
                         </Label>
                       </div>
                       {orderForm.deliveryServices.servicioAcarreo?.enabled && (
-                        <div className="space-y-2 pl-6">
-                          <Label className="text-xs text-muted-foreground">
-                            Precio (opcional)
-                          </Label>
-                          <div className="flex gap-2">
-                            <Select
-                              value={
-                                orderForm.deliveryServices.servicioAcarreo
-                                  .currency
-                              }
-                              onValueChange={(value: Currency) => {
-                                orderForm.setDeliveryServices((prev) => {
-                                  if (!prev.servicioAcarreo) {
-                                    return {
-                                      ...prev,
-                                      servicioAcarreo: {
-                                        enabled: true,
-                                        cost: undefined,
-                                        currency: value,
-                                      },
-                                    };
-                                  }
-                                  let nextCost = prev.servicioAcarreo.cost;
-                                  if (prev.servicioAcarreo.cost != null) {
-                                    const converted =
-                                      orderForm.convertCurrencyValue(
-                                        prev.servicioAcarreo.cost,
-                                        prev.servicioAcarreo.currency,
-                                        value,
-                                      );
-                                    if (converted === null) {
-                                      toast.error(
-                                        "No hay tasa BCV para convertir el monto a esa moneda.",
-                                      );
-                                      return prev;
-                                    }
-                                    nextCost = converted;
-                                  }
-                                  return {
-                                    ...prev,
-                                    servicioAcarreo: {
-                                      ...prev.servicioAcarreo,
-                                      currency: value,
-                                      cost: nextCost,
-                                    },
-                                  };
-                                });
-                              }}
-                            >
-                              <SelectTrigger className="w-24">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Bs">Bs</SelectItem>
-                                <SelectItem value="USD">USD</SelectItem>
-                                <SelectItem value="EUR">EUR</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={(() => {
-                                const cost =
-                                  orderForm.deliveryServices.servicioAcarreo
-                                    ?.cost;
-                                if (cost === undefined || cost === 0) return "";
-                                const currency =
-                                  orderForm.deliveryServices.servicioAcarreo
-                                    ?.currency || "USD";
-                                if (currency === "Bs") return cost;
-                                const rate =
-                                  currency === "USD"
-                                    ? orderForm.exchangeRates.USD?.rate
-                                    : orderForm.exchangeRates.EUR?.rate;
-                                const rawValue =
-                                  rate && rate > 0 ? cost / rate : cost;
-                                return Number(rawValue.toFixed(2));
-                              })()}
-                              onChange={(e) => {
-                                const inputValue =
-                                  e.target.value === ""
-                                    ? undefined
-                                    : Number.parseFloat(e.target.value) || 0;
-                                const currency =
-                                  orderForm.deliveryServices.servicioAcarreo
-                                    ?.currency || "USD";
-                                let valueInBs: number | undefined = inputValue;
-                                if (
-                                  inputValue !== undefined &&
-                                  currency !== "Bs"
-                                ) {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    valueInBs = inputValue * rate;
-                                  }
-                                }
-                                orderForm.setDeliveryServices((prev) => ({
-                                  ...prev,
-                                  servicioAcarreo: prev.servicioAcarreo
-                                    ? {
-                                        ...prev.servicioAcarreo,
-                                        cost: valueInBs,
-                                      }
-                                    : {
-                                        enabled: true,
-                                        cost: valueInBs,
-                                        currency: "Bs",
-                                      },
-                                }));
-                              }}
-                              placeholder="0.00 (opcional)"
-                              className="flex-1"
-                            />
-                          </div>
-                        </div>
+                        <DeliveryServiceCostInput
+                          label="Precio (opcional)"
+                          cost={orderForm.deliveryServices.servicioAcarreo.cost}
+                          currency={
+                            orderForm.deliveryServices.servicioAcarreo
+                              .currency || "USD"
+                          }
+                          convertCurrencyValue={orderForm.convertCurrencyValue}
+                          allowEmpty
+                          placeholder="0.00 (opcional)"
+                          onChange={(cost, currency) => {
+                            orderForm.setDeliveryServices((prev) => ({
+                              ...prev,
+                              servicioAcarreo: {
+                                enabled: true,
+                                cost,
+                                currency,
+                              },
+                            }));
+                          }}
+                        />
                       )}
                     </div>
 
@@ -735,116 +551,28 @@ export function Step3OrderDetails({
                         </Label>
                       </div>
                       {orderForm.deliveryServices.servicioArmado?.enabled && (
-                        <div className="space-y-2 pl-6">
-                          <Label className="text-xs text-muted-foreground">
-                            Precio (obligatorio)
-                          </Label>
-                          <div className="flex gap-2">
-                            <Select
-                              value={
-                                orderForm.deliveryServices.servicioArmado
-                                  .currency
-                              }
-                              onValueChange={(value: Currency) => {
-                                orderForm.setDeliveryServices((prev) => {
-                                  if (!prev.servicioArmado) {
-                                    return {
-                                      ...prev,
-                                      servicioArmado: {
-                                        enabled: true,
-                                        cost: 0,
-                                        currency: value,
-                                      },
-                                    };
-                                  }
-                                  const converted =
-                                    orderForm.convertCurrencyValue(
-                                      prev.servicioArmado.cost || 0,
-                                      prev.servicioArmado.currency,
-                                      value,
-                                    );
-                                  if (converted === null) {
-                                    toast.error(
-                                      "No hay tasa BCV para convertir el monto a esa moneda.",
-                                    );
-                                    return prev;
-                                  }
-                                  return {
-                                    ...prev,
-                                    servicioArmado: {
-                                      ...prev.servicioArmado,
-                                      currency: value,
-                                      cost: converted,
-                                    },
-                                  };
-                                });
-                              }}
-                            >
-                              <SelectTrigger className="w-24">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Bs">Bs</SelectItem>
-                                <SelectItem value="USD">USD</SelectItem>
-                                <SelectItem value="EUR">EUR</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              required
-                              value={(() => {
-                                const cost =
-                                  orderForm.deliveryServices.servicioArmado
-                                    ?.cost || 0;
-                                const currency =
-                                  orderForm.deliveryServices.servicioArmado
-                                    ?.currency || "USD";
-                                if (cost === 0) return "";
-                                if (currency === "Bs") return cost;
-                                const rate =
-                                  currency === "USD"
-                                    ? orderForm.exchangeRates.USD?.rate
-                                    : orderForm.exchangeRates.EUR?.rate;
-                                const rawValue =
-                                  rate && rate > 0 ? cost / rate : cost;
-                                return Number(rawValue.toFixed(2));
-                              })()}
-                              onChange={(e) => {
-                                const inputValue =
-                                  Number.parseFloat(e.target.value) || 0;
-                                const currency =
-                                  orderForm.deliveryServices.servicioArmado
-                                    ?.currency || "USD";
-                                let valueInBs = inputValue;
-                                if (currency !== "Bs") {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    valueInBs = inputValue * rate;
-                                  }
-                                }
-                                orderForm.setDeliveryServices((prev) => ({
-                                  ...prev,
-                                  servicioArmado: prev.servicioArmado
-                                    ? {
-                                        ...prev.servicioArmado,
-                                        cost: valueInBs,
-                                      }
-                                    : {
-                                        enabled: true,
-                                        cost: valueInBs,
-                                        currency: "Bs",
-                                      },
-                                }));
-                              }}
-                              placeholder="0.00"
-                              className="flex-1"
-                            />
-                          </div>
-                        </div>
+                        <DeliveryServiceCostInput
+                          label="Precio (obligatorio)"
+                          cost={
+                            orderForm.deliveryServices.servicioArmado.cost || 0
+                          }
+                          currency={
+                            orderForm.deliveryServices.servicioArmado
+                              .currency || "USD"
+                          }
+                          convertCurrencyValue={orderForm.convertCurrencyValue}
+                          required
+                          onChange={(cost, currency) => {
+                            orderForm.setDeliveryServices((prev) => ({
+                              ...prev,
+                              servicioArmado: {
+                                enabled: true,
+                                cost: cost ?? 0,
+                                currency,
+                              },
+                            }));
+                          }}
+                        />
                       )}
                     </div>
                   </div>
@@ -899,6 +627,17 @@ export function Step3OrderDetails({
                         )}
                       </TableRow>
 
+                      {orderForm.productSurchargeTotal > 0 && (
+                        <TableRow>
+                          <TableCell className="text-xs sm:text-sm font-medium">
+                            Sobreprecio:
+                          </TableCell>
+                          {orderForm.renderCurrencyCell(
+                            orderForm.productSurchargeTotal,
+                          )}
+                        </TableRow>
+                      )}
+
                       {/* Servicios complementarios (se suman después del impuesto) */}
                       {orderForm.deliveryServices.deliveryExpress?.enabled &&
                         orderForm.deliveryServices.deliveryExpress.cost > 0 && (
@@ -907,28 +646,11 @@ export function Step3OrderDetails({
                               Delivery Express:
                             </TableCell>
                             <TableCell className="text-right text-xs sm:text-sm">
-                              {(() => {
-                                const cost =
-                                  orderForm.deliveryServices.deliveryExpress
-                                    .cost;
-                                const currency =
-                                  orderForm.deliveryServices.deliveryExpress
-                                    .currency || "USD";
-                                if (currency !== "Bs") {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    const costInOriginalCurrency = cost / rate;
-                                    return formatCurrency(
-                                      costInOriginalCurrency,
-                                      currency,
-                                    );
-                                  }
-                                }
-                                return formatCurrency(cost, currency);
-                              })()}
+                              {formatCurrency(
+                                orderForm.deliveryServices.deliveryExpress.cost,
+                                orderForm.deliveryServices.deliveryExpress
+                                  .currency || "USD",
+                              )}
                             </TableCell>
                           </TableRow>
                         )}
@@ -941,28 +663,11 @@ export function Step3OrderDetails({
                               Servicio de Acarreo:
                             </TableCell>
                             <TableCell className="text-right text-xs sm:text-sm">
-                              {(() => {
-                                const cost =
-                                  orderForm.deliveryServices.servicioAcarreo
-                                    .cost;
-                                const currency =
-                                  orderForm.deliveryServices.servicioAcarreo
-                                    .currency || "USD";
-                                if (currency !== "Bs") {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    const costInOriginalCurrency = cost / rate;
-                                    return formatCurrency(
-                                      costInOriginalCurrency,
-                                      currency,
-                                    );
-                                  }
-                                }
-                                return formatCurrency(cost, currency);
-                              })()}
+                              {formatCurrency(
+                                orderForm.deliveryServices.servicioAcarreo.cost,
+                                orderForm.deliveryServices.servicioAcarreo
+                                  .currency || "USD",
+                              )}
                             </TableCell>
                           </TableRow>
                         )}
@@ -974,28 +679,11 @@ export function Step3OrderDetails({
                               Servicio de Armado:
                             </TableCell>
                             <TableCell className="text-right text-xs sm:text-sm">
-                              {(() => {
-                                const cost =
-                                  orderForm.deliveryServices.servicioArmado
-                                    .cost;
-                                const currency =
-                                  orderForm.deliveryServices.servicioArmado
-                                    .currency || "USD";
-                                if (currency !== "Bs") {
-                                  const rate =
-                                    currency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    const costInOriginalCurrency = cost / rate;
-                                    return formatCurrency(
-                                      costInOriginalCurrency,
-                                      currency,
-                                    );
-                                  }
-                                }
-                                return formatCurrency(cost, currency);
-                              })()}
+                              {formatCurrency(
+                                orderForm.deliveryServices.servicioArmado.cost,
+                                orderForm.deliveryServices.servicioArmado
+                                  .currency || "USD",
+                              )}
                             </TableCell>
                           </TableRow>
                         )}
@@ -1066,44 +754,19 @@ export function Step3OrderDetails({
                     <Select
                       value={orderForm.generalDiscountCurrency}
                       onValueChange={(value: Currency) => {
-                        // Convertir el valor actual a la nueva moneda (similar a delivery)
                         if (orderForm.generalDiscount > 0) {
-                          let newValue = orderForm.generalDiscount;
-                          if (orderForm.generalDiscountCurrency === "Bs") {
-                            // De Bs a otra moneda
-                            const rate =
-                              value === "USD"
-                                ? orderForm.exchangeRates.USD?.rate
-                                : orderForm.exchangeRates.EUR?.rate;
-                            if (rate && rate > 0) {
-                              newValue = orderForm.generalDiscount / rate;
-                            }
-                          } else if (value === "Bs") {
-                            // De otra moneda a Bs
-                            const rate =
-                              orderForm.generalDiscountCurrency === "USD"
-                                ? orderForm.exchangeRates.USD?.rate
-                                : orderForm.exchangeRates.EUR?.rate;
-                            if (rate && rate > 0) {
-                              newValue = orderForm.generalDiscount * rate;
-                            }
-                          } else {
-                            // Entre USD y EUR
-                            const currentRate =
-                              orderForm.generalDiscountCurrency === "USD"
-                                ? orderForm.exchangeRates.USD?.rate
-                                : orderForm.exchangeRates.EUR?.rate;
-                            const newRate =
-                              value === "USD"
-                                ? orderForm.exchangeRates.USD?.rate
-                                : orderForm.exchangeRates.EUR?.rate;
-                            if (currentRate && newRate && currentRate > 0) {
-                              newValue =
-                                (orderForm.generalDiscount * currentRate) /
-                                newRate;
-                            }
+                          const converted = orderForm.convertCurrencyValue(
+                            orderForm.generalDiscount,
+                            orderForm.generalDiscountCurrency,
+                            value,
+                          );
+                          if (converted === null) {
+                            toast.error(
+                              "No hay tasa BCV para convertir el monto a esa moneda.",
+                            );
+                            return;
                           }
-                          orderForm.setGeneralDiscount(newValue);
+                          orderForm.setGeneralDiscount(converted);
                         }
                         orderForm.setGeneralDiscountCurrency(value);
                       }}
@@ -1159,26 +822,7 @@ export function Step3OrderDetails({
                           value={
                             orderForm.generalDiscount === 0
                               ? ""
-                              : (() => {
-                                  if (
-                                    orderForm.generalDiscountCurrency === "Bs"
-                                  ) {
-                                    return orderForm.generalDiscount;
-                                  }
-                                  const rate =
-                                    orderForm.generalDiscountCurrency === "USD"
-                                      ? orderForm.exchangeRates.USD?.rate
-                                      : orderForm.exchangeRates.EUR?.rate;
-                                  if (rate && rate > 0) {
-                                    return (
-                                      Math.round(
-                                        (orderForm.generalDiscount / rate) *
-                                          100,
-                                      ) / 100
-                                    );
-                                  }
-                                  return orderForm.generalDiscount;
-                                })()
+                              : orderForm.generalDiscount
                           }
                           onChange={(e) => {
                             const raw = e.target.value;
@@ -1187,17 +831,7 @@ export function Step3OrderDetails({
                               if (raw === "") orderForm.setGeneralDiscount(0);
                               return;
                             }
-                            let valueInBs = inputValue;
-                            if (orderForm.generalDiscountCurrency !== "Bs") {
-                              const rate =
-                                orderForm.generalDiscountCurrency === "USD"
-                                  ? orderForm.exchangeRates.USD?.rate
-                                  : orderForm.exchangeRates.EUR?.rate;
-                              if (rate && rate > 0) {
-                                valueInBs = inputValue * rate;
-                              }
-                            }
-                            orderForm.setGeneralDiscount(valueInBs);
+                            orderForm.setGeneralDiscount(inputValue);
                           }}
                           placeholder="0.00"
                           disabled={orderForm.selectedProducts.length === 0}
