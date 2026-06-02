@@ -459,21 +459,7 @@ export function ManufacturingReport() {
         <CardContent className="pt-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {isOnline ? (
-                <>
-                  <Wifi className="w-4 h-4 text-green-600" />
-                  <span className="text-sm text-muted-foreground">
-                    Conectado - El reporte se genera desde el servidor
-                  </span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="w-4 h-4 text-orange-600" />
-                  <span className="text-sm text-muted-foreground">
-                    Sin conexión - Los reportes requieren conexión al servidor
-                  </span>
-                </>
-              )}
+              
             </div>
             <Badge variant={isOnline ? "default" : "secondary"}>
               {isOnline ? "Online" : "Offline"}
