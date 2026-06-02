@@ -14,7 +14,11 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-type ManufacturingStatus = "debe_fabricar" | "fabricando" | "almacen_no_fabricado"
+type ManufacturingStatus =
+  | "debe_fabricar"
+  | "por_fabricar"
+  | "fabricando"
+  | "almacen_no_fabricado"
 
 interface ManufacturingReportRow {
   fecha: string
@@ -106,7 +110,6 @@ export function ManufacturingReport() {
           params.append("searchTerm", searchTerm.trim())
         }
 
-        // Para "Por Fabricar": pedido y fechas
         if (activeTab === "debe_fabricar") {
           if (orderNumber.trim()) {
             params.append("orderNumber", orderNumber.trim())
@@ -117,11 +120,8 @@ export function ManufacturingReport() {
           if (endDate) {
             params.append("endDate", endDate)
           }
-        } else {
-          // Para "Fabricando" y "Fabricado": solo fabricante
-          if (selectedManufacturer !== "all") {
-            params.append("manufacturerId", selectedManufacturer)
-          }
+        } else if (selectedManufacturer !== "all") {
+          params.append("manufacturerId", selectedManufacturer)
         }
 
         const url = `/api/proxy/orders/api/Reports/Manufacturing/Preview?${params.toString()}`
@@ -176,26 +176,21 @@ export function ManufacturingReport() {
         console.log("📦 Pedidos cargados:", loadedOrders.length)
         setOrders(loadedOrders)
         
-        // Solo filtrar números de pedido para la pestaña "Por fabricar" (necesitamos el combobox)
         if (activeTab === "debe_fabricar") {
-          // Filtrar pedidos que tienen productos "Por fabricar"
           const ordersWithPendingManufacturing = loadedOrders.filter(order => {
             if (order.status === "Generado" || order.status === "Generada") {
               return false
             }
             return order.products.some(product => {
-              // Solo productos que deben mandarse a fabricar
               if (product.locationStatus !== "FABRICACION") {
                 return false
               }
-              // Determinar el estado real del producto
               const productStatus = product.manufacturingStatus || "debe_fabricar"
-              // Solo "debe_fabricar" (Por fabricar)
               return productStatus === "debe_fabricar"
             })
           })
           
-          console.log("✅ Pedidos con productos 'Por fabricar':", ordersWithPendingManufacturing.length)
+          console.log("✅ Pedidos con productos 'Debe fabricar':", ordersWithPendingManufacturing.length)
           console.log("📋 Productos encontrados:", ordersWithPendingManufacturing.flatMap(o => 
             o.products.filter(p => {
               if (p.locationStatus !== "FABRICACION") return false
@@ -354,7 +349,9 @@ export function ManufacturingReport() {
   const getStatusLabel = (status: ManufacturingStatus): string => {
     switch (status) {
       case "debe_fabricar":
-        return "Por Fabricar"
+        return "Debe fabricar"
+      case "por_fabricar":
+        return "Por fabricar"
       case "fabricando":
         return "Fabricando"
       case "almacen_no_fabricado":
@@ -528,7 +525,8 @@ export function ManufacturingReport() {
                     <SelectValue placeholder="Seleccionar estado" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="debe_fabricar">Por Fabricar</SelectItem>
+                    <SelectItem value="debe_fabricar">Debe fabricar</SelectItem>
+                    <SelectItem value="por_fabricar">Por fabricar</SelectItem>
                     <SelectItem value="fabricando">Fabricando</SelectItem>
                     <SelectItem value="almacen_no_fabricado">En almacén</SelectItem>
                   </SelectContent>
@@ -630,7 +628,7 @@ export function ManufacturingReport() {
                 </div>
               )}
 
-              {/* Para estados distintos de "Por Fabricar": filtro por Fabricante */}
+              {/* Por fabricar, Fabricando y En almacén: filtro por fabricante */}
               {activeTab !== "debe_fabricar" && (
                 <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>

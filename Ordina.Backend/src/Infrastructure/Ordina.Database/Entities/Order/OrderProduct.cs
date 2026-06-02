@@ -48,7 +48,7 @@ public class OrderProduct
     public string? AvailabilityStatus { get; set; } // "disponible" | "no_disponible"
 
     [BsonElement("manufacturingStatus")]
-    public string? ManufacturingStatus { get; set; } // "debe_fabricar" | "fabricando" | "almacen_no_fabricado" (3 estados; último = En almacén)
+    public string? ManufacturingStatus { get; set; } // "debe_fabricar" | "por_fabricar" | "fabricando" | "almacen_no_fabricado"
 
     [BsonElement("manufacturingProviderId")]
     public string? ManufacturingProviderId { get; set; }
