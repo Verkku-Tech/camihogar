@@ -8,16 +8,44 @@ import {
   normalizeExchangeRatesAtCreation,
   type ExchangeRatesAtCreationRaw,
 } from "@/lib/currency-utils";
+import { bsOnlyPaymentMethods } from "@/components/orders/constants";
 
 /** Misma tolerancia que en formularios de pedido para saldo y validación. */
 export const PAYMENT_BALANCE_EPSILON_BS = 0.1;
 export const PAYMENT_BALANCE_EPSILON_USD = 0.01;
 
+/** Líneas guardadas en pedido Cashea: el stub sintético tiene este método. */
+export const CASHEA_FINANCED_METHOD_LABEL = "Cashea (financiación)";
+
 /** Contexto de tasas acepta Order, DTO API (null en USD/EUR) y presupuestos. */
 export type PaymentOrderContext = {
   baseCurrency?: Order["baseCurrency"];
   exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
+  /** Tasa del día en UI (distinta de la congelada del pedido) para abonos sin exchangeRate guardado. */
+  liveRates?: ExchangeRatesInput;
 };
+
+function resolveBsToUsdRate(
+  payment: PartialPayment,
+  frozenRates?: ExchangeRatesInput,
+  liveRates?: ExchangeRatesInput,
+): number | undefined {
+  const det = payment.paymentDetails;
+  const fromPayment = det?.exchangeRate;
+  if (fromPayment != null && fromPayment > 0) return fromPayment;
+  const fromLive = liveRates?.USD?.rate;
+  if (fromLive != null && fromLive > 0) return fromLive;
+  const fromFrozen = frozenRates?.USD?.rate;
+  if (fromFrozen != null && fromFrozen > 0) return fromFrozen;
+  return undefined;
+}
+
+function isCasheaFinancedPayment(payment: PartialPayment): boolean {
+  return (
+    !!payment.paymentDetails?.casheaFinancedPortion ||
+    payment.method === CASHEA_FINANCED_METHOD_LABEL
+  );
+}
 
 /** Monto del pago expresado en USD (moneda comercial del pedido nuevo). */
 export function paymentToUsd(
@@ -37,7 +65,7 @@ export function paymentToUsd(
     return originalAmount ?? 0;
   }
 
-  const rates: ExchangeRatesInput | undefined =
+  const frozenRates: ExchangeRatesInput | undefined =
     order?.exchangeRatesAtCreation
       ? (normalizeExchangeRatesAtCreation(
           order.exchangeRatesAtCreation,
@@ -45,11 +73,9 @@ export function paymentToUsd(
       : undefined;
 
   if (originalCurrency === "Bs") {
-    const rate = det?.exchangeRate ?? rates?.USD?.rate;
-    if (rate && rate > 0) return (payment.amount || 0) / rate;
-    if (originalAmount && rates?.USD?.rate) {
-      return originalAmount / rates.USD.rate;
-    }
+    const rate = resolveBsToUsdRate(payment, frozenRates, order?.liveRates);
+    const amountBs = originalAmount ?? payment.amount ?? 0;
+    if (rate && rate > 0) return amountBs / rate;
     return 0;
   }
 
@@ -57,7 +83,7 @@ export function paymentToUsd(
     originalAmount ?? payment.amount ?? 0,
     originalCurrency,
     "USD",
-    rates,
+    frozenRates,
   );
   return converted ?? 0;
 }
@@ -171,12 +197,6 @@ export function normalizePaymentsForSave(
   });
 }
 
-/** Líneas guardadas en pedido Cashea: el stub sintético tiene este método. */
-export const CASHEA_FINANCED_METHOD_LABEL = "Cashea (financiación)";
-
-/**
- * Tras normalizar exactamente el pago inicial, añade (si aplica) la línea de saldo financiado por Cashea.
- */
 /**
  * Tras normalizar los cobros en tienda (una o más filas), añade si aplica la línea de saldo financiado por Cashea.
  * Ignora filas que ya sean la porción financiada (re-guardado / edición).
@@ -290,13 +310,44 @@ export function casheaInStorePaymentsExceedTotal(
 /** Suma solo lo cobrado en tienda (excluye la porción financiada automática en Cashea). */
 export function sumPaymentsInStoreBs(payments: PartialPayment[]): number {
   return payments.reduce((sum, p) => {
-    if (
-      p.paymentDetails?.casheaFinancedPortion ||
-      p.method === CASHEA_FINANCED_METHOD_LABEL
-    ) {
+    if (isCasheaFinancedPayment(p)) {
       return sum;
     }
     return sum + (p.amount || 0);
+  }, 0);
+}
+
+/** Monto en Bs realmente cobrado en un abono (null si el pago fue en USD/EUR u otro método en divisas). */
+export function getPaymentCollectedBsAmount(
+  payment: PartialPayment,
+): number | null {
+  const det = payment.paymentDetails;
+  if (
+    (bsOnlyPaymentMethods as readonly string[]).includes(payment.method)
+  ) {
+    return det?.originalAmount ?? payment.amount ?? 0;
+  }
+  if (payment.method === "Efectivo") {
+    const cashCurrency = det?.cashCurrency ?? det?.originalCurrency;
+    if (cashCurrency === "Bs") {
+      return det?.cashReceived ?? det?.originalAmount ?? payment.amount ?? 0;
+    }
+    return null;
+  }
+  const originalCurrency = (det?.originalCurrency ??
+    payment.currency) as string | undefined;
+  if (originalCurrency === "Bs") {
+    return det?.originalAmount ?? payment.amount ?? 0;
+  }
+  return null;
+}
+
+/** Suma exacta de bolívares cobrados (no incluye equivalentes Bs de pagos en USD/EUR). */
+export function sumPaymentsCollectedInBs(payments: PartialPayment[]): number {
+  return payments.reduce((sum, p) => {
+    if (isCasheaFinancedPayment(p)) return sum;
+    const bs = getPaymentCollectedBsAmount(p);
+    return bs != null ? sum + bs : sum;
   }, 0);
 }
 

@@ -1153,6 +1153,20 @@ export class ApiClient {
     );
   }
 
+  /** Tasa vigente en una fecha de cobro (yyyy-MM-dd). */
+  async getExchangeRateForDate(
+    toCurrency: string,
+    date: string,
+    fromCurrency: string = "Bs",
+  ) {
+    const q = new URLSearchParams({
+      date,
+      toCurrency,
+      fromCurrency,
+    });
+    return this.request<any>(`/api/ExchangeRates/for-date?${q.toString()}`);
+  }
+
   async setExchangeRate(data: {
     fromCurrency: string;
     toCurrency: string;

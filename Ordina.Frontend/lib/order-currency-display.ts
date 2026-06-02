@@ -20,10 +20,11 @@ import {
 import {
   getActivePaymentsList,
   getOrderPendingTotal,
+  sumPaymentsCollectedInBs,
   sumPaymentsToUsd,
   type PartialMixedPaymentsSource,
 } from "@/lib/order-payments";
-import type { Order, OrderProduct } from "@/lib/storage";
+import type { Order, OrderProduct, PartialPayment } from "@/lib/storage";
 
 export type DualCurrencyFormatted = {
   primary: string;
@@ -268,6 +269,25 @@ export function getOrderPendingUsd(
   const totalUsd = getCommercialTotalUsd(order);
   const paidUsd = getOrderPaidUsd(order);
   return Math.max(0, totalUsd - credit - paidUsd);
+}
+
+/**
+ * Total cobrado: primario USD (suma comercial) y secundario = suma real de Bs cobrados.
+ * No usa USD × tasa viva para el secundario.
+ */
+export function formatOrderPaymentTotalsDisplay(
+  paidUsd: number,
+  payments: PartialPayment[],
+): DualCurrencyFormatted {
+  const primary = formatCurrency(paidUsd, "USD");
+  const bsCollected = sumPaymentsCollectedInBs(payments);
+  if (bsCollected > 0) {
+    return {
+      primary,
+      secondary: formatCurrency(bsCollected, "Bs"),
+    };
+  }
+  return { primary };
 }
 
 /** Formato dual para montos de pago/saldo: primario USD real + Bs informativo (tasa viva). */

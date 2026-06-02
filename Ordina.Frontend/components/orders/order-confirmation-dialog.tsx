@@ -49,10 +49,12 @@ import {
 import {
   commercialRatesToExchangeRatesInput,
   formatDualCurrencyAmounts,
+  formatOrderPaymentTotalsDisplay,
   getCommercialRatesFromOrder,
   getCommercialTotalUsd,
 } from "@/lib/order-currency-display";
 import {
+  CASHEA_FINANCED_METHOD_LABEL,
   PAYMENT_BALANCE_EPSILON_USD,
   sumPaymentsToUsd,
 } from "@/lib/order-payments";
@@ -774,7 +776,15 @@ export function OrderConfirmationDialog({
   const paymentCtx = {
     baseCurrency,
     exchangeRatesAtCreation: orderData.exchangeRatesAtCreation,
+    liveRates: liveRatesInput,
   };
+
+  const inStorePaymentsForConfirmation: PartialPayment[] =
+    orderData.payments.filter(
+      (p) =>
+        !p.paymentDetails?.casheaFinancedPortion &&
+        p.method !== CASHEA_FINANCED_METHOD_LABEL,
+    );
 
   const renderCurrencyCell = (amount: number, className?: string) => {
     const formatted = formatDualCurrencyAmounts(amount, baseCurrency, {
@@ -793,12 +803,21 @@ export function OrderConfirmationDialog({
     );
   };
 
-  /** Cobros y saldo: montos en USD reales (no reinterpretar como Bs en pedidos legacy). */
-  const renderPaymentTotalCell = (amountUsd: number, className?: string) => {
-    const formatted = formatDualCurrencyAmounts(amountUsd, "USD", {
-      commercialRates: commercialRatesInput,
-      liveRates: liveRatesInput,
-    });
+  /** Cobros: USD comercial; secundario = Bs cobrados si showCollectedBs. Falta: estimado con tasa viva. */
+  const renderPaymentTotalCell = (
+    amountUsd: number,
+    className?: string,
+    showCollectedBs?: boolean,
+  ) => {
+    const formatted = showCollectedBs
+      ? formatOrderPaymentTotalsDisplay(
+          amountUsd,
+          inStorePaymentsForConfirmation,
+        )
+      : formatDualCurrencyAmounts(amountUsd, "USD", {
+          commercialRates: commercialRatesInput,
+          liveRates: liveRatesInput,
+        });
     return (
       <TableCell className={`text-right ${className || ""}`}>
         <div className="font-medium">{formatted.primary}</div>
@@ -1277,6 +1296,7 @@ export function OrderConfirmationDialog({
                           {renderPaymentTotalCell(
                             displayedPaidConfirmation,
                             "font-semibold",
+                            true,
                           )}
                         </TableRow>
 

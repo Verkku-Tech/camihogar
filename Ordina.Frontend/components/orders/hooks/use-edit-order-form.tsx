@@ -28,11 +28,13 @@ import {
   type Currency,
 } from "@/lib/currency-utils";
 import {
+  CASHEA_FINANCED_METHOD_LABEL,
   getActivePaymentsList,
   filterCasheaStubForEditForm,
   getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_BS,
   PAYMENT_BALANCE_EPSILON_USD,
+  sumPaymentsCollectedInBs,
   sumPaymentsToUsd,
 } from "@/lib/order-payments";
 import {
@@ -40,6 +42,7 @@ import {
   commercialRatesToExchangeRatesInput,
   formatCommercialDualDisplay,
   formatDualCurrencyAmounts,
+  formatOrderPaymentTotalsDisplay,
   getCommercialRatesFromOrder,
   getCommercialTotalUsd,
   getFrozenCommercialTotalsFromOrder,
@@ -279,6 +282,7 @@ export interface UseOrderFormReturn {
   renderPaymentTotalCell: (
     amountUsd: number,
     className?: string,
+    showCollectedBs?: boolean,
   ) => React.ReactElement;
 
   // Mock data (compatibilidad)
@@ -434,8 +438,6 @@ export function useEditOrderForm(
   const [formattedProductFinalTotals, setFormattedProductFinalTotals] =
     useState<Record<string, string>>({});
   const [formattedSubtotal, setFormattedSubtotal] = useState<string>("");
-  const [totalPaidInBs, setTotalPaidInBs] = useState(0);
-
   // Cargar datos
   useEffect(() => {
     if (!open) return;
@@ -964,8 +966,19 @@ export function useEditOrderForm(
     () => ({
       baseCurrency: formBaseCurrency,
       exchangeRatesAtCreation: orderSnapshotForCreditRates.exchangeRatesAtCreation,
+      liveRates: liveRatesInput,
     }),
-    [formBaseCurrency, orderSnapshotForCreditRates],
+    [formBaseCurrency, orderSnapshotForCreditRates, liveRatesInput],
+  );
+
+  const inStorePaymentsForDisplay = useMemo(
+    () =>
+      payments.filter(
+        (p) =>
+          !p.paymentDetails?.casheaFinancedPortion &&
+          p.method !== CASHEA_FINANCED_METHOD_LABEL,
+      ),
+    [payments],
   );
 
   const totalPaidInUsd = useMemo(
@@ -973,13 +986,12 @@ export function useEditOrderForm(
     [payments, orderPaymentContext],
   );
 
-  useEffect(() => {
-    setTotalPaidInBs(totalPaidInUsd);
-  }, [totalPaidInUsd]);
-
-  const casheaInStorePayments = payments.filter(
-    (p) => !p.paymentDetails?.casheaFinancedPortion,
+  const totalPaidInBs = useMemo(
+    () => sumPaymentsCollectedInBs(inStorePaymentsForDisplay),
+    [inStorePaymentsForDisplay],
   );
+
+  const casheaInStorePayments = inStorePaymentsForDisplay;
   const casheaPaidSumUsd = useMemo(
     () => sumPaymentsToUsd(casheaInStorePayments, orderPaymentContext),
     [casheaInStorePayments, orderPaymentContext],
@@ -1421,11 +1433,16 @@ export function useEditOrderForm(
   );
 
   const renderPaymentTotalCell = useCallback(
-    (amountUsd: number, className?: string) => {
-      const formatted = formatDualCurrencyAmounts(amountUsd, "USD", {
-        commercialRates: commercialRatesInput,
-        liveRates: liveRatesInput,
-      });
+    (amountUsd: number, className?: string, showCollectedBs?: boolean) => {
+      const formatted = showCollectedBs
+        ? formatOrderPaymentTotalsDisplay(
+            amountUsd,
+            inStorePaymentsForDisplay,
+          )
+        : formatDualCurrencyAmounts(amountUsd, "USD", {
+            commercialRates: commercialRatesInput,
+            liveRates: liveRatesInput,
+          });
       return (
         <div className={`text-right ${className || ""}`}>
           <div className="font-medium">{formatted.primary}</div>
@@ -1437,7 +1454,7 @@ export function useEditOrderForm(
         </div>
       );
     },
-    [commercialRatesInput, liveRatesInput],
+    [commercialRatesInput, liveRatesInput, inStorePaymentsForDisplay],
   );
 
   // Cargar dirección del cliente cuando se activa delivery

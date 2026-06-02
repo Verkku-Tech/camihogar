@@ -46,6 +46,40 @@ namespace Ordina.Payments.Api.Controllers
             return Ok(rate);
         }
 
+        /// <summary>
+        /// Tasa vigente en una fecha de cobro (última con effectiveDate &lt;= date).
+        /// </summary>
+        [HttpGet("for-date")]
+        public async Task<IActionResult> GetRateForDate(
+            [FromQuery] DateTime date,
+            [FromQuery] string toCurrency = "USD",
+            [FromQuery] string fromCurrency = "Bs")
+        {
+            if (date == default)
+            {
+                return BadRequest("El parámetro date es obligatorio (yyyy-MM-dd).");
+            }
+
+            try
+            {
+                var rate = await _exchangeRateService.GetRateForDateAsync(
+                    fromCurrency,
+                    toCurrency,
+                    date);
+                if (rate == null)
+                {
+                    return NotFound(
+                        $"No se encontró tasa de {fromCurrency} a {toCurrency} para la fecha {date:yyyy-MM-dd} o anteriores.");
+                }
+
+                return Ok(rate);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         [HttpPost]
         public async Task<IActionResult> SetExchangeRate([FromBody] SetExchangeRateRequest request)
         {
