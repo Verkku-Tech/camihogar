@@ -22,7 +22,10 @@ import {
   formatCommercialDualDisplay,
 } from "@/lib/order-currency-display";
 import {
+  getLineDiscountInBaseCurrency,
   getLinePriceCurrency,
+  getProductDiscountCurrencyForTotals,
+  normalizeMonetaryAmountFromLegacy,
   ORDER_BASE_CURRENCY,
 } from "@/lib/order-line-pricing";
 import {
@@ -272,11 +275,36 @@ export function Step1Budget({
                 {/* Vista de tarjetas para móvil */}
                 <div className="space-y-4 sm:hidden">
                   {orderForm.selectedProducts.map((product) => {
-                    const baseTotal = orderForm.getProductBaseTotal(product);
+                    const lineBase = orderForm.getProductLineBase(product);
+                    const lineSurcharge = orderForm.getProductLineSurcharge(product);
+                    const lineSubtotal =
+                      orderForm.getProductLineSubtotalDisplay(product);
                     const discount = product.discount || 0;
                     const discountInputCurrency =
                       orderForm.productDiscountCurrencies[product.id] || preferredCurrency;
-                    const finalTotal = Math.max(baseTotal - discount, 0);
+                    const rates = commercialRatesToExchangeRatesInput(
+                      orderForm.commercialExchangeRates ?? orderForm.exchangeRates,
+                    );
+                    const formBase = getStep1TotalsCurrency(
+                      orderForm as Step1OrderForm,
+                    );
+                    const discCurrency = getProductDiscountCurrencyForTotals(
+                      product,
+                      {
+                        productDiscountTypes: orderForm.productDiscountTypes,
+                        productDiscountCurrencies:
+                          orderForm.productDiscountCurrencies,
+                        preferredCurrency,
+                      },
+                    );
+                    const discountInBase = getLineDiscountInBaseCurrency(
+                      product,
+                      discount,
+                      discCurrency,
+                      formBase,
+                      rates,
+                    );
+                    const finalTotal = orderForm.getProductBaseTotal(product);
 
                     return (
                       <Card key={product.id} className="p-4 sm:p-5">
@@ -324,13 +352,25 @@ export function Step1Budget({
                               <span className="ml-2 font-medium">{product.quantity}</span>
                             </div>
                             <div>
+                              <span className="text-muted-foreground">Sobreprecio:</span>
+                              <span className="ml-2 font-medium">
+                                {lineSurcharge > 0
+                                  ? formatStep1Money(
+                                      orderForm,
+                                      lineSurcharge,
+                                      formBase,
+                                    )
+                                  : "—"}
+                              </span>
+                            </div>
+                            <div>
                               <span className="text-muted-foreground">Subtotal:</span>
                               <span className="ml-2 font-medium">
                                 {orderForm.formattedProductTotals[product.id] ||
                                   formatStep1Money(
                                     orderForm,
-                                    baseTotal,
-                                    getStep1TotalsCurrency(orderForm),
+                                    lineSubtotal,
+                                    formBase,
                                   )}
                               </span>
                             </div>
@@ -466,9 +506,9 @@ export function Step1Budget({
                                           maxDiscountInBs = category.maxDiscount * rate;
                                         }
                                       }
-                                      return Math.min(baseTotal, maxDiscountInBs);
+                                      return Math.min(lineBase, maxDiscountInBs);
                                     }
-                                    return baseTotal;
+                                    return lineBase;
                                   })()}
                                   value={(() => {
                                     const discountType =
@@ -476,24 +516,20 @@ export function Step1Budget({
                                     if (discount === 0) return "";
                                     if (discountType === "porcentaje") {
                                       const percentage =
-                                        baseTotal > 0 ? (discount / baseTotal) * 100 : 0;
+                                        lineBase > 0 ? (discount / lineBase) * 100 : 0;
                                       return Math.round(percentage * 100) / 100;
                                     }
                                     // Para monto, convertir a la moneda seleccionada
                                     const discountCurrency =
                                       orderForm.productDiscountCurrencies[product.id] ||
                                       preferredCurrency;
-                                    if (discountCurrency === "Bs") {
-                                      return roundDisplayAmount(discount);
-                                    }
-                                    const rate =
-                                      discountCurrency === "USD"
-                                        ? orderForm.exchangeRates.USD?.rate
-                                        : orderForm.exchangeRates.EUR?.rate;
-                                    if (rate && rate > 0) {
-                                      return roundDisplayAmount(discount / rate);
-                                    }
-                                    return roundDisplayAmount(discount);
+                                    return roundDisplayAmount(
+                                      normalizeMonetaryAmountFromLegacy(
+                                        discount,
+                                        discountCurrency,
+                                        rates,
+                                      ),
+                                    );
                                   })()}
                                   onChange={(e) =>
                                     orderForm.handleProductDiscountChange(
@@ -561,22 +597,50 @@ export function Step1Budget({
                     <Table className="w-full table-fixed">
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[20%]">Producto</TableHead>
-                          <TableHead className="w-[10%]">Precio</TableHead>
-                          <TableHead className="w-[10%] text-center">Cantidad</TableHead>
-                          <TableHead className="w-[10%]">Subtotal</TableHead>
-                          <TableHead className="w-[24%]">Descuento</TableHead>
-                          <TableHead className="w-[10%]">Total final</TableHead>
-                          <TableHead className="w-[12%] text-right">Acciones</TableHead>
+                          <TableHead className="w-[18%]">Producto</TableHead>
+                          <TableHead className="w-[9%]">Precio</TableHead>
+                          <TableHead className="w-[9%]">Sobreprecio</TableHead>
+                          <TableHead className="w-[7%] text-center">Cant.</TableHead>
+                          <TableHead className="w-[9%]">Subtotal</TableHead>
+                          <TableHead className="w-[22%]">Descuento</TableHead>
+                          <TableHead className="w-[9%]">Total final</TableHead>
+                          <TableHead className="w-[11%] text-right">Acciones</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {orderForm.selectedProducts.map((product) => {
-                          const baseTotal = orderForm.getProductBaseTotal(product);
+                          const lineBase = orderForm.getProductLineBase(product);
+                          const lineSurcharge =
+                            orderForm.getProductLineSurcharge(product);
+                          const lineSubtotal =
+                            orderForm.getProductLineSubtotalDisplay(product);
                           const discount = product.discount || 0;
                           const discountInputCurrency =
                             orderForm.productDiscountCurrencies[product.id] || preferredCurrency;
-                          const finalTotal = Math.max(baseTotal - discount, 0);
+                          const rates = commercialRatesToExchangeRatesInput(
+                            orderForm.commercialExchangeRates ??
+                              orderForm.exchangeRates,
+                          );
+                          const formBase = getStep1TotalsCurrency(
+                            orderForm as Step1OrderForm,
+                          );
+                          const discCurrency = getProductDiscountCurrencyForTotals(
+                            product,
+                            {
+                              productDiscountTypes: orderForm.productDiscountTypes,
+                              productDiscountCurrencies:
+                                orderForm.productDiscountCurrencies,
+                              preferredCurrency,
+                            },
+                          );
+                          const discountInBase = getLineDiscountInBaseCurrency(
+                            product,
+                            discount,
+                            discCurrency,
+                            formBase,
+                            rates,
+                          );
+                          const finalTotal = orderForm.getProductBaseTotal(product);
 
                           return (
                             <TableRow key={product.id}>
@@ -588,7 +652,7 @@ export function Step1Budget({
                                   />
                                 </div>
                               </TableCell>
-                              <TableCell className="w-[10%] text-right text-sm">
+                              <TableCell className="w-[9%] text-right text-sm">
                                 {orderForm.formattedProductPrices[product.id] ||
                                   formatStep1Money(
                                     orderForm,
@@ -596,15 +660,24 @@ export function Step1Budget({
                                     getLinePriceCurrency(product),
                                   )}
                               </TableCell>
-                              <TableCell className="w-[10%] text-center text-sm font-medium">
+                              <TableCell className="w-[9%] text-right text-sm">
+                                {lineSurcharge > 0
+                                  ? formatStep1Money(
+                                      orderForm,
+                                      lineSurcharge,
+                                      formBase,
+                                    )
+                                  : "—"}
+                              </TableCell>
+                              <TableCell className="w-[7%] text-center text-sm font-medium">
                                 {product.quantity || 1}
                               </TableCell>
-                              <TableCell className="w-[10%] text-right text-sm">
+                              <TableCell className="w-[9%] text-right text-sm">
                                 {orderForm.formattedProductTotals[product.id] ||
                                   formatStep1Money(
                                     orderForm,
-                                    baseTotal,
-                                    getStep1TotalsCurrency(orderForm),
+                                    lineSubtotal,
+                                    formBase,
                                   )}
                               </TableCell>
                               <TableCell className="w-[24%]">
@@ -737,9 +810,9 @@ export function Step1Budget({
                                               maxDiscountInBs = category.maxDiscount * rate;
                                             }
                                           }
-                                          return Math.min(baseTotal, maxDiscountInBs);
+                                          return Math.min(lineBase, maxDiscountInBs);
                                         }
-                                        return baseTotal;
+                                        return lineBase;
                                       })()}
                                       value={(() => {
                                         const discountType =
@@ -747,26 +820,21 @@ export function Step1Budget({
                                         if (discount === 0) return "";
                                         if (discountType === "porcentaje") {
                                           const percentage =
-                                            baseTotal > 0
-                                              ? (discount / baseTotal) * 100
+                                            lineBase > 0
+                                              ? (discount / lineBase) * 100
                                               : 0;
                                           return Math.round(percentage * 100) / 100;
                                         }
-                                        // Para monto, convertir a la moneda seleccionada
                                         const discountCurrency =
                                           orderForm.productDiscountCurrencies[product.id] ||
                                           preferredCurrency;
-                                        if (discountCurrency === "Bs") {
-                                          return roundDisplayAmount(discount);
-                                        }
-                                        const rate =
-                                          discountCurrency === "USD"
-                                            ? orderForm.exchangeRates.USD?.rate
-                                            : orderForm.exchangeRates.EUR?.rate;
-                                        if (rate && rate > 0) {
-                                          return roundDisplayAmount(discount / rate);
-                                        }
-                                        return roundDisplayAmount(discount);
+                                        return roundDisplayAmount(
+                                          normalizeMonetaryAmountFromLegacy(
+                                            discount,
+                                            discountCurrency,
+                                            rates,
+                                          ),
+                                        );
                                       })()}
                                       onChange={(e) =>
                                         orderForm.handleProductDiscountChange(
@@ -853,12 +921,12 @@ export function Step1Budget({
                   Subtotal (después de descuentos):
                 </span>
                 <span className="block sm:inline sm:ml-1">
-                  {orderForm.formattedSubtotal ||
-                    formatStep1Money(
-                      orderForm,
-                      orderForm.subtotal,
-                      getStep1TotalsCurrency(orderForm),
-                    )}
+                  {formatStep1Money(
+                    orderForm,
+                    orderForm.subtotalAfterProductDiscounts +
+                      orderForm.productSurchargeTotal,
+                    getStep1TotalsCurrency(orderForm),
+                  )}
                 </span>
               </div>
             </div>

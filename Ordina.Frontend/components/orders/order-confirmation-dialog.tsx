@@ -344,6 +344,7 @@ interface OrderConfirmationDialogProps {
     products: OrderProduct[];
     subtotal: number;
     productDiscountTotal: number;
+    productSurchargeTotal?: number;
     generalDiscountAmount: number;
     taxAmount: number;
     deliveryCost: number;
