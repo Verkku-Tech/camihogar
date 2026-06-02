@@ -1170,17 +1170,15 @@ export function useOrderForm(
 
       const liveRates = exchangeRates;
       for (const product of selectedProducts) {
-        const lineSubtotal = getProductLineSubtotalDisplay(product);
-        const discountInBase = getLineDiscountInBaseForProduct(product);
+        const lineBase = getProductLineBase(product);
         const finalTotal = getProductBaseTotal(product);
-        const lineCurrency = getLinePriceCurrency(product);
 
         prices[product.id] = await formatLineUnitPrice(product, {
           showBsEquivalent: true,
           liveRates,
         });
         totals[product.id] = formatLineAmount(
-          lineSubtotal,
+          lineBase,
           ORDER_BASE_CURRENCY,
           {
             showBsEquivalent: true,
@@ -1211,8 +1209,7 @@ export function useOrderForm(
     productDiscountTypes,
     productDiscountCurrencies,
     getProductBaseTotal,
-    getProductLineSubtotalDisplay,
-    getLineDiscountInBaseForProduct,
+    getProductLineBase,
   ]);
 
   useEffect(() => {

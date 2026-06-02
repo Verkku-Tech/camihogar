@@ -234,36 +234,6 @@ function getProductLinePartsInBaseCurrency(
     (cat) => cat.name === product.category,
   );
 
-  let lineTotalNative: number;
-
-  if (!category) {
-    const surchargeNativeLegacy =
-      product.surchargeEnabled && product.surchargeAmount
-        ? convertAmountBetweenOrKeep(
-            product.surchargeAmount,
-            "USD",
-            lineCurrency,
-            rates,
-          )
-        : 0;
-    lineTotalNative = Math.max(0, product.total - surchargeNativeLegacy);
-  } else {
-    const unitPrice = calculateProductUnitPriceWithAttributes(
-      product.price,
-      product.attributes,
-      category,
-      rates,
-      options.allProducts,
-      options.categories,
-      { targetCurrency: lineCurrency, basePriceCurrency: lineCurrency },
-    );
-    lineTotalNative = unitPrice * product.quantity;
-  }
-
-  const baseNative =
-    lineTotalNative +
-    convertAmountBetweenOrKeep(markup, baseCurrency, lineCurrency, rates);
-
   let surchargeNative = 0;
   if (product.surchargeEnabled && product.surchargeAmount) {
     surchargeNative = convertAmountBetweenOrKeep(
@@ -273,6 +243,38 @@ function getProductLinePartsInBaseCurrency(
       rates,
     );
   }
+
+  const qty = product.quantity || 1;
+  let lineTotalNative: number;
+
+  if (!category) {
+    lineTotalNative = Math.max(0, (product.total ?? 0) - surchargeNative);
+  } else {
+    const storedLine = (product.price ?? 0) * qty;
+    const recalcUnit = calculateProductUnitPriceWithAttributes(
+      product.price,
+      product.attributes,
+      category,
+      rates,
+      options.allProducts,
+      options.categories,
+      { targetCurrency: lineCurrency, basePriceCurrency: lineCurrency },
+    );
+    const recalcLine = recalcUnit * qty;
+
+    // product.price del modal/API ya incluye atributos; no sumar atributos otra vez.
+    if (storedLine > 0 && recalcLine > storedLine + 0.005) {
+      lineTotalNative = storedLine;
+    } else if ((product.total ?? 0) > surchargeNative + 0.005) {
+      lineTotalNative = Math.max(0, product.total! - surchargeNative);
+    } else {
+      lineTotalNative = recalcLine;
+    }
+  }
+
+  const baseNative =
+    lineTotalNative +
+    convertAmountBetweenOrKeep(markup, baseCurrency, lineCurrency, rates);
 
   return {
     baseInBase: convertAmountBetweenOrKeep(

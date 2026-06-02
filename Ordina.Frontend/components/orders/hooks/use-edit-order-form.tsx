@@ -1218,7 +1218,7 @@ export function useEditOrderForm(
     };
 
     for (const product of selectedProducts) {
-      const lineSubtotal = getProductLineSubtotalDisplay(product);
+      const lineBase = getProductLineBase(product);
       const finalTotal = getProductBaseTotal(product);
 
       prices[product.id] = formatCommercialDualDisplay(
@@ -1227,7 +1227,7 @@ export function useEditOrderForm(
         dualOpts,
       );
       totals[product.id] = formatCommercialDualDisplay(
-        lineSubtotal,
+        lineBase,
         formBaseCurrency,
         dualOpts,
       );
@@ -1253,7 +1253,7 @@ export function useEditOrderForm(
     allProducts,
     productDiscountTypes,
     getProductBaseTotal,
-    getProductLineSubtotalDisplay,
+    getProductLineBase,
   ]);
 
   useEffect(() => {
