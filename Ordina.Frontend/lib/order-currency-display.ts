@@ -291,19 +291,32 @@ export function formatOrderPaymentTotalsDisplay(
   return { primary };
 }
 
-/** Bs informativo para saldo/total USD usando tasa del pedido (no tasa viva del día). */
-export function formatOrderPaymentUsdWithOrderRateBs(
-  amountUsd: number,
-  order?: {
-    exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
-  } | null,
+/**
+ * Monto dual alineado con PDF: primario en moneda base del pedido;
+ * Bs secundario con tasa congelada del pedido (no tasa viva del día).
+ */
+export function formatOrderAmountWithOrderRateBs(
+  amount: number,
+  order?: OrderAmountDisplayInput | null,
 ): DualCurrencyFormatted {
+  const base = getDisplayBaseCurrency(order ?? { total: amount });
   const commercial = commercialRatesToExchangeRatesInput(
     getCommercialRatesFromOrder(order),
   );
-  return formatDualCurrencyAmounts(amountUsd, "USD", {
+  return formatDualCurrencyAmounts(amount, base, {
     commercialRates: commercial,
     liveRates: commercial,
+  });
+}
+
+/** Bs informativo para cobros/saldo en USD comercial. */
+export function formatOrderPaymentUsdWithOrderRateBs(
+  amountUsd: number,
+  order?: OrderAmountDisplayInput | null,
+): DualCurrencyFormatted {
+  return formatOrderAmountWithOrderRateBs(amountUsd, {
+    ...order,
+    baseCurrency: "USD",
   });
 }
 
