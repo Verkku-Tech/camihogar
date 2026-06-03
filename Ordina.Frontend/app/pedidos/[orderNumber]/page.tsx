@@ -50,7 +50,9 @@ import {
 } from "@/lib/order-line-pricing";
 import {
   formatDualCurrencyAmounts,
+  formatOrderAmountWithOrderRateBs,
   formatOrderPaymentTotalsDisplay,
+  formatOrderPaymentUsdWithOrderRateBs,
   getOrderPaidUsd,
   getOrderPendingUsd,
 } from "@/lib/order-currency-display";
@@ -213,16 +215,15 @@ const deriveExchangeRatesFromPayments = (
   return derived;
 };
 
-// Función helper para formatear moneda siempre en USD como principal, Bs como secundario
+/** @deprecated Preferir formatOrderAmountWithOrderRateBs(order) para alinear con PDF. */
 const formatCurrencyWithUsdPrimary = (
   amount: number,
   baseCurrency: Currency,
   exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } },
-  liveRates?: { USD?: { rate: number }; EUR?: { rate: number } },
 ): { primary: string; secondary?: string } => {
   return formatDualCurrencyAmounts(amount, baseCurrency, {
     commercialRates: exchangeRates,
-    liveRates: liveRates ?? exchangeRates,
+    liveRates: exchangeRates,
   });
 };
 
@@ -242,12 +243,10 @@ const CurrencyDisplay = ({
   className?: string;
   inline?: boolean;
 }) => {
-  const formatted = formatCurrencyWithUsdPrimary(
-    amount,
-    baseCurrency,
-    exchangeRates,
-    liveRates,
-  );
+  const formatted = formatDualCurrencyAmounts(amount, baseCurrency, {
+    commercialRates: exchangeRates,
+    liveRates: exchangeRates,
+  });
 
   if (inline) {
     return (
@@ -606,11 +605,9 @@ export default function OrderDetailPage() {
       ? formatOrderPaymentTotalsDisplay(
           amountUsd,
           inStorePaymentsForDisplay,
+          order ?? undefined,
         )
-      : formatDualCurrencyAmounts(amountUsd, "USD", {
-          commercialRates: localExchangeRates,
-          liveRates: liveExchangeRates,
-        });
+      : formatOrderPaymentUsdWithOrderRateBs(amountUsd, order ?? undefined);
     if (inline) {
       return (
         <span className={className}>
@@ -666,15 +663,69 @@ export default function OrderDetailPage() {
             },
           }
         : localExchangeRates;
+    if (paymentUsdRate && paymentUsdRate > 0) {
+      const ratesInput = {
+        USD: commercialRates.USD
+          ? { rate: commercialRates.USD.rate }
+          : undefined,
+        EUR: commercialRates.EUR
+          ? { rate: commercialRates.EUR.rate }
+          : undefined,
+      };
+      const formatted = formatDualCurrencyAmounts(amount, orderBaseCurrency, {
+        commercialRates: ratesInput,
+        liveRates: ratesInput,
+      });
+      if (inline) {
+        return (
+          <span className={className}>
+            <span className="font-medium">{formatted.primary}</span>
+            {formatted.secondary && (
+              <span className="text-xs text-muted-foreground ml-1">
+                ({formatted.secondary})
+              </span>
+            )}
+          </span>
+        );
+      }
+      return (
+        <div className={`text-right ${className}`}>
+          <div className="font-medium">{formatted.primary}</div>
+          {formatted.secondary && (
+            <div className="text-xs text-muted-foreground">
+              {formatted.secondary}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const formatted = order
+      ? formatOrderAmountWithOrderRateBs(amount, order)
+      : formatCurrencyWithUsdPrimary(amount, orderBaseCurrency, localExchangeRates);
+
+    if (inline) {
+      return (
+        <span className={className}>
+          <span className="font-medium">{formatted.primary}</span>
+          {formatted.secondary && (
+            <span className="text-xs text-muted-foreground ml-1">
+              ({formatted.secondary})
+            </span>
+          )}
+        </span>
+      );
+    }
+
     return (
-      <CurrencyDisplay
-        amount={amount}
-        baseCurrency={orderBaseCurrency}
-        exchangeRates={commercialRates}
-        liveRates={liveExchangeRates}
-        className={className}
-        inline={inline}
-      />
+      <div className={`text-right ${className}`}>
+        <div className="font-medium">{formatted.primary}</div>
+        {formatted.secondary && (
+          <div className="text-xs text-muted-foreground">
+            {formatted.secondary}
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -992,56 +1043,32 @@ export default function OrderDetailPage() {
       const totals: Record<string, { primary: string; secondary?: string }> =
         {};
 
-      const base = getOrderBaseCurrency(order);
-      totals.total = formatCurrencyWithUsdPrimary(
-        order.total,
-        base,
-        localExchangeRates,
-        liveExchangeRates,
-      );
-      totals.subtotal = formatCurrencyWithUsdPrimary(
-        order.subtotal,
-        base,
-        localExchangeRates,
-        liveExchangeRates,
-      );
-      totals.tax = formatCurrencyWithUsdPrimary(
-        order.taxAmount,
-        base,
-        localExchangeRates,
-        liveExchangeRates,
-      );
-      totals.subtotalBeforeDiscounts = formatCurrencyWithUsdPrimary(
+      totals.total = formatOrderAmountWithOrderRateBs(order.total, order);
+      totals.subtotal = formatOrderAmountWithOrderRateBs(order.subtotal, order);
+      totals.tax = formatOrderAmountWithOrderRateBs(order.taxAmount, order);
+      totals.subtotalBeforeDiscounts = formatOrderAmountWithOrderRateBs(
         order.subtotalBeforeDiscounts || 0,
-        base,
-        localExchangeRates,
-        liveExchangeRates,
+        order,
       );
 
       if (order.productDiscountTotal && order.productDiscountTotal > 0) {
-        totals.productDiscountTotal = formatCurrencyWithUsdPrimary(
+        totals.productDiscountTotal = formatOrderAmountWithOrderRateBs(
           order.productDiscountTotal,
-          base,
-          localExchangeRates,
-          liveExchangeRates,
+          order,
         );
       }
 
       if (order.generalDiscountAmount && order.generalDiscountAmount > 0) {
-        totals.generalDiscountAmount = formatCurrencyWithUsdPrimary(
+        totals.generalDiscountAmount = formatOrderAmountWithOrderRateBs(
           order.generalDiscountAmount,
-          base,
-          localExchangeRates,
-          liveExchangeRates,
+          order,
         );
       }
 
       if (order.deliveryCost > 0) {
-        totals.deliveryCost = formatCurrencyWithUsdPrimary(
+        totals.deliveryCost = formatOrderAmountWithOrderRateBs(
           order.deliveryCost,
-          base,
-          localExchangeRates,
-          liveExchangeRates,
+          order,
         );
       }
 
@@ -1049,7 +1076,7 @@ export default function OrderDetailPage() {
     };
 
     formatTotals();
-  }, [order, localExchangeRates, liveExchangeRates]);
+  }, [order, localExchangeRates]);
 
   // Formatear pagos cuando cambia la moneda seleccionada
   useEffect(() => {
@@ -1157,12 +1184,7 @@ export default function OrderDetailPage() {
 
       const base = getOrderBaseCurrency(order);
       const fmtAmount = (amount: number) =>
-        formatCurrencyWithUsdPrimary(
-          amount,
-          base,
-          localExchangeRates,
-          liveExchangeRates,
-        );
+        formatOrderAmountWithOrderRateBs(amount, order);
 
       const formattedDiscounts: Record<
         string,
@@ -1437,7 +1459,7 @@ export default function OrderDetailPage() {
       setProductBreakdowns(breakdowns);
     };
     formatProductData();
-  }, [order, categories, allProducts, localExchangeRates, liveExchangeRates]);
+  }, [order, categories, allProducts, localExchangeRates]);
 
   if (loading) {
     return (
@@ -2634,7 +2656,7 @@ export default function OrderDetailPage() {
                               {localExchangeRates?.USD?.rate && (
                                 <p className="text-xs text-red-600/90 dark:text-red-400/90">
                                   Saldo comercial en USD; equivalente en Bs con
-                                  tasa vigente para cobro
+                                  tasa del pedido
                                 </p>
                               )}
                             </div>

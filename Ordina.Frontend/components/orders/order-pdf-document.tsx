@@ -7,7 +7,11 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 import type { Order, Client, PartialPayment } from "@/lib/storage";
-import { getActivePaymentsList } from "@/lib/order-payments";
+import {
+  getActivePaymentsList,
+  paymentToUsd,
+  sumPaymentBsEquivalentsForDisplay,
+} from "@/lib/order-payments";
 import {
   formatCurrency,
   normalizeExchangeRatesAtCreation,
@@ -267,15 +271,18 @@ function PaymentAmountCell({
   const wrap = (inner: ReactNode) => (
     <View style={{ flex: 0.9, alignItems: "flex-end" }}>{inner}</View>
   );
-  if (orig.currency === "Bs" && usdRate && usdRate > 0) {
-    return wrap(
-      <>
-        <Text style={styles.amountPrimary}>{line1}</Text>
-        <Text style={styles.amountSecondary}>
-          (≈ {formatCurrency(orig.amount / usdRate, "USD")})
-        </Text>
-      </>
-    );
+  if (orig.currency === "Bs") {
+    const usdEquiv = paymentToUsd(p, order);
+    if (usdEquiv > 0) {
+      return wrap(
+        <>
+          <Text style={styles.amountPrimary}>{line1}</Text>
+          <Text style={styles.amountSecondary}>
+            (≈ {formatCurrency(usdEquiv, "USD")})
+          </Text>
+        </>
+      );
+    }
   }
   if (
     (orig.currency === "USD" || orig.currency === "EUR") &&
@@ -317,6 +324,7 @@ export function OrderPdfDocument({
   const orderBaseCurrency = getDisplayBaseCurrency(order);
   const pendingAmountUsd = getOrderPendingUsd(order);
   const paidAmountUsd = getOrderPaidUsd(order);
+  const paidBsEquivalent = sumPaymentBsEquivalentsForDisplay(payments, order);
 
   const addressForDelivery =
     order.deliveryAddress?.trim() ||
@@ -472,11 +480,16 @@ export function OrderPdfDocument({
           </View>
           <View style={styles.totalRow}>
             <Text>Pagado</Text>
-            <OrderAmountBlock
-              amount={paidAmountUsd}
-              order={order}
-              currency="USD"
-            />
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={styles.amountPrimary}>
+                {formatCurrency(paidAmountUsd, "USD")}
+              </Text>
+              {paidBsEquivalent > 0 ? (
+                <Text style={styles.amountSecondary}>
+                  {formatCurrency(paidBsEquivalent, "Bs")}
+                </Text>
+              ) : null}
+            </View>
           </View>
           <View style={styles.totalRow}>
             <Text>Resta por pagar</Text>

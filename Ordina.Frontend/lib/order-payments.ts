@@ -351,6 +351,65 @@ export function sumPaymentsCollectedInBs(payments: PartialPayment[]): number {
   }, 0);
 }
 
+/**
+ * Equivalente en Bs de un abono tal como se muestra en detalle/PDF:
+ * Bs nativos, o `payment.amount` (leg Bs) para USD/EUR, o conversión con tasa del pago.
+ */
+export function getPaymentBsEquivalentForDisplay(
+  payment: PartialPayment,
+  order?: PaymentOrderContext | null,
+): number {
+  if (isCasheaFinancedPayment(payment)) return 0;
+
+  const collected = getPaymentCollectedBsAmount(payment);
+  if (collected != null) return collected;
+
+  if (payment.amount != null && payment.amount > 0) {
+    return payment.amount;
+  }
+
+  const det = payment.paymentDetails;
+  const originalCurrency = (det?.originalCurrency ??
+    payment.currency ??
+    "USD") as "Bs" | "USD" | "EUR";
+  const originalAmount =
+    det?.originalAmount ?? det?.cashReceived ?? payment.amount ?? 0;
+
+  if (originalCurrency === "Bs") {
+    return originalAmount;
+  }
+
+  const frozenRates: ExchangeRatesInput | undefined =
+    order?.exchangeRatesAtCreation
+      ? (normalizeExchangeRatesAtCreation(
+          order.exchangeRatesAtCreation,
+        ) as ExchangeRatesInput)
+      : undefined;
+
+  const rate =
+    det?.exchangeRate ??
+    (originalCurrency === "USD"
+      ? frozenRates?.USD?.rate
+      : frozenRates?.EUR?.rate);
+
+  if (rate && rate > 0) {
+    return originalAmount * rate;
+  }
+
+  return 0;
+}
+
+/** Suma de equivalentes Bs por línea (opción A: alineado detalle + PDF). */
+export function sumPaymentBsEquivalentsForDisplay(
+  payments: PartialPayment[],
+  order?: PaymentOrderContext | null,
+): number {
+  return payments.reduce(
+    (sum, p) => sum + getPaymentBsEquivalentForDisplay(p, order),
+    0,
+  );
+}
+
 /** Para editar: quita la línea sintética de financiación y deja solo los cobros en tienda. */
 export function filterCasheaStubForEditForm(
   order: Order,

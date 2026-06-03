@@ -20,9 +20,10 @@ import {
 import {
   getActivePaymentsList,
   getOrderPendingTotal,
-  sumPaymentsCollectedInBs,
+  sumPaymentBsEquivalentsForDisplay,
   sumPaymentsToUsd,
   type PartialMixedPaymentsSource,
+  type PaymentOrderContext,
 } from "@/lib/order-payments";
 import type { Order, OrderProduct, PartialPayment } from "@/lib/storage";
 
@@ -272,22 +273,51 @@ export function getOrderPendingUsd(
 }
 
 /**
- * Total cobrado: primario USD (suma comercial) y secundario = suma real de Bs cobrados.
- * No usa USD × tasa viva para el secundario.
+ * Total cobrado: primario USD (suma comercial) y secundario = suma de equivalentes Bs por línea.
  */
 export function formatOrderPaymentTotalsDisplay(
   paidUsd: number,
   payments: PartialPayment[],
+  order?: PaymentOrderContext | null,
 ): DualCurrencyFormatted {
   const primary = formatCurrency(paidUsd, "USD");
-  const bsCollected = sumPaymentsCollectedInBs(payments);
-  if (bsCollected > 0) {
+  const bsTotal = sumPaymentBsEquivalentsForDisplay(payments, order);
+  if (bsTotal > 0) {
     return {
       primary,
-      secondary: formatCurrency(bsCollected, "Bs"),
+      secondary: formatCurrency(bsTotal, "Bs"),
     };
   }
   return { primary };
+}
+
+/**
+ * Monto dual alineado con PDF: primario en moneda base del pedido;
+ * Bs secundario con tasa congelada del pedido (no tasa viva del día).
+ */
+export function formatOrderAmountWithOrderRateBs(
+  amount: number,
+  order?: OrderAmountDisplayInput | null,
+): DualCurrencyFormatted {
+  const base = getDisplayBaseCurrency(order ?? { total: amount });
+  const commercial = commercialRatesToExchangeRatesInput(
+    getCommercialRatesFromOrder(order),
+  );
+  return formatDualCurrencyAmounts(amount, base, {
+    commercialRates: commercial,
+    liveRates: commercial,
+  });
+}
+
+/** Bs informativo para cobros/saldo en USD comercial. */
+export function formatOrderPaymentUsdWithOrderRateBs(
+  amountUsd: number,
+  order?: OrderAmountDisplayInput | null,
+): DualCurrencyFormatted {
+  return formatOrderAmountWithOrderRateBs(amountUsd, {
+    ...order,
+    baseCurrency: "USD",
+  });
 }
 
 /** Formato dual para montos de pago/saldo: primario USD real + Bs informativo (tasa viva). */
