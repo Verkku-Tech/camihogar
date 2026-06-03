@@ -51,6 +51,7 @@ import {
 import {
   formatDualCurrencyAmounts,
   formatOrderPaymentTotalsDisplay,
+  formatOrderPaymentUsdWithOrderRateBs,
   getOrderPaidUsd,
   getOrderPendingUsd,
 } from "@/lib/order-currency-display";
@@ -606,11 +607,9 @@ export default function OrderDetailPage() {
       ? formatOrderPaymentTotalsDisplay(
           amountUsd,
           inStorePaymentsForDisplay,
+          order ?? undefined,
         )
-      : formatDualCurrencyAmounts(amountUsd, "USD", {
-          commercialRates: localExchangeRates,
-          liveRates: liveExchangeRates,
-        });
+      : formatOrderPaymentUsdWithOrderRateBs(amountUsd, order ?? undefined);
     if (inline) {
       return (
         <span className={className}>
@@ -2634,7 +2633,7 @@ export default function OrderDetailPage() {
                               {localExchangeRates?.USD?.rate && (
                                 <p className="text-xs text-red-600/90 dark:text-red-400/90">
                                   Saldo comercial en USD; equivalente en Bs con
-                                  tasa vigente para cobro
+                                  tasa del pedido
                                 </p>
                               )}
                             </div>
