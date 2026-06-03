@@ -50,6 +50,7 @@ import {
   commercialRatesToExchangeRatesInput,
   formatDualCurrencyAmounts,
   formatOrderPaymentTotalsDisplay,
+  formatOrderPaymentUsdWithOrderRateBs,
   getCommercialRatesFromOrder,
   getCommercialTotalUsd,
 } from "@/lib/order-currency-display";
@@ -814,11 +815,9 @@ export function OrderConfirmationDialog({
       ? formatOrderPaymentTotalsDisplay(
           amountUsd,
           inStorePaymentsForConfirmation,
+          orderData,
         )
-      : formatDualCurrencyAmounts(amountUsd, "USD", {
-          commercialRates: commercialRatesInput,
-          liveRates: liveRatesInput,
-        });
+      : formatOrderPaymentUsdWithOrderRateBs(amountUsd, orderData);
     return (
       <TableCell className={`text-right ${className || ""}`}>
         <div className="font-medium">{formatted.primary}</div>

@@ -37,7 +37,7 @@ import {
   getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_BS,
   PAYMENT_BALANCE_EPSILON_USD,
-  sumPaymentsCollectedInBs,
+  sumPaymentBsEquivalentsForDisplay,
   sumPaymentsToUsd,
 } from "@/lib/order-payments";
 import {
@@ -45,6 +45,7 @@ import {
   commercialRatesToExchangeRatesInput,
   formatDualCurrencyAmounts,
   formatOrderPaymentTotalsDisplay,
+  formatOrderPaymentUsdWithOrderRateBs,
 } from "@/lib/order-currency-display";
 import {
   ORDER_BASE_CURRENCY,
@@ -1104,8 +1105,12 @@ export function useOrderForm(
   );
 
   const totalPaidInBs = useMemo(
-    () => sumPaymentsCollectedInBs(inStorePaymentsForDisplay),
-    [inStorePaymentsForDisplay],
+    () =>
+      sumPaymentBsEquivalentsForDisplay(
+        inStorePaymentsForDisplay,
+        orderPaymentContext,
+      ),
+    [inStorePaymentsForDisplay, orderPaymentContext],
   );
 
   const casheaInStorePayments = inStorePaymentsForDisplay;
@@ -1617,11 +1622,12 @@ export function useOrderForm(
         ? formatOrderPaymentTotalsDisplay(
             amountUsd,
             inStorePaymentsForDisplay,
+            orderPaymentContext,
           )
-        : formatDualCurrencyAmounts(amountUsd, "USD", {
-            commercialRates: commercialRatesInput,
-            liveRates: liveRatesInput,
-          });
+        : formatOrderPaymentUsdWithOrderRateBs(
+            amountUsd,
+            orderPaymentContext,
+          );
       return (
         <div className={`text-right ${className || ""}`}>
           <div className="font-medium">{formatted.primary}</div>
@@ -1633,7 +1639,7 @@ export function useOrderForm(
         </div>
       );
     },
-    [commercialRatesInput, liveRatesInput, inStorePaymentsForDisplay],
+    [inStorePaymentsForDisplay, orderPaymentContext],
   );
 
   // Cargar dirección del cliente cuando se activa delivery
