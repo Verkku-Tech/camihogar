@@ -24,15 +24,17 @@ public class SaleTypeCommissionRule
     [BsonRepresentation(BsonType.Decimal128)]
     public decimal FamilyCommissionUsdPerUnit { get; set; }
 
+    /// <summary>USD por unidad vendida para vendedor de tienda (venta compartida).</summary>
     [BsonElement("vendorRate")]
     [BsonRepresentation(BsonType.Decimal128)]
-    public decimal VendorRate { get; set; } // 2.5, 2, 1.5, etc. (porcentaje que gana el vendedor de tienda)
+    public decimal VendorRate { get; set; }
 
+    /// <summary>USD por unidad vendida para referido online (venta compartida).</summary>
     [BsonElement("referrerRate")]
     [BsonRepresentation(BsonType.Decimal128)]
-    public decimal ReferrerRate { get; set; } // 0, 1, 1.5, etc. (porcentaje que gana el referido online)
+    public decimal ReferrerRate { get; set; }
 
-    /// <summary>Porcentaje de la comisión de familia para post venta (ENCARGO y SA).</summary>
+    /// <summary>USD por unidad vendida para post venta (venta compartida).</summary>
     [BsonElement("postventaRate")]
     [BsonRepresentation(BsonType.Decimal128)]
     public decimal PostventaRate { get; set; }

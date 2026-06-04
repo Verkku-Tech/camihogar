@@ -1495,6 +1495,22 @@ export class ApiClient {
     );
   }
 
+  async getSaleTypeRulesCompleteness(): Promise<SaleTypeCommissionCompletenessDto> {
+    return this.request<SaleTypeCommissionCompletenessDto>(
+      "/api/CommissionSettings/SaleTypeRules/Completeness",
+    );
+  }
+
+  async ensureSaleTypeRulesComplete(): Promise<{
+    inserted: number;
+    rules: SaleTypeCommissionRuleDto[];
+  }> {
+    return this.request<{ inserted: number; rules: SaleTypeCommissionRuleDto[] }>(
+      "/api/CommissionSettings/SaleTypeRules/EnsureComplete",
+      { method: "POST" },
+    );
+  }
+
   // ===== ACCOUNTS ENDPOINTS =====
 
   async getAccounts(
@@ -1616,8 +1632,11 @@ export interface SaleTypeCommissionRuleDto {
   saleTypeLabel: string;
   /** USD de comisión familia por unidad (2.5, 5 o 7.5). */
   familyCommissionUsdPerUnit: number;
+  /** USD por unidad para vendedor de tienda. */
   vendorRate: number;
+  /** USD por unidad para referido online. */
   referrerRate: number;
+  /** USD por unidad para post venta. */
   postventaRate?: number;
   createdAt: string;
   updatedAt: string;
@@ -1630,6 +1649,14 @@ export interface CreateSaleTypeCommissionRuleDto {
   vendorRate: number;
   referrerRate: number;
   postventaRate?: number;
+}
+
+export interface SaleTypeCommissionCompletenessDto {
+  isComplete: boolean;
+  expectedRuleCount: number;
+  actualRuleCount: number;
+  hasLegacyTierZero: boolean;
+  missingDescriptions: string[];
 }
 
 // Types

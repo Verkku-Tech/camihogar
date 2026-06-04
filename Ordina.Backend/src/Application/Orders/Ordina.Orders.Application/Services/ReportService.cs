@@ -1532,7 +1532,7 @@ public class ReportService : IReportService
 
     /// <summary>
     /// Comisión por línea: USD por unidad (commissionValue) × cantidad.
-    /// Venta compartida: vendorRate/referrerRate son % de esa comisión de familia, no del total del producto.
+    /// Venta compartida: vendorRate/referrerRate/postventaRate son USD por unidad según regla de tipo de venta + tier.
     /// </summary>
     private (decimal vendorCommission, decimal referrerCommission, decimal postventaCommission, decimal baseRate, decimal appliedVendorRate, decimal appliedReferrerRate, decimal appliedPostventaRate)
         CalculateProductCommission(
@@ -1560,15 +1560,15 @@ public class ReportService : IReportService
 
         if (isSharedSale && !isExclusiveVendor)
         {
-            // VENTA COMPARTIDA: reparto como % de la comisión de familia (USD × unidad), regla por tipo de venta + tier USD/u
+            // VENTA COMPARTIDA: USD fijos por rol × cantidad, regla por tipo de venta + tier USD/u familia
             var saleType = DetermineSaleType(order);
             var rule = SaleTypeCommissionTierResolver.PickRule(saleTypeRules, saleType, baseCommissionRate, _logger);
 
             if (rule != null)
             {
-                var vendorCommission = familyCommission * (rule.VendorRate / 100);
-                var referrerCommission = familyCommission * (rule.ReferrerRate / 100);
-                var postventaCommission = familyCommission * (rule.PostventaRate / 100);
+                var vendorCommission = rule.VendorRate * qty;
+                var referrerCommission = rule.ReferrerRate * qty;
+                var postventaCommission = rule.PostventaRate * qty;
 
                 return (vendorCommission, referrerCommission, postventaCommission, baseCommissionRate, rule.VendorRate, rule.ReferrerRate, rule.PostventaRate);
             }

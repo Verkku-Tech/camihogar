@@ -5797,9 +5797,11 @@ export interface SaleTypeCommissionRule {
   saleTypeLabel: string;
   /** USD de comisión familia por unidad (2.5, 5 o 7.5). */
   familyCommissionUsdPerUnit: number;
-  vendorRate: number; // Porcentaje que gana el vendedor de tienda
-  referrerRate: number; // Porcentaje que gana el referido online
-  /** % de la comisión de familia para post venta (ENCARGO / SA). */
+  /** USD por unidad para vendedor de tienda (venta compartida). */
+  vendorRate: number;
+  /** USD por unidad para referido online. */
+  referrerRate: number;
+  /** USD por unidad para post venta. */
   postventaRate?: number;
   createdAt: string;
   updatedAt: string;
@@ -5860,9 +5862,21 @@ export const seedDefaultSaleTypeRules = async (
   }
 };
 
+export const ensureSaleTypeRulesComplete = async (): Promise<{
+  inserted: number;
+  rules: SaleTypeCommissionRule[];
+}> => {
+  try {
+    return await apiClient.ensureSaleTypeRulesComplete();
+  } catch (error) {
+    console.error("Error ensuring sale type rules:", error);
+    throw error;
+  }
+};
+
 // ===== COMMISSION CALCULATION FUNCTIONS =====
 // Alineado con ReportService.CalculateProductCommission (backend): USD por unidad × cantidad;
-// distribución por tipo de venta + nivel USD/u (2.5 / 5 / 7.5) = % de esa comisión de familia. Fallback legacy si comisión familia = 0.
+// distribución por tipo de venta + nivel USD/u (2.5 / 5 / 7.5) = USD fijos por rol × cantidad. Fallback legacy si comisión familia = 0.
 
 export const FAMILY_COMMISSION_USD_TIERS = [2.5, 5, 7.5] as const;
 
@@ -6045,9 +6059,9 @@ export const computeProductCommissionSplit = (
     if (rule) {
       const pv = rule.postventaRate ?? 0;
       return {
-        vendorCommission: familyCommission * (rule.vendorRate / 100),
-        referrerCommission: familyCommission * (rule.referrerRate / 100),
-        postventaCommission: familyCommission * (pv / 100),
+        vendorCommission: rule.vendorRate * qty,
+        referrerCommission: rule.referrerRate * qty,
+        postventaCommission: pv * qty,
         isShared: true,
       };
     }
