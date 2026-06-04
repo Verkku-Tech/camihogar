@@ -45,14 +45,12 @@ interface DispatchReportRow {
   importeTotal: number;
   saldoPendiente: number;
   informacionDespacho: string;
+  observacionesDespacho: string;
 }
 
 function normalizeDispatchRow(raw: Record<string, unknown>): DispatchReportRow {
   const g = (k: string) =>
     raw[k] ?? raw[k.charAt(0).toUpperCase() + k.slice(1)];
-  const dispatchObs = String(g("dispatchObservations") ?? "").trim();
-  const informacion =
-    String(g("informacionDespacho") ?? "").trim() || dispatchObs;
   return {
     notaDespacho: String(g("notaDespacho") ?? ""),
     cliente: String(g("cliente") ?? ""),
@@ -64,8 +62,93 @@ function normalizeDispatchRow(raw: Record<string, unknown>): DispatchReportRow {
     estadoPago: String(g("estadoPago") ?? ""),
     importeTotal: Number(g("importeTotal") ?? 0),
     saldoPendiente: Number(g("saldoPendiente") ?? 0),
-    informacionDespacho: informacion,
+    informacionDespacho: String(g("informacionDespacho") ?? "").trim(),
+    observacionesDespacho: String(g("dispatchObservations") ?? "").trim(),
   };
+}
+
+function displayCellText(value: string): string {
+  return value.trim() ? value : "—";
+}
+
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+  }).format(amount);
+}
+
+function DispatchReportMobileCard({ row }: { row: DispatchReportRow }) {
+  return (
+    <Card className="p-4">
+      <div className="flex justify-between gap-2 border-b pb-2 mb-3">
+        <span className="font-semibold">{row.notaDespacho}</span>
+        <span className="text-sm text-muted-foreground text-right">
+          {row.estadoPago}
+        </span>
+      </div>
+      <dl className="grid grid-cols-1 gap-2 text-sm">
+        <div>
+          <dt className="text-muted-foreground">Cliente</dt>
+          <dd className="font-medium">{row.cliente}</dd>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <dt className="text-muted-foreground">Teléfono 1</dt>
+            <dd>{displayCellText(row.telefono1)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Teléfono 2</dt>
+            <dd>{displayCellText(row.telefono2)}</dd>
+          </div>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Dirección</dt>
+          <dd className="break-words">{displayCellText(row.direccion)}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Cantidad</dt>
+          <dd>{row.cantidadTotal}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Descripción</dt>
+          <dd className="line-clamp-4 break-words" title={row.descripcion}>
+            {displayCellText(row.descripcion)}
+          </dd>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <dt className="text-muted-foreground">Importe total</dt>
+            <dd className="font-medium">{formatCurrency(row.importeTotal)}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Saldo pendiente</dt>
+            <dd className="font-medium">{formatCurrency(row.saldoPendiente)}</dd>
+          </div>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Información de despacho</dt>
+          <dd className="whitespace-pre-wrap break-words">
+            {displayCellText(row.informacionDespacho)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">Observaciones de despacho</dt>
+          <dd className="whitespace-pre-wrap break-words">
+            {displayCellText(row.observacionesDespacho)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground mb-1">Firma</dt>
+          <dd
+            className="min-h-[2.5rem] rounded border border-dashed border-muted-foreground/40 bg-muted/20"
+            aria-hidden
+          />
+        </div>
+      </dl>
+    </Card>
+  );
 }
 
 const escapeCsvCell = (value: string): string => {
@@ -225,6 +308,7 @@ export function DispatchReport() {
         "Importe total",
         "Saldo pendiente (USD)",
         "Información de despacho",
+        "Observaciones de despacho",
         "Firma",
       ];
 
@@ -243,6 +327,7 @@ export function DispatchReport() {
             row.importeTotal.toFixed(2),
             row.saldoPendiente.toFixed(2),
             row.informacionDespacho,
+            row.observacionesDespacho,
             "",
           ]
             .map(escapeCsvCell)
@@ -268,14 +353,6 @@ export function DispatchReport() {
       setIsDownloadingCsv(false);
     }
   }, [reportData]);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
 
   const totalImporte = reportData.reduce(
     (sum, row) => sum + row.importeTotal,
@@ -338,7 +415,7 @@ export function DispatchReport() {
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-col sm:flex-row flex-wrap justify-end gap-2">
         <Button
           type="button"
           variant="outline"
@@ -402,24 +479,49 @@ export function DispatchReport() {
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <Table>
+              <p className="text-xs text-muted-foreground mb-3 lg:hidden">
+                Vista en tarjetas para pantallas pequeñas.
+              </p>
+              <p className="text-xs text-muted-foreground mb-3 hidden lg:block">
+                Desliza horizontalmente para ver observaciones de despacho y
+                firma.
+              </p>
+
+              <div className="space-y-3 lg:hidden">
+                {paginatedData.map((row) => (
+                  <DispatchReportMobileCard key={row.notaDespacho} row={row} />
+                ))}
+              </div>
+
+              <div className="hidden lg:block overflow-x-auto rounded-md border">
+                <Table className="min-w-[1280px] w-full">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Pedido</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Teléfono 1</TableHead>
-                      <TableHead>Teléfono 2</TableHead>
-                      <TableHead>Dirección</TableHead>
-                      <TableHead className="text-center">Cantidad</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead>Estado de pago</TableHead>
-                      <TableHead className="text-right">Importe total</TableHead>
-                      <TableHead className="text-right">
+                      <TableHead className="sticky left-0 z-20 min-w-[100px] bg-background">
+                        Pedido
+                      </TableHead>
+                      <TableHead className="min-w-[140px]">Cliente</TableHead>
+                      <TableHead className="min-w-[100px]">Teléfono 1</TableHead>
+                      <TableHead className="min-w-[100px]">Teléfono 2</TableHead>
+                      <TableHead className="min-w-[180px]">Dirección</TableHead>
+                      <TableHead className="text-center min-w-[72px]">
+                        Cantidad
+                      </TableHead>
+                      <TableHead className="min-w-[200px]">Descripción</TableHead>
+                      <TableHead className="min-w-[120px]">
+                        Estado de pago
+                      </TableHead>
+                      <TableHead className="text-right min-w-[100px]">
+                        Importe total
+                      </TableHead>
+                      <TableHead className="text-right min-w-[120px]">
                         Saldo pendiente (USD)
                       </TableHead>
-                      <TableHead className="max-w-[280px]">
+                      <TableHead className="min-w-[180px] max-w-[240px]">
                         Información de despacho
+                      </TableHead>
+                      <TableHead className="min-w-[160px] max-w-[240px]">
+                        Observaciones de despacho
                       </TableHead>
                       <TableHead className="min-w-[120px]">Firma</TableHead>
                     </TableRow>
@@ -427,46 +529,60 @@ export function DispatchReport() {
                   <TableBody>
                     {paginatedData.map((row) => (
                       <TableRow key={row.notaDespacho}>
-                        <TableCell className="font-medium whitespace-nowrap">
+                        <TableCell className="sticky left-0 z-10 font-medium whitespace-nowrap bg-background">
                           {row.notaDespacho}
                         </TableCell>
-                        <TableCell className="max-w-[200px] truncate">
+                        <TableCell className="max-w-[200px] truncate" title={row.cliente}>
                           {row.cliente}
                         </TableCell>
-                        <TableCell>{row.telefono1}</TableCell>
-                        <TableCell>{row.telefono2}</TableCell>
-                        <TableCell className="max-w-[220px]">
-                          {row.direccion}
+                        <TableCell className="whitespace-nowrap">
+                          {displayCellText(row.telefono1)}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {displayCellText(row.telefono2)}
+                        </TableCell>
+                        <TableCell className="max-w-[220px] break-words text-sm">
+                          {displayCellText(row.direccion)}
                         </TableCell>
                         <TableCell className="text-center">
                           {row.cantidadTotal}
                         </TableCell>
-                        <TableCell className="max-w-[320px]">
-                          {row.descripcion}
+                        <TableCell
+                          className="max-w-[280px] text-sm line-clamp-3 break-words"
+                          title={row.descripcion}
+                        >
+                          {displayCellText(row.descripcion)}
                         </TableCell>
                         <TableCell>{row.estadoPago}</TableCell>
-                        <TableCell className="text-right font-medium">
+                        <TableCell className="text-right font-medium whitespace-nowrap">
                           {formatCurrency(row.importeTotal)}
                         </TableCell>
-                        <TableCell className="text-right font-medium">
+                        <TableCell className="text-right font-medium whitespace-nowrap">
                           {formatCurrency(row.saldoPendiente)}
                         </TableCell>
-                        <TableCell className="max-w-[280px] text-sm whitespace-pre-wrap">
-                          {row.informacionDespacho || "—"}
+                        <TableCell className="max-w-[240px] text-sm whitespace-pre-wrap break-words">
+                          {displayCellText(row.informacionDespacho)}
+                        </TableCell>
+                        <TableCell className="max-w-[240px] text-sm whitespace-pre-wrap break-words">
+                          {displayCellText(row.observacionesDespacho)}
                         </TableCell>
                         <TableCell className="min-w-[120px] min-h-[2.5rem] align-bottom border-b border-dashed border-muted-foreground/30" />
                       </TableRow>
                     ))}
                     <TableRow className="font-bold bg-muted/50">
-                      <TableCell colSpan={8} className="text-right">
+                      <TableCell
+                        colSpan={8}
+                        className="sticky left-0 z-10 text-right bg-muted/50"
+                      >
                         Totales
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right whitespace-nowrap">
                         {formatCurrency(totalImporte)}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right whitespace-nowrap">
                         {formatCurrency(totalSaldoPendiente)}
                       </TableCell>
+                      <TableCell />
                       <TableCell />
                       <TableCell />
                     </TableRow>

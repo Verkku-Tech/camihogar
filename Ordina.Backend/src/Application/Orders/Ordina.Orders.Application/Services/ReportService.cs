@@ -1697,9 +1697,6 @@ public class ReportService : IReportService
         var tipo = FormatDeliveryTypeLabel(order.DeliveryType);
         if (!string.IsNullOrWhiteSpace(tipo))
             parts.Add($"Tipo: {tipo}");
-        var obs = (order.DispatchObservations ?? "").Trim();
-        if (!string.IsNullOrWhiteSpace(obs))
-            parts.Add($"Obs: {obs}");
         return parts.Count > 0 ? string.Join(" | ", parts) : "";
     }
 
@@ -1736,7 +1733,8 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 9, "Importe Total");
                 sl.SetCellValue(1, 10, "Saldo Pendiente por Cobrar (USD)");
                 sl.SetCellValue(1, 11, "Información de despacho");
-                sl.SetCellValue(1, 12, "Firma");
+                sl.SetCellValue(1, 12, "Observaciones de despacho");
+                sl.SetCellValue(1, 13, "Firma");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
@@ -1746,7 +1744,7 @@ public class ReportService : IReportService
                 usdMoneyStyle.FormatCode = "\"$\"#,##0.00";
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 12; col++)
+                for (int col = 1; col <= 13; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -1768,7 +1766,8 @@ public class ReportService : IReportService
                     sl.SetCellStyle(row, 9, usdMoneyStyle);
                     sl.SetCellStyle(row, 10, usdMoneyStyle);
                     sl.SetCellValue(row, 11, item.InformacionDespacho);
-                    sl.SetCellValue(row, 12, " ");
+                    sl.SetCellValue(row, 12, item.DispatchObservations);
+                    sl.SetCellValue(row, 13, " ");
                     row++;
                 }
 
@@ -1783,8 +1782,9 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(8, 22);  // Estado de Pago
                 sl.SetColumnWidth(9, 15);  // Importe Total
                 sl.SetColumnWidth(10, 28); // Saldo Pendiente
-                sl.SetColumnWidth(11, 45); // Información de despacho
-                sl.SetColumnWidth(12, 22); // Firma (espacio para firmar)
+                sl.SetColumnWidth(11, 32); // Información de despacho (zona/tipo)
+                sl.SetColumnWidth(12, 42); // Observaciones de despacho
+                sl.SetColumnWidth(13, 22); // Firma (espacio para firmar)
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
