@@ -377,6 +377,48 @@ public class CommissionSettingsController : ControllerBase
         }
     }
 
+    /// <summary>Indica si existen las 21 reglas (7 tipos × tiers 2.5/5/7.5).</summary>
+    [HttpGet("SaleTypeRules/Completeness")]
+    [ProducesResponseType(typeof(SaleTypeCommissionCompletenessDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<SaleTypeCommissionCompletenessDto>> GetSaleTypeRulesCompleteness()
+    {
+        try
+        {
+            var status = await _saleTypeCommissionRuleRepository.GetCompletenessAsync();
+            return Ok(new SaleTypeCommissionCompletenessDto
+            {
+                IsComplete = status.IsComplete,
+                ExpectedRuleCount = status.ExpectedRuleCount,
+                ActualRuleCount = status.ActualRuleCount,
+                HasLegacyTierZero = status.HasLegacyTierZero,
+                MissingDescriptions = status.MissingDescriptions,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al verificar completitud de reglas");
+            return StatusCode(500, new { message = "Error interno del servidor" });
+        }
+    }
+
+    /// <summary>Inserta reglas faltantes del cuadro estándar sin borrar las existentes.</summary>
+    [HttpPost("SaleTypeRules/EnsureComplete")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    public async Task<ActionResult<object>> EnsureSaleTypeRulesComplete()
+    {
+        try
+        {
+            var inserted = await _saleTypeCommissionRuleRepository.EnsureMissingDefaultRulesAsync();
+            var rules = await _saleTypeCommissionRuleRepository.GetAllAsync();
+            return Ok(new { inserted, rules = rules.Select(MapSaleTypeRuleDto) });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al completar reglas de tipo de venta");
+            return StatusCode(500, new { message = "Error interno del servidor" });
+        }
+    }
+
     /// <summary>
     /// Inicializa las reglas por defecto (según el documento de especificaciones)
     /// </summary>

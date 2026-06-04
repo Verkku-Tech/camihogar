@@ -7,8 +7,11 @@ public class SaleTypeCommissionRuleDto
     public string SaleTypeLabel { get; set; } = string.Empty;
     /// <summary>USD de comisión familia por unidad (2.5, 5 o 7.5).</summary>
     public decimal FamilyCommissionUsdPerUnit { get; set; }
+    /// <summary>USD por unidad para vendedor de tienda.</summary>
     public decimal VendorRate { get; set; }
+    /// <summary>USD por unidad para referido online.</summary>
     public decimal ReferrerRate { get; set; }
+    /// <summary>USD por unidad para post venta.</summary>
     public decimal PostventaRate { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -20,8 +23,11 @@ public class CreateSaleTypeCommissionRuleDto
     public string SaleTypeLabel { get; set; } = string.Empty;
     /// <summary>USD de comisión familia por unidad (2.5, 5 o 7.5).</summary>
     public decimal FamilyCommissionUsdPerUnit { get; set; }
+    /// <summary>USD por unidad para vendedor de tienda.</summary>
     public decimal VendorRate { get; set; }
+    /// <summary>USD por unidad para referido online.</summary>
     public decimal ReferrerRate { get; set; }
+    /// <summary>USD por unidad para post venta.</summary>
     public decimal PostventaRate { get; set; }
 }
 
