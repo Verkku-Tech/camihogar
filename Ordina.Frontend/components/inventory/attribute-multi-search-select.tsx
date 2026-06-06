@@ -110,7 +110,7 @@ export type AttributeSearchSelectProps =
   | AttributeMultiSearchSelectProps;
 
 function AttributeSearchSelect(props: AttributeSearchSelectProps) {
-  const mode = props.mode ?? "single";
+  const isMultiple = props.mode === "multiple";
   const {
     options,
     placeholder = "Seleccione una opción",
@@ -125,29 +125,26 @@ function AttributeSearchSelect(props: AttributeSearchSelectProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const maxSelections =
-    mode === "multiple" ? (props.maxSelections ?? Infinity) : 1;
-  const selectedValues =
-    mode === "multiple"
-      ? props.selectedValues
-      : props.value
-        ? [props.value]
-        : [];
+  const maxSelections = isMultiple ? (props.maxSelections ?? Infinity) : 1;
+  const selectedValues = isMultiple
+    ? props.selectedValues
+    : props.value
+      ? [props.value]
+      : [];
 
   const isMaxReached =
-    mode === "multiple" &&
+    isMultiple &&
     maxSelections !== Infinity &&
     selectedValues.length >= maxSelections;
 
-  const availableOptions =
-    mode === "multiple"
-      ? options.filter((opt) => !selectedValues.includes(opt.value))
-      : options;
+  const availableOptions = isMultiple
+    ? options.filter((opt) => !selectedValues.includes(opt.value))
+    : options;
 
   const displayOptions = filterAndSortOptions(availableOptions, searchTerm);
 
   const selectedLabel =
-    mode === "single" && props.value
+    !isMultiple && props.value
       ? (options.find((o) => o.value === props.value)?.label ?? props.value)
       : null;
 
@@ -157,13 +154,13 @@ function AttributeSearchSelect(props: AttributeSearchSelectProps) {
   };
 
   const selectSingle = (value: string) => {
-    if (mode !== "single") return;
+    if (isMultiple) return;
     props.onChange(value);
     closePanel();
   };
 
   const addMultiple = (value: string) => {
-    if (mode !== "multiple") return;
+    if (!isMultiple) return;
     if (selectedValues.includes(value)) return;
 
     if (maxSelections !== Infinity && selectedValues.length >= maxSelections) {
@@ -179,7 +176,7 @@ function AttributeSearchSelect(props: AttributeSearchSelectProps) {
   };
 
   const removeMultiple = (value: string) => {
-    if (mode !== "multiple") return;
+    if (!isMultiple) return;
     props.onChange(selectedValues.filter((v) => v !== value));
   };
 
@@ -228,15 +225,15 @@ function AttributeSearchSelect(props: AttributeSearchSelectProps) {
           <span
             className={cn(
               "truncate text-left",
-              !selectedLabel && mode === "single" && "text-muted-foreground",
-              mode === "multiple" &&
+              !selectedLabel && !isMultiple && "text-muted-foreground",
+              isMultiple &&
                 selectedValues.length === 0 &&
                 "text-muted-foreground",
             )}
           >
             {isMaxReached
               ? `Máximo alcanzado (${maxSelections})`
-              : mode === "single"
+              : !isMultiple
                 ? selectedLabel || placeholder
                 : selectedValues.length > 0
                   ? `${selectedValues.length} seleccionada${selectedValues.length > 1 ? "s" : ""}`
@@ -288,7 +285,7 @@ function AttributeSearchSelect(props: AttributeSearchSelectProps) {
             ) : (
               displayOptions.map((opt) => {
                 const isSelected =
-                  mode === "single" && props.value === opt.value;
+                  !isMultiple && props.value === opt.value;
 
                 return (
                   <button
@@ -298,7 +295,7 @@ function AttributeSearchSelect(props: AttributeSearchSelectProps) {
                     aria-selected={isSelected}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() =>
-                      mode === "single"
+                      !isMultiple
                         ? selectSingle(opt.value)
                         : addMultiple(opt.value)
                     }
@@ -307,7 +304,7 @@ function AttributeSearchSelect(props: AttributeSearchSelectProps) {
                       isSelected && "bg-accent/60",
                     )}
                   >
-                    {mode === "single" && (
+                    {!isMultiple && (
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                         {isSelected && <Check className="h-4 w-4" />}
                       </span>
@@ -328,7 +325,7 @@ function AttributeSearchSelect(props: AttributeSearchSelectProps) {
         )}
       </div>
 
-      {mode === "multiple" && selectedValues.length > 0 && (
+      {isMultiple && selectedValues.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {selectedValues.map((val) => {
             const option = options.find((o) => o.value === val);
@@ -347,7 +344,7 @@ function AttributeSearchSelect(props: AttributeSearchSelectProps) {
         </div>
       )}
 
-      {mode === "multiple" && maxSelections !== Infinity && (
+      {isMultiple && maxSelections !== Infinity && (
         <p className="text-xs text-muted-foreground">
           Máximo {maxSelections} selección{maxSelections > 1 ? "es" : ""}{" "}
           permitida{maxSelections > 1 ? "s" : ""}
