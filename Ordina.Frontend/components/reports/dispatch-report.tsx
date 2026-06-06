@@ -371,8 +371,7 @@ export function DispatchReport() {
         <CardHeader>
           <CardTitle>Parámetros del Reporte</CardTitle>
           <CardDescription>
-            Filtro principal por Zona para organizar los pedidos por ruta. Las
-            fechas son opcionales.
+            Solo pedidos con productos en ruta (salieron de tienda). Filtro principal por zona; las fechas son opcionales.
           </CardDescription>
         </CardHeader>
         <CardContent>

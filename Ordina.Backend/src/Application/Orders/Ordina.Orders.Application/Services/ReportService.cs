@@ -11,6 +11,7 @@ using Ordina.Database.Entities.User;
 using Ordina.Database.Repositories;
 using Ordina.Orders.Application.Commission;
 using Ordina.Orders.Application;
+using Ordina.Orders.Application.Dispatch;
 using Ordina.Orders.Application.DTOs;
 
 namespace Ordina.Orders.Application.Services;
@@ -1848,7 +1849,7 @@ public class ReportService : IReportService
         var matchingOrders = orders
             .Where(order =>
             {
-                if (order.Status != "Completado" && order.Status != "Completada" && order.Status != "En Ruta")
+                if (!DispatchReportFilters.IsOrderEligibleForDispatchReport(order))
                     return false;
                 if (!string.IsNullOrWhiteSpace(deliveryZone) &&
                     order.DeliveryZone != deliveryZone)
@@ -1868,24 +1869,25 @@ public class ReportService : IReportService
 
         foreach (var order in matchingOrders)
         {
+            var enRutaProducts = DispatchReportFilters.GetProductsEnRuta(order);
+            if (enRutaProducts.Count == 0)
+                continue;
+
             var client = clients.FirstOrDefault(c => c.Id == order.ClientId);
 
             var productDescriptions = new List<string>();
-            if (order.Products != null && order.Products.Count > 0)
+            foreach (var product in enRutaProducts)
             {
-                foreach (var product in order.Products)
+                try
                 {
-                    try
-                    {
-                        var productDesc = await FormatProductDescriptionAsync(product);
-                        productDescriptions.Add(productDesc);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Error al formatear descripción del producto {ProductName} en pedido {OrderNumber}",
-                            product?.Name ?? "desconocido", order.OrderNumber);
-                        productDescriptions.Add(product?.Name ?? "Producto desconocido");
-                    }
+                    var productDesc = await FormatProductDescriptionAsync(product);
+                    productDescriptions.Add(productDesc);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error al formatear descripción del producto {ProductName} en pedido {OrderNumber}",
+                        product?.Name ?? "desconocido", order.OrderNumber);
+                    productDescriptions.Add(product?.Name ?? "Producto desconocido");
                 }
             }
 
@@ -1893,7 +1895,7 @@ public class ReportService : IReportService
                 ? string.Join(" | ", productDescriptions)
                 : "Sin productos";
 
-            var cantidadTotal = order.Products?.Sum(p => p.Quantity) ?? 0;
+            var cantidadTotal = enRutaProducts.Sum(p => p.Quantity);
 
             decimal usdRate;
             decimal importeTotalUsd;
