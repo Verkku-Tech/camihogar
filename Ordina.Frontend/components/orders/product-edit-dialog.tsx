@@ -49,6 +49,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Package, Settings, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ImageUploader } from "./ImageUploader";
+import {
+  AttributeMultiSearchSelect,
+  AttributeSingleSearchSelect,
+  buildAttributeOptions,
+} from "@/components/inventory/attribute-multi-search-select";
 interface ProductEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -495,89 +500,31 @@ function ProductAttributesEditor({
           ? getPriceAdjustment(selectedValue)
           : 0;
 
-        const selectOptions =
-          attribute.values
-            ?.slice()
-            .sort((a: string | AttributeValue, b: string | AttributeValue) => {
-              const labelA = typeof a === "string" ? a : a.label || a.id || "";
-              const labelB = typeof b === "string" ? b : b.label || b.id || "";
-              return labelA.localeCompare(labelB, undefined, {
-                sensitivity: "base",
-              });
-            })
-            .filter((option: string | AttributeValue) => {
-              if (typeof option === "string") {
-                return option && option.trim() !== "";
-              }
-              const optionValue = option.label || option.id;
-              return optionValue && optionValue.trim() !== "";
-            })
-            .map((option: string | AttributeValue) => {
-              let optionValue: string;
-              let optionLabel: string;
-
-              if (typeof option === "string") {
-                optionValue = option.trim() !== "" ? option : "unknown";
-                optionLabel = option.trim() !== "" ? option : "Sin nombre";
-              } else {
-                optionValue =
-                  (option.label || option.id || "unknown").trim() !== ""
-                    ? option.label || option.id || "unknown"
-                    : "unknown";
-                optionLabel =
-                  (option.label || option.id || "Sin nombre").trim() !== ""
-                    ? option.label || option.id || "Sin nombre"
-                    : "Sin nombre";
-              }
-
-              if (!optionValue || optionValue.trim() === "")
-                optionValue = "unknown";
-              if (!optionLabel || optionLabel.trim() === "")
-                optionLabel = "Sin nombre";
-
-              return { value: optionValue, label: optionLabel };
-            }) || [];
+        const selectOptions = buildAttributeOptions(
+          attribute.values,
+          getValueString,
+          getValueLabel,
+        );
 
         return (
-          <div className="flex items-center gap-2">
-            <Select
+          <div className="flex items-start gap-2">
+            <AttributeSingleSearchSelect
+              className="flex-1"
+              options={selectOptions}
               value={
                 attrValue !== undefined &&
                 attrValue !== "" &&
                 attrValue !== null
                   ? String(attrValue)
-                  : "vacio"
+                  : undefined
               }
-              onValueChange={(val) =>
-                handleAttributeChange(
-                  attrKey,
-                  val === "vacio" ? undefined : val,
-                )
-              }
-            >
-              <SelectTrigger className="flex-1">
-                <SelectValue
-                  placeholder={`Seleccione ${attribute.title?.toLowerCase() || "opción"}`}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="vacio">Seleccione una opción</SelectItem>
-                {selectOptions.length > 0 ? (
-                  selectOptions.map((opt: { value: string; label: string }) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="no-values" disabled>
-                    No hay opciones
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+              placeholder={`Seleccione ${attribute.title?.toLowerCase() || "opción"}`}
+              searchPlaceholder={`Escribe el nombre del ${attribute.title?.toLowerCase() || "atributo"}...`}
+              onChange={(val) => handleAttributeChange(attrKey, val)}
+            />
             {selectedAdjustment !== 0 && (
               <span
-                className={`text-sm font-medium whitespace-nowrap ${
+                className={`text-sm font-medium whitespace-nowrap pt-2 ${
                   selectedAdjustment > 0
                     ? "text-green-600 dark:text-green-400"
                     : "text-red-600 dark:text-red-400"
@@ -641,111 +588,28 @@ function ProductAttributesEditor({
           );
         }, 0);
 
+        const multiSelectOptions = buildAttributeOptions(
+          attribute.values,
+          getValueString,
+          getValueLabel,
+        );
+
         return (
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Select
-                value=""
+            <div className="flex items-start gap-2">
+              <AttributeMultiSearchSelect
+                className="flex-1"
+                options={multiSelectOptions}
+                selectedValues={selectedValues}
+                maxSelections={maxSelections}
+                placeholder="Seleccione opciones"
+                searchPlaceholder={`Escribe el nombre del ${attribute.title?.toLowerCase() || "atributo"}...`}
                 disabled={isMaxReached}
-                onValueChange={(val) => {
-                  if (!selectedValues.includes(val)) {
-                    if (
-                      maxSelections !== Infinity &&
-                      selectedValues.length >= maxSelections
-                    ) {
-                      toast.error(
-                        `Solo puedes seleccionar máximo ${maxSelections} opción${maxSelections > 1 ? "es" : ""}`,
-                      );
-                      return;
-                    }
-                    handleAttributeChange(attrKey, [...selectedValues, val]);
-                  }
-                }}
-              >
-                <SelectTrigger
-                  className={`flex-1 ${isMaxReached ? "opacity-50 cursor-not-allowed" : ""}`}
-                >
-                  <SelectValue
-                    placeholder={
-                      isMaxReached
-                        ? `Máximo alcanzado (${maxSelections})`
-                        : "Seleccione opciones"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {attribute.values
-                    ?.slice() // Crear copia para no mutar el array original
-                    .sort(
-                      (
-                        a: string | AttributeValue,
-                        b: string | AttributeValue,
-                      ) => {
-                        // Obtener el label de cada opción
-                        const labelA =
-                          typeof a === "string" ? a : a.label || a.id || "";
-                        const labelB =
-                          typeof b === "string" ? b : b.label || b.id || "";
-                        // Ordenar alfabéticamente (case-insensitive)
-                        return labelA.localeCompare(labelB, undefined, {
-                          sensitivity: "base",
-                        });
-                      },
-                    )
-                    .map((v: string | AttributeValue) => {
-                      if (typeof v === "string") {
-                        return v && v.trim() !== "" ? v : null;
-                      }
-                      const val = v.id || v.label;
-                      return val && val.trim() !== "" ? val : null;
-                    })
-                    .filter(
-                      (optionValue: string | null): optionValue is string => {
-                        // Filtrar valores null y vacíos
-                        return (
-                          optionValue !== null && optionValue.trim() !== ""
-                        );
-                      },
-                    )
-                    .filter((optionValue: string) => {
-                      // Filtrar valores ya seleccionados
-                      return !selectedValues.includes(optionValue);
-                    })
-                    .map((optionValue: string) => {
-                      const option = attribute.values?.find(
-                        (v: string | AttributeValue) => {
-                          if (typeof v === "string") {
-                            return v === optionValue;
-                          }
-                          const valStr = v.id || v.label;
-                          return valStr === optionValue;
-                        },
-                      );
-                      const optionLabel = option
-                        ? typeof option === "string"
-                          ? option
-                          : option.label || option.id || "Sin nombre"
-                        : optionValue;
-                      // Asegurar que nunca sea cadena vacía
-                      const finalValue =
-                        optionValue && optionValue.trim() !== ""
-                          ? optionValue
-                          : "unknown";
-                      const finalLabel =
-                        optionLabel && optionLabel.trim() !== ""
-                          ? optionLabel
-                          : "Sin nombre";
-                      return (
-                        <SelectItem key={finalValue} value={finalValue}>
-                          {finalLabel}
-                        </SelectItem>
-                      );
-                    })}
-                </SelectContent>
-              </Select>
+                onChange={(values) => handleAttributeChange(attrKey, values)}
+              />
               {totalAdjustment !== 0 && (
                 <span
-                  className={`text-sm font-medium whitespace-nowrap ${
+                  className={`text-sm font-medium whitespace-nowrap pt-2 ${
                     totalAdjustment > 0
                       ? "text-green-600 dark:text-green-400"
                       : "text-red-600 dark:text-red-400"
@@ -757,47 +621,6 @@ function ProductAttributesEditor({
                 </span>
               )}
             </div>
-            {selectedValues.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {selectedValues.map((val: string) => {
-                  const option = attribute.values?.find(
-                    (v: string | AttributeValue) => {
-                      const valStr =
-                        typeof v === "string" ? v : v.id || v.label;
-                      return valStr === val;
-                    },
-                  );
-                  const displayLabel = option
-                    ? typeof option === "string"
-                      ? option
-                      : option.label || option.id
-                    : val;
-                  return (
-                    <Badge
-                      key={val}
-                      variant="secondary"
-                      className="cursor-pointer"
-                      onClick={() => {
-                        handleAttributeChange(
-                          attrKey,
-                          selectedValues.filter((v: string) => v !== val),
-                        );
-                      }}
-                    >
-                      {displayLabel} ×
-                    </Badge>
-                  );
-                })}
-              </div>
-            )}
-            {maxSelections !== Infinity && (
-              <p className="text-xs text-muted-foreground">
-                Máximo {maxSelections} selección{maxSelections > 1 ? "es" : ""}{" "}
-                permitida{maxSelections > 1 ? "s" : ""}
-                {selectedValues.length > 0 &&
-                  ` (${selectedValues.length}/${maxSelections})`}
-              </p>
-            )}
           </div>
         );
 
@@ -2304,8 +2127,14 @@ export function ProductEditDialog({
                       })()}
 
                       {attr.valueType === "Select" ? (
-                        <div className="flex items-center gap-2">
-                          <Select
+                        <div className="flex items-start gap-2">
+                          <AttributeSingleSearchSelect
+                            className="flex-1"
+                            options={buildAttributeOptions(
+                              attr.values,
+                              getValueString,
+                              getValueLabel,
+                            )}
                             value={
                               attrValue !== undefined &&
                               !Array.isArray(attrValue) &&
@@ -2313,72 +2142,17 @@ export function ProductEditDialog({
                               attrValue !== null &&
                               attrValue !== "vacio"
                                 ? attrValue.toString()
-                                : "vacio"
+                                : undefined
                             }
-                            onValueChange={(value) =>
-                              handleAttributeChange(
-                                attrKey,
-                                value === "vacio" ? undefined : value,
-                              )
+                            placeholder={`Seleccione ${attr.title?.toLowerCase() || "opción"}`}
+                            searchPlaceholder={`Escribe el nombre del ${attr.title?.toLowerCase() || "atributo"}...`}
+                            onChange={(value) =>
+                              handleAttributeChange(attrKey, value)
                             }
-                          >
-                            <SelectTrigger className="flex-1">
-                              <SelectValue
-                                placeholder={`Seleccionar ${
-                                  attr.title
-                                    ? attr.title.toLowerCase()
-                                    : "atributo"
-                                }`}
-                              />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="vacio">
-                                Seleccione una opción
-                              </SelectItem>
-                              {(() => {
-                                const opts =
-                                  attr.values
-                                    ?.filter(
-                                      (value: string | AttributeValue) => {
-                                        const optionValue =
-                                          getValueString(value);
-                                        return (
-                                          optionValue &&
-                                          optionValue.trim() !== "" &&
-                                          optionValue !== "unknown"
-                                        );
-                                      },
-                                    )
-                                    .map((value: string | AttributeValue) => ({
-                                      value: getValueString(value),
-                                      label: getValueLabel(value),
-                                    })) || [];
-                                if (opts.length === 0) {
-                                  return (
-                                    <SelectItem value="no-values" disabled>
-                                      No hay valores disponibles
-                                    </SelectItem>
-                                  );
-                                }
-                                return opts.map(
-                                  (
-                                    opt: { value: string; label: string },
-                                    idx: number,
-                                  ) => (
-                                    <SelectItem
-                                      key={`${opt.value}-${idx}`}
-                                      value={opt.value}
-                                    >
-                                      {opt.label}
-                                    </SelectItem>
-                                  ),
-                                );
-                              })()}
-                            </SelectContent>
-                          </Select>
+                          />
                           {selectedAdjustment !== 0 && (
                             <span
-                              className={`text-sm font-medium whitespace-nowrap ${
+                              className={`text-sm font-medium whitespace-nowrap pt-2 ${
                                 selectedAdjustment > 0
                                   ? "text-green-600 dark:text-green-400"
                                   : "text-red-600 dark:text-red-400"
@@ -2391,200 +2165,58 @@ export function ProductEditDialog({
                           )}
                         </div>
                       ) : attr.valueType === "Multiple select" ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Select
-                              value=""
-                              disabled={(() => {
-                                const currentArray = Array.isArray(attrValue)
-                                  ? attrValue
-                                  : [];
-                                const maxSelections =
-                                  attr.maxSelections !== undefined
-                                    ? attr.maxSelections
-                                    : Infinity;
-                                return (
-                                  maxSelections !== Infinity &&
-                                  currentArray.length >= maxSelections
-                                );
-                              })()}
-                              onValueChange={(val) => {
-                                const currentArray = Array.isArray(attrValue)
-                                  ? attrValue
-                                  : [];
-                                const maxSelections =
-                                  attr.maxSelections !== undefined
-                                    ? attr.maxSelections
-                                    : Infinity;
+                        (() => {
+                          const currentArray = Array.isArray(attrValue)
+                            ? attrValue
+                            : [];
+                          const maxSelections =
+                            attr.maxSelections !== undefined
+                              ? attr.maxSelections
+                              : Infinity;
+                          const isMaxReached =
+                            maxSelections !== Infinity &&
+                            currentArray.length >= maxSelections;
+                          const multiSelectOptions = buildAttributeOptions(
+                            attr.values,
+                            getValueString,
+                            getValueLabel,
+                          );
 
-                                // Validar maxSelections
-                                if (
-                                  maxSelections !== Infinity &&
-                                  currentArray.length >= maxSelections &&
-                                  !currentArray.includes(val)
-                                ) {
-                                  toast.error(
-                                    `Solo puedes seleccionar máximo ${maxSelections} opción${maxSelections > 1 ? "es" : ""}`,
-                                  );
-                                  return;
-                                }
-
-                                if (!currentArray.includes(val)) {
-                                  handleAttributeChange(attrKey, [
-                                    ...currentArray,
-                                    val,
-                                  ]);
-                                }
-                              }}
-                            >
-                              <SelectTrigger
-                                className={`flex-1 ${(() => {
-                                  const currentArray = Array.isArray(attrValue)
-                                    ? attrValue
-                                    : [];
-                                  const maxSelections =
-                                    attr.maxSelections !== undefined
-                                      ? attr.maxSelections
-                                      : Infinity;
-                                  return maxSelections !== Infinity &&
-                                    currentArray.length >= maxSelections
-                                    ? "opacity-50 cursor-not-allowed"
-                                    : "";
-                                })()}`}
-                              >
-                                <SelectValue
-                                  placeholder={(() => {
-                                    const currentArray = Array.isArray(
-                                      attrValue,
-                                    )
-                                      ? attrValue
-                                      : [];
-                                    const maxSelections =
-                                      attr.maxSelections !== undefined
-                                        ? attr.maxSelections
-                                        : Infinity;
-                                    return maxSelections !== Infinity &&
-                                      currentArray.length >= maxSelections
-                                      ? `Máximo alcanzado (${maxSelections})`
-                                      : "Seleccione opciones";
-                                  })()}
+                          return (
+                            <div className="space-y-2">
+                              <div className="flex items-start gap-2">
+                                <AttributeMultiSearchSelect
+                                  className="flex-1"
+                                  options={multiSelectOptions}
+                                  selectedValues={currentArray}
+                                  maxSelections={maxSelections}
+                                  placeholder="Seleccione opciones"
+                                  searchPlaceholder={`Escribe el nombre del ${attr.title?.toLowerCase() || "atributo"}...`}
+                                  disabled={isMaxReached}
+                                  onChange={(values) =>
+                                    handleAttributeChange(attrKey, values)
+                                  }
                                 />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {attr.values
-                                  ?.map(getValueString)
-                                  .filter((optionValue: string) => {
-                                    // Filtrar valores vacíos
-                                    if (
-                                      !optionValue ||
-                                      optionValue.trim() === "" ||
-                                      optionValue === "unknown"
-                                    )
-                                      return false;
-                                    const currentArray = Array.isArray(
-                                      attrValue,
-                                    )
-                                      ? attrValue
-                                      : [];
-                                    return !currentArray.includes(optionValue);
-                                  })
-                                  .map((optionValue: string) => {
-                                    // Asegurar que nunca sea cadena vacía
-                                    if (
-                                      !optionValue ||
-                                      optionValue.trim() === ""
-                                    ) {
-                                      return null;
-                                    }
-                                    const option = attr.values?.find(
-                                      (v: string | AttributeValue) =>
-                                        getValueString(v) === optionValue,
-                                    );
-                                    const optionLabel = option
-                                      ? getValueLabel(option)
-                                      : optionValue;
-                                    const finalValue =
-                                      optionValue.trim() !== ""
-                                        ? optionValue
-                                        : "unknown";
-                                    const finalLabel =
-                                      optionLabel && optionLabel.trim() !== ""
-                                        ? optionLabel
-                                        : "Sin nombre";
-                                    return (
-                                      <SelectItem
-                                        key={finalValue}
-                                        value={finalValue}
-                                      >
-                                        {finalLabel}
-                                      </SelectItem>
-                                    );
-                                  })
-                                  .filter(
-                                    (item: string | null): item is string =>
-                                      item !== null,
-                                  )}
-                              </SelectContent>
-                            </Select>
-                            {selectedAdjustment !== 0 && (
-                              <span
-                                className={`text-sm font-medium whitespace-nowrap ${
-                                  selectedAdjustment > 0
-                                    ? "text-green-600 dark:text-green-400"
-                                    : "text-red-600 dark:text-red-400"
-                                }`}
-                              >
-                                {selectedAdjustment > 0 ? "+" : ""}
-                                {formattedAttributeAdjustments[attrKey] ||
-                                  formatCurrency(selectedAdjustment, "Bs")}
-                              </span>
-                            )}
-                          </div>
-                          {Array.isArray(attrValue) && attrValue.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                              {attrValue.map((val: string) => {
-                                const option = attr.values?.find(
-                                  (v: string | AttributeValue) =>
-                                    getValueString(v) === val,
-                                );
-                                const displayLabel = option
-                                  ? getValueLabel(option)
-                                  : val;
-                                return (
-                                  <div
-                                    key={val}
-                                    className="inline-flex items-center gap-1 px-2 py-1 bg-secondary text-secondary-foreground rounded-md text-sm cursor-pointer hover:bg-secondary/80"
-                                    onClick={() => {
-                                      const currentArray = Array.isArray(
-                                        attrValue,
-                                      )
-                                        ? attrValue
-                                        : [];
-                                      handleAttributeChange(
-                                        attrKey,
-                                        currentArray.filter(
-                                          (v: string) => v !== val,
-                                        ),
-                                      );
-                                    }}
+                                {selectedAdjustment !== 0 && (
+                                  <span
+                                    className={`text-sm font-medium whitespace-nowrap pt-2 ${
+                                      selectedAdjustment > 0
+                                        ? "text-green-600 dark:text-green-400"
+                                        : "text-red-600 dark:text-red-400"
+                                    }`}
                                   >
-                                    {displayLabel}
-                                    <span className="text-xs">×</span>
-                                  </div>
-                                );
-                              })}
+                                    {selectedAdjustment > 0 ? "+" : ""}
+                                    {formattedAttributeAdjustments[attrKey] ||
+                                      formatCurrency(
+                                        selectedAdjustment,
+                                        "Bs",
+                                      )}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                          )}
-                          {attr.maxSelections && (
-                            <p className="text-xs text-muted-foreground">
-                              Máximo {attr.maxSelections} selección
-                              {attr.maxSelections > 1 ? "es" : ""} permitida
-                              {attr.maxSelections > 1 ? "s" : ""}
-                              {Array.isArray(attrValue) &&
-                                ` (${attrValue.length}/${attr.maxSelections})`}
-                            </p>
-                          )}
-                        </div>
+                          );
+                        })()
                       ) : attr.valueType === "Product" ? (
                         (() => {
                           const productsForAttribute =
