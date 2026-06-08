@@ -1433,6 +1433,17 @@ export function useEditOrderForm(
           return;
         }
       }
+      if (currentStep === 2) {
+        const pending = selectedProducts.filter(
+          (p) => !p.locationStatus || p.locationStatus === "SELECCIONAR ESTADO",
+        );
+        if (pending.length > 0) {
+          toast.error(
+            "Selecciona el estado de ubicación de todos los productos",
+          );
+          return;
+        }
+      }
       setCurrentStep(currentStep + 1);
       setTimeout(() => {
         const dialogContent = document.querySelector('[role="dialog"]');
@@ -1493,12 +1504,18 @@ export function useEditOrderForm(
     setClientStoreCreditBalanceUsd(null);
   }, [preferredCurrency]);
 
+  const isLocationStatusSelected = (status?: string) =>
+    !!status && status !== "SELECCIONAR ESTADO";
+
   // Validaciones
   const canGoToNextStep: boolean =
     currentStep === 1
       ? !!(step1SellerReady && selectedClient && selectedProducts.length > 0)
       : currentStep === 2
-        ? selectedProducts.length > 0
+        ? selectedProducts.length > 0 &&
+          selectedProducts.every((p) =>
+            isLocationStatusSelected(p.locationStatus),
+          )
         : true;
 
   const canCreateBudget: boolean =
