@@ -114,6 +114,27 @@ function PaymentCobroRateHint({
   );
 }
 
+/**
+ * Muestra el equivalente en USD del monto en Bs ingresado, usando la tasa
+ * persistida del pago (que ya se resuelve por la fecha del cobro).
+ */
+function BsToUsdHint({
+  amountBs,
+  exchangeRate,
+}: {
+  amountBs?: number;
+  exchangeRate?: number;
+}) {
+  if (!amountBs || amountBs <= 0) return null;
+  if (!exchangeRate || exchangeRate <= 0) return null;
+  const usd = amountBs / exchangeRate;
+  return (
+    <p className="text-xs text-muted-foreground">
+      Equivalente: {formatCurrency(usd, "USD")}
+    </p>
+  );
+}
+
 interface Step3OrderDetailsProps {
   orderForm: UseOrderFormReturn;
   onSubmit: () => void;
@@ -1356,6 +1377,12 @@ export function Step3OrderDetails({
                               }}
                               placeholder="0.00"
                             />
+                            <BsToUsdHint
+                              amountBs={payment.amount}
+                              exchangeRate={
+                                payment.paymentDetails?.exchangeRate
+                              }
+                            />
                           </div>
                           <div className="space-y-2">
                             <Label
@@ -1499,6 +1526,12 @@ export function Step3OrderDetails({
                                 });
                               }}
                               placeholder="0.00"
+                            />
+                            <BsToUsdHint
+                              amountBs={payment.amount}
+                              exchangeRate={
+                                payment.paymentDetails?.exchangeRate
+                              }
                             />
                           </div>
                           <div className="space-y-2">
@@ -1646,6 +1679,12 @@ export function Step3OrderDetails({
                               }}
                               placeholder="0.00"
                             />
+                            <BsToUsdHint
+                              amountBs={payment.amount}
+                              exchangeRate={
+                                payment.paymentDetails?.exchangeRate
+                              }
+                            />
                           </div>
                           {/* Selector de Banco */}
                           <div className="space-y-2">
@@ -1756,6 +1795,12 @@ export function Step3OrderDetails({
                                 });
                               }}
                               placeholder="0.00"
+                            />
+                            <BsToUsdHint
+                              amountBs={payment.amount}
+                              exchangeRate={
+                                payment.paymentDetails?.exchangeRate
+                              }
                             />
                           </div>
                           {/* Selector de Banco */}
