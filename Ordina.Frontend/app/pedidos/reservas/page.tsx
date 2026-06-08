@@ -201,11 +201,11 @@ export default function ReservasPage() {
       <div className="flex h-screen bg-background">
         <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
 
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
-          <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-            <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
+          <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 lg:p-6">
+            <nav className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground sm:mb-6">
               <span className="text-green-600 font-medium">Home</span>
               <span>/</span>
               <span>Pedidos</span>
@@ -213,51 +213,66 @@ export default function ReservasPage() {
               <span>Reservas</span>
             </nav>
 
-            <div className="space-y-6">
-              <div className="flex flex-col lg:flex-row gap-4 items-end">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <div className="space-y-4 sm:space-y-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+                <div className="relative w-full lg:max-w-md lg:flex-1">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Buscar por #reserva, cliente, teléfono, CI o vendedor..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9"
+                    className="w-full pl-9"
+                    aria-label="Buscar reservas"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dateFrom">Desde</Label>
-                  <Input
-                    id="dateFrom"
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-[160px]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dateTo">Hasta</Label>
-                  <Input
-                    id="dateTo"
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="w-[160px]"
-                  />
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto">
+                  <div className="flex w-full items-center gap-2 sm:w-auto">
+                    <Label
+                      htmlFor="dateFrom"
+                      className="w-12 shrink-0 text-xs text-muted-foreground sm:w-auto"
+                    >
+                      Desde
+                    </Label>
+                    <Input
+                      id="dateFrom"
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="min-w-0 flex-1 sm:w-[150px] sm:flex-none"
+                      aria-label="Fecha desde"
+                    />
+                  </div>
+                  <div className="flex w-full items-center gap-2 sm:w-auto">
+                    <Label
+                      htmlFor="dateTo"
+                      className="w-12 shrink-0 text-xs text-muted-foreground sm:w-auto"
+                    >
+                      Hasta
+                    </Label>
+                    <Input
+                      id="dateTo"
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="min-w-0 flex-1 sm:w-[150px] sm:flex-none"
+                      aria-label="Fecha hasta"
+                    />
+                  </div>
                 </div>
               </div>
 
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ClipboardList className="h-5 w-5" />
+                <CardHeader className="space-y-1.5">
+                  <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                    <ClipboardList className="h-5 w-5 shrink-0" />
                     Reservas
                   </CardTitle>
-                  <CardDescription>
+                  <CardDescription className="text-sm leading-relaxed">
                     Reservas creadas en línea (RES-) pendientes de confirmación en
                     tienda. Usa Confirmar para convertirlas en pedido (ORD).
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="px-3 pb-4 sm:px-6 sm:pb-6">
                   {isLoading ? (
                     <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
                       <Loader2 className="h-6 w-6 animate-spin" />
@@ -271,80 +286,99 @@ export default function ReservasPage() {
                     </p>
                   ) : (
                     <>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>N° reserva</TableHead>
-                            <TableHead>Cliente</TableHead>
-                            <TableHead>Vendedor online</TableHead>
-                            <TableHead>Fecha</TableHead>
-                            <TableHead>Estado</TableHead>
-                            <TableHead className="text-right">Total</TableHead>
-                            <TableHead className="text-right w-[140px]">
-                              Acciones
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {paginatedReservations.map((order) => {
-                            const pending = isActiveReservation(order);
-                            return (
-                              <TableRow key={order.id}>
-                                <TableCell className="font-mono text-sm font-medium">
-                                  {order.orderNumber}
-                                </TableCell>
-                                <TableCell>{order.clientName}</TableCell>
-                                <TableCell className="text-sm text-muted-foreground">
-                                  {reservationOnlineVendor(order)}
-                                </TableCell>
-                                <TableCell>{formatDate(order.createdAt)}</TableCell>
-                                <TableCell>
-                                  <Badge className={getStatusColor(order.status)}>
-                                    {order.status}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="text-right tabular-nums">
-                                  {orderTotals[order.id] ?? "—"}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex justify-end gap-1">
-                                    {canConfirmReservation && pending && (
+                      <div className="-mx-1 overflow-x-auto rounded-md border sm:mx-0">
+                        <Table className="min-w-[720px]">
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="whitespace-nowrap">
+                                N° reserva
+                              </TableHead>
+                              <TableHead className="min-w-[120px]">
+                                Cliente
+                              </TableHead>
+                              <TableHead className="min-w-[110px] whitespace-nowrap">
+                                Vendedor online
+                              </TableHead>
+                              <TableHead className="whitespace-nowrap">
+                                Fecha
+                              </TableHead>
+                              <TableHead className="whitespace-nowrap">
+                                Estado
+                              </TableHead>
+                              <TableHead className="whitespace-nowrap text-right">
+                                Total
+                              </TableHead>
+                              <TableHead className="w-[120px] whitespace-nowrap text-right sm:w-[140px]">
+                                Acciones
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {paginatedReservations.map((order) => {
+                              const pending = isActiveReservation(order);
+                              return (
+                                <TableRow key={order.id}>
+                                  <TableCell className="whitespace-nowrap font-mono text-sm font-medium">
+                                    {order.orderNumber}
+                                  </TableCell>
+                                  <TableCell className="max-w-[160px] truncate sm:max-w-none sm:whitespace-normal">
+                                    {order.clientName}
+                                  </TableCell>
+                                  <TableCell className="max-w-[120px] truncate text-sm text-muted-foreground sm:max-w-none sm:whitespace-normal">
+                                    {reservationOnlineVendor(order)}
+                                  </TableCell>
+                                  <TableCell className="whitespace-nowrap">
+                                    {formatDate(order.createdAt)}
+                                  </TableCell>
+                                  <TableCell className="whitespace-nowrap">
+                                    <Badge className={getStatusColor(order.status)}>
+                                      {order.status}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="whitespace-nowrap text-right tabular-nums">
+                                    {orderTotals[order.id] ?? "—"}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <div className="flex justify-end gap-1">
+                                      {canConfirmReservation && pending && (
+                                        <Button
+                                          type="button"
+                                          variant="default"
+                                          size="sm"
+                                          className="h-8 shrink-0 px-2"
+                                          title="Confirmar reserva en tienda"
+                                          onClick={() =>
+                                            setReservationToConfirm(order)
+                                          }
+                                        >
+                                          <ClipboardCheck className="h-4 w-4 sm:mr-1" />
+                                          <span className="hidden sm:inline">
+                                            Confirmar
+                                          </span>
+                                        </Button>
+                                      )}
                                       <Button
                                         type="button"
-                                        variant="default"
-                                        size="sm"
-                                        className="h-8 px-2"
-                                        title="Confirmar reserva en tienda"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 shrink-0"
+                                        title="Ver detalle"
                                         onClick={() =>
-                                          setReservationToConfirm(order)
+                                          router.push(
+                                            `/pedidos/${encodeURIComponent(order.orderNumber)}`,
+                                          )
                                         }
                                       >
-                                        <ClipboardCheck className="h-4 w-4 sm:mr-1" />
-                                        <span className="hidden sm:inline">
-                                          Confirmar
-                                        </span>
+                                        <Eye className="h-4 w-4" />
                                       </Button>
-                                    )}
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      title="Ver detalle"
-                                      onClick={() =>
-                                        router.push(
-                                          `/pedidos/${encodeURIComponent(order.orderNumber)}`,
-                                        )
-                                      }
-                                    >
-                                      <Eye className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
                       <TablePagination
                         currentPage={currentPage}
                         totalPages={totalPages}
