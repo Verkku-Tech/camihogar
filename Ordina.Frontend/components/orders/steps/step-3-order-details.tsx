@@ -2749,20 +2749,36 @@ export function Step3OrderDetails({
                                 {(() => {
                                   const currency =
                                     payment.paymentDetails?.cashCurrency;
+                                  const exchangeRate =
+                                    payment.paymentDetails?.exchangeRate;
+                                  if (
+                                    !exchangeRate ||
+                                    exchangeRate <= 0
+                                  ) {
+                                    return null;
+                                  }
                                   if (currency && currency !== "Bs") {
                                     return (
                                       <span className="text-xs text-muted-foreground">
                                         (
                                         {formatCurrency(
-                                          payment.amount /
-                                            (payment.paymentDetails
-                                              ?.exchangeRate || 1),
+                                          payment.amount / exchangeRate,
                                           currency,
                                         )}
+                                        )
                                       </span>
                                     );
                                   }
-                                  return null;
+                                  return (
+                                    <span className="text-xs text-muted-foreground">
+                                      (
+                                      {formatCurrency(
+                                        payment.amount / exchangeRate,
+                                        "USD",
+                                      )}
+                                      )
+                                    </span>
+                                  );
                                 })()}
                               </div>
 
