@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -30,11 +30,23 @@ import {
   batchUpsertProductCommissions,
   batchUpsertSaleTypeCommissionRules,
   seedDefaultSaleTypeRules,
+  ensureSaleTypeRulesComplete,
   type SaleTypeCommissionRule,
+  type ProductCommission,
   getUsers,
   type User,
+  FAMILY_COMMISSION_USD_TIERS,
 } from "@/lib/storage";
-import { apiClient } from "@/lib/api-client";
+import { apiClient, type SaleTypeCommissionCompletenessDto } from "@/lib/api-client";
+import {
+  EXPECTED_SALE_TYPE_RULE_COUNT,
+  familiesForTier,
+  familiesWithNonStandardTier,
+  groupRulesBySaleType,
+  rulesNeedAttention,
+  tierEquals,
+  validateDistributionUsd,
+} from "@/lib/commission-distribution-ui";
 
 /** Alinea espacios y mayúsculas al cruzar catálogo con comisiones del API. */
 function normalizeCategoryKey(s: string): string {
@@ -52,6 +64,9 @@ export function CommissionsPage() {
   const [categoryCommissionValues, setCategoryCommissionValues] = useState<Record<string, number>>({});
 
   const [saleTypeRules, setSaleTypeRules] = useState<SaleTypeCommissionRule[]>([]);
+  const [productCommissions, setProductCommissions] = useState<ProductCommission[]>([]);
+  const [rulesCompleteness, setRulesCompleteness] =
+    useState<SaleTypeCommissionCompletenessDto | null>(null);
   const [editedRules, setEditedRules] = useState<Record<string, EditedRule>>({});
 
   const [users, setUsers] = useState<User[]>([]);
@@ -80,9 +95,16 @@ export function CommissionsPage() {
         errors.push("No se pudieron cargar las comisiones por familia desde el servidor.");
       }
 
+      setProductCommissions(loadedProductCommissions);
+
       let loadedRules: SaleTypeCommissionRule[] = [];
       try {
         loadedRules = await apiClient.getSaleTypeCommissionRules();
+        try {
+          setRulesCompleteness(await apiClient.getSaleTypeRulesCompleteness());
+        } catch {
+          setRulesCompleteness(null);
+        }
       } catch (e) {
         console.error(e);
         errors.push("No se pudieron cargar las reglas de distribución desde el servidor.");
@@ -188,21 +210,32 @@ export function CommissionsPage() {
     setIsSaving(true);
     try {
       for (const rule of saleTypeRules) {
+        if (rule.familyCommissionUsdPerUnit === 0) continue;
         const key = ruleRowKey(rule);
         const v = editedRules[key]?.vendorRate ?? rule.vendorRate;
         const r = editedRules[key]?.referrerRate ?? rule.referrerRate;
         const p = editedRules[key]?.postventaRate ?? rule.postventaRate ?? 0;
-        const sum = v + r + p;
-        if (Math.abs(sum - 100) > 0.02) {
+        const err = validateDistributionUsd(v, r, p);
+        if (err) {
+          toast.error(`${rule.saleTypeLabel} · ${rule.familyCommissionUsdPerUnit} USD/u: ${err}`);
+          setIsSaving(false);
+          return;
+        }
+        const tierOk = FAMILY_COMMISSION_USD_TIERS.some((t) =>
+          tierEquals(t, rule.familyCommissionUsdPerUnit),
+        );
+        if (!tierOk) {
           toast.error(
-            `Los porcentajes deben sumar 100% (${rule.saleTypeLabel} · ${rule.familyCommissionUsdPerUnit} USD/u). Suma actual: ${sum}%`
+            `Tier inválido en ${rule.saleTypeLabel}: debe ser 2.5, 5 o 7.5 USD/u familia`,
           );
           setIsSaving(false);
           return;
         }
       }
 
-      const rulesToSave = saleTypeRules.map((rule) => {
+      const rulesToSave = saleTypeRules
+        .filter((rule) => rule.familyCommissionUsdPerUnit > 0)
+        .map((rule) => {
         const key = ruleRowKey(rule);
         return {
           saleType: rule.saleType,
@@ -254,6 +287,36 @@ export function CommissionsPage() {
     }
     void handleSeedDefaultRules(true);
   };
+
+  const handleEnsureCompleteRules = async () => {
+    setIsSaving(true);
+    try {
+      const { inserted } = await ensureSaleTypeRulesComplete();
+      toast.success(
+        inserted > 0
+          ? `Se agregaron ${inserted} reglas faltantes`
+          : "Las reglas ya estaban completas",
+      );
+      await loadData();
+    } catch (error) {
+      console.error("Error completing rules:", error);
+      toast.error("Error al completar reglas");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const ruleGroups = useMemo(
+    () => groupRulesBySaleType(saleTypeRules),
+    [saleTypeRules],
+  );
+
+  const nonStandardFamilies = useMemo(
+    () => familiesWithNonStandardTier(productCommissions),
+    [productCommissions],
+  );
+
+  const distributionNeedsAttention = rulesNeedAttention(saleTypeRules);
 
   const handleExclusiveToggle = async (userId: string, exclusive: boolean) => {
     try {
@@ -403,13 +466,65 @@ export function CommissionsPage() {
                 Distribución de Comisiones por Tipo de Venta
               </CardTitle>
               <CardDescription>
-                Por cada tipo de venta hay tres filas (comisión familia 2.5, 5 y 7.5 USD por unidad). Cada
-                porcentaje se aplica sobre la comisión en USD de la familia del producto (no sobre el precio del
-                pedido); vendedor + post venta + referido deben sumar 100%. Use &quot;Restaurar&quot; solo si desea
-                reemplazar todas las reglas por los valores estándar.
+                Por cada tipo de venta hay tres filas según el nivel de comisión familia del producto (2.5, 5 o
+                7.5 USD/u). Los montos de vendedor, post venta y referido son USD fijos por unidad vendida en
+                ventas compartidas (pueden diferir del monto familia). La columna &quot;Familias&quot; muestra qué
+                categorías usan cada nivel (pestaña anterior).
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {distributionNeedsAttention && (
+                <Alert className="mb-4" variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="space-y-2">
+                    <p>
+                      Faltan reglas o hay datos legacy (
+                      {saleTypeRules.length}/{EXPECTED_SALE_TYPE_RULE_COUNT} esperadas).
+                      {rulesCompleteness?.hasLegacyTierZero &&
+                        " Existen filas con USD/u familia = 0."}
+                    </p>
+                    {rulesCompleteness && rulesCompleteness.missingDescriptions.length > 0 && (
+                      <ul className="list-disc pl-5 text-sm">
+                        {rulesCompleteness.missingDescriptions.slice(0, 5).map((m) => (
+                          <li key={m}>{m}</li>
+                        ))}
+                        {rulesCompleteness.missingDescriptions.length > 5 && (
+                          <li>…y {rulesCompleteness.missingDescriptions.length - 5} más</li>
+                        )}
+                      </ul>
+                    )}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void handleEnsureCompleteRules()}
+                        disabled={isSaving}
+                      >
+                        Completar reglas faltantes
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleSeedDefaultRules(false)}
+                        disabled={isSaving}
+                      >
+                        Cargar por defecto
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {nonStandardFamilies.length > 0 && (
+                <Alert className="mb-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Familias con comisión distinta de 2.5, 5 o 7.5 USD/u usan el tier 2.5 en el reporte:{" "}
+                    {nonStandardFamilies.join("; ")}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {saleTypeRules.length === 0 ? (
                 <div className="text-center py-8">
                   <ArrowLeftRight className="w-12 h-12 mx-auto mb-4 opacity-50 text-muted-foreground" />
@@ -425,87 +540,117 @@ export function CommissionsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Tipo de Venta</TableHead>
-                        <TableHead className="text-center">USD/u familia</TableHead>
-                        <TableHead className="text-center">Vendedor tienda (% comisión familia)</TableHead>
-                        <TableHead className="text-center">Post venta (% comisión familia)</TableHead>
-                        <TableHead className="text-center">Referido online (% comisión familia)</TableHead>
-                        <TableHead className="text-center">Suma %</TableHead>
+                        <TableHead className="text-center">Comisión familia (USD/u)</TableHead>
+                        <TableHead>Familias que aplican</TableHead>
+                        <TableHead className="text-center">Vendedor tienda (USD/u)</TableHead>
+                        <TableHead className="text-center">Post venta (USD/u)</TableHead>
+                        <TableHead className="text-center">Referido online (USD/u)</TableHead>
+                        <TableHead className="text-center">Total USD/u</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {saleTypeRules.map((rule) => {
-                        const rk = ruleRowKey(rule);
-                        const vendorRate = editedRules[rk]?.vendorRate ?? rule.vendorRate;
-                        const referrerRate = editedRules[rk]?.referrerRate ?? rule.referrerRate;
-                        const postventaRate =
-                          editedRules[rk]?.postventaRate ?? rule.postventaRate ?? 0;
-                        const total = vendorRate + referrerRate + postventaRate;
+                      {ruleGroups.map((group) =>
+                        group.rules.map((rule, rowIndex) => {
+                          const rk = ruleRowKey(rule);
+                          const vendorUsd = editedRules[rk]?.vendorRate ?? rule.vendorRate;
+                          const referrerUsd =
+                            editedRules[rk]?.referrerRate ?? rule.referrerRate;
+                          const postventaUsd =
+                            editedRules[rk]?.postventaRate ?? rule.postventaRate ?? 0;
+                          const totalUsd = vendorUsd + referrerUsd + postventaUsd;
+                          const tier = rule.familyCommissionUsdPerUnit;
+                          const families = familiesForTier(productCommissions, tier);
+                          const totalDiffersFromTier = !tierEquals(totalUsd, tier);
 
-                        return (
-                          <TableRow key={rule.id}>
-                            <TableCell className="font-medium">{rule.saleTypeLabel}</TableCell>
-                            <TableCell className="text-center tabular-nums">
-                              {rule.familyCommissionUsdPerUnit}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Input
-                                type="number"
-                                step="0.5"
-                                min="0"
-                                max="100"
-                                className="w-20 mx-auto text-center"
-                                value={vendorRate}
-                                onChange={(e) =>
-                                  handleRuleChange(
-                                    rk,
-                                    "vendorRate",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Input
-                                type="number"
-                                step="0.5"
-                                min="0"
-                                max="100"
-                                className="w-20 mx-auto text-center"
-                                value={postventaRate}
-                                onChange={(e) =>
-                                  handleRuleChange(
-                                    rk,
-                                    "postventaRate",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Input
-                                type="number"
-                                step="0.5"
-                                min="0"
-                                max="100"
-                                className="w-20 mx-auto text-center"
-                                value={referrerRate}
-                                onChange={(e) =>
-                                  handleRuleChange(
-                                    rk,
-                                    "referrerRate",
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
-                              />
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant={Math.abs(total - 100) < 0.02 ? "default" : "destructive"}>
-                                {total}%
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
+                          return (
+                            <TableRow key={rule.id}>
+                              {rowIndex === 0 && (
+                                <TableCell
+                                  className="font-medium align-top"
+                                  rowSpan={group.rules.length}
+                                >
+                                  {group.saleTypeLabel}
+                                </TableCell>
+                              )}
+                              <TableCell className="text-center tabular-nums font-medium">
+                                {tier}
+                              </TableCell>
+                              <TableCell className="max-w-[220px] text-sm text-muted-foreground">
+                                {families.length > 0 ? (
+                                  <span className="line-clamp-3" title={families.join(", ")}>
+                                    {families.join(", ")}
+                                  </span>
+                                ) : (
+                                  <span className="italic">Ninguna familia con este monto</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  max="20"
+                                  className="w-20 mx-auto text-center"
+                                  value={vendorUsd}
+                                  onChange={(e) =>
+                                    handleRuleChange(
+                                      rk,
+                                      "vendorRate",
+                                      parseFloat(e.target.value) || 0,
+                                    )
+                                  }
+                                />
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  max="20"
+                                  className="w-20 mx-auto text-center"
+                                  value={postventaUsd}
+                                  onChange={(e) =>
+                                    handleRuleChange(
+                                      rk,
+                                      "postventaRate",
+                                      parseFloat(e.target.value) || 0,
+                                    )
+                                  }
+                                />
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  max="20"
+                                  className="w-20 mx-auto text-center"
+                                  value={referrerUsd}
+                                  onChange={(e) =>
+                                    handleRuleChange(
+                                      rk,
+                                      "referrerRate",
+                                      parseFloat(e.target.value) || 0,
+                                    )
+                                  }
+                                />
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge
+                                  variant={totalDiffersFromTier ? "secondary" : "default"}
+                                  title={
+                                    totalDiffersFromTier
+                                      ? `Total reparto (${totalUsd}) distinto del tier familia (${tier})`
+                                      : undefined
+                                  }
+                                >
+                                  {totalUsd}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }),
+                      )}
                     </TableBody>
                   </Table>
                   <div className="flex justify-between mt-4">

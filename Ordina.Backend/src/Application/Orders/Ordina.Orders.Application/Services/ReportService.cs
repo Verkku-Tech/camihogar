@@ -11,6 +11,7 @@ using Ordina.Database.Entities.User;
 using Ordina.Database.Repositories;
 using Ordina.Orders.Application.Commission;
 using Ordina.Orders.Application;
+using Ordina.Orders.Application.Dispatch;
 using Ordina.Orders.Application.DTOs;
 
 namespace Ordina.Orders.Application.Services;
@@ -1532,7 +1533,7 @@ public class ReportService : IReportService
 
     /// <summary>
     /// Comisión por línea: USD por unidad (commissionValue) × cantidad.
-    /// Venta compartida: vendorRate/referrerRate son % de esa comisión de familia, no del total del producto.
+    /// Venta compartida: vendorRate/referrerRate/postventaRate son USD por unidad según regla de tipo de venta + tier.
     /// </summary>
     private (decimal vendorCommission, decimal referrerCommission, decimal postventaCommission, decimal baseRate, decimal appliedVendorRate, decimal appliedReferrerRate, decimal appliedPostventaRate)
         CalculateProductCommission(
@@ -1560,15 +1561,15 @@ public class ReportService : IReportService
 
         if (isSharedSale && !isExclusiveVendor)
         {
-            // VENTA COMPARTIDA: reparto como % de la comisión de familia (USD × unidad), regla por tipo de venta + tier USD/u
+            // VENTA COMPARTIDA: USD fijos por rol × cantidad, regla por tipo de venta + tier USD/u familia
             var saleType = DetermineSaleType(order);
             var rule = SaleTypeCommissionTierResolver.PickRule(saleTypeRules, saleType, baseCommissionRate, _logger);
 
             if (rule != null)
             {
-                var vendorCommission = familyCommission * (rule.VendorRate / 100);
-                var referrerCommission = familyCommission * (rule.ReferrerRate / 100);
-                var postventaCommission = familyCommission * (rule.PostventaRate / 100);
+                var vendorCommission = rule.VendorRate * qty;
+                var referrerCommission = rule.ReferrerRate * qty;
+                var postventaCommission = rule.PostventaRate * qty;
 
                 return (vendorCommission, referrerCommission, postventaCommission, baseCommissionRate, rule.VendorRate, rule.ReferrerRate, rule.PostventaRate);
             }
@@ -1848,7 +1849,7 @@ public class ReportService : IReportService
         var matchingOrders = orders
             .Where(order =>
             {
-                if (order.Status != "Completado" && order.Status != "Completada" && order.Status != "En Ruta")
+                if (!DispatchReportFilters.IsOrderEligibleForDispatchReport(order))
                     return false;
                 if (!string.IsNullOrWhiteSpace(deliveryZone) &&
                     order.DeliveryZone != deliveryZone)
@@ -1868,24 +1869,25 @@ public class ReportService : IReportService
 
         foreach (var order in matchingOrders)
         {
+            var enRutaProducts = DispatchReportFilters.GetProductsEnRuta(order);
+            if (enRutaProducts.Count == 0)
+                continue;
+
             var client = clients.FirstOrDefault(c => c.Id == order.ClientId);
 
             var productDescriptions = new List<string>();
-            if (order.Products != null && order.Products.Count > 0)
+            foreach (var product in enRutaProducts)
             {
-                foreach (var product in order.Products)
+                try
                 {
-                    try
-                    {
-                        var productDesc = await FormatProductDescriptionAsync(product);
-                        productDescriptions.Add(productDesc);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Error al formatear descripción del producto {ProductName} en pedido {OrderNumber}",
-                            product?.Name ?? "desconocido", order.OrderNumber);
-                        productDescriptions.Add(product?.Name ?? "Producto desconocido");
-                    }
+                    var productDesc = await FormatProductDescriptionAsync(product);
+                    productDescriptions.Add(productDesc);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error al formatear descripción del producto {ProductName} en pedido {OrderNumber}",
+                        product?.Name ?? "desconocido", order.OrderNumber);
+                    productDescriptions.Add(product?.Name ?? "Producto desconocido");
                 }
             }
 
@@ -1893,7 +1895,7 @@ public class ReportService : IReportService
                 ? string.Join(" | ", productDescriptions)
                 : "Sin productos";
 
-            var cantidadTotal = order.Products?.Sum(p => p.Quantity) ?? 0;
+            var cantidadTotal = enRutaProducts.Sum(p => p.Quantity);
 
             decimal usdRate;
             decimal importeTotalUsd;

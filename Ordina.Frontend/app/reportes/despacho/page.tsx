@@ -30,7 +30,7 @@ export default function DespachoReportPage() {
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-foreground">Reporte de Despacho</h1>
               <p className="text-muted-foreground mt-1">
-                Reporte de pedidos listos para despacho. Filtrado principal por Zona para organizar por ruta.
+                Pedidos con productos en ruta (salieron de tienda). Filtrado principal por zona para organizar por ruta.
               </p>
             </div>
 

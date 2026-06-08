@@ -19,21 +19,26 @@ import {
   getCommissionSaleTypeLabelForOrder,
   getProductCommissions,
   getFamilyCommissionUsdPerUnitForProduct,
+  getUsers,
   type Order,
   type Category,
   type Product,
   type OrderCommissionLine,
+  type User,
 } from "@/lib/storage"
+import { isDateInReportRange, parseReportDateRange } from "@/lib/report-date-range"
 
 interface CommissionReportRow {
   fecha: string
   cliente: string
   pedido: string
   vendedor: string
+  vendorId: string
+  referrerId?: string
+  postventaId?: string
   descripcion: string
   cantidadArticulos: number
   tipoVenta: string
-  /** USD de comisión familia por unidad del producto (tier aplicado). */
   comisionFamiliaUsdPorUnidad: number
   comisionVendedor: number
   comisionPostventa: number
@@ -56,6 +61,32 @@ function aggregateCommissionsByProduct(lines: OrderCommissionLine[]) {
   return m
 }
 
+function filterRowsByVendor(rows: CommissionReportRow[], vendorId: string) {
+  if (vendorId === "all") return rows
+  return rows.filter(
+    (row) =>
+      row.vendorId === vendorId ||
+      row.referrerId === vendorId ||
+      row.postventaId === vendorId,
+  )
+}
+
+function resolveReferrerDisplayName(
+  order: Order,
+  userNameById: Map<string, string>,
+): string | undefined {
+  if (!order.referrerId && !order.referrerName?.trim()) return undefined
+  if (order.referrerName?.trim()) return order.referrerName.trim()
+  if (order.referrerId && userNameById.has(order.referrerId)) {
+    return userNameById.get(order.referrerId)
+  }
+  return "Referido (sin nombre)"
+}
+
+function isCommissionSeller(user: User) {
+  return user.role === "Store Seller" || user.role === "Online Seller"
+}
+
 const TEAMS = [
   { value: "all", label: "Todos" },
   { value: "guatire", label: "Guatire (Lunes a Domingo)" },
@@ -63,151 +94,90 @@ const TEAMS = [
   { value: "rrss", label: "RRSS (Mensual)" },
 ] as const
 
+function CommissionPayoutCell({
+  name,
+  amount,
+  formatUsd,
+}: {
+  name?: string
+  amount: number
+  formatUsd: (n: number) => string
+}) {
+  if (amount <= 0) {
+    return <span className="text-muted-foreground">—</span>
+  }
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      {name ? (
+        <span className="max-w-[120px] truncate text-xs text-muted-foreground" title={name}>
+          {name}
+        </span>
+      ) : null}
+      <span className="tabular-nums font-medium">{formatUsd(amount)}</span>
+    </div>
+  )
+}
+
 export function CommissionsReport() {
   const [startDate, setStartDate] = useState<string>("")
   const [endDate, setEndDate] = useState<string>("")
   const [selectedTeam, setSelectedTeam] = useState<string>("all")
+  const [selectedVendorId, setSelectedVendorId] = useState<string>("all")
+  const [commissionSellers, setCommissionSellers] = useState<User[]>([])
   const [reportData, setReportData] = useState<CommissionReportRow[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [hasError, setHasError] = useState(false)
 
-  // Calcular datos del reporte desde IndexedDB (frontend-first)
   useEffect(() => {
-    const loadReportData = async () => {
-      // Las fechas son obligatorias
-      if (!startDate || !endDate) {
-        setReportData([])
-        return
-      }
-
-      setIsLoading(true)
-      setHasError(false)
-
-      try {
-        // 1. Cargar pedidos desde IndexedDB (fuente de verdad)
-        const [orders, categories, products, saleTypeRules, productCommissions] = await Promise.all([
-          getOrders(),
-          getCategories(),
-          getProducts(),
-          getSaleTypeCommissionRules(),
-          getProductCommissions(),
-        ])
-
-        // 2. Filtrar pedidos por fecha
-        const startDateObj = new Date(startDate)
-        const endDateObj = new Date(endDate)
-        endDateObj.setHours(23, 59, 59, 999) // Incluir todo el día final
-
-        const filteredOrders = orders.filter((order) => {
-          if (order.status === "Generado" || order.status === "Generada") {
-            return false
-          }
-          const orderDate = new Date(order.createdAt)
-          return orderDate >= startDateObj && orderDate <= endDateObj
-        })
-
-        // 3. Calcular comisiones para cada pedido
-        const reportRows: CommissionReportRow[] = []
-
-        for (const order of filteredOrders) {
-          const tipoVenta = getCommissionSaleTypeLabelForOrder(order, saleTypeRules)
-          const lines = await calculateOrderCommissions(order)
-          const byProduct = aggregateCommissionsByProduct(lines)
-
-          for (const product of order.products) {
-            const agg = byProduct.get(product.id)
-            if (!agg) continue
-            if (agg.vendor === 0 && agg.postventa === 0 && agg.referrer === 0) continue
-
-            const productDesc = await formatProductDescription(
-              product,
-              categories,
-              products
-            )
-
-            const comisionFamiliaUsdPorUnidad = getFamilyCommissionUsdPerUnitForProduct(
-              product,
-              productCommissions
-            )
-
-            reportRows.push({
-              fecha: order.createdAt,
-              cliente: order.clientName,
-              pedido: order.orderNumber,
-              vendedor: order.vendorName,
-              descripcion: productDesc,
-              cantidadArticulos: product.quantity,
-              tipoVenta,
-              comisionFamiliaUsdPorUnidad,
-              comisionVendedor: agg.vendor,
-              comisionPostventa: agg.postventa,
-              comisionReferido: agg.referrer,
-              vendedorPostventa:
-                agg.postventa > 0 ? order.postventaName?.trim() || "Post venta" : undefined,
-              vendedorReferido: agg.referrer > 0 ? order.referrerName : undefined,
-            })
-          }
-        }
-
-        // 4. Ordenar por fecha (más reciente primero)
-        reportRows.sort(
-          (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
+    getUsers()
+      .then((users) => {
+        setCommissionSellers(
+          users.filter((u) => u.status === "active" && isCommissionSeller(u)),
         )
+      })
+      .catch(console.error)
+  }, [])
 
-        setReportData(reportRows)
-      } catch (error) {
-        console.error("Error calculating commissions report:", error)
-        toast.error("Error al calcular el reporte de comisiones")
-        setHasError(true)
-        setReportData([])
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadReportData()
-  }, [startDate, endDate, selectedTeam])
-
-  // Función para formatear descripción del producto
   const formatProductDescription = async (
-    product: any,
+    product: Order["products"][number],
     categories: Category[],
-    allProducts: Product[]
   ): Promise<string> => {
     const parts = [product.name]
 
-    // Agregar atributos si existen
     if (product.attributes && Object.keys(product.attributes).length > 0) {
       const category = categories.find((c) => c.name === product.category)
-      if (category && category.attributes) {
+      if (category?.attributes) {
         const attributeStrings: string[] = []
 
         for (const [key, value] of Object.entries(product.attributes)) {
-          const attr = category.attributes.find((a) => a.id?.toString() === key || a.title === key)
+          const attr = category.attributes.find(
+            (a) => a.id?.toString() === key || a.title === key,
+          )
           if (attr) {
             let valueLabel = ""
             if (Array.isArray(value)) {
               const labels = value
                 .map((v) => {
                   const attrValue = attr.values?.find((av) => {
-                    if (typeof av === "string") {
-                      return av === v
-                    }
+                    if (typeof av === "string") return av === v
                     return av.id === v || av.label === v
                   })
-                  return typeof attrValue === "string" ? attrValue : (attrValue?.label || v)
+                  return typeof attrValue === "string"
+                    ? attrValue
+                    : attrValue?.label || v
                 })
                 .filter(Boolean)
               valueLabel = labels.join(", ")
             } else {
               const attrValue = attr.values?.find((av) => {
-                if (typeof av === "string") {
-                  return av === value
-                }
+                if (typeof av === "string") return av === value
                 return av.id === value || av.label === value
               })
-              valueLabel = typeof attrValue === "string" ? attrValue : (attrValue?.label || String(value))
+              valueLabel =
+                typeof attrValue === "string"
+                  ? attrValue
+                  : attrValue?.label || String(value)
             }
             if (valueLabel) {
               attributeStrings.push(`${attr.title || attr.id}: ${valueLabel}`)
@@ -224,6 +194,112 @@ export function CommissionsReport() {
     return parts.join(" | ")
   }
 
+  const buildReportRows = async (
+    filteredOrders: Order[],
+    categories: Category[],
+    saleTypeRules: Awaited<ReturnType<typeof getSaleTypeCommissionRules>>,
+    productCommissions: Awaited<ReturnType<typeof getProductCommissions>>,
+    userNameById: Map<string, string>,
+  ): Promise<CommissionReportRow[]> => {
+    const reportRows: CommissionReportRow[] = []
+
+    for (const order of filteredOrders) {
+      const tipoVenta = getCommissionSaleTypeLabelForOrder(order, saleTypeRules)
+      const lines = await calculateOrderCommissions(order)
+      const byProduct = aggregateCommissionsByProduct(lines)
+      const referrerDisplay = resolveReferrerDisplayName(order, userNameById)
+
+      for (const product of order.products) {
+        const agg = byProduct.get(product.id)
+        if (!agg) continue
+        if (agg.vendor === 0 && agg.postventa === 0 && agg.referrer === 0) continue
+
+        const productDesc = await formatProductDescription(product, categories)
+        const comisionFamiliaUsdPorUnidad = getFamilyCommissionUsdPerUnitForProduct(
+          product,
+          productCommissions,
+        )
+
+        reportRows.push({
+          fecha: order.createdAt,
+          cliente: order.clientName,
+          pedido: order.orderNumber,
+          vendedor: order.vendorName,
+          vendorId: order.vendorId,
+          referrerId: order.referrerId?.trim() || undefined,
+          postventaId: order.postventaId?.trim() || undefined,
+          descripcion: productDesc,
+          cantidadArticulos: product.quantity,
+          tipoVenta,
+          comisionFamiliaUsdPorUnidad,
+          comisionVendedor: agg.vendor,
+          comisionPostventa: agg.postventa,
+          comisionReferido: agg.referrer,
+          vendedorPostventa:
+            agg.postventa > 0 ? order.postventaName?.trim() || "Post venta" : undefined,
+          vendedorReferido: agg.referrer > 0 ? referrerDisplay : undefined,
+        })
+      }
+    }
+
+    reportRows.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+    return reportRows
+  }
+
+  useEffect(() => {
+    const loadReportData = async () => {
+      if (!startDate || !endDate) {
+        setReportData([])
+        return
+      }
+
+      setIsLoading(true)
+      setHasError(false)
+
+      try {
+        const [orders, categories, saleTypeRules, productCommissions, users] =
+          await Promise.all([
+            getOrders(),
+            getCategories(),
+            getSaleTypeCommissionRules(),
+            getProductCommissions(),
+            getUsers(),
+          ])
+
+        const userNameById = new Map(
+          users.map((u) => [u.id, u.name] as const),
+        )
+        const { start, end } = parseReportDateRange(startDate, endDate)
+
+        const filteredOrders = orders.filter((order) => {
+          if (order.status === "Generado" || order.status === "Generada") {
+            return false
+          }
+          return isDateInReportRange(order.createdAt, start, end)
+        })
+
+        let reportRows = await buildReportRows(
+          filteredOrders,
+          categories,
+          saleTypeRules,
+          productCommissions,
+          userNameById,
+        )
+        reportRows = filterRowsByVendor(reportRows, selectedVendorId)
+        setReportData(reportRows)
+      } catch (error) {
+        console.error("Error calculating commissions report:", error)
+        toast.error("Error al calcular el reporte de comisiones")
+        setHasError(true)
+        setReportData([])
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadReportData()
+  }, [startDate, endDate, selectedTeam, selectedVendorId])
+
   const handleDownloadExcel = async () => {
     if (!startDate || !endDate) {
       toast.error("Las fechas son obligatorias para descargar el reporte")
@@ -233,83 +309,69 @@ export function CommissionsReport() {
     setIsDownloading(true)
 
     try {
-      // Calcular datos desde IndexedDB (frontend-first)
-      const [orders, categories, products, saleTypeRules, productCommissions] = await Promise.all([
-        getOrders(),
-        getCategories(),
-        getProducts(),
-        getSaleTypeCommissionRules(),
-        getProductCommissions(),
-      ])
+      const [orders, categories, saleTypeRules, productCommissions, users] =
+        await Promise.all([
+          getOrders(),
+          getCategories(),
+          getSaleTypeCommissionRules(),
+          getProductCommissions(),
+          getUsers(),
+        ])
 
-      const startDateObj = new Date(startDate)
-      const endDateObj = new Date(endDate)
-      endDateObj.setHours(23, 59, 59, 999)
+      const userNameById = new Map(users.map((u) => [u.id, u.name] as const))
+      const { start, end } = parseReportDateRange(startDate, endDate)
 
       const filteredOrders = orders.filter((order) => {
         if (order.status === "Generado" || order.status === "Generada") {
           return false
         }
-        const orderDate = new Date(order.createdAt)
-        return orderDate >= startDateObj && orderDate <= endDateObj
+        return isDateInReportRange(order.createdAt, start, end)
       })
 
-      const commissionData: Record<string, unknown>[] = []
-      for (const order of filteredOrders) {
-        const tipoVenta = getCommissionSaleTypeLabelForOrder(order, saleTypeRules)
-        const lines = await calculateOrderCommissions(order)
-        const byProduct = aggregateCommissionsByProduct(lines)
+      let reportRows = await buildReportRows(
+        filteredOrders,
+        categories,
+        saleTypeRules,
+        productCommissions,
+        userNameById,
+      )
+      reportRows = filterRowsByVendor(reportRows, selectedVendorId)
 
-        for (const product of order.products) {
-          const agg = byProduct.get(product.id)
-          if (!agg) continue
-          if (agg.vendor === 0 && agg.postventa === 0 && agg.referrer === 0) continue
-
-          const productDesc = await formatProductDescription(
-            product,
-            categories,
-            products
-          )
-
-          const comisionFamiliaUsdPorUnidad = getFamilyCommissionUsdPerUnitForProduct(
-            product,
-            productCommissions
-          )
-
-          const shared = agg.referrer > 0 || agg.postventa > 0
-          commissionData.push({
-            fecha: order.createdAt,
-            cliente: order.clientName,
-            vendedor: order.vendorName,
-            pedido: order.orderNumber,
-            descripcion: productDesc,
-            cantidadArticulos: product.quantity,
-            tipoVenta,
-            comisionFamiliaUsdPorUnidad,
-            comision: agg.vendor,
-            vendedorSecundario: agg.referrer > 0 ? order.referrerName ?? null : null,
-            comisionSecundaria: agg.referrer > 0 ? agg.referrer : null,
-            vendedorPostventa: agg.postventa > 0 ? order.postventaName?.trim() || "Post venta" : null,
-            comisionPostventa: agg.postventa > 0 ? agg.postventa : null,
-            sueldoBase: 0,
-            tasaComisionBase: comisionFamiliaUsdPorUnidad,
-            tasaAplicadaVendedor: 0,
-            tasaAplicadaReferido: null,
-            tasaAplicadaPostventa: null,
-            esVentaCompartida: shared,
-            esVendedorExclusivo: false,
-          })
+      const commissionData: Record<string, unknown>[] = reportRows.map((row) => {
+        const shared = row.comisionReferido > 0 || row.comisionPostventa > 0
+        return {
+          fecha: row.fecha,
+          cliente: row.cliente,
+          vendedor: row.vendedor,
+          pedido: row.pedido,
+          descripcion: row.descripcion,
+          cantidadArticulos: row.cantidadArticulos,
+          tipoVenta: row.tipoVenta,
+          comisionFamiliaUsdPorUnidad: row.comisionFamiliaUsdPorUnidad,
+          comision: row.comisionVendedor,
+          vendedorSecundario:
+            row.comisionReferido > 0 ? row.vendedorReferido ?? null : null,
+          comisionSecundaria: row.comisionReferido > 0 ? row.comisionReferido : null,
+          vendedorPostventa:
+            row.comisionPostventa > 0 ? row.vendedorPostventa ?? null : null,
+          comisionPostventa:
+            row.comisionPostventa > 0 ? row.comisionPostventa : null,
+          sueldoBase: 0,
+          tasaComisionBase: row.comisionFamiliaUsdPorUnidad,
+          tasaAplicadaVendedor: 0,
+          tasaAplicadaReferido: null,
+          tasaAplicadaPostventa: null,
+          esVentaCompartida: shared,
+          esVendedorExclusivo: false,
         }
-      }
+      })
 
-      // Enviar datos calculados al backend para generar Excel
       const token = localStorage.getItem("auth_token")
       if (!token) {
         toast.error("No hay sesión activa")
         return
       }
 
-      // Enviar datos al backend para generar Excel
       const response = await fetch(
         `/api/proxy/orders/api/Reports/Commissions/Excel`,
         {
@@ -324,7 +386,7 @@ export function CommissionsReport() {
             team: selectedTeam === "all" ? null : selectedTeam,
             data: commissionData,
           }),
-        }
+        },
       )
 
       if (!response.ok) {
@@ -380,16 +442,17 @@ export function CommissionsReport() {
 
   return (
     <div className="space-y-6">
-      {/* Filtros */}
       <Card>
         <CardHeader>
           <CardTitle>Parámetros del Reporte</CardTitle>
           <CardDescription>
-            Las fechas son obligatorias debido a los diferentes cortes de pago por equipo
+            Las fechas son obligatorias. El filtro de equipo aplica al Excel descargado. La
+            comisión de post venta aplica en ventas compartidas con tipo Encargo o Sistema de
+            apartado; en entrega o encargo/entrega suele ser $0.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label htmlFor="startDate">
                 Fecha Desde <span className="text-red-500">*</span>
@@ -429,11 +492,26 @@ export function CommissionsReport() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="vendor">Vendedor (Opcional)</Label>
+              <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
+                <SelectTrigger id="vendor">
+                  <SelectValue placeholder="Todos los vendedores" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {commissionSellers.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Botón de descarga */}
       <div className="flex justify-end">
         <Button
           onClick={handleDownloadExcel}
@@ -454,7 +532,6 @@ export function CommissionsReport() {
         </Button>
       </div>
 
-      {/* Alerta si faltan fechas */}
       {(!startDate || !endDate) && (
         <Alert>
           <AlertCircle className="h-4 w-4" />
@@ -464,13 +541,15 @@ export function CommissionsReport() {
         </Alert>
       )}
 
-      {/* Tabla de resultados */}
       {startDate && endDate && (
         <Card>
           <CardHeader>
             <CardTitle>Resultados del Reporte</CardTitle>
             <CardDescription>
               {reportData.length} {reportData.length === 1 ? "registro" : "registros"} encontrados
+              {selectedVendorId !== "all" &&
+                commissionSellers.find((u) => u.id === selectedVendorId) &&
+                ` · filtro: ${commissionSellers.find((u) => u.id === selectedVendorId)?.name}`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -507,7 +586,7 @@ export function CommissionsReport() {
                   </TableHeader>
                   <TableBody>
                     {reportData.map((row, index) => (
-                      <TableRow key={index}>
+                      <TableRow key={`${row.pedido}-${index}`}>
                         <TableCell className="whitespace-nowrap">
                           {formatDate(row.fecha)}
                         </TableCell>
@@ -525,15 +604,19 @@ export function CommissionsReport() {
                         <TableCell className="text-right font-medium">
                           {formatCommissionUsd(row.comisionVendedor)}
                         </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {row.comisionPostventa > 0
-                            ? formatCommissionUsd(row.comisionPostventa)
-                            : "—"}
+                        <TableCell className="text-right">
+                          <CommissionPayoutCell
+                            name={row.vendedorPostventa}
+                            amount={row.comisionPostventa}
+                            formatUsd={formatCommissionUsd}
+                          />
                         </TableCell>
-                        <TableCell className="text-right text-muted-foreground">
-                          {row.comisionReferido > 0
-                            ? formatCommissionUsd(row.comisionReferido)
-                            : "—"}
+                        <TableCell className="text-right">
+                          <CommissionPayoutCell
+                            name={row.vendedorReferido}
+                            amount={row.comisionReferido}
+                            formatUsd={formatCommissionUsd}
+                          />
                         </TableCell>
                       </TableRow>
                     ))}
@@ -563,4 +646,3 @@ export function CommissionsReport() {
     </div>
   )
 }
-

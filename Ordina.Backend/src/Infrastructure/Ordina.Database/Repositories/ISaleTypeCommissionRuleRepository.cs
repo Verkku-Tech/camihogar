@@ -17,4 +17,7 @@ public interface ISaleTypeCommissionRuleRepository
     Task<bool> ExistsAsync(string id);
     /// <param name="forceReset">Si es true, elimina todas las reglas existentes antes de sembrar los valores por defecto.</param>
     Task SeedDefaultRulesAsync(bool forceReset = false);
+    /// <summary>Inserta solo las reglas (tipo + tier) que falten según el cuadro estándar.</summary>
+    Task<int> EnsureMissingDefaultRulesAsync();
+    Task<SaleTypeCommissionCompleteness> GetCompletenessAsync();
 }

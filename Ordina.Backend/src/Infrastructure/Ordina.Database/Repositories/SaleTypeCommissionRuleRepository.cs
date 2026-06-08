@@ -7,6 +7,38 @@ namespace Ordina.Database.Repositories;
 public class SaleTypeCommissionRuleRepository : ISaleTypeCommissionRuleRepository
 {
     private static readonly decimal[] TierValues = { 2.5m, 5m, 7.5m };
+    private const int ExpectedSaleTypeCount = 7;
+    private const decimal Epsilon = 0.0001m;
+
+    private static readonly (string SaleType, string Label)[] DeliverySaleTypes =
+    {
+        ("entrega", "ENTREGA"),
+        ("encargo_entrega", "ENCARGO/ENTREGA"),
+        ("delivery_express", "DELIVERY EXPRESS"),
+        ("retiro_tienda", "RETIRO POR TIENDA (RxT)"),
+        ("retiro_almacen", "RETIRO POR ALMACÉN (RxA)"),
+    };
+
+    private static readonly (decimal Tier, decimal Vendor, decimal Postventa, decimal Referrer)[] DeliveryTierUsd =
+    {
+        (2.5m, 2.5m, 0m, 1.5m),
+        (5m, 5m, 0m, 3m),
+        (7.5m, 7.5m, 0m, 3m),
+    };
+
+    private static readonly (decimal Tier, decimal Vendor, decimal Postventa, decimal Referrer)[] EncargoTierUsd =
+    {
+        (2.5m, 2m, 1m, 1.5m),
+        (5m, 4m, 2m, 3m),
+        (7.5m, 6m, 3m, 3m),
+    };
+
+    private static readonly (decimal Tier, decimal Vendor, decimal Postventa, decimal Referrer)[] ApartadoTierUsd =
+    {
+        (2.5m, 1.5m, 1.5m, 1.5m),
+        (5m, 3m, 3m, 3m),
+        (7.5m, 4.5m, 4.5m, 3m),
+    };
 
     private readonly IMongoCollection<SaleTypeCommissionRule> _collection;
     private readonly SemaphoreSlim _prepareGate = new(1, 1);
@@ -111,7 +143,7 @@ public class SaleTypeCommissionRuleRepository : ISaleTypeCommissionRuleRepositor
     }
 
     /// <summary>
-    /// Inicializa reglas por defecto: 7 tipos de venta × 3 niveles USD/u. % sobre la comisión familia (pool).
+    /// Inicializa reglas por defecto: 7 tipos × 3 tiers con USD fijos por rol (cuadro Excel).
     /// </summary>
     public async Task SeedDefaultRulesAsync(bool forceReset = false)
     {
@@ -128,33 +160,99 @@ public class SaleTypeCommissionRuleRepository : ISaleTypeCommissionRuleRepositor
                 .ConfigureAwait(false);
         }
 
-        var defaultRows = new (string SaleType, string Label, decimal V, decimal R, decimal P)[]
+        foreach (var rule in BuildDefaultRules())
         {
-            ("entrega", "ENTREGA", 100m, 0m, 0m),
-            ("encargo_entrega", "ENCARGO/ENTREGA", 100m, 0m, 0m),
-            ("delivery_express", "DELIVERY EXPRESS", 100m, 0m, 0m),
-            ("retiro_tienda", "RETIRO POR TIENDA (RxT)", 100m, 0m, 0m),
-            ("retiro_almacen", "RETIRO POR ALMACÉN (RxA)", 100m, 0m, 0m),
-            ("encargo", "ENCARGO", 80m, 20m, 0m),
-            ("sistema_apartado", "SISTEMA DE APARTADO (SA)", 50m, 50m, 0m),
-        };
-
-        foreach (var row in defaultRows)
-        {
-            foreach (var tier in TierValues)
-            {
-                await CreateAsync(new SaleTypeCommissionRule
-                {
-                    SaleType = row.SaleType,
-                    SaleTypeLabel = row.Label,
-                    FamilyCommissionUsdPerUnit = tier,
-                    VendorRate = row.V,
-                    ReferrerRate = row.R,
-                    PostventaRate = row.P,
-                }).ConfigureAwait(false);
-            }
+            await CreateAsync(rule).ConfigureAwait(false);
         }
     }
+
+    public async Task<int> EnsureMissingDefaultRulesAsync()
+    {
+        await EnsurePreparedAsync().ConfigureAwait(false);
+        var existing = await _collection.Find(_ => true).ToListAsync().ConfigureAwait(false);
+        var inserted = 0;
+
+        foreach (var rule in BuildDefaultRules())
+        {
+            var found = existing.Any(r =>
+                r.SaleType == rule.SaleType &&
+                Math.Abs(r.FamilyCommissionUsdPerUnit - rule.FamilyCommissionUsdPerUnit) < Epsilon);
+            if (found)
+                continue;
+
+            await CreateAsync(rule).ConfigureAwait(false);
+            inserted++;
+        }
+
+        return inserted;
+    }
+
+    public async Task<SaleTypeCommissionCompleteness> GetCompletenessAsync()
+    {
+        await EnsurePreparedAsync().ConfigureAwait(false);
+        var rules = await _collection.Find(_ => true).ToListAsync().ConfigureAwait(false);
+        var missing = new List<string>();
+        var hasLegacy = rules.Any(r => r.FamilyCommissionUsdPerUnit == 0m);
+
+        foreach (var def in BuildDefaultRules())
+        {
+            var ok = rules.Any(r =>
+                r.SaleType == def.SaleType &&
+                Math.Abs(r.FamilyCommissionUsdPerUnit - def.FamilyCommissionUsdPerUnit) < Epsilon);
+            if (!ok)
+            {
+                missing.Add($"{def.SaleTypeLabel} · {def.FamilyCommissionUsdPerUnit} USD/u familia");
+            }
+        }
+
+        var expected = ExpectedSaleTypeCount * TierValues.Length;
+        return new SaleTypeCommissionCompleteness
+        {
+            IsComplete = missing.Count == 0 && !hasLegacy,
+            ExpectedRuleCount = expected,
+            ActualRuleCount = rules.Count,
+            HasLegacyTierZero = hasLegacy,
+            MissingDescriptions = missing,
+        };
+    }
+
+    private static IEnumerable<SaleTypeCommissionRule> BuildDefaultRules()
+    {
+        foreach (var (saleType, label) in DeliverySaleTypes)
+        {
+            foreach (var (tier, vendor, postventa, referrer) in DeliveryTierUsd)
+            {
+                yield return CreateRule(saleType, label, tier, vendor, postventa, referrer);
+            }
+        }
+
+        foreach (var (tier, vendor, postventa, referrer) in EncargoTierUsd)
+        {
+            yield return CreateRule("encargo", "ENCARGO", tier, vendor, postventa, referrer);
+        }
+
+        foreach (var (tier, vendor, postventa, referrer) in ApartadoTierUsd)
+        {
+            yield return CreateRule("sistema_apartado", "SISTEMA DE APARTADO (SA)", tier, vendor, postventa, referrer);
+        }
+    }
+
+    private static SaleTypeCommissionRule CreateRule(
+        string saleType,
+        string label,
+        decimal tier,
+        decimal vendorUsd,
+        decimal postventaUsd,
+        decimal referrerUsd) =>
+        new()
+        {
+            SaleType = saleType,
+            SaleTypeLabel = label,
+            FamilyCommissionUsdPerUnit = tier,
+            VendorRate = vendorUsd,
+            PostventaRate = postventaUsd,
+            ReferrerRate = referrerUsd,
+        };
 
     private async Task EnsurePreparedAsync()
     {
