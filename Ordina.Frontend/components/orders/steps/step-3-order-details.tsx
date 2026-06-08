@@ -32,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Trash2 } from "lucide-react";
+import { DollarSign, Plus, Trash2 } from "lucide-react";
 import type { UseOrderFormReturn } from "../hooks/use-order-form";
 import { DeliveryServiceCostInput } from "../delivery-service-cost-input";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
@@ -129,9 +129,15 @@ function BsToUsdHint({
   if (!exchangeRate || exchangeRate <= 0) return null;
   const usd = amountBs / exchangeRate;
   return (
-    <p className="text-xs text-muted-foreground">
-      Equivalente: {formatCurrency(usd, "USD")}
-    </p>
+    <div className="flex items-center gap-2 rounded-md border border-green-200/80 bg-green-50 px-2.5 py-1.5 text-sm dark:border-green-800 dark:bg-green-950/80">
+      <DollarSign className="h-3.5 w-3.5 shrink-0 text-green-600 dark:text-green-400" />
+      <span className="text-green-800 dark:text-green-300">
+        <span className="font-medium">Equivalente:</span>{" "}
+        <span className="font-semibold text-green-900 dark:text-green-100">
+          {formatCurrency(usd, "USD")}
+        </span>
+      </span>
+    </div>
   );
 }
 
