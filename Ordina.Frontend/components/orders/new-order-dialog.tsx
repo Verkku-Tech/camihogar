@@ -1091,7 +1091,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     isClientLookupOpen ||
     isProductSelectionOpen ||
     isConfirmationOpen ||
-    orderForm.needsDraftPrompt;
+    orderForm.needsDraftPrompt ||
+    pendingReservationPrompt !== null ||
+    isCheckingClientReservation;
 
   const preventCloseOnNestedModal = (e: Event) => {
     if (nestedModalOpen) e.preventDefault();
