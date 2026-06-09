@@ -20,7 +20,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DollarSign, Save, RefreshCcw, Users, ShoppingBag, ArrowLeftRight, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -35,6 +41,9 @@ import {
   type ProductCommission,
   getUsers,
   type User,
+  type CommissionExclusivityMode,
+  COMMISSION_EXCLUSIVITY_MODES,
+  normalizeCommissionExclusivityMode,
   FAMILY_COMMISSION_USD_TIERS,
 } from "@/lib/storage";
 import { apiClient, type SaleTypeCommissionCompletenessDto } from "@/lib/api-client";
@@ -70,7 +79,9 @@ export function CommissionsPage() {
   const [editedRules, setEditedRules] = useState<Record<string, EditedRule>>({});
 
   const [users, setUsers] = useState<User[]>([]);
-  const [exclusiveUsers, setExclusiveUsers] = useState<Set<string>>(new Set());
+  const [exclusivityModes, setExclusivityModes] = useState<
+    Map<string, CommissionExclusivityMode>
+  >(new Map());
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -146,13 +157,17 @@ export function CommissionsPage() {
       });
       setEditedRules(rulesMap);
 
-      const exclusiveSet = new Set<string>();
+      const modesMap = new Map<string, CommissionExclusivityMode>();
       loadedUsers.forEach((user) => {
-        if (user.exclusiveCommission) {
-          exclusiveSet.add(user.id);
-        }
+        modesMap.set(
+          user.id,
+          normalizeCommissionExclusivityMode(
+            user.commissionExclusivityMode,
+            user.exclusiveCommission,
+          ),
+        );
       });
-      setExclusiveUsers(exclusiveSet);
+      setExclusivityModes(modesMap);
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error("Error al cargar los datos");
@@ -318,24 +333,30 @@ export function CommissionsPage() {
 
   const distributionNeedsAttention = rulesNeedAttention(saleTypeRules);
 
-  const handleExclusiveToggle = async (userId: string, exclusive: boolean) => {
-    try {
-      await apiClient.updateUser(userId, { exclusiveCommission: exclusive });
+  const exclusivityModeLabels: Record<CommissionExclusivityMode, string> = {
+    [COMMISSION_EXCLUSIVITY_MODES.Shared]: "Comparte",
+    [COMMISSION_EXCLUSIVITY_MODES.Exclusive]: "Exclusivo",
+    [COMMISSION_EXCLUSIVITY_MODES.ExclusiveWithReferrer]:
+      "Exclusivo (comparte con referido)",
+  };
 
-      setExclusiveUsers((prev) => {
-        const newSet = new Set(prev);
-        if (exclusive) {
-          newSet.add(userId);
-        } else {
-          newSet.delete(userId);
-        }
-        return newSet;
+  const handleModeChange = async (
+    userId: string,
+    mode: CommissionExclusivityMode,
+  ) => {
+    try {
+      await apiClient.updateUser(userId, { commissionExclusivityMode: mode });
+
+      setExclusivityModes((prev) => {
+        const next = new Map(prev);
+        next.set(userId, mode);
+        return next;
       });
 
-      toast.success(`Comisión exclusiva ${exclusive ? "activada" : "desactivada"}`);
+      toast.success(`Modo de comisión actualizado: ${exclusivityModeLabels[mode]}`);
     } catch (error) {
-      console.error("Error updating user exclusive status:", error);
-      toast.error("Error al actualizar el estado del vendedor");
+      console.error("Error updating user commission exclusivity mode:", error);
+      toast.error("Error al actualizar el modo de comisión del vendedor");
     }
   };
 
@@ -677,7 +698,7 @@ export function CommissionsPage() {
                 Vendedores con Comisión Exclusiva
               </CardTitle>
               <CardDescription>
-                Vendedores que administran completo a sus clientes y NO comparten comisión con referidos/postventa
+                Define si el vendedor comparte comisión, es exclusivo o exclusivo solo con referido
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -692,7 +713,7 @@ export function CommissionsPage() {
                     <TableRow>
                       <TableHead>Vendedor</TableHead>
                       <TableHead>Rol</TableHead>
-                      <TableHead className="text-center">Comisión Exclusiva</TableHead>
+                      <TableHead className="text-center">Modo de comisión</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -707,10 +728,35 @@ export function CommissionsPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-center">
-                            <Switch
-                              checked={exclusiveUsers.has(user.id)}
-                              onCheckedChange={(checked) => handleExclusiveToggle(user.id, checked)}
-                            />
+                            <Select
+                              value={
+                                exclusivityModes.get(user.id) ??
+                                COMMISSION_EXCLUSIVITY_MODES.Shared
+                              }
+                              onValueChange={(value) =>
+                                handleModeChange(
+                                  user.id,
+                                  value as CommissionExclusivityMode,
+                                )
+                              }
+                            >
+                              <SelectTrigger className="w-[240px] mx-auto">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={COMMISSION_EXCLUSIVITY_MODES.Shared}>
+                                  Comparte
+                                </SelectItem>
+                                <SelectItem value={COMMISSION_EXCLUSIVITY_MODES.Exclusive}>
+                                  Exclusivo
+                                </SelectItem>
+                                <SelectItem
+                                  value={COMMISSION_EXCLUSIVITY_MODES.ExclusiveWithReferrer}
+                                >
+                                  Exclusivo (comparte con referido)
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -719,8 +765,8 @@ export function CommissionsPage() {
               )}
               <div className="mt-4 p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">
-                  <strong>Nota:</strong> Los vendedores con comisión exclusiva recibirán el 100% de la comisión de sus
-                  ventas, incluso cuando haya un referido asociado. La comisión no se dividirá con el referido/postventa.
+                  <strong>Nota:</strong> Exclusivo recibe el 100% sin compartir. Exclusivo (comparte con referido) reparte
+                  solo con el referido según las reglas de tipo de venta; la parte de post venta queda para el vendedor.
                 </p>
               </div>
             </CardContent>
