@@ -556,10 +556,21 @@ export function ConfirmOrderDialog({
   //   &&
   //    payments.length >= 1);
 
+  const nestedModalOpen =
+    removeOpen || editOpen || productSelectOpen;
+
+  const preventCloseOnNestedModal = (e: Event) => {
+    if (nestedModalOpen) e.preventDefault();
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-3xl max-h-[90vh] overflow-y-auto"
+          onInteractOutside={preventCloseOnNestedModal}
+          onPointerDownOutside={preventCloseOnNestedModal}
+        >
           <DialogHeader>
             <DialogTitle>Confirmar pedido (tienda)</DialogTitle>
             <DialogDescription>
@@ -851,16 +862,16 @@ export function ConfirmOrderDialog({
 
       <RemoveProductDialog
         open={removeOpen}
-        onOpenChange={setRemoveOpen}
+        onOpenChange={(nextOpen) => {
+          setRemoveOpen(nextOpen);
+          if (!nextOpen) setRemovingProduct(null);
+        }}
         product={removingProduct}
         onConfirm={() => {
-          if (removingProduct) {
-            setProducts((list) =>
-              list.filter((p) => p.id !== removingProduct.id),
-            );
-            setRemovingProduct(null);
-            setRemoveOpen(false);
-          }
+          if (!removingProduct) return;
+          const id = removingProduct.id;
+          setProducts((list) => list.filter((p) => p.id !== id));
+          setRemoveOpen(false);
         }}
       />
     </>
