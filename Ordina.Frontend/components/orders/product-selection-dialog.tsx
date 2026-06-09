@@ -267,10 +267,18 @@ export function ProductSelectionDialog({
     return matchingProducts.reduce((sum, p) => sum + (p.quantity || 0), 0);
   };
 
+  const preventCloseOnNestedModal = (e: Event) => {
+    if (isEditDialogOpen) e.preventDefault();
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-4xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4">
+        <DialogContent
+          className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-4xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4"
+          onInteractOutside={preventCloseOnNestedModal}
+          onPointerDownOutside={preventCloseOnNestedModal}
+        >
           <DialogHeader className="pb-2 sm:pb-4">
             <DialogTitle className="text-lg sm:text-xl">
               Seleccionar Productos

@@ -1907,6 +1907,12 @@ export function ProductEditDialog({
   if (!product) return null;
 
   const categoryAttrs = currentCategory?.attributes || [];
+  const attributeDialogOpen =
+    editingAttributeId !== null && selectedProductForEdit !== null;
+
+  const preventCloseOnNestedModal = (e: Event) => {
+    if (attributeDialogOpen) e.preventDefault();
+  };
 
   return (
     <>
@@ -1961,7 +1967,11 @@ export function ProductEditDialog({
       </Dialog>
 
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-lg max-h-[90vh] overflow-y-auto"
+          onInteractOutside={preventCloseOnNestedModal}
+          onPointerDownOutside={preventCloseOnNestedModal}
+        >
           <DialogHeader className="pb-3">
             <DialogTitle className="text-lg">
               {mode === "add" ? "Agregar Producto" : "Editar Producto"}
