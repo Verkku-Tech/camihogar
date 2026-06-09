@@ -1942,6 +1942,35 @@ export interface Account {
   updatedAt: string;
 }
 
+export type CommissionExclusivityMode =
+  | "shared"
+  | "exclusive"
+  | "exclusive_with_referrer";
+
+export const COMMISSION_EXCLUSIVITY_MODES = {
+  Shared: "shared",
+  Exclusive: "exclusive",
+  ExclusiveWithReferrer: "exclusive_with_referrer",
+} as const;
+
+export function normalizeCommissionExclusivityMode(
+  mode?: string | null,
+  legacyExclusive?: boolean,
+): CommissionExclusivityMode {
+  if (
+    mode === COMMISSION_EXCLUSIVITY_MODES.Exclusive ||
+    mode === COMMISSION_EXCLUSIVITY_MODES.ExclusiveWithReferrer
+  ) {
+    return mode;
+  }
+
+  if (legacyExclusive) {
+    return COMMISSION_EXCLUSIVITY_MODES.Exclusive;
+  }
+
+  return COMMISSION_EXCLUSIVITY_MODES.Shared;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -1956,9 +1985,19 @@ export interface User {
   status: "active" | "inactive";
   createdAt?: string;
   // Campos para comisiones
-  exclusiveCommission?: boolean; // Vendedores que NO comparten comisión con referidos
+  commissionExclusivityMode?: CommissionExclusivityMode;
+  exclusiveCommission?: boolean; // Legacy; derivado del modo
   baseSalary?: number; // Sueldo fijo del vendedor
   baseSalaryCurrency?: string; // Moneda del sueldo
+}
+
+export function getUserCommissionExclusivityMode(
+  user?: User,
+): CommissionExclusivityMode {
+  return normalizeCommissionExclusivityMode(
+    user?.commissionExclusivityMode,
+    user?.exclusiveCommission,
+  );
 }
 
 export interface Vendor {
@@ -5667,6 +5706,10 @@ const userFromBackendDto = (dto: UserResponseDto): User => ({
   role: dto.role as User["role"],
   status: dto.status as "active" | "inactive",
   createdAt: dto.createdAt || new Date().toISOString(),
+  commissionExclusivityMode: normalizeCommissionExclusivityMode(
+    dto.commissionExclusivityMode,
+    dto.exclusiveCommission,
+  ),
   exclusiveCommission: dto.exclusiveCommission,
   baseSalary:
     dto.baseSalary !== undefined && dto.baseSalary !== null
@@ -6271,16 +6314,90 @@ export type ProductCommissionSplit = {
   isShared: boolean;
 };
 
+function computeCommissionExclusivitySplit(
+  exclusivityMode: CommissionExclusivityMode,
+  isSharedSale: boolean,
+  hasReferrer: boolean,
+  qty: number,
+  familyCommission: number,
+  rule?: SaleTypeCommissionRule | null,
+): ProductCommissionSplit {
+  if (
+    exclusivityMode === COMMISSION_EXCLUSIVITY_MODES.Exclusive ||
+    (exclusivityMode === COMMISSION_EXCLUSIVITY_MODES.ExclusiveWithReferrer &&
+      !hasReferrer)
+  ) {
+    return {
+      vendorCommission: familyCommission,
+      referrerCommission: 0,
+      postventaCommission: 0,
+      isShared: false,
+    };
+  }
+
+  if (
+    exclusivityMode === COMMISSION_EXCLUSIVITY_MODES.ExclusiveWithReferrer &&
+    hasReferrer
+  ) {
+    if (rule) {
+      const postventaRate = rule.postventaRate ?? 0;
+      const vendorRate = rule.vendorRate + postventaRate;
+      return {
+        vendorCommission: vendorRate * qty,
+        referrerCommission: rule.referrerRate * qty,
+        postventaCommission: 0,
+        isShared: true,
+      };
+    }
+
+    const half = familyCommission / 2;
+    return {
+      vendorCommission: half,
+      referrerCommission: half,
+      postventaCommission: 0,
+      isShared: true,
+    };
+  }
+
+  if (exclusivityMode === COMMISSION_EXCLUSIVITY_MODES.Shared && isSharedSale) {
+    if (rule) {
+      const postventaRate = rule.postventaRate ?? 0;
+      return {
+        vendorCommission: rule.vendorRate * qty,
+        referrerCommission: rule.referrerRate * qty,
+        postventaCommission: postventaRate * qty,
+        isShared: true,
+      };
+    }
+
+    const half = familyCommission / 2;
+    return {
+      vendorCommission: half,
+      referrerCommission: half,
+      postventaCommission: 0,
+      isShared: true,
+    };
+  }
+
+  return {
+    vendorCommission: familyCommission,
+    referrerCommission: 0,
+    postventaCommission: 0,
+    isShared: false,
+  };
+}
+
 export const computeProductCommissionSplit = (
   order: Order,
   product: OrderProduct,
   ctx: CommissionCalculationContext,
 ): ProductCommissionSplit => {
   const mainVendor = ctx.users.find((u) => u.id === order.vendorId);
-  const isExclusiveVendor = mainVendor?.exclusiveCommission === true;
+  const exclusivityMode = getUserCommissionExclusivityMode(mainVendor);
   const referrerId = order.referrerId?.trim();
   const hasReferrer = !!referrerId;
-  const isSharedSale = hasReferrer && !isExclusiveVendor;
+  const isSharedSale =
+    hasReferrer && exclusivityMode === COMMISSION_EXCLUSIVITY_MODES.Shared;
 
   const baseRate = getFamilyCommissionUsdPerUnitForProduct(
     product,
@@ -6304,7 +6421,11 @@ export const computeProductCommissionSplit = (
         isShared: false,
       };
     }
-    if (isExclusiveVendor) {
+    if (
+      exclusivityMode === COMMISSION_EXCLUSIVITY_MODES.Exclusive ||
+      (exclusivityMode === COMMISSION_EXCLUSIVITY_MODES.ExclusiveWithReferrer &&
+        !hasReferrer)
+    ) {
       return {
         vendorCommission: vendorFull,
         referrerCommission: 0,
@@ -6326,37 +6447,17 @@ export const computeProductCommissionSplit = (
     };
   }
 
-  if (isSharedSale) {
-    const saleType = getOrderSaleTypeCodeForCommission(order);
-    const rule = pickSaleTypeCommissionRule(
-      ctx.saleTypeRules,
-      saleType,
-      baseRate,
-    );
-    if (rule) {
-      const pv = rule.postventaRate ?? 0;
-      return {
-        vendorCommission: rule.vendorRate * qty,
-        referrerCommission: rule.referrerRate * qty,
-        postventaCommission: pv * qty,
-        isShared: true,
-      };
-    }
-    const half = familyCommission / 2;
-    return {
-      vendorCommission: half,
-      referrerCommission: half,
-      postventaCommission: 0,
-      isShared: true,
-    };
-  }
+  const saleType = getOrderSaleTypeCodeForCommission(order);
+  const rule = pickSaleTypeCommissionRule(ctx.saleTypeRules, saleType, baseRate);
 
-  return {
-    vendorCommission: familyCommission,
-    referrerCommission: 0,
-    postventaCommission: 0,
-    isShared: false,
-  };
+  return computeCommissionExclusivitySplit(
+    exclusivityMode,
+    isSharedSale,
+    hasReferrer,
+    qty,
+    familyCommission,
+    rule,
+  );
 };
 
 /**

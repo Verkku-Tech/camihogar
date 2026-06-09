@@ -1694,6 +1694,7 @@ export interface UserResponseDto {
   createdAt?: string;
   permissions?: string[];
   exclusiveCommission?: boolean;
+  commissionExclusivityMode?: "shared" | "exclusive" | "exclusive_with_referrer";
   baseSalary?: number;
   baseSalaryCurrency?: string;
 }
@@ -1714,6 +1715,7 @@ export interface UpdateUserDto {
   role?: string;
   status?: string;
   exclusiveCommission?: boolean;
+  commissionExclusivityMode?: "shared" | "exclusive" | "exclusive_with_referrer";
   baseSalary?: number;
   baseSalaryCurrency?: string;
 }

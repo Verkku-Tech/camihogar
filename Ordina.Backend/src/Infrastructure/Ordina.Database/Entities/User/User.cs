@@ -32,8 +32,23 @@ public class User
     public string? PasswordHash { get; set; } // Para autenticación
 
     // Campos para comisiones
+    [BsonElement("commissionExclusivityMode")]
+    public string? CommissionExclusivityModeStored { get; set; }
+
+    /// <summary>Campo legacy en MongoDB; se mantiene sincronizado al persistir.</summary>
     [BsonElement("exclusiveCommission")]
-    public bool ExclusiveCommission { get; set; } = false; // Vendedores que NO comparten comisión con referidos
+    public bool ExclusiveCommissionStored { get; set; } = false;
+
+    [BsonIgnore]
+    public string CommissionExclusivityMode
+    {
+        get => CommissionExclusivityModes.Normalize(CommissionExclusivityModeStored, ExclusiveCommissionStored);
+        set => CommissionExclusivityModeStored = value;
+    }
+
+    [BsonIgnore]
+    public bool ExclusiveCommission =>
+        CommissionExclusivityModes.IsExclusive(CommissionExclusivityMode);
 
     [BsonElement("baseSalary")]
     [BsonRepresentation(BsonType.Decimal128)]
@@ -41,4 +56,16 @@ public class User
 
     [BsonElement("baseSalaryCurrency")]
     public string BaseSalaryCurrency { get; set; } = "USD"; // Moneda del sueldo
+
+    /// <summary>
+    /// Normaliza el modo desde el valor almacenado o el flag legacy y sincroniza el flag legacy.
+    /// </summary>
+    public void NormalizeCommissionExclusivity()
+    {
+        var normalized = CommissionExclusivityModes.Normalize(
+            CommissionExclusivityModeStored,
+            ExclusiveCommissionStored);
+        CommissionExclusivityModeStored = normalized;
+        ExclusiveCommissionStored = CommissionExclusivityModes.IsExclusive(normalized);
+    }
 }
