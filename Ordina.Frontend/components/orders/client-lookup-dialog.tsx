@@ -89,6 +89,10 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
     handleClientSelect(newClient)
   }
 
+  const displayClients = clients
+  const emptyMessage = searchTerm.trim()
+    ? "No se encontraron clientes"
+    : "No hay clientes activos"
   const preventCloseOnNestedModal = (e: Event) => {
     if (isCreateDialogOpen) e.preventDefault();
   };
