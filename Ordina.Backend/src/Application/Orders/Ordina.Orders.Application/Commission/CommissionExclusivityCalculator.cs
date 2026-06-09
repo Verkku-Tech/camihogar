@@ -74,12 +74,11 @@ public static class CommissionExclusivityCalculator
     {
         if (rule != null)
         {
-            var vendorRate = rule.VendorRate + rule.PostventaRate;
             return new CommissionSplitResult(
-                vendorRate * qty,
+                rule.VendorRate * qty,
                 rule.ReferrerRate * qty,
                 0m,
-                vendorRate,
+                rule.VendorRate,
                 rule.ReferrerRate,
                 0m);
         }

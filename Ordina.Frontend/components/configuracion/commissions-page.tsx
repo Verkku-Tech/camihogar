@@ -766,7 +766,7 @@ export function CommissionsPage() {
               <div className="mt-4 p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">
                   <strong>Nota:</strong> Exclusivo recibe el 100% sin compartir. Exclusivo (comparte con referido) reparte
-                  solo con el referido según las reglas de tipo de venta; la parte de post venta queda para el vendedor.
+                  solo con el referido según vendorRate y referrerRate de las reglas de tipo de venta; post venta no aplica.
                 </p>
               </div>
             </CardContent>
