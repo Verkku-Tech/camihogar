@@ -1494,20 +1494,61 @@ export default function OrderDetailPage() {
           <main className="flex-1 overflow-y-auto p-4 lg:p-6">
             <div className="max-w-6xl mx-auto space-y-6">
               {/* Header */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <Button
-                    variant="ghost"
-                    onClick={() => router.push("/pedidos")}
-                  >
-                    <ArrowLeft className="w-4 h-4 mr-2" />
-                    Volver
-                  </Button>
-                  <OrderPdfDownloadButton order={order} client={client} />
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                {/* Barra de acciones — solo móvil */}
+                <div className="flex items-center justify-between gap-2 sm:hidden">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => router.push("/pedidos")}
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-1" />
+                      Volver
+                    </Button>
+                    <OrderPdfDownloadButton
+                      order={order}
+                      client={client}
+                      compact
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {(order.status === "Generado" ||
+                      order.status === "Generada") &&
+                      canValidateOrders && (
+                        <Button
+                          size="sm"
+                          onClick={handleValidateOrder}
+                          disabled={validatingOrder}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                        >
+                          {validatingOrder && (
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          )}
+                          Validar
+                        </Button>
+                      )}
+                    <Badge className={getStatusColor(order.status)}>
+                      {order.status}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 min-w-0 flex-1 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="hidden sm:flex items-center gap-4 shrink-0">
+                    <Button
+                      variant="ghost"
+                      onClick={() => router.push("/pedidos")}
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Volver
+                    </Button>
+                    <OrderPdfDownloadButton order={order} client={client} />
+                  </div>
                   <HoverCard openDelay={300} closeDelay={100}>
                     <HoverCardTrigger asChild>
-                      <div className="cursor-help border-b border-dashed border-transparent hover:border-muted-foreground/40 pb-0.5 transition-colors">
-                        <h1 className="text-2xl font-bold">
+                      <div className="cursor-help border-b border-dashed border-transparent hover:border-muted-foreground/40 pb-0.5 transition-colors min-w-0">
+                        <h1 className="text-xl sm:text-2xl font-bold break-words">
                           {isReservationOrder(order)
                             ? "Reserva "
                             : "Pedido "}
@@ -1538,7 +1579,7 @@ export default function OrderDetailPage() {
                         <p className="text-sm text-muted-foreground">
                           {new Date(order.createdAt).toLocaleString()}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <p className="hidden sm:block text-xs text-muted-foreground mt-0.5">
                           Pasa el cursor para ver resumen del pedido
                         </p>
                       </div>
@@ -1619,7 +1660,7 @@ export default function OrderDetailPage() {
                     </HoverCardContent>
                   </HoverCard>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="hidden sm:flex items-center gap-3 shrink-0">
                   {(order.status === "Generado" ||
                     order.status === "Generada") &&
                     canValidateOrders && (
@@ -1649,7 +1690,7 @@ export default function OrderDetailPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     <div>
                       <p className="text-sm text-muted-foreground">Cliente</p>
                       <p className="font-medium">{order.clientName}</p>

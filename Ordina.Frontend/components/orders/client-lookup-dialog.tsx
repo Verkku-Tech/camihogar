@@ -151,16 +151,13 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
     handleClientSelect(clientFromBackendDto(newClientDto))
   }
 
-<<<<<<< HEAD
   const displayClients = clients
   const emptyMessage = searchTerm.trim()
     ? "No se encontraron clientes"
     : "No hay clientes activos"
-=======
   const preventCloseOnNestedModal = (e: Event) => {
     if (isCreateDialogOpen) e.preventDefault();
   };
->>>>>>> 0b4a522 (feat: implement nested modal prevention logic across order dialogs to enhance user experience by preventing unintended closures during client and product selection)
 
   return (
     <>
