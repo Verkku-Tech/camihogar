@@ -1409,17 +1409,22 @@ public class ReportService : IReportService
                 var lineCtx = ResolveLineCommissionContext(product, order);
 
                 var mainVendor = users.FirstOrDefault(u => u.Id == lineCtx.EffectiveVendorId);
-                var isExclusiveVendor = mainVendor?.ExclusiveCommission ?? false;
+                mainVendor?.NormalizeCommissionExclusivity();
+                var exclusivityMode = mainVendor?.CommissionExclusivityMode ?? CommissionExclusivityModes.Shared;
+                var isExclusiveVendor = CommissionExclusivityModes.IsExclusive(exclusivityMode);
                 var vendorBaseSalary = mainVendor?.BaseSalary ?? 0m;
+                var hasReferrer = !string.IsNullOrWhiteSpace(lineCtx.EffectiveReferrerId);
 
                 var (vendorCommission, referrerCommission, postventaCommission, baseRate, appliedVendorRate, appliedReferrerRate, appliedPostventaRate) =
                     CalculateProductCommission(
-                        product, order, productCommissions, saleTypeRules, isExclusiveVendor, lineCtx.IsSharedSale);
+                        product, order, productCommissions, saleTypeRules, exclusivityMode, lineCtx.IsSharedSale, hasReferrer);
 
                 if (vendorCommission == 0m && referrerCommission == 0m && postventaCommission == 0m)
                     continue;
 
-                if (lineCtx.IsSharedSale && !isExclusiveVendor)
+                var isDistributedSale = referrerCommission > 0m || postventaCommission > 0m;
+
+                if (isDistributedSale)
                 {
                     var postventaLabel = string.IsNullOrWhiteSpace(order.PostventaName)
                         ? "Post venta"
@@ -1542,8 +1547,9 @@ public class ReportService : IReportService
             Order order,
             IEnumerable<ProductCommission> productCommissions,
             IEnumerable<SaleTypeCommissionRule> saleTypeRules,
-            bool isExclusiveVendor,
-            bool isSharedSale)
+            string exclusivityMode,
+            bool isSharedSale,
+            bool hasReferrer)
     {
         // 1. Obtener comisión base de la categoría del producto
         var categoryCommission = productCommissions.FirstOrDefault(c =>
@@ -1559,31 +1565,33 @@ public class ReportService : IReportService
 
         var qty = Math.Max(product.Quantity, 1);
         var familyCommission = baseCommissionRate * qty;
+        var saleType = DetermineSaleType(order);
+        var rule = SaleTypeCommissionTierResolver.PickRule(saleTypeRules, saleType, baseCommissionRate, _logger);
 
-        if (isSharedSale && !isExclusiveVendor)
+        if (isSharedSale && exclusivityMode == CommissionExclusivityModes.Shared && rule == null)
         {
-            // VENTA COMPARTIDA: USD fijos por rol × cantidad, regla por tipo de venta + tier USD/u familia
-            var saleType = DetermineSaleType(order);
-            var rule = SaleTypeCommissionTierResolver.PickRule(saleTypeRules, saleType, baseCommissionRate, _logger);
-
-            if (rule != null)
-            {
-                var vendorCommission = rule.VendorRate * qty;
-                var referrerCommission = rule.ReferrerRate * qty;
-                var postventaCommission = rule.PostventaRate * qty;
-
-                return (vendorCommission, referrerCommission, postventaCommission, baseCommissionRate, rule.VendorRate, rule.ReferrerRate, rule.PostventaRate);
-            }
-
-            _logger.LogWarning("No se encontró regla de distribución para el tipo de venta '{SaleType}'. Dividiendo 50/50.", saleType);
-            var halfCommission = familyCommission / 2;
-            return (halfCommission, halfCommission, 0m, baseCommissionRate, 50m, 50m, 0m);
+            _logger.LogWarning(
+                "No se encontró regla de distribución para el tipo de venta '{SaleType}'. Dividiendo 50/50.",
+                saleType);
         }
-        else
-        {
-            // VENTA NORMAL o VENDEDOR EXCLUSIVO: comisión familia completa al vendedor de tienda
-            return (familyCommission, 0m, 0m, baseCommissionRate, 100m, 0m, 0m);
-        }
+
+        var split = CommissionExclusivityCalculator.Calculate(
+            exclusivityMode,
+            isSharedSale,
+            hasReferrer,
+            baseCommissionRate,
+            qty,
+            familyCommission,
+            rule);
+
+        return (
+            split.VendorCommission,
+            split.ReferrerCommission,
+            split.PostventaCommission,
+            baseCommissionRate,
+            split.AppliedVendorRate,
+            split.AppliedReferrerRate,
+            split.AppliedPostventaRate);
     }
 
     /// <summary>

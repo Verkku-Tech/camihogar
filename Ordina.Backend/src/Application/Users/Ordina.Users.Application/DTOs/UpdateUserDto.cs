@@ -21,6 +21,10 @@ public class UpdateUserDto
     public string? Status { get; set; }
 
     // Campos para comisiones
+    /// <summary>shared | exclusive | exclusive_with_referrer</summary>
+    public string? CommissionExclusivityMode { get; set; }
+
+    [Obsolete("Usar CommissionExclusivityMode")]
     public bool? ExclusiveCommission { get; set; } // Vendedores que NO comparten comisión con referidos
 
     [Range(0, double.MaxValue, ErrorMessage = "El sueldo base debe ser un valor positivo")]

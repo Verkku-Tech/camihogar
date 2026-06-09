@@ -1,4 +1,5 @@
 using Ordina.Database.Indexes;
+using Ordina.Database.Migrations;
 using Ordina.Database.Seeders;
 
 namespace Ordina.Database.MongoContext;
@@ -12,6 +13,9 @@ public static class MongoDbContextExtensions
     {
         // Crear todos los índices
         IndexManager.CreateAllIndexes(context);
+
+        // Migraciones de datos
+        await UserCommissionExclusivityMigration.RunAsync(context);
 
         // Ejecutar seeders
         await DatabaseSeeder.SeedAllAsync(context);

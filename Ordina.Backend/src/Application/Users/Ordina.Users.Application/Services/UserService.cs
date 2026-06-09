@@ -195,8 +195,24 @@ public class UserService : IUserService
                 existingUser.Status = updateDto.Status;
 
             // Actualizar campos de comisiones
-            if (updateDto.ExclusiveCommission.HasValue)
-                existingUser.ExclusiveCommission = updateDto.ExclusiveCommission.Value;
+            if (!string.IsNullOrWhiteSpace(updateDto.CommissionExclusivityMode))
+            {
+                if (!CommissionExclusivityModes.IsValid(updateDto.CommissionExclusivityMode))
+                {
+                    throw new ArgumentException(
+                        $"Modo de exclusividad inválido: {updateDto.CommissionExclusivityMode}");
+                }
+
+                existingUser.CommissionExclusivityMode = updateDto.CommissionExclusivityMode.Trim();
+            }
+            else if (updateDto.ExclusiveCommission.HasValue)
+            {
+                existingUser.CommissionExclusivityMode = updateDto.ExclusiveCommission.Value
+                    ? CommissionExclusivityModes.Exclusive
+                    : CommissionExclusivityModes.Shared;
+            }
+
+            existingUser.NormalizeCommissionExclusivity();
 
             if (updateDto.BaseSalary.HasValue)
                 existingUser.BaseSalary = updateDto.BaseSalary.Value;
@@ -278,6 +294,8 @@ public class UserService : IUserService
 
     private static UserResponseDto MapToDto(User user)
     {
+        user.NormalizeCommissionExclusivity();
+
         return new UserResponseDto
         {
             Id = user.Id,
@@ -287,6 +305,7 @@ public class UserService : IUserService
             Role = user.Role,
             Status = user.Status,
             CreatedAt = user.CreatedAt,
+            CommissionExclusivityMode = user.CommissionExclusivityMode,
             ExclusiveCommission = user.ExclusiveCommission,
             BaseSalary = user.BaseSalary,
             BaseSalaryCurrency = user.BaseSalaryCurrency
