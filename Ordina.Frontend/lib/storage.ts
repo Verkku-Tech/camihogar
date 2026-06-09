@@ -6340,10 +6340,8 @@ function computeCommissionExclusivitySplit(
     hasReferrer
   ) {
     if (rule) {
-      const postventaRate = rule.postventaRate ?? 0;
-      const vendorRate = rule.vendorRate + postventaRate;
       return {
-        vendorCommission: vendorRate * qty,
+        vendorCommission: rule.vendorRate * qty,
         referrerCommission: rule.referrerRate * qty,
         postventaCommission: 0,
         isShared: true,
