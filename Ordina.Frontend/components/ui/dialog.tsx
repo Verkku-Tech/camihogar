@@ -36,7 +36,11 @@ function isInsideRadixPortaledLayer(target: EventTarget | null): boolean {
       target.closest("[data-slot='popover-content']") ||
       target.closest("[data-radix-select-content]") ||
       target.closest("[data-radix-dropdown-menu-content]") ||
-      target.closest("[data-radix-context-menu-content]")
+      target.closest("[data-radix-context-menu-content]") ||
+      target.closest('[role="alertdialog"]') ||
+      target.closest("[data-radix-alert-dialog-content]") ||
+      target.closest("[data-radix-alert-dialog-overlay]") ||
+      target.closest("[data-radix-dialog-content]")
   )
 }
 
