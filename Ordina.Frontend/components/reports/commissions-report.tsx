@@ -27,6 +27,7 @@ import {
   type User,
 } from "@/lib/storage"
 import { isDateInReportRange, parseReportDateRange } from "@/lib/report-date-range"
+import { isReservationOrder } from "@/lib/order-document-types"
 
 interface CommissionReportRow {
   fecha: string
@@ -85,6 +86,13 @@ function resolveReferrerDisplayName(
 
 function isCommissionSeller(user: User) {
   return user.role === "Store Seller" || user.role === "Online Seller"
+}
+
+/** Solo pedidos confirmados (ORD-); excluye reservas para no duplicar al convertir RES→ORD. */
+function isCommissionReportOrder(order: Order): boolean {
+  if (order.status === "Generado" || order.status === "Generada") return false
+  if (isReservationOrder(order)) return false
+  return true
 }
 
 const TEAMS = [
@@ -271,12 +279,11 @@ export function CommissionsReport() {
         )
         const { start, end } = parseReportDateRange(startDate, endDate)
 
-        const filteredOrders = orders.filter((order) => {
-          if (order.status === "Generado" || order.status === "Generada") {
-            return false
-          }
-          return isDateInReportRange(order.createdAt, start, end)
-        })
+        const filteredOrders = orders.filter(
+          (order) =>
+            isCommissionReportOrder(order) &&
+            isDateInReportRange(order.createdAt, start, end),
+        )
 
         let reportRows = await buildReportRows(
           filteredOrders,
@@ -321,12 +328,11 @@ export function CommissionsReport() {
       const userNameById = new Map(users.map((u) => [u.id, u.name] as const))
       const { start, end } = parseReportDateRange(startDate, endDate)
 
-      const filteredOrders = orders.filter((order) => {
-        if (order.status === "Generado" || order.status === "Generada") {
-          return false
-        }
-        return isDateInReportRange(order.createdAt, start, end)
-      })
+      const filteredOrders = orders.filter(
+        (order) =>
+          isCommissionReportOrder(order) &&
+          isDateInReportRange(order.createdAt, start, end),
+      )
 
       let reportRows = await buildReportRows(
         filteredOrders,

@@ -1393,7 +1393,8 @@ public class ReportService : IReportService
             if (order.CreatedAt < adjustedStartDate || order.CreatedAt > adjustedEndDate)
                 continue;
 
-            if (OrderDocumentTypes.IsReservationType(order.Type))
+            if (OrderDocumentTypes.IsReservationType(order.Type)
+                || OrderDocumentTypes.IsReservationOrderNumber(order.OrderNumber))
                 continue;
 
             // Filtrar por vendedor si se especifica
