@@ -180,13 +180,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   };
 
   const confirmRemoveProduct = () => {
-    if (productToRemove) {
-      orderForm.setSelectedProducts((products) =>
-        products.filter((p) => p.id !== productToRemove.id),
-      );
-      setProductToRemove(null);
-      setIsRemoveProductOpen(false);
-    }
+    if (!productToRemove) return;
+    const id = productToRemove.id;
+    orderForm.setSelectedProducts((products) =>
+      products.filter((p) => p.id !== id),
+    );
+    setIsRemoveProductOpen(false);
   };
 
   // Handlers de pagos (mantener aquí por ahora, pueden moverse al hook después)
@@ -1086,10 +1085,26 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     }
   };
 
+  const nestedModalOpen =
+    isRemoveProductOpen ||
+    isProductEditOpen ||
+    isClientLookupOpen ||
+    isProductSelectionOpen ||
+    isConfirmationOpen ||
+    orderForm.needsDraftPrompt;
+
+  const preventCloseOnNestedModal = (e: Event) => {
+    if (nestedModalOpen) e.preventDefault();
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4">
+        <DialogContent
+          className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4"
+          onInteractOutside={preventCloseOnNestedModal}
+          onPointerDownOutside={preventCloseOnNestedModal}
+        >
           {/* relative solo en wrapper interno: evita que tailwind-merge quite position:fixed del DialogContent base */}
           <div className="relative flex min-h-0 flex-1 flex-col gap-4">
             {isCheckingClientReservation && (
@@ -1286,7 +1301,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       <RemoveProductDialog
         open={isRemoveProductOpen}
-        onOpenChange={setIsRemoveProductOpen}
+        onOpenChange={(nextOpen) => {
+          setIsRemoveProductOpen(nextOpen);
+          if (!nextOpen) setProductToRemove(null);
+        }}
         product={productToRemove}
         onConfirm={confirmRemoveProduct}
       />

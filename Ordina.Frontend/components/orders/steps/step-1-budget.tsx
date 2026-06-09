@@ -564,18 +564,26 @@ export function Step1Budget({
                           {canEditProducts && (
                             <div className="flex gap-2 pt-2 border-t">
                               <Button
+                                type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={() => onEditProduct(product)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEditProduct(product);
+                                }}
                                 className="flex-1"
                               >
                                 <Edit className="w-4 h-4 mr-2" />
                                 Editar
                               </Button>
                               <Button
+                                type="button"
                                 variant="destructive"
                                 size="sm"
-                                onClick={() => onRemoveProduct(product)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onRemoveProduct(product);
+                                }}
                                 className="flex-1"
                               >
                                 <Trash2 className="w-4 h-4 mr-2" />
