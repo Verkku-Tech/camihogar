@@ -154,7 +154,7 @@ const defaultNavigationItems: NavigationItem[] = [
     href: "/configuracion/sistema",
     category: "configuration",
     active: true,
-    description: "Mantenimiento de cache local (solo Super Administrador)",
+    description: "Mantenimiento de cache local del navegador",
   },
 ]
 

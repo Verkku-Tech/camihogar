@@ -65,7 +65,7 @@ const configurationSubmenu = [
   { id: "comisiones", name: "Comisiones", href: "/configuracion/comisiones", icon: Percent, permission: "settings.company.manage" },
   { id: "roles", name: "Roles y Permisos", href: "/configuracion/roles", icon: Shield, permission: "roles.read" },
   { id: "pin-acceso", name: "PIN de Acceso", href: "/configuracion/pin-acceso", icon: KeyRound, adminOnly: true },
-  { id: "sistema", name: "Sistema", href: "/configuracion/sistema", icon: Database, superAdminOnly: true },
+  { id: "sistema", name: "Sistema", href: "/configuracion/sistema", icon: Database },
 ]
 
 const permissionMap: Record<string, string | string[]> = {

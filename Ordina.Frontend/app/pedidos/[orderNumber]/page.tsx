@@ -637,12 +637,19 @@ export default function OrderDetailPage() {
     className,
     inline,
     paymentUsdRate,
+    amountCurrency,
   }: {
     amount: number;
     className?: string;
     inline?: boolean;
     paymentUsdRate?: number;
+    amountCurrency?: Currency;
   }) => {
+    // Moneda en la que se interpreta `amount`. Para pagos cuya moneda original
+    // difiere de la base del pedido (ej. pago en Bs en un pedido USD), el caller
+    // debe pasar `amountCurrency` para evitar tratar el monto como si estuviera
+    // en la base del pedido.
+    const effectiveBaseCurrency: Currency = amountCurrency ?? orderBaseCurrency;
     const commercialRates =
       paymentUsdRate && paymentUsdRate > 0
         ? {
@@ -672,10 +679,14 @@ export default function OrderDetailPage() {
           ? { rate: commercialRates.EUR.rate }
           : undefined,
       };
-      const formatted = formatDualCurrencyAmounts(amount, orderBaseCurrency, {
-        commercialRates: ratesInput,
-        liveRates: ratesInput,
-      });
+      const formatted = formatDualCurrencyAmounts(
+        amount,
+        effectiveBaseCurrency,
+        {
+          commercialRates: ratesInput,
+          liveRates: ratesInput,
+        },
+      );
       if (inline) {
         return (
           <span className={className}>
@@ -701,8 +712,15 @@ export default function OrderDetailPage() {
     }
 
     const formatted = order
-      ? formatOrderAmountWithOrderRateBs(amount, order)
-      : formatCurrencyWithUsdPrimary(amount, orderBaseCurrency, localExchangeRates);
+      ? formatOrderAmountWithOrderRateBs(amount, {
+          ...order,
+          baseCurrency: effectiveBaseCurrency,
+        })
+      : formatCurrencyWithUsdPrimary(
+          amount,
+          effectiveBaseCurrency,
+          localExchangeRates,
+        );
 
     if (inline) {
       return (
@@ -2485,6 +2503,7 @@ export default function OrderDetailPage() {
                                 {originalPayment.currency === "Bs" ? (
                                   <OrderCurrency
                                     amount={originalPayment.amount}
+                                    amountCurrency="Bs"
                                     paymentUsdRate={
                                       paymentExchangeRate
                                     }
@@ -2574,6 +2593,7 @@ export default function OrderDetailPage() {
                               {originalPayment.currency === "Bs" ? (
                                 <OrderCurrency
                                   amount={originalPayment.amount}
+                                  amountCurrency="Bs"
                                   paymentUsdRate={paymentExchangeRate}
                                 />
                               ) : (
