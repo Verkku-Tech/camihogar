@@ -488,9 +488,10 @@ export function CommissionsPage() {
               </CardTitle>
               <CardDescription>
                 Por cada tipo de venta hay tres filas según el nivel de comisión familia del producto (2.5, 5 o
-                7.5 USD/u). Los montos de vendedor, post venta y referido son USD fijos por unidad vendida en
-                ventas compartidas (pueden diferir del monto familia). La columna &quot;Familias&quot; muestra qué
-                categorías usan cada nivel (pestaña anterior).
+                7.5 USD/u). En ventas compartidas (modo Comparte), vendedor, post venta y referido usan los USD/u
+                de cada columna. La columna Total es la comisión familia; en exclusivo con referido el vendedor cobra
+                ese total y el referido cobra su columna aparte. La columna &quot;Familias&quot; indica qué categorías
+                usan cada nivel (pestaña anterior).
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -578,10 +579,10 @@ export function CommissionsPage() {
                             editedRules[rk]?.referrerRate ?? rule.referrerRate;
                           const postventaUsd =
                             editedRules[rk]?.postventaRate ?? rule.postventaRate ?? 0;
-                          const totalUsd = vendorUsd + referrerUsd + postventaUsd;
                           const tier = rule.familyCommissionUsdPerUnit;
                           const families = familiesForTier(productCommissions, tier);
-                          const totalDiffersFromTier = !tierEquals(totalUsd, tier);
+                          const sharedPoolUsd = vendorUsd + referrerUsd + postventaUsd;
+                          const sharedPoolDiffersFromTier = !tierEquals(sharedPoolUsd, tier);
 
                           return (
                             <TableRow key={rule.id}>
@@ -658,15 +659,19 @@ export function CommissionsPage() {
                               </TableCell>
                               <TableCell className="text-center">
                                 <Badge
-                                  variant={totalDiffersFromTier ? "secondary" : "default"}
-                                  title={
-                                    totalDiffersFromTier
-                                      ? `Total reparto (${totalUsd}) distinto del tier familia (${tier})`
-                                      : undefined
-                                  }
+                                  variant="default"
+                                  title="Comisión familia (total para vendedor exclusivo con referido)"
                                 >
-                                  {totalUsd}
+                                  {tier}
                                 </Badge>
+                                {sharedPoolDiffersFromTier && (
+                                  <p
+                                    className="mt-1 text-xs text-muted-foreground"
+                                    title={`Reparto compartido: ${sharedPoolUsd} USD/u (vendedor + post venta + referido)`}
+                                  >
+                                    Comparte: {sharedPoolUsd}
+                                  </p>
+                                )}
                               </TableCell>
                             </TableRow>
                           );
@@ -765,8 +770,9 @@ export function CommissionsPage() {
               )}
               <div className="mt-4 p-4 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground">
-                  <strong>Nota:</strong> Exclusivo recibe el 100% sin compartir. Exclusivo (comparte con referido) reparte
-                  solo con el referido según vendorRate y referrerRate de las reglas de tipo de venta; post venta no aplica.
+                  <strong>Nota:</strong> Exclusivo recibe la comisión familia completa sin compartir. Exclusivo (comparte
+                  con referido) recibe también la comisión familia completa y el referido cobra su monto de la tabla;
+                  post venta no aplica en ese modo.
                 </p>
               </div>
             </CardContent>

@@ -75,10 +75,10 @@ public static class CommissionExclusivityCalculator
         if (rule != null)
         {
             return new CommissionSplitResult(
-                rule.VendorRate * qty,
+                familyCommission,
                 rule.ReferrerRate * qty,
                 0m,
-                rule.VendorRate,
+                baseCommissionRate,
                 rule.ReferrerRate,
                 0m);
         }

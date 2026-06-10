@@ -6064,7 +6064,7 @@ function computeCommissionExclusivitySplit(
   ) {
     if (rule) {
       return {
-        vendorCommission: rule.vendorRate * qty,
+        vendorCommission: familyCommission,
         referrerCommission: rule.referrerRate * qty,
         postventaCommission: 0,
         isShared: true,
