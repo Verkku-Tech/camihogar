@@ -64,7 +64,6 @@ import { useCurrency } from "@/contexts/currency-context";
 import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
 import { apiClient } from "@/lib/api-client";
-import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility";
 import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
 import { CASHEA_FINANCED_METHOD_LABEL } from "@/lib/order-payments";
 import { appliedUsdToBs } from "@/lib/order-store-credit-usd";
@@ -511,11 +510,6 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const orderNumber = params.orderNumber as string;
   const { user } = useAuth();
-  const {
-    applies: onlineSellerFilter,
-    isTeamOrder,
-    isLoading: onlineSellerVisibilityLoading,
-  } = useOnlineSellerVisibility();
   const canValidateOrders =
     user?.role === "Super Administrator" || user?.role === "Administrator";
   const { formatWithPreference, preferredCurrency } = useCurrency();
@@ -855,8 +849,6 @@ export default function OrderDetailPage() {
   >({});
 
   useEffect(() => {
-    if (onlineSellerFilter && onlineSellerVisibilityLoading) return;
-
     const loadOrder = async () => {
       try {
         // Cargar categorías y productos
@@ -872,12 +864,6 @@ export default function OrderDetailPage() {
 
         if (!foundOrder) {
           // Redirigir si no se encuentra
-          router.push("/pedidos");
-          return;
-        }
-
-        if (onlineSellerFilter && !isTeamOrder(foundOrder)) {
-          toast.error("No tienes permiso para ver este pedido.");
           router.push("/pedidos");
           return;
         }
@@ -995,13 +981,7 @@ export default function OrderDetailPage() {
     if (orderNumber) {
       loadOrder();
     }
-  }, [
-    orderNumber,
-    router,
-    onlineSellerFilter,
-    onlineSellerVisibilityLoading,
-    isTeamOrder,
-  ]);
+  }, [orderNumber, router]);
 
   // Función para formatear con la moneda seleccionada localmente
   // IMPORTANTE: Siempre usa las tasas del día del pedido, no tasas actuales
@@ -1719,78 +1699,86 @@ export default function OrderDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Cliente</p>
-                      <p className="font-medium">{order.clientName}</p>
-                      {client?.rutId && (
-                        <p className="text-xs text-muted-foreground">
-                          RUT/ID: {client.rutId}
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Cliente</p>
+                        <p className="font-medium">{order.clientName}</p>
+                        {client?.rutId && (
+                          <p className="text-xs text-muted-foreground">
+                            RUT/ID: {client.rutId}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Teléfono
                         </p>
-                      )}
+                        <p className="font-medium">
+                          {client?.telefono || "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Dirección
+                        </p>
+                        <p className="font-medium">
+                          {client?.direccion || "—"}
+                        </p>
+                      </div>
                     </div>
-                    {order.saleType && (
+                    <div className="space-y-4">
                       <div>
                         <p className="text-sm text-muted-foreground">
                           Tipo de Venta
                         </p>
                         <p className="font-medium">
-                          {getSaleTypeLabel(order.saleType)}
+                          {order.saleType
+                            ? getSaleTypeLabel(order.saleType)
+                            : "—"}
                         </p>
                       </div>
-                    )}
-                    <div>
-                      <p className="text-sm text-muted-foreground">Vendedor</p>
-                      <p className="font-medium">{order.vendorName}</p>
-                    </div>
-                    {client?.telefono && (
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          Teléfono
-                        </p>
-                        <p className="font-medium">{client.telefono}</p>
-                      </div>
-                    )}
-                    {order.paymentCondition && (
                       <div>
                         <p className="text-sm text-muted-foreground">
                           Condición de Pago
                         </p>
                         <p className="font-medium">
-                          {PAYMENT_CONDITIONS.find(
-                            (pc) => pc.value === order.paymentCondition,
-                          )?.label || order.paymentCondition}
+                          {order.paymentCondition
+                            ? PAYMENT_CONDITIONS.find(
+                                (pc) => pc.value === order.paymentCondition,
+                              )?.label || order.paymentCondition
+                            : "—"}
                         </p>
                       </div>
-                    )}
-                    {order.referrerName && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Método de Pago
+                        </p>
+                        <p className="font-medium">
+                          {order.paymentMethod || "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Vendedor</p>
+                        <p className="font-medium">{order.vendorName}</p>
+                      </div>
                       <div>
                         <p className="text-sm text-muted-foreground">
                           Referidor
                         </p>
-                        <p className="font-medium">{order.referrerName}</p>
+                        <p className="font-medium">
+                          {order.referrerName || "—"}
+                        </p>
                       </div>
-                    )}
-                    {client?.direccion && (
                       <div>
                         <p className="text-sm text-muted-foreground">
-                          Dirección
+                          Fecha de Creación
                         </p>
-                        <p className="font-medium">{client.direccion}</p>
+                        <p className="font-medium">
+                          {new Date(order.createdAt).toLocaleDateString()}
+                        </p>
                       </div>
-                    )}
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        Método de Pago
-                      </p>
-                      <p className="font-medium">{order.paymentMethod}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        Fecha de Creación
-                      </p>
-                      <p className="font-medium">
-                        {new Date(order.createdAt).toLocaleDateString()}
-                      </p>
                     </div>
                   </div>
                 </CardContent>

@@ -1,6 +1,6 @@
-using System.Globalization;
 using System.Linq;
 using System.Text.Json;
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
@@ -471,8 +471,6 @@ public class OrderService : IOrderService
             UpdatedAt = DateTime.UtcNow
         };
 
-        NormalizeGeneralDiscountFields(newOrder);
-
         newOrder.OrderNumber = await AllocateNextOrderNumberAsync("Order", "ORD-");
 
         RecalculateOrderStatus(newOrder);
@@ -578,8 +576,6 @@ public class OrderService : IOrderService
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-
-        NormalizeGeneralDiscountFields(newOrder);
 
         newOrder.OrderNumber = await AllocateNextOrderNumberAsync("Order", "ORD-");
 
@@ -910,6 +906,7 @@ public class OrderService : IOrderService
         }
     }
 
+    // Mappers
     private static string FormatOrderNumberWithPrefix(string prefix, int suffix) =>
         $"{prefix}{suffix.ToString("D3", CultureInfo.InvariantCulture)}";
 
@@ -924,7 +921,6 @@ public class OrderService : IOrderService
                 OrderDocumentTypes.LegacyReservationPrefix);
             maxSuffix = Math.Max(maxSuffix, legacyMax);
         }
-
         var candidate = maxSuffix + 1;
         const int cap = 5000;
         for (var i = 0; i < cap; i++)
@@ -974,39 +970,6 @@ public class OrderService : IOrderService
         }
 
         throw new InvalidOperationException("Fallo inesperado al persistir el pedido.");
-    }
-
-    // Mappers
-    private static void NormalizeGeneralDiscountFields(Order order)
-    {
-        var amt = order.GeneralDiscountAmount ?? 0m;
-        if (amt <= 0m)
-        {
-            order.GeneralDiscountAmount = null;
-            order.GeneralDiscountType = null;
-            order.GeneralDiscountPercent = null;
-            return;
-        }
-
-        var t = order.GeneralDiscountType?.Trim().ToLowerInvariant();
-        if (t == "porcentaje")
-        {
-            var p = order.GeneralDiscountPercent;
-            if (p is null || p <= 0m || p > 100m)
-            {
-                order.GeneralDiscountType = "monto";
-                order.GeneralDiscountPercent = null;
-            }
-            else
-            {
-                order.GeneralDiscountPercent = decimal.Round(p.Value, 4, MidpointRounding.AwayFromZero);
-            }
-        }
-        else
-        {
-            order.GeneralDiscountType = "monto";
-            order.GeneralDiscountPercent = null;
-        }
     }
 
     private OrderResponseDto MapToDto(Order order)
@@ -1419,6 +1382,41 @@ public class OrderService : IOrderService
             Usd = dto.Usd != null ? new ExchangeRateInfo { Rate = dto.Usd.Rate, EffectiveDate = dto.Usd.EffectiveDate } : null,
             Eur = dto.Eur != null ? new ExchangeRateInfo { Rate = dto.Eur.Rate, EffectiveDate = dto.Eur.EffectiveDate } : null
         };
+    }
+
+    /// <summary>
+    /// Alinea tipo/% con el monto: sin descuento limpia metadatos; si dice «porcentaje» pero el % no es válido (p. ej. bug antiguo que guardaba Bs como %), fuerza «monto».
+    /// </summary>
+    private static void NormalizeGeneralDiscountFields(Order order)
+    {
+        var amt = order.GeneralDiscountAmount ?? 0m;
+        if (amt <= 0m)
+        {
+            order.GeneralDiscountAmount = null;
+            order.GeneralDiscountType = null;
+            order.GeneralDiscountPercent = null;
+            return;
+        }
+
+        var t = order.GeneralDiscountType?.Trim().ToLowerInvariant();
+        if (t == "porcentaje")
+        {
+            var p = order.GeneralDiscountPercent;
+            if (p is null || p <= 0m || p > 100m)
+            {
+                order.GeneralDiscountType = "monto";
+                order.GeneralDiscountPercent = null;
+            }
+            else
+            {
+                order.GeneralDiscountPercent = decimal.Round(p.Value, 4, MidpointRounding.AwayFromZero);
+            }
+        }
+        else
+        {
+            order.GeneralDiscountType = "monto";
+            order.GeneralDiscountPercent = null;
+        }
     }
 
     /// <summary>

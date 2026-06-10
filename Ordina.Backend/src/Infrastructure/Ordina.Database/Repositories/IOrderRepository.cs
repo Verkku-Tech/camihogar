@@ -38,8 +38,8 @@ public interface IOrderRepository
     Task<long> CountByTypeAsync(string type);
 
     /// <summary>
-    /// Máximo sufijo numérico de orderNumber con formato {prefix}{dígitos} para el tipo dado.
-    /// Si no hay coincidencias, devuelve 0.
+    /// Máximo sufijo numérico de <c>orderNumber</c> con formato <c>{prefix}{dígitos}</c> para el tipo dado
+    /// (p. ej. tipo Order y prefijo ORD-). Si no hay coincidencias, devuelve 0.
     /// </summary>
     Task<int> GetMaxNumericSuffixForTypeAndPrefixAsync(string orderType, string prefix);
 }

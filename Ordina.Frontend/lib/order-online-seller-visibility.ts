@@ -36,7 +36,8 @@ export function isOrderVisibleToOnlineSellerTeam(
   order: OrderLikeForOnlineVisibility,
   onlineSellerIds: ReadonlySet<string>,
 ): boolean {
-  if (onlineSellerIds.size === 0) return false
+  // El backend es la fuente de verdad; sin IDs locales no bloqueamos (p. ej. offline / cache vacío).
+  if (onlineSellerIds.size === 0) return true
   return collectOnlineSellerActorIds(order).some((id) => onlineSellerIds.has(id))
 }
 

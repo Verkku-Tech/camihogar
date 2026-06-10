@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ordina.Orders.Application.DTOs;
+using Ordina.Orders.Application.OnlineSeller;
 using Ordina.Orders.Application.Services;
 
 namespace Ordina.Orders.Api.Controllers;
@@ -14,17 +15,20 @@ public class OrdersController : ControllerBase
     private readonly IOrderService _orderService;
     private readonly IOrderAuditLogService _auditLogService;
     private readonly IClientCreditService _clientCreditService;
+    private readonly IOnlineSellerVisibilityService _onlineSellerVisibility;
     private readonly ILogger<OrdersController> _logger;
 
     public OrdersController(
         IOrderService orderService,
         IOrderAuditLogService auditLogService,
         IClientCreditService clientCreditService,
+        IOnlineSellerVisibilityService onlineSellerVisibility,
         ILogger<OrdersController> logger)
     {
         _orderService = orderService;
         _auditLogService = auditLogService;
         _clientCreditService = clientCreditService;
+        _onlineSellerVisibility = onlineSellerVisibility;
         _logger = logger;
     }
 
@@ -125,6 +129,27 @@ public class OrdersController : ControllerBase
         {
             _logger.LogError(ex, "Error al obtener logs de auditoría de pedidos");
             return StatusCode(500, new { message = "Error interno del servidor al obtener el registro de auditoría" });
+        }
+    }
+
+    /// <summary>
+    /// IDs de usuarios con rol Online Seller (equipo online). Fuente de verdad para visibilidad en el frontend.
+    /// </summary>
+    [HttpGet("online-team-ids")]
+    [Authorize]
+    [ProducesResponseType(typeof(OnlineSellerTeamIdsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<OnlineSellerTeamIdsDto>> GetOnlineSellerTeamIds()
+    {
+        try
+        {
+            var ids = await _onlineSellerVisibility.GetOnlineSellerUserIdsAsync();
+            return Ok(new OnlineSellerTeamIdsDto { Ids = ids.ToList() });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener IDs del equipo Online Seller");
+            return StatusCode(500, new { message = "Error interno del servidor al obtener IDs del equipo online" });
         }
     }
 

@@ -272,8 +272,8 @@ export function Step1Budget({
 
             {orderForm.selectedProducts.length > 0 ? (
               <>
-                {/* Vista de tarjetas para móvil */}
-                <div className="space-y-4 sm:hidden">
+                {/* Vista de tarjetas: móvil y tablet (&lt; lg) */}
+                <div className="space-y-4 lg:hidden">
                   {orderForm.selectedProducts.map((product) => {
                     const lineBase = orderForm.getProductLineBase(product);
                     const lineSurcharge = orderForm.getProductLineSurcharge(product);
@@ -376,7 +376,7 @@ export function Step1Budget({
 
                           <div className="space-y-2.5 pt-3 border-t">
                             <Label className="text-sm font-medium">Descuento</Label>
-                            <div className="flex gap-2.5">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:gap-2.5">
                               <Select
                                 value={
                                   orderForm.productDiscountTypes[product.id] || "monto"
@@ -597,9 +597,9 @@ export function Step1Budget({
                   })}
                 </div>
 
-                {/* Vista de tabla responsive para tablet/desktop/pantallas grandes */}
-                <div className="hidden sm:block overflow-hidden">
-                  <div className="w-full overflow-x-hidden">
+                {/* Vista de tabla: solo pantallas grandes (lg+) */}
+                <div className="hidden lg:block overflow-x-auto">
+                  <div className="w-full min-w-0">
                     <Table className="w-full table-fixed">
                       <TableHeader>
                         <TableRow>
