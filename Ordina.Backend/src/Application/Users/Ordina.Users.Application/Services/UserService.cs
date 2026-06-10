@@ -122,7 +122,7 @@ public class UserService : IUserService
                 Username = createDto.Username,
                 Email = createDto.Email,
                 Name = createDto.Name,
-                Role = createDto.Role,
+                Role = NormalizeUserRole(createDto.Role),
                 Status = createDto.Status ?? "active",
                 CreatedAt = DateTime.UtcNow
             };
@@ -189,7 +189,7 @@ public class UserService : IUserService
                 existingUser.Name = updateDto.Name;
 
             if (!string.IsNullOrWhiteSpace(updateDto.Role))
-                existingUser.Role = updateDto.Role;
+                existingUser.Role = NormalizeUserRole(updateDto.Role);
 
             if (!string.IsNullOrWhiteSpace(updateDto.Status))
                 existingUser.Status = updateDto.Status;
@@ -290,6 +290,27 @@ public class UserService : IUserService
             _logger.LogError(ex, "Error al verificar existencia del usuario con ID {UserId}", id);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Normaliza variantes de rol a la forma canónica usada en Mongo y JWT.
+    /// </summary>
+    private static string NormalizeUserRole(string role)
+    {
+        if (string.IsNullOrWhiteSpace(role))
+            return role;
+
+        var trimmed = role.Trim();
+        if (string.Equals(trimmed, "Online Seller", StringComparison.Ordinal)
+            || string.Equals(trimmed, "Vendedor Online", StringComparison.OrdinalIgnoreCase))
+            return "Online Seller";
+
+        if (string.Equals(trimmed, "Store Seller", StringComparison.Ordinal)
+            || string.Equals(trimmed, "Vendedor de tienda", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(trimmed, "Vendedor de Tienda", StringComparison.OrdinalIgnoreCase))
+            return "Store Seller";
+
+        return trimmed;
     }
 
     private static UserResponseDto MapToDto(User user)

@@ -41,9 +41,6 @@ import {
 import type { AttributeValue } from "@/lib/storage"
 import { getAll } from "@/lib/indexeddb"
 import { getProductLineSurchargeInBaseCurrency } from "@/lib/order-line-pricing"
-import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
-import { toast } from "sonner"
-
 const formatBudgetDual = (
   amount: number,
   baseCurrency: Currency,
@@ -224,11 +221,6 @@ export default function BudgetDetailPage() {
   const params = useParams()
   const router = useRouter()
   const budgetNumber = params.budgetNumber as string
-  const {
-    applies: onlineSellerFilter,
-    isTeamOrder,
-    isLoading: onlineSellerVisibilityLoading,
-  } = useOnlineSellerVisibility()
   const [budget, setBudget] = useState<Budget | null>(null)
   const [displayBaseCurrency, setDisplayBaseCurrency] = useState<Currency>("USD")
   const [loading, setLoading] = useState(true)
@@ -256,8 +248,6 @@ export default function BudgetDetailPage() {
   )
 
   useEffect(() => {
-    if (onlineSellerFilter && onlineSellerVisibilityLoading) return
-
     const loadBudget = async () => {
       try {
         // Cargar categorías y productos primero
@@ -270,11 +260,6 @@ export default function BudgetDetailPage() {
 
         const loadedBudget = await getBudgetByNumber(budgetNumber)
         if (!loadedBudget) {
-          router.push("/pedidos")
-          return
-        }
-        if (onlineSellerFilter && !isTeamOrder(loadedBudget)) {
-          toast.error("No tienes permiso para ver este presupuesto.")
           router.push("/pedidos")
           return
         }
@@ -372,13 +357,7 @@ export default function BudgetDetailPage() {
     if (budgetNumber) {
       loadBudget()
     }
-  }, [
-    budgetNumber,
-    router,
-    onlineSellerFilter,
-    onlineSellerVisibilityLoading,
-    isTeamOrder,
-  ])
+  }, [budgetNumber, router])
 
   const commercialRatesInput = useMemo(
     () =>

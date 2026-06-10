@@ -40,7 +40,7 @@ export function useOnlineSellerVisibility() {
   const isTeamOrder = useCallback(
     (order: OrderLikeForOnlineVisibility) => {
       if (!applies) return true;
-      if (isLoading) return false;
+      if (isLoading) return true;
       return isOrderVisibleToOnlineSellerTeam(order, onlineSellerIds);
     },
     [applies, isLoading, onlineSellerIds],

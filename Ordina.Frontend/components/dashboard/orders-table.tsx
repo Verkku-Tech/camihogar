@@ -74,14 +74,10 @@ function filterAndSortGeneratedOrders(
   let list = allOrders
     .filter((o) => o.status === "Generado" || o.status === "Generada")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  if (isOnlineSellerRole(userRole)) {
-    if (onlineSellerFilterLoading || onlineSellerIds.size === 0) {
-      list = []
-    } else {
-      list = list.filter((o) =>
-        isOrderVisibleToOnlineSellerTeam(o, onlineSellerIds),
-      )
-    }
+  if (isOnlineSellerRole(userRole) && !onlineSellerFilterLoading && onlineSellerIds.size > 0) {
+    list = list.filter((o) =>
+      isOrderVisibleToOnlineSellerTeam(o, onlineSellerIds),
+    )
   }
   return list.slice(0, limit)
 }

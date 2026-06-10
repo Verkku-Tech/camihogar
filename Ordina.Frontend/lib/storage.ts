@@ -14,6 +14,7 @@ import {
   ORDER_STATUS_RESERVA,
   ORDER_TYPE_RESERVATION,
 } from "./order-document-types";
+import { isOnlineSellerRole } from "./order-online-seller-visibility";
 
 import type {
   CategoryResponseDto,
@@ -404,6 +405,20 @@ export const getIndexedDBStoreStats = async (): Promise<
  * Al iniciar con conexión: sincroniza la cola offline y vacía el cache local
  * para que las lecturas posteriores usen el servidor como fuente de verdad.
  */
+const ONLINE_SELLER_VISIBILITY_VERSION = "1";
+const ONLINE_SELLER_VISIBILITY_VERSION_KEY = "online-seller-visibility-version";
+
+function getStoredUserRoleFromLocalStorage(): string | null {
+  try {
+    const raw = localStorage.getItem("user_data");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { role?: string };
+    return parsed.role ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export const bootSync = async (): Promise<void> => {
   if (typeof window === "undefined") return;
   if (!isOnline()) {
@@ -420,6 +435,26 @@ export const bootSync = async (): Promise<void> => {
     console.log("bootSync: api_cache limpiado (catálogo y pedidos conservados)");
   } catch (e) {
     console.warn("bootSync: error al limpiar api_cache", e);
+  }
+  try {
+    const role = getStoredUserRoleFromLocalStorage();
+    if (isOnlineSellerRole(role)) {
+      const stored = localStorage.getItem(ONLINE_SELLER_VISIBILITY_VERSION_KEY);
+      if (stored !== ONLINE_SELLER_VISIBILITY_VERSION) {
+        await db.clearStore("orders");
+        await db.clearStore("budgets");
+        await clearLastOrdersSyncAt();
+        localStorage.setItem(
+          ONLINE_SELLER_VISIBILITY_VERSION_KEY,
+          ONLINE_SELLER_VISIBILITY_VERSION,
+        );
+        console.log(
+          "bootSync: pedidos y presupuestos purgados para migración de visibilidad Online Seller",
+        );
+      }
+    }
+  } catch (e) {
+    console.warn("bootSync: error en migración de visibilidad Online Seller", e);
   }
 };
 
@@ -5874,22 +5909,54 @@ export const getVendors = async (): Promise<Vendor[]> => {
   }
 };
 
+let onlineSellerIdsMemoryCache: { ids: Set<string>; fetchedAt: number } | null =
+  null;
+const ONLINE_SELLER_IDS_CACHE_TTL_MS = 2 * 60 * 1000;
+
+async function getOnlineSellerUserIdsFromUsersFallback(): Promise<Set<string>> {
+  const users = await getUsers();
+  const ids = new Set<string>();
+  for (const user of users) {
+    const raw = ((user.role as string) || "").trim();
+    if (!raw) continue;
+    const r = raw.toLowerCase();
+    if (raw === "Online Seller" || r === "vendedor online") {
+      ids.add(user.id.trim());
+    }
+  }
+  return ids;
+}
+
 /**
  * IDs de usuarios con rol Online Seller (activos e inactivos), para visibilidad del equipo.
+ * Fuente primaria: GET /api/Orders/online-team-ids. Fallback offline: filtrar getUsers().
  */
 export const getOnlineSellerUserIds = async (): Promise<Set<string>> => {
-  try {
-    const users = await getUsers();
-    const ids = new Set<string>();
-    for (const user of users) {
-      const raw = ((user.role as string) || "").trim();
-      if (!raw) continue;
-      const r = raw.toLowerCase();
-      if (raw === "Online Seller" || r === "vendedor online") {
-        ids.add(user.id.trim());
-      }
+  const now = Date.now();
+  if (
+    onlineSellerIdsMemoryCache &&
+    now - onlineSellerIdsMemoryCache.fetchedAt < ONLINE_SELLER_IDS_CACHE_TTL_MS
+  ) {
+    return onlineSellerIdsMemoryCache.ids;
+  }
+
+  if (isOnline()) {
+    try {
+      const response = await apiClient.getOnlineSellerTeamIds();
+      const ids = new Set(
+        (response.ids ?? []).map((id) => id.trim()).filter(Boolean),
+      );
+      onlineSellerIdsMemoryCache = { ids, fetchedAt: now };
+      return ids;
+    } catch (error) {
+      console.error("Error loading online seller team ids from API:", error);
     }
-    return ids;
+  }
+
+  try {
+    const fallback = await getOnlineSellerUserIdsFromUsersFallback();
+    onlineSellerIdsMemoryCache = { ids: fallback, fetchedAt: now };
+    return fallback;
   } catch (error) {
     console.error("Error loading online seller user ids:", error);
     return new Set();
