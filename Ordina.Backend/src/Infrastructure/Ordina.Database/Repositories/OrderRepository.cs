@@ -15,39 +15,69 @@ public class OrderRepository : IOrderRepository
         _collection = context.Orders;
     }
 
+    internal static FilterDefinition<Order> BuildOnlineSellerTeamFilter(
+        FilterDefinitionBuilder<Order> filterBuilder,
+        IReadOnlyCollection<string> onlineSellerTeamIds)
+    {
+        var ids = onlineSellerTeamIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (ids.Count == 0)
+            return filterBuilder.Where(_ => false);
+
+        return filterBuilder.Or(
+            filterBuilder.In(o => o.VendorId, ids),
+            filterBuilder.In(o => o.ReferrerId, ids),
+            filterBuilder.In(o => o.SourceReservationVendorId, ids));
+    }
+
+    private static FilterDefinition<Order> CombineFilters(
+        FilterDefinition<Order> baseFilter,
+        IReadOnlyCollection<string>? onlineSellerTeamIds)
+    {
+        if (onlineSellerTeamIds == null)
+            return baseFilter;
+
+        var fb = Builders<Order>.Filter;
+        var teamFilter = BuildOnlineSellerTeamFilter(fb, onlineSellerTeamIds);
+        return fb.And(baseFilter, teamFilter);
+    }
+
     public async Task<Order?> GetByIdAsync(string id)
     {
         return await _collection.Find(o => o.Id == id).FirstOrDefaultAsync();
     }
 
-    public async Task<IEnumerable<Order>> GetAllAsync()
+    public async Task<IEnumerable<Order>> GetAllAsync(IReadOnlyCollection<string>? onlineSellerTeamIds = null)
     {
-        return await _collection.Find(_ => true)
+        var filter = CombineFilters(Builders<Order>.Filter.Empty, onlineSellerTeamIds);
+        return await _collection.Find(filter)
             .SortByDescending(o => o.CreatedAt)
             .ToListAsync();
     }
 
-    public async Task<(IEnumerable<Order> Orders, int TotalCount)> GetPagedAsync(int page, int pageSize, DateTime? since = null)
+    public async Task<(IEnumerable<Order> Orders, int TotalCount)> GetPagedAsync(
+        int page,
+        int pageSize,
+        DateTime? since = null,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null)
     {
-        // Construir el filtro base
         var filterBuilder = Builders<Order>.Filter;
         var filter = filterBuilder.Empty;
 
-        // Si hay fecha 'since', filtrar solo pedidos modificados después de esa fecha
         if (since.HasValue)
-        {
             filter = filterBuilder.Gte(o => o.UpdatedAt, since.Value);
-        }
 
-        // Obtener el conteo total (antes de paginar)
+        filter = CombineFilters(filter, onlineSellerTeamIds);
+
         var totalCount = await _collection.CountDocumentsAsync(filter);
-
-        // Calcular skip para la paginación
         var skip = (page - 1) * pageSize;
 
-        // Obtener los pedidos paginados
         var orders = await _collection.Find(filter)
-            .SortByDescending(o => o.UpdatedAt) // Ordenar por UpdatedAt para sincronización
+            .SortByDescending(o => o.UpdatedAt)
             .Skip(skip)
             .Limit(pageSize)
             .ToListAsync();
@@ -55,16 +85,28 @@ public class OrderRepository : IOrderRepository
         return (orders, (int)totalCount);
     }
 
-    public async Task<IEnumerable<Order>> GetByClientIdAsync(string clientId)
+    public async Task<IEnumerable<Order>> GetByClientIdAsync(
+        string clientId,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null)
     {
-        return await _collection.Find(o => o.ClientId == clientId)
+        var filter = CombineFilters(
+            Builders<Order>.Filter.Eq(o => o.ClientId, clientId),
+            onlineSellerTeamIds);
+
+        return await _collection.Find(filter)
             .SortByDescending(o => o.CreatedAt)
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Order>> GetByStatusAsync(string status)
+    public async Task<IEnumerable<Order>> GetByStatusAsync(
+        string status,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null)
     {
-        return await _collection.Find(o => o.Status == status)
+        var filter = CombineFilters(
+            Builders<Order>.Filter.Eq(o => o.Status, status),
+            onlineSellerTeamIds);
+
+        return await _collection.Find(filter)
             .SortByDescending(o => o.CreatedAt)
             .ToListAsync();
     }
@@ -148,4 +190,3 @@ public class OrderRepository : IOrderRepository
         return maxVal.ToInt32();
     }
 }
-

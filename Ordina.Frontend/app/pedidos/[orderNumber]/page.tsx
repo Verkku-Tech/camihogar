@@ -64,7 +64,6 @@ import { useCurrency } from "@/contexts/currency-context";
 import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
 import { apiClient } from "@/lib/api-client";
-import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility";
 import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
 import { CASHEA_FINANCED_METHOD_LABEL } from "@/lib/order-payments";
 import { appliedUsdToBs } from "@/lib/order-store-credit-usd";
@@ -869,15 +868,6 @@ export default function OrderDetailPage() {
           return;
         }
 
-        if (user?.role === "Online Seller") {
-          const uid = user?.id?.trim();
-          if (!uid || !isOrderVisibleToOnlineSeller(foundOrder, uid)) {
-            toast.error("No tienes permiso para ver este pedido.");
-            router.push("/pedidos");
-            return;
-          }
-        }
-
         setOrder(foundOrder);
         console.log("INFORMACIÓN DEL PEDIDO >>>>", foundOrder);
 
@@ -991,7 +981,7 @@ export default function OrderDetailPage() {
     if (orderNumber) {
       loadOrder();
     }
-  }, [orderNumber, router, user?.role, user?.id]);
+  }, [orderNumber, router]);
 
   // Función para formatear con la moneda seleccionada localmente
   // IMPORTANTE: Siempre usa las tasas del día del pedido, no tasas actuales
@@ -1709,78 +1699,86 @@ export default function OrderDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Cliente</p>
-                      <p className="font-medium">{order.clientName}</p>
-                      {client?.rutId && (
-                        <p className="text-xs text-muted-foreground">
-                          RUT/ID: {client.rutId}
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Cliente</p>
+                        <p className="font-medium">{order.clientName}</p>
+                        {client?.rutId && (
+                          <p className="text-xs text-muted-foreground">
+                            RUT/ID: {client.rutId}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Teléfono
                         </p>
-                      )}
+                        <p className="font-medium">
+                          {client?.telefono || "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Dirección
+                        </p>
+                        <p className="font-medium">
+                          {client?.direccion || "—"}
+                        </p>
+                      </div>
                     </div>
-                    {order.saleType && (
+                    <div className="space-y-4">
                       <div>
                         <p className="text-sm text-muted-foreground">
                           Tipo de Venta
                         </p>
                         <p className="font-medium">
-                          {getSaleTypeLabel(order.saleType)}
+                          {order.saleType
+                            ? getSaleTypeLabel(order.saleType)
+                            : "—"}
                         </p>
                       </div>
-                    )}
-                    <div>
-                      <p className="text-sm text-muted-foreground">Vendedor</p>
-                      <p className="font-medium">{order.vendorName}</p>
-                    </div>
-                    {client?.telefono && (
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          Teléfono
-                        </p>
-                        <p className="font-medium">{client.telefono}</p>
-                      </div>
-                    )}
-                    {order.paymentCondition && (
                       <div>
                         <p className="text-sm text-muted-foreground">
                           Condición de Pago
                         </p>
                         <p className="font-medium">
-                          {PAYMENT_CONDITIONS.find(
-                            (pc) => pc.value === order.paymentCondition,
-                          )?.label || order.paymentCondition}
+                          {order.paymentCondition
+                            ? PAYMENT_CONDITIONS.find(
+                                (pc) => pc.value === order.paymentCondition,
+                              )?.label || order.paymentCondition
+                            : "—"}
                         </p>
                       </div>
-                    )}
-                    {order.referrerName && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Método de Pago
+                        </p>
+                        <p className="font-medium">
+                          {order.paymentMethod || "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Vendedor</p>
+                        <p className="font-medium">{order.vendorName}</p>
+                      </div>
                       <div>
                         <p className="text-sm text-muted-foreground">
                           Referidor
                         </p>
-                        <p className="font-medium">{order.referrerName}</p>
+                        <p className="font-medium">
+                          {order.referrerName || "—"}
+                        </p>
                       </div>
-                    )}
-                    {client?.direccion && (
                       <div>
                         <p className="text-sm text-muted-foreground">
-                          Dirección
+                          Fecha de Creación
                         </p>
-                        <p className="font-medium">{client.direccion}</p>
+                        <p className="font-medium">
+                          {new Date(order.createdAt).toLocaleDateString()}
+                        </p>
                       </div>
-                    )}
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        Método de Pago
-                      </p>
-                      <p className="font-medium">{order.paymentMethod}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        Fecha de Creación
-                      </p>
-                      <p className="font-medium">
-                        {new Date(order.createdAt).toLocaleDateString()}
-                      </p>
                     </div>
                   </div>
                 </CardContent>

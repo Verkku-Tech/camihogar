@@ -41,7 +41,6 @@ import {
 import type { AttributeValue } from "@/lib/storage"
 import { getAll } from "@/lib/indexeddb"
 import { getProductLineSurchargeInBaseCurrency } from "@/lib/order-line-pricing"
-
 const formatBudgetDual = (
   amount: number,
   baseCurrency: Currency,
@@ -260,6 +259,10 @@ export default function BudgetDetailPage() {
         setAllProducts(loadedProducts)
 
         const loadedBudget = await getBudgetByNumber(budgetNumber)
+        if (!loadedBudget) {
+          router.push("/pedidos")
+          return
+        }
         if (loadedBudget) {
           setBudget(loadedBudget)
           setDisplayBaseCurrency(getDisplayBaseCurrency(loadedBudget))
@@ -354,7 +357,7 @@ export default function BudgetDetailPage() {
     if (budgetNumber) {
       loadBudget()
     }
-  }, [budgetNumber])
+  }, [budgetNumber, router])
 
   const commercialRatesInput = useMemo(
     () =>

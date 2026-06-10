@@ -1246,6 +1246,11 @@ export class ApiClient {
     return this.request<OrderResponseDto[]>("/api/Orders/all");
   }
 
+  /** IDs de usuarios con rol Online Seller (equipo online). */
+  async getOnlineSellerTeamIds() {
+    return this.request<OnlineSellerTeamIdsDto>("/api/Orders/online-team-ids");
+  }
+
   async getOrderById(id: string) {
     return this.request<OrderResponseDto>(`/api/Orders/${id}`);
   }
@@ -2251,6 +2256,10 @@ export interface PagedAuditLogsResponseDto {
 }
 
 /** Respuesta paginada de pedidos con información de sincronización */
+export interface OnlineSellerTeamIdsDto {
+  ids: string[];
+}
+
 export interface PagedOrdersResponseDto {
   /** Lista de pedidos en la página actual */
   orders: OrderResponseDto[];

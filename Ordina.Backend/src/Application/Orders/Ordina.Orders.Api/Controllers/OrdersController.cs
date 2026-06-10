@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ordina.Orders.Application.DTOs;
+using Ordina.Orders.Application.OnlineSeller;
 using Ordina.Orders.Application.Services;
 
 namespace Ordina.Orders.Api.Controllers;
@@ -14,17 +15,20 @@ public class OrdersController : ControllerBase
     private readonly IOrderService _orderService;
     private readonly IOrderAuditLogService _auditLogService;
     private readonly IClientCreditService _clientCreditService;
+    private readonly IOnlineSellerVisibilityService _onlineSellerVisibility;
     private readonly ILogger<OrdersController> _logger;
 
     public OrdersController(
         IOrderService orderService,
         IOrderAuditLogService auditLogService,
         IClientCreditService clientCreditService,
+        IOnlineSellerVisibilityService onlineSellerVisibility,
         ILogger<OrdersController> logger)
     {
         _orderService = orderService;
         _auditLogService = auditLogService;
         _clientCreditService = clientCreditService;
+        _onlineSellerVisibility = onlineSellerVisibility;
         _logger = logger;
     }
 
@@ -37,6 +41,9 @@ public class OrdersController : ControllerBase
             ?? "unknown";
         return (id, name);
     }
+
+    private static string? GetCallerRole(ClaimsPrincipal user) =>
+        user.FindFirstValue(ClaimTypes.Role);
 
     /// <summary>JWT incluye claims "permissions" por permiso; Super Administrator puede todo.</summary>
     private static bool UserHasPermission(ClaimsPrincipal user, string permission)
@@ -87,7 +94,8 @@ public class OrdersController : ControllerBase
     {
         try
         {
-            var result = await _orderService.GetOrdersPagedAsync(page, pageSize, since);
+            var result = await _orderService.GetOrdersPagedAsync(
+                page, pageSize, since, GetCallerRole(User));
             return Ok(result);
         }
         catch (Exception ex)
@@ -125,6 +133,27 @@ public class OrdersController : ControllerBase
     }
 
     /// <summary>
+    /// IDs de usuarios con rol Online Seller (equipo online). Fuente de verdad para visibilidad en el frontend.
+    /// </summary>
+    [HttpGet("online-team-ids")]
+    [Authorize]
+    [ProducesResponseType(typeof(OnlineSellerTeamIdsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<OnlineSellerTeamIdsDto>> GetOnlineSellerTeamIds()
+    {
+        try
+        {
+            var ids = await _onlineSellerVisibility.GetOnlineSellerUserIdsAsync();
+            return Ok(new OnlineSellerTeamIdsDto { Ids = ids.ToList() });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener IDs del equipo Online Seller");
+            return StatusCode(500, new { message = "Error interno del servidor al obtener IDs del equipo online" });
+        }
+    }
+
+    /// <summary>
     /// Obtiene todos los pedidos (sin paginación - usar solo para compatibilidad)
     /// </summary>
     /// <returns>Lista de todos los pedidos</returns>
@@ -134,7 +163,7 @@ public class OrdersController : ControllerBase
     {
         try
         {
-            var orders = await _orderService.GetAllOrdersAsync();
+            var orders = await _orderService.GetAllOrdersAsync(GetCallerRole(User));
             return Ok(orders);
         }
         catch (Exception ex)
@@ -161,7 +190,7 @@ public class OrdersController : ControllerBase
                 return BadRequest(new { message = "El ID del pedido es requerido" });
             }
 
-            var order = await _orderService.GetOrderByIdAsync(id);
+            var order = await _orderService.GetOrderByIdAsync(id, GetCallerRole(User));
             if (order == null)
             {
                 return NotFound(new { message = $"Pedido con ID {id} no encontrado" });
@@ -197,7 +226,8 @@ public class OrdersController : ControllerBase
                 return BadRequest(new { message = "El número de pedido es requerido" });
             }
 
-            var order = await _orderService.GetOrderByOrderNumberAsync(orderNumber);
+            var order = await _orderService.GetOrderByOrderNumberAsync(
+                orderNumber, GetCallerRole(User));
             if (order == null)
             {
                 return NotFound(new { message = $"Pedido {orderNumber} no encontrado" });
@@ -232,7 +262,8 @@ public class OrdersController : ControllerBase
                 return BadRequest(new { message = "El ID del cliente es requerido" });
             }
 
-            var orders = await _orderService.GetOrdersByClientIdAsync(clientId);
+            var orders = await _orderService.GetOrdersByClientIdAsync(
+                clientId, GetCallerRole(User));
             return Ok(orders);
         }
         catch (ArgumentException ex)
@@ -262,7 +293,8 @@ public class OrdersController : ControllerBase
                 return BadRequest(new { message = "El estado es requerido" });
             }
 
-            var orders = await _orderService.GetOrdersByStatusAsync(status);
+            var orders = await _orderService.GetOrdersByStatusAsync(
+                status, GetCallerRole(User));
             return Ok(orders);
         }
         catch (ArgumentException ex)
@@ -557,13 +589,19 @@ public class OrdersController : ControllerBase
             }
 
             var (userId, userName) = GetActor(User);
-            var deleted = await _orderService.DeleteOrderAsync(id, userId, userName);
+            var callerRole = GetCallerRole(User);
+            var deleted = await _orderService.DeleteOrderAsync(id, userId, userName, callerRole);
             if (!deleted)
             {
                 return NotFound(new { message = $"Pedido con ID {id} no encontrado" });
             }
 
             return NoContent();
+        }
+        catch (UnauthorizedAccessException uaex)
+        {
+            _logger.LogWarning(uaex, "Eliminación de pedido {OrderId} denegada", id);
+            return Forbid();
         }
         catch (ArgumentException ex)
         {
