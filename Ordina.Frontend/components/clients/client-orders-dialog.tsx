@@ -26,6 +26,8 @@ import {
   type OrderResponseDto,
 } from "@/lib/api-client";
 import { useAuth } from "@/contexts/auth-context";
+import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility";
+import { isOrderVisibleToOnlineSellerTeam } from "@/lib/order-online-seller-visibility";
 import { EditOrderDialog } from "@/components/orders/edit-order-dialog";
 import { orderFromBackendDto, type Order } from "@/lib/storage";
 import {
@@ -172,6 +174,8 @@ export function ClientOrdersHistoryDialog({
 }: ClientOrdersHistoryDialogProps) {
   const router = useRouter();
   const { user } = useAuth();
+  const { applies: onlineSellerFilter, onlineSellerIds } =
+    useOnlineSellerVisibility();
   const [orders, setOrders] = useState<OrderResponseDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [filterDate, setFilterDate] = useState("");
@@ -244,14 +248,18 @@ export function ClientOrdersHistoryDialog({
       try {
         const list = await apiClient.getOrdersByClient(client.id);
         if (cancelled) return;
-        setOrders(
-          applyHistoryFilters(
-            list,
-            documentTypeSelected,
-            statusSelected,
-            filterDate,
-          ),
+        let filtered = applyHistoryFilters(
+          list,
+          documentTypeSelected,
+          statusSelected,
+          filterDate,
         );
+        if (onlineSellerFilter) {
+          filtered = filtered.filter((o) =>
+            isOrderVisibleToOnlineSellerTeam(o, onlineSellerIds),
+          );
+        }
+        setOrders(filtered);
       } catch (e) {
         console.error(e);
         if (!cancelled) {
@@ -267,7 +275,15 @@ export function ClientOrdersHistoryDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, client?.id, documentTypeSelected, statusSelected, filterDate]);
+  }, [
+    open,
+    client?.id,
+    documentTypeSelected,
+    statusSelected,
+    filterDate,
+    onlineSellerFilter,
+    onlineSellerIds,
+  ]);
 
   useEffect(() => {
     if (!open || !client?.id) {
@@ -528,14 +544,18 @@ export function ClientOrdersHistoryDialog({
           void (async () => {
             try {
               const list = await apiClient.getOrdersByClient(client.id);
-              setOrders(
-                applyHistoryFilters(
-                  list,
-                  documentTypeSelected,
-                  statusSelected,
-                  filterDate,
-                ),
+              let filtered = applyHistoryFilters(
+                list,
+                documentTypeSelected,
+                statusSelected,
+                filterDate,
               );
+              if (onlineSellerFilter) {
+                filtered = filtered.filter((o) =>
+                  isOrderVisibleToOnlineSellerTeam(o, onlineSellerIds),
+                );
+              }
+              setOrders(filtered);
             } catch (e) {
               console.error(e);
               toast.error("No se pudo actualizar el historial.");

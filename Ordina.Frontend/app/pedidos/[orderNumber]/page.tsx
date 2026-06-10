@@ -64,7 +64,7 @@ import { useCurrency } from "@/contexts/currency-context";
 import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
 import { apiClient } from "@/lib/api-client";
-import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility";
+import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility";
 import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
 import { CASHEA_FINANCED_METHOD_LABEL } from "@/lib/order-payments";
 import { appliedUsdToBs } from "@/lib/order-store-credit-usd";
@@ -511,6 +511,11 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const orderNumber = params.orderNumber as string;
   const { user } = useAuth();
+  const {
+    applies: onlineSellerFilter,
+    isTeamOrder,
+    isLoading: onlineSellerVisibilityLoading,
+  } = useOnlineSellerVisibility();
   const canValidateOrders =
     user?.role === "Super Administrator" || user?.role === "Administrator";
   const { formatWithPreference, preferredCurrency } = useCurrency();
@@ -850,6 +855,8 @@ export default function OrderDetailPage() {
   >({});
 
   useEffect(() => {
+    if (onlineSellerFilter && onlineSellerVisibilityLoading) return;
+
     const loadOrder = async () => {
       try {
         // Cargar categorías y productos
@@ -869,13 +876,10 @@ export default function OrderDetailPage() {
           return;
         }
 
-        if (user?.role === "Online Seller") {
-          const uid = user?.id?.trim();
-          if (!uid || !isOrderVisibleToOnlineSeller(foundOrder, uid)) {
-            toast.error("No tienes permiso para ver este pedido.");
-            router.push("/pedidos");
-            return;
-          }
+        if (onlineSellerFilter && !isTeamOrder(foundOrder)) {
+          toast.error("No tienes permiso para ver este pedido.");
+          router.push("/pedidos");
+          return;
         }
 
         setOrder(foundOrder);
@@ -991,7 +995,13 @@ export default function OrderDetailPage() {
     if (orderNumber) {
       loadOrder();
     }
-  }, [orderNumber, router, user?.role, user?.id]);
+  }, [
+    orderNumber,
+    router,
+    onlineSellerFilter,
+    onlineSellerVisibilityLoading,
+    isTeamOrder,
+  ]);
 
   // Función para formatear con la moneda seleccionada localmente
   // IMPORTANTE: Siempre usa las tasas del día del pedido, no tasas actuales

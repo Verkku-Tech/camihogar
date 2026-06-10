@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Ordina.Database.MongoContext;
+using Ordina.Orders.Application.OnlineSeller;
 using Ordina.Orders.Application.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,6 +17,8 @@ builder.Services.AddProblemDetails();
 builder.Services.AddMongoDb(builder.Configuration);
 
 // Add Application Services
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<IOnlineSellerVisibilityService, OnlineSellerVisibilityService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IOrderAuditLogService, OrderAuditLogService>();
 builder.Services.AddScoped<IOrderService, OrderService>();

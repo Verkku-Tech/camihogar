@@ -34,6 +34,7 @@ import {
   formatOrderAmountForDisplay,
 } from "@/lib/order-currency-display";
 import { useAuth } from "@/contexts/auth-context";
+import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility";
 import { usePagination } from "@/hooks/use-pagination";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { EditOrderDialog } from "@/components/orders/edit-order-dialog";
@@ -71,6 +72,8 @@ function reservationOnlineVendor(order: Order): string {
 export default function ReservasPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { applies: onlineSellerFilter, isTeamOrder } =
+    useOnlineSellerVisibility();
   const [reservations, setReservations] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -158,6 +161,8 @@ export default function ReservasPage() {
     const qDigits = digitsOnly(searchTerm);
 
     return reservations.filter((order) => {
+      if (onlineSellerFilter && !isTeamOrder(order)) return false;
+
       const on = (order.orderNumber ?? "").toLowerCase();
       const vendor = reservationOnlineVendor(order).toLowerCase();
       const haystack = buildClientFilterHaystack(
@@ -181,7 +186,15 @@ export default function ReservasPage() {
 
       return matchesSearch && matchesDate;
     });
-  }, [reservations, searchTerm, clientById, dateFrom, dateTo]);
+  }, [
+    reservations,
+    searchTerm,
+    clientById,
+    dateFrom,
+    dateTo,
+    onlineSellerFilter,
+    isTeamOrder,
+  ]);
 
   const {
     currentPage,
