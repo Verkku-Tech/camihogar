@@ -53,7 +53,8 @@ import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { matchesLocalDateRange } from "@/lib/date-utils"
-import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility"
+import { isOrderOwnedByOnlineSeller } from "@/lib/order-online-seller-visibility"
+import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
 
 type TabType = "por_despachar" | "en_despacho" | "despachados"
 type ActionType = "to_dispatch" | "to_delivered" | "to_store"
@@ -183,7 +184,7 @@ function AttributesGrid({ pairs, productName }: AttributesGridProps) {
 
 export default function DespachosPage() {
   const { user } = useAuth()
-  const isOnlineSeller = user?.role === "Online Seller"
+  const { applies: isOnlineSeller, isTeamOrder } = useOnlineSellerVisibility()
   const canMutateDispatchStatus =
     user?.role === "Super Administrator" ||
     user?.role === "Administrator" ||
@@ -250,20 +251,17 @@ export default function DespachosPage() {
     loadOrders()
   }, [])
 
-  /** Online Seller: solo pedidos donde es vendedor o referidor. */
+  /** Online Seller: pedidos del equipo online (ver). */
   const visibleOrders = useMemo(() => {
     if (!isOnlineSeller) return orders
-    if (!onlineSellerUserId) return []
-    return orders.filter((o) =>
-      isOrderVisibleToOnlineSeller(o, onlineSellerUserId),
-    )
-  }, [orders, isOnlineSeller, onlineSellerUserId])
+    return orders.filter((o) => isTeamOrder(o))
+  }, [orders, isOnlineSeller, isTeamOrder])
 
   const canOnlineSellerActOnOrder = useCallback(
     (order: UnifiedOrder): boolean => {
       if (!isOnlineSeller) return true
       if (!onlineSellerUserId) return false
-      return isOrderVisibleToOnlineSeller(order, onlineSellerUserId)
+      return isOrderOwnedByOnlineSeller(order, onlineSellerUserId)
     },
     [isOnlineSeller, onlineSellerUserId],
   )

@@ -5598,6 +5598,28 @@ export const getVendors = async (): Promise<Vendor[]> => {
 };
 
 /**
+ * IDs de usuarios con rol Online Seller (activos e inactivos), para visibilidad del equipo.
+ */
+export const getOnlineSellerUserIds = async (): Promise<Set<string>> => {
+  try {
+    const users = await getUsers();
+    const ids = new Set<string>();
+    for (const user of users) {
+      const raw = ((user.role as string) || "").trim();
+      if (!raw) continue;
+      const r = raw.toLowerCase();
+      if (raw === "Online Seller" || r === "vendedor online") {
+        ids.add(user.id.trim());
+      }
+    }
+    return ids;
+  } catch (error) {
+    console.error("Error loading online seller user ids:", error);
+    return new Set();
+  }
+};
+
+/**
  * Obtiene referidos desde usuarios con rol "Online Seller" o "Vendedor Online"
  * y los convierte al formato Vendor para mantener compatibilidad
  */

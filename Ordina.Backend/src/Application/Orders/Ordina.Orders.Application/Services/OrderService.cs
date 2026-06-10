@@ -10,6 +10,7 @@ using Ordina.Database.Repositories;
 using Ordina.Orders.Application;
 using Ordina.Orders.Application.Commission;
 using Ordina.Orders.Application.DTOs;
+using Ordina.Orders.Application.OnlineSeller;
 
 namespace Ordina.Orders.Application.Services;
 
@@ -19,6 +20,7 @@ public class OrderService : IOrderService
     private readonly IOrderAuditLogService _auditLogService;
     private readonly IClientCreditService _clientCreditService;
     private readonly IAccessPinService _accessPinService;
+    private readonly IOnlineSellerVisibilityService _onlineSellerVisibility;
     private readonly ILogger<OrderService> _logger;
 
     public OrderService(
@@ -26,13 +28,37 @@ public class OrderService : IOrderService
         IOrderAuditLogService auditLogService,
         IClientCreditService clientCreditService,
         IAccessPinService accessPinService,
+        IOnlineSellerVisibilityService onlineSellerVisibility,
         ILogger<OrderService> logger)
     {
         _orderRepository = orderRepository;
         _auditLogService = auditLogService;
         _clientCreditService = clientCreditService;
         _accessPinService = accessPinService;
+        _onlineSellerVisibility = onlineSellerVisibility;
         _logger = logger;
+    }
+
+    private async Task<IReadOnlyCollection<string>?> ResolveTeamFilterAsync(string? callerRole) =>
+        await _onlineSellerVisibility.ResolveTeamFilterIdsAsync(callerRole);
+
+    private async Task<bool> IsOrderVisibleToCallerAsync(Order order, string? callerRole)
+    {
+        if (!OrderOnlineSellerVisibility.IsOnlineSellerRole(callerRole))
+            return true;
+
+        var ids = await _onlineSellerVisibility.GetOnlineSellerUserIdsAsync();
+        return OrderOnlineSellerVisibility.IsVisibleToTeam(order, ids);
+    }
+
+    private static void EnsureOnlineSellerCanMutate(Order order, string userId, string? callerRole)
+    {
+        if (!OrderOnlineSellerVisibility.IsOnlineSellerRole(callerRole))
+            return;
+
+        if (!OrderOnlineSellerVisibility.IsOwnedBySeller(order, userId))
+            throw new UnauthorizedAccessException(
+                "No autorizado a modificar pedidos de otros vendedores online.");
     }
 
     private static bool IsAdministratorOrSuperAdministrator(string? role)
@@ -73,11 +99,12 @@ public class OrderService : IOrderService
         return false;
     }
 
-    public async Task<IEnumerable<OrderResponseDto>> GetAllOrdersAsync()
+    public async Task<IEnumerable<OrderResponseDto>> GetAllOrdersAsync(string? callerRole = null)
     {
         try
         {
-            var orders = await _orderRepository.GetAllAsync();
+            var teamFilter = await ResolveTeamFilterAsync(callerRole);
+            var orders = await _orderRepository.GetAllAsync(teamFilter);
             return orders.Select(MapToDto);
         }
         catch (Exception ex)
@@ -87,7 +114,11 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<PagedOrdersResponseDto> GetOrdersPagedAsync(int page = 1, int pageSize = 50, DateTime? since = null)
+    public async Task<PagedOrdersResponseDto> GetOrdersPagedAsync(
+        int page = 1,
+        int pageSize = 50,
+        DateTime? since = null,
+        string? callerRole = null)
     {
         try
         {
@@ -96,7 +127,9 @@ public class OrderService : IOrderService
             if (pageSize < 1) pageSize = 50;
             if (pageSize > 100) pageSize = 100; // Límite máximo para evitar sobrecarga
 
-            var (orders, totalCount) = await _orderRepository.GetPagedAsync(page, pageSize, since);
+            var teamFilter = await ResolveTeamFilterAsync(callerRole);
+            var (orders, totalCount) = await _orderRepository.GetPagedAsync(
+                page, pageSize, since, teamFilter);
 
             return new PagedOrdersResponseDto
             {
@@ -115,7 +148,9 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<IEnumerable<OrderResponseDto>> GetOrdersByClientIdAsync(string clientId)
+    public async Task<IEnumerable<OrderResponseDto>> GetOrdersByClientIdAsync(
+        string clientId,
+        string? callerRole = null)
     {
         try
         {
@@ -124,7 +159,8 @@ public class OrderService : IOrderService
                 throw new ArgumentException("El ID del cliente es requerido", nameof(clientId));
             }
 
-            var orders = await _orderRepository.GetByClientIdAsync(clientId);
+            var teamFilter = await ResolveTeamFilterAsync(callerRole);
+            var orders = await _orderRepository.GetByClientIdAsync(clientId, teamFilter);
             return orders.Select(MapToDto);
         }
         catch (Exception ex)
@@ -134,7 +170,9 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<IEnumerable<OrderResponseDto>> GetOrdersByStatusAsync(string status)
+    public async Task<IEnumerable<OrderResponseDto>> GetOrdersByStatusAsync(
+        string status,
+        string? callerRole = null)
     {
         try
         {
@@ -143,7 +181,8 @@ public class OrderService : IOrderService
                 throw new ArgumentException("El estado es requerido", nameof(status));
             }
 
-            var orders = await _orderRepository.GetByStatusAsync(status);
+            var teamFilter = await ResolveTeamFilterAsync(callerRole);
+            var orders = await _orderRepository.GetByStatusAsync(status, teamFilter);
             return orders.Select(MapToDto);
         }
         catch (Exception ex)
@@ -153,7 +192,7 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<OrderResponseDto?> GetOrderByIdAsync(string id)
+    public async Task<OrderResponseDto?> GetOrderByIdAsync(string id, string? callerRole = null)
     {
         try
         {
@@ -163,7 +202,13 @@ public class OrderService : IOrderService
             }
 
             var order = await _orderRepository.GetByIdAsync(id);
-            return order == null ? null : MapToDto(order);
+            if (order == null)
+                return null;
+
+            if (!await IsOrderVisibleToCallerAsync(order, callerRole))
+                return null;
+
+            return MapToDto(order);
         }
         catch (Exception ex)
         {
@@ -172,7 +217,9 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<OrderResponseDto?> GetOrderByOrderNumberAsync(string orderNumber)
+    public async Task<OrderResponseDto?> GetOrderByOrderNumberAsync(
+        string orderNumber,
+        string? callerRole = null)
     {
         try
         {
@@ -182,7 +229,13 @@ public class OrderService : IOrderService
             }
 
             var order = await _orderRepository.GetByOrderNumberAsync(orderNumber);
-            return order == null ? null : MapToDto(order);
+            if (order == null)
+                return null;
+
+            if (!await IsOrderVisibleToCallerAsync(order, callerRole))
+                return null;
+
+            return MapToDto(order);
         }
         catch (Exception ex)
         {
@@ -563,6 +616,8 @@ public class OrderService : IOrderService
                 throw new KeyNotFoundException($"Pedido con ID {id} no encontrado");
             }
 
+            EnsureOnlineSellerCanMutate(existingOrder, userId, callerRole);
+
             if (DispatchLogisticsWouldChange(existingOrder, updateDto) &&
                 !IsAdministratorOrSuperAdministrator(callerRole) &&
                 !callerHasDispatchUpdate)
@@ -724,7 +779,11 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<bool> DeleteOrderAsync(string id, string userId, string userName)
+    public async Task<bool> DeleteOrderAsync(
+        string id,
+        string userId,
+        string userName,
+        string? callerRole = null)
     {
         try
         {
@@ -738,6 +797,8 @@ public class OrderService : IOrderService
             {
                 return false;
             }
+
+            EnsureOnlineSellerCanMutate(existing, userId, callerRole);
 
             await _auditLogService.LogOrderDeletedAsync(existing, userId, userName);
             return await _orderRepository.DeleteAsync(id);

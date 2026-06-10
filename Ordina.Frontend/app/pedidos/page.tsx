@@ -78,7 +78,7 @@ import {
   purchaseTypeLabel,
   getOrderPendingTotal,
 } from "@/lib/order-sa";
-import { isOrderVisibleToOnlineSeller } from "@/lib/order-online-seller-visibility";
+import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility";
 import { toLocalDateKey } from "@/lib/date-utils";
 
 const getStatusColor = (status: string) => {
@@ -117,6 +117,8 @@ const getStatusColor = (status: string) => {
 
 export default function PedidosPage() {
   const { user, hasPermission } = useAuth();
+  const { applies: onlineSellerFilter, isTeamOrder, isOwnOrder } =
+    useOnlineSellerVisibility();
   const [orders, setOrders] = useState<UnifiedOrder[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [clientSearch, setClientSearch] = useState("");
@@ -266,11 +268,7 @@ export default function PedidosPage() {
   }
 
   const filteredOrders = orders.filter((order) => {
-    if (user?.role === "Online Seller" && order.type === "order") {
-      const uid = user?.id?.trim();
-      if (!uid) return false;
-      if (!isOrderVisibleToOnlineSeller(order, uid)) return false;
-    }
+    if (onlineSellerFilter && !isTeamOrder(order)) return false;
 
     // Filtro de búsqueda general (existente)
     const on = (order.orderNumber ?? "").toLowerCase();
@@ -399,15 +397,21 @@ export default function PedidosPage() {
     });
   };
 
-  const canEditOrder = (order: UnifiedOrder) =>
-    (order.type === "budget" && (canConvertBudget || canEditOrderFull)) ||
-    (order.type === "order" && canEditOrderFull) ||
-    (canEditOrderPaymentsOnly && order.type === "order");
+  const canEditOrder = (order: UnifiedOrder) => {
+    if (onlineSellerFilter && !isOwnOrder(order)) return false;
+    return (
+      (order.type === "budget" && (canConvertBudget || canEditOrderFull)) ||
+      (order.type === "order" && canEditOrderFull) ||
+      (canEditOrderPaymentsOnly && order.type === "order")
+    );
+  };
 
-  const canDeleteOrder = (order: UnifiedOrder) =>
-    order.type === "order"
+  const canDeleteOrder = (order: UnifiedOrder) => {
+    if (onlineSellerFilter && !isOwnOrder(order)) return false;
+    return order.type === "order"
       ? hasPermission("orders.delete")
       : hasPermission("budgets.delete");
+  };
 
   const handleDeleteClick = (order: UnifiedOrder) => {
     if (!canDeleteOrder(order)) {

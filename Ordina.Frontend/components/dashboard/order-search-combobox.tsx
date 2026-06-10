@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Search } from "lucide-react"
 import { getOrders, getClients, type Order, type Client } from "@/lib/storage"
+import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
 import { buildOrderSearchValue } from "@/lib/order-client-search"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
@@ -31,6 +32,7 @@ type OrderSearchComboboxProps = {
 
 export function OrderSearchCombobox({ preloadedOrders }: OrderSearchComboboxProps = {}) {
   const router = useRouter()
+  const { applies: onlineSellerFilter, isTeamOrder } = useOnlineSellerVisibility()
   const [open, setOpen] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
   const [clientById, setClientById] = useState<Map<string, Client>>(new Map())
@@ -52,8 +54,11 @@ export function OrderSearchCombobox({ preloadedOrders }: OrderSearchComboboxProp
           buildClientMap(clientList)
           return
         }
+        const filterForOnlineSeller = (list: Order[]) =>
+          onlineSellerFilter ? list.filter((o) => isTeamOrder(o)) : list
+
         if (preloadedOrders !== undefined) {
-          const sorted = preloadedOrders
+          const sorted = filterForOnlineSeller(preloadedOrders)
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
             .slice(0, 100)
           setOrders(sorted)
@@ -62,7 +67,7 @@ export function OrderSearchCombobox({ preloadedOrders }: OrderSearchComboboxProp
           return
         }
         const [orderData, clientList] = await Promise.all([getOrders(), getClients()])
-        const sorted = orderData.sort(
+        const sorted = filterForOnlineSeller(orderData).sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
         setOrders(sorted.slice(0, 100))
@@ -72,7 +77,7 @@ export function OrderSearchCombobox({ preloadedOrders }: OrderSearchComboboxProp
       }
     }
     void load()
-  }, [preloadedOrders])
+  }, [preloadedOrders, onlineSellerFilter, isTeamOrder])
 
   const handleSelect = (orderNumber: string) => {
     setOpen(false)
