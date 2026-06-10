@@ -42,10 +42,10 @@ export function SystemPage() {
   }, [])
 
   useEffect(() => {
-    if (user?.role === "Super Administrator") {
+    if (user) {
       void loadStats()
     }
-  }, [user?.role, loadStats])
+  }, [user, loadStats])
 
   const handleClear = async () => {
     setClearing(true)
@@ -62,13 +62,13 @@ export function SystemPage() {
     }
   }
 
-  if (user?.role !== "Super Administrator") {
+  if (!user) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Acceso denegado</CardTitle>
           <CardDescription>
-            Solo el Super Administrador puede acceder a la configuración de sistema y mantenimiento de cache.
+            Debes iniciar sesión para acceder al mantenimiento del cache local.
           </CardDescription>
         </CardHeader>
       </Card>
