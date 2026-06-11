@@ -4027,16 +4027,22 @@ const DASHBOARD_PENDING_BALANCE_STATUSES = new Set([
   "Despacho",
 ]);
 
-function isDashboardCompletedOrder(order: Order): boolean {
+function isDashboardCompletedOrder(order: { status: string }): boolean {
   return DASHBOARD_COMPLETED_STATUSES.has(order.status);
 }
 
-function isDashboardPendingBalanceOrder(order: Order): boolean {
+function isDashboardPendingBalanceOrder(order: { status: string }): boolean {
   return DASHBOARD_PENDING_BALANCE_STATUSES.has(order.status);
 }
 
 /** Fecha de cierre/despacho; fallback a updatedAt si el pedido ya está completado. */
-function getOrderCompletionDate(order: Order): Date | null {
+function getOrderCompletionDate(order: {
+  completedAt?: string;
+  dispatchDate?: string;
+  updatedAt?: string;
+  createdAt: string;
+  status: string;
+}): Date | null {
   if (order.completedAt) return new Date(order.completedAt);
   if (order.dispatchDate) return new Date(order.dispatchDate);
   if (isDashboardCompletedOrder(order)) {
@@ -4100,7 +4106,7 @@ export function getOrderDispatchDisplayDate(order: {
   status: string;
   products?: OrderProduct[];
 }): Date | null {
-  const fromCompletion = getOrderCompletionDate(order as Order);
+  const fromCompletion = getOrderCompletionDate(order);
   if (fromCompletion && !Number.isNaN(fromCompletion.getTime())) {
     return fromCompletion;
   }
