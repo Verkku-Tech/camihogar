@@ -46,6 +46,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { PURCHASE_TYPES } from "@/components/orders/constants"
 import { isSistemaApartado, isSistemaApartadoReadyForNormalFlow } from "@/lib/order-sa"
+import { isReservationOrder } from "@/lib/order-document-types"
 
 // Tipo para productos agrupados por pedido
 interface ProductRow {
@@ -140,6 +141,7 @@ export default function FabricacionPage() {
   const uniqueProviders = useMemo(() => {
     const providers = new Set<string>()
     orders.forEach(order => {
+      if (isReservationOrder(order)) return
       if (order.status === "Generado" || order.status === "Generada") return
       order.products.forEach(p => {
         if (p.locationStatus !== "FABRICACION") return
@@ -155,6 +157,7 @@ export default function FabricacionPage() {
     const rows: ProductRow[] = []
 
     orders.forEach(order => {
+      if (isReservationOrder(order)) return
       if (order.status === "Generado" || order.status === "Generada") return
       if (isSistemaApartado(order) && !isSistemaApartadoReadyForNormalFlow(order)) {
         return
