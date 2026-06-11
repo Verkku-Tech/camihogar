@@ -74,9 +74,7 @@ export function ProductSelectionDialog({
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [productSales, setProductSales] = useState<Record<string, number>>(
-    productSalesProp ?? {},
-  )
+  const [productSales, setProductSales] = useState<Record<string, number>>({})
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [productToEdit, setProductToEdit] = useState<OrderProduct | null>(null)
