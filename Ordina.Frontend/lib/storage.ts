@@ -4071,19 +4071,93 @@ function getCommercialSubtotalUsd(order: Order): number {
   });
 }
 
+/** Pedido con nota de despacho: estado cerrado (dashboard) o al menos un producto entregado. */
+export function isDispatchNoteOrder(order: {
+  type?: string;
+  status: string;
+  products?: OrderProduct[];
+}): boolean {
+  if (order.type && order.type !== "order") return false;
+  if (
+    order.status === "Generado" ||
+    order.status === "Generada" ||
+    order.status === "Cancelado"
+  ) {
+    return false;
+  }
+  if (isDashboardCompletedOrder(order)) return true;
+  return (order.products ?? []).some(
+    (p) => p.locationStatus === "DESPACHADO",
+  );
+}
+
+/** Fecha de despacho/entrega para listados (alineado con métricas del dashboard). */
+export function getOrderDispatchDisplayDate(order: {
+  completedAt?: string;
+  dispatchDate?: string;
+  updatedAt?: string;
+  createdAt: string;
+  status: string;
+  products?: OrderProduct[];
+}): Date | null {
+  const fromCompletion = getOrderCompletionDate(order as Order);
+  if (fromCompletion && !Number.isNaN(fromCompletion.getTime())) {
+    return fromCompletion;
+  }
+  const deliveredMs = (order.products ?? [])
+    .map((p) => p.deliveredAt)
+    .filter((d): d is string => !!d?.trim())
+    .map((d) => new Date(d).getTime())
+    .filter((t) => !Number.isNaN(t));
+  if (deliveredMs.length > 0) {
+    return new Date(Math.max(...deliveredMs));
+  }
+  return null;
+}
+
+/** Naturaleza del cambio para decidir colores (verde/rojo) según dirección. */
+export type MetricChangeDirection = "higher_is_better" | "lower_is_better";
+
+/** Variación entre periodo actual y anterior; `hasBase=false` cuando el anterior fue 0. */
+export interface MetricChange {
+  value: number;
+  current: number;
+  previous: number;
+  hasBase: boolean;
+  direction: MetricChangeDirection;
+}
+
+function buildMetricChange(
+  current: number,
+  previous: number,
+  direction: MetricChangeDirection,
+): MetricChange {
+  if (previous === 0) {
+    return { value: 0, current, previous, hasBase: false, direction };
+  }
+  const pct = Math.round(((current - previous) / previous) * 100);
+  return { value: pct, current, previous, hasBase: true, direction };
+}
+
 export interface DashboardMetrics {
   completedOrders: number;
-  completedOrdersChange: number;
+  /** Variación de ventas vs periodo anterior; `null` cuando no aplica. */
+  completedOrdersChange: MetricChange | null;
   pendingPayments: number;
-  pendingPaymentsChange: number;
+  /** Saldo actual (sin histórico): siempre `null`. */
+  pendingPaymentsChange: MetricChange | null;
   productsToManufacture: number;
-  productsToManufactureChange: number;
+  /** Conteo actual (sin histórico): siempre `null`. */
+  productsToManufactureChange: MetricChange | null;
   averageOrderValue: number;
+  averageOrderValueChange: MetricChange | null;
   totalSalesCount: number;
   /** USD comercial (base imponible). */
   totalInvoiced: number;
+  totalInvoicedChange: MetricChange | null;
   /** USD comercial cobrado en el periodo. */
   totalCollected: number;
+  totalCollectedChange: MetricChange | null;
   expiredLayawaysCount: number;
   expiredLayawaysAmount: number;
 }
@@ -4137,44 +4211,58 @@ export const calculateDashboardMetrics = async (
 
   // 1. Total ventas (notas de despacho cerradas en el periodo)
   const completedOrders = completedOrdersInPeriod.length;
-
   const previousCompletedOrders = previousCompletedOrdersInPeriod.length;
-
-  const completedOrdersChange =
-    previousCompletedOrders > 0
-      ? Math.round(
-          ((completedOrders - previousCompletedOrders) /
-            previousCompletedOrders) *
-            100,
-        )
-      : 0;
+  const completedOrdersChange = buildMetricChange(
+    completedOrders,
+    previousCompletedOrders,
+    "higher_is_better",
+  );
 
   // 2. Total facturado (subtotal en USD comercial, pedidos completados en el periodo)
   const totalInvoiced = completedOrdersInPeriod.reduce(
     (sum, order) => sum + getCommercialSubtotalUsd(order),
     0,
   );
+  const previousTotalInvoiced = previousCompletedOrdersInPeriod.reduce(
+    (sum, order) => sum + getCommercialSubtotalUsd(order),
+    0,
+  );
+  const totalInvoicedChange = buildMetricChange(
+    totalInvoiced,
+    previousTotalInvoiced,
+    "higher_is_better",
+  );
 
   // 3. Total cobrado (abonos del periodo en USD comercial; partial o mixed)
-  const totalCollected = orders.reduce((total, order) => {
-    const paymentsInPeriod = getActivePaymentsList(order).filter((payment) => {
-      if (!payment.date) return false;
-      const paymentDate = new Date(payment.date);
-      return isDateInDashboardPeriod(paymentDate, periodStart, now);
-    });
-    return total + sumPaymentsToUsd(paymentsInPeriod, order);
-  }, 0);
+  const sumPaymentsInRange = (start: Date, end: Date) =>
+    orders.reduce((total, order) => {
+      const paymentsInPeriod = getActivePaymentsList(order).filter(
+        (payment) => {
+          if (!payment.date) return false;
+          const paymentDate = new Date(payment.date);
+          return isDateInDashboardPeriod(paymentDate, start, end);
+        },
+      );
+      return total + sumPaymentsToUsd(paymentsInPeriod, order);
+    }, 0);
+  const totalCollected = sumPaymentsInRange(periodStart, now);
+  const previousTotalCollected = sumPaymentsInRange(
+    previousPeriodStart,
+    previousPeriodEnd,
+  );
+  const totalCollectedChange = buildMetricChange(
+    totalCollected,
+    previousTotalCollected,
+    "higher_is_better",
+  );
 
-  // 4. Abonos por recaudar (deuda actual en USD comercial)
+  // 4. Abonos por recaudar (deuda actual; sin histórico = sin comparación).
   const pendingPayments = orders.reduce((total, order) => {
     if (isDashboardPendingBalanceOrder(order)) {
       return total + getOrderPendingUsd(order);
     }
     return total;
   }, 0);
-
-  // Sin histórico de saldos por fecha; el % no es comparable.
-  const pendingPaymentsChange = 0;
 
   // 5. Sistemas de Apartado (SA) vencidos: deuda con partial/mixed, y más de 90 días desde el pedido
   // (a partir del día 91: getDaysSinceOrder(createdAt) > SA_LAYAWAY_DAYS)
@@ -4231,19 +4319,36 @@ export const calculateDashboardMetrics = async (
   );
   const averageOrderValue =
     completedOrders > 0 ? completedOrdersTotalUsd / completedOrders : 0;
+  const previousCompletedOrdersTotalUsd = previousCompletedOrdersInPeriod.reduce(
+    (sum, order) => sum + getCommercialTotalUsd(order),
+    0,
+  );
+  const previousAverageOrderValue =
+    previousCompletedOrders > 0
+      ? previousCompletedOrdersTotalUsd / previousCompletedOrders
+      : 0;
+  const averageOrderValueChange = buildMetricChange(
+    averageOrderValue,
+    previousAverageOrderValue,
+    "higher_is_better",
+  );
 
   return {
     completedOrders,
     completedOrdersChange,
     pendingPayments,
-    pendingPaymentsChange,
+    /** Saldo de hoy: no es comparable sin snapshot histórico. */
+    pendingPaymentsChange: null,
     productsToManufacture,
-    productsToManufactureChange: 0,
+    /** Conteo actual: no es comparable sin snapshot histórico. */
+    productsToManufactureChange: null,
     averageOrderValue,
-    // Nuevas métricas
-    totalSalesCount: completedOrders, // Es lo mismo que completedOrders (Ventas = Notas de despacho)
+    averageOrderValueChange,
+    totalSalesCount: completedOrders,
     totalInvoiced,
+    totalInvoicedChange,
     totalCollected,
+    totalCollectedChange,
     expiredLayawaysCount,
     expiredLayawaysAmount,
   };
