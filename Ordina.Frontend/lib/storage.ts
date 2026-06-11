@@ -47,6 +47,8 @@ import { syncManager } from "./sync-manager";
 import {
   getOrderPendingTotal,
   PAYMENT_BALANCE_EPSILON_BS,
+  getActivePaymentsList,
+  sumPaymentsToUsd,
 } from "./order-payments";
 import {
   getDaysSinceOrder,
@@ -4002,14 +4004,71 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
 
 // ===== DASHBOARD METRICS =====
 
-export interface DashboardMetrics {
-  completedOrders: number;
-  completedOrdersChange: number;
-  pendingPayments: number;
-  pendingPaymentsChange: number;
-  productsToManufacture: number;
-  productsToManufactureChange: number;
-  averageOrderValue: number;
+/** Estados con nota de despacho / venta cerrada (flujo actual + legacy en BD). */
+const DASHBOARD_COMPLETED_STATUSES = new Set([
+  "En Ruta",
+  "Completado",
+  "Por despachar",
+  "Completada",
+  "Entregado",
+]);
+
+/** Pedidos con saldo pendiente activo (flujo actual + legacy). */
+const DASHBOARD_PENDING_BALANCE_STATUSES = new Set([
+  "Generado",
+  "Validado",
+  "Fabricándose",
+  "En Almacén",
+  "En Ruta",
+  "Generada",
+  "Fabricación",
+  "Por despachar",
+  "Almacén",
+  "Despacho",
+]);
+
+function isDashboardCompletedOrder(order: Order): boolean {
+  return DASHBOARD_COMPLETED_STATUSES.has(order.status);
+}
+
+function isDashboardPendingBalanceOrder(order: Order): boolean {
+  return DASHBOARD_PENDING_BALANCE_STATUSES.has(order.status);
+}
+
+/** Fecha de cierre/despacho; fallback a updatedAt si el pedido ya está completado. */
+function getOrderCompletionDate(order: Order): Date | null {
+  if (order.completedAt) return new Date(order.completedAt);
+  if (order.dispatchDate) return new Date(order.dispatchDate);
+  if (isDashboardCompletedOrder(order)) {
+    return new Date(order.updatedAt || order.createdAt);
+  }
+  return null;
+}
+
+function isDateInDashboardPeriod(
+  date: Date,
+  periodStart: Date,
+  periodEnd: Date,
+): boolean {
+  return date >= periodStart && date <= periodEnd;
+}
+
+function orderCompletedInPeriod(
+  order: Order,
+  periodStart: Date,
+  periodEnd: Date,
+): boolean {
+  if (!isDashboardCompletedOrder(order)) return false;
+  const completionDate = getOrderCompletionDate(order);
+  if (!completionDate || Number.isNaN(completionDate.getTime())) return false;
+  return isDateInDashboardPeriod(completionDate, periodStart, periodEnd);
+}
+
+function getCommercialSubtotalUsd(order: Order): number {
+  return getCommercialTotalUsd({
+    ...order,
+    total: order.subtotal ?? 0,
+  });
 }
 
 export interface DashboardMetrics {
@@ -4020,12 +4079,13 @@ export interface DashboardMetrics {
   productsToManufacture: number;
   productsToManufactureChange: number;
   averageOrderValue: number;
-  // Nuevas métricas
-  totalSalesCount: number; // Total de ventas (cantidad de facturas/notas de despachos)
-  totalInvoiced: number; // Total facturado (base imponible)
-  totalCollected: number; // Total cobrado (ingresos reales en el periodo)
-  expiredLayawaysCount: number; // Cantidad de apartados vencidos
-  expiredLayawaysAmount: number; // Monto deuda de apartados vencidos
+  totalSalesCount: number;
+  /** USD comercial (base imponible). */
+  totalInvoiced: number;
+  /** USD comercial cobrado en el periodo. */
+  totalCollected: number;
+  expiredLayawaysCount: number;
+  expiredLayawaysAmount: number;
 }
 
 export const calculateDashboardMetrics = async (
@@ -4058,40 +4118,27 @@ export const calculateDashboardMetrics = async (
       break;
   }
 
-  // Filtrar órdenes creadas en el periodo (para ventas y facturación)
-  const periodOrders = orders.filter(
-    (order) => new Date(order.createdAt) >= periodStart,
-  );
-
-  // Calcular período anterior para comparar cambios
+  // Período anterior (para variación de ventas completadas)
   const previousPeriodStart = new Date(periodStart);
   const previousPeriodEnd = new Date(periodStart);
   let periodDuration = now.getTime() - periodStart.getTime();
-
-  // Ajuste para "day" para que compare con el día anterior (ayer)
   if (period === "day") {
     periodDuration = 24 * 60 * 60 * 1000;
   }
-
   previousPeriodStart.setTime(periodStart.getTime() - periodDuration);
 
-  const previousPeriodOrders = orders.filter((order) => {
-    const orderDate = new Date(order.createdAt);
-    return orderDate >= previousPeriodStart && orderDate < previousPeriodEnd;
-  });
+  const completedOrdersInPeriod = orders.filter((order) =>
+    orderCompletedInPeriod(order, periodStart, now),
+  );
 
-  // 1. Pedidos completados / Total de Ventas (Cantidad)
-  // Tomar cantidad de clientes facturados (Notas de despacho)
-  // Asumimos que "Por despachar" y "Completada" son las que tienen nota de despacho
-  const completedOrders = periodOrders.filter(
-    (order) =>
-      order.status === "Por despachar" || order.status === "Completada",
-  ).length;
+  const previousCompletedOrdersInPeriod = orders.filter((order) =>
+    orderCompletedInPeriod(order, previousPeriodStart, previousPeriodEnd),
+  );
 
-  const previousCompletedOrders = previousPeriodOrders.filter(
-    (order) =>
-      order.status === "Por despachar" || order.status === "Completada",
-  ).length;
+  // 1. Total ventas (notas de despacho cerradas en el periodo)
+  const completedOrders = completedOrdersInPeriod.length;
+
+  const previousCompletedOrders = previousCompletedOrdersInPeriod.length;
 
   const completedOrdersChange =
     previousCompletedOrders > 0
@@ -4102,76 +4149,32 @@ export const calculateDashboardMetrics = async (
         )
       : 0;
 
-  // 2. Total Facturado (Base Imponible)
-  // Suma del Subtotal de las ventas del periodo
-  const totalInvoiced = periodOrders
-    .filter(
-      (order) =>
-        order.status === "Por despachar" ||
-        order.status === "Completada" ||
-        order.status === "Generado" ||
-        order.status === "Generada" ||
-        order.status === "Fabricación",
-    )
-    // Nota: Incluimos estados activos para facturación, ajustar según requerimiento exacto de "Facturado"
-    // Si "Facturado" es estrictamente nota de despacho, solo usar "Por despachar" y "Completada"
-    // El requerimiento dice "Total de ventas... Notas de despacho", asumiremos consistencia.
-    // Sin embargo, para "Facturado" a veces se considera todo lo vendido.
-    // Vamos a alinear con "Total de ventas" (Notas de despacho) para consistencia
-    .filter(
-      (order) =>
-        order.status === "Por despachar" || order.status === "Completada",
-    )
-    .reduce((sum, order) => sum + (order.subtotal || 0), 0);
+  // 2. Total facturado (subtotal en USD comercial, pedidos completados en el periodo)
+  const totalInvoiced = completedOrdersInPeriod.reduce(
+    (sum, order) => sum + getCommercialSubtotalUsd(order),
+    0,
+  );
 
-  // 3. Total Cobrado (Ingresos reales en el periodo)
-  // Debe incluir todo lo ingresado por nuevas ventas y abonos, independientemente de la fecha de la orden
+  // 3. Total cobrado (abonos del periodo en USD comercial; partial o mixed)
   const totalCollected = orders.reduce((total, order) => {
-    const paymentsInPeriod =
-      order.partialPayments?.filter((payment) => {
-        const paymentDate = new Date(payment.date);
-        return paymentDate >= periodStart && paymentDate <= now;
-      }) || [];
-
-    const sumPayments = paymentsInPeriod.reduce(
-      (sum, p) => sum + (p.amount || 0),
-      0,
-    );
-    return total + sumPayments;
+    const paymentsInPeriod = getActivePaymentsList(order).filter((payment) => {
+      if (!payment.date) return false;
+      const paymentDate = new Date(payment.date);
+      return isDateInDashboardPeriod(paymentDate, periodStart, now);
+    });
+    return total + sumPaymentsToUsd(paymentsInPeriod, order);
   }, 0);
 
-  const isActiveForPending = (status: string) =>
-    status === "Generado" ||
-    status === "Generada" ||
-    status === "Fabricación" ||
-    status === "Por despachar";
-
-  // 4. Abonos por recaudar (deuda en USD comercial)
+  // 4. Abonos por recaudar (deuda actual en USD comercial)
   const pendingPayments = orders.reduce((total, order) => {
-    if (isActiveForPending(order.status)) {
+    if (isDashboardPendingBalanceOrder(order)) {
       return total + getOrderPendingUsd(order);
     }
     return total;
   }, 0);
 
-  const previousPendingPayments = previousPeriodOrders.reduce(
-    (total, order) => {
-      if (isActiveForPending(order.status)) {
-        return total + getOrderPendingUsd(order);
-      }
-      return total;
-    },
-    0,
-  );
-
-  const pendingPaymentsChange =
-    previousPendingPayments > 0
-      ? Math.round(
-          ((pendingPayments - previousPendingPayments) /
-            previousPendingPayments) *
-            100,
-        )
-      : 0;
+  // Sin histórico de saldos por fecha; el % no es comparable.
+  const pendingPaymentsChange = 0;
 
   // 5. Sistemas de Apartado (SA) vencidos: deuda con partial/mixed, y más de 90 días desde el pedido
   // (a partir del día 91: getDaysSinceOrder(createdAt) > SA_LAYAWAY_DAYS)
@@ -4222,13 +4225,10 @@ export const calculateDashboardMetrics = async (
     );
   }, 0);
 
-  // Promedio de pedidos completados (Por despachar o Completada) - Métrica existente
-  const completedOrdersTotalUsd = periodOrders
-    .filter(
-      (order) =>
-        order.status === "Por despachar" || order.status === "Completada",
-    )
-    .reduce((sum, order) => sum + getCommercialTotalUsd(order), 0);
+  const completedOrdersTotalUsd = completedOrdersInPeriod.reduce(
+    (sum, order) => sum + getCommercialTotalUsd(order),
+    0,
+  );
   const averageOrderValue =
     completedOrders > 0 ? completedOrdersTotalUsd / completedOrders : 0;
 
@@ -6407,6 +6407,7 @@ function computeCommissionExclusivitySplit(
   exclusivityMode: CommissionExclusivityMode,
   isSharedSale: boolean,
   hasReferrer: boolean,
+  hasPostventa: boolean,
   qty: number,
   familyCommission: number,
   rule?: SaleTypeCommissionRule | null,
@@ -6451,8 +6452,8 @@ function computeCommissionExclusivitySplit(
       const postventaRate = rule.postventaRate ?? 0;
       return {
         vendorCommission: rule.vendorRate * qty,
-        referrerCommission: rule.referrerRate * qty,
-        postventaCommission: postventaRate * qty,
+        referrerCommission: hasReferrer ? rule.referrerRate * qty : 0,
+        postventaCommission: hasPostventa ? postventaRate * qty : 0,
         isShared: true,
       };
     }
@@ -6483,8 +6484,9 @@ export const computeProductCommissionSplit = (
   const exclusivityMode = getUserCommissionExclusivityMode(mainVendor);
   const referrerId = order.referrerId?.trim();
   const hasReferrer = !!referrerId;
+  const hasPostventa = !!order.postventaId?.trim();
   const isSharedSale =
-    hasReferrer && exclusivityMode === COMMISSION_EXCLUSIVITY_MODES.Shared;
+    exclusivityMode === COMMISSION_EXCLUSIVITY_MODES.Shared;
 
   const baseRate = getFamilyCommissionUsdPerUnitForProduct(
     product,
@@ -6541,6 +6543,7 @@ export const computeProductCommissionSplit = (
     exclusivityMode,
     isSharedSale,
     hasReferrer,
+    hasPostventa,
     qty,
     familyCommission,
     rule,
@@ -6641,10 +6644,14 @@ export const calculateOrderCommissions = async (
         });
       }
 
-      if (split.isShared && split.postventaCommission !== 0) {
-        const pid = order.postventaId?.trim();
+      if (
+        split.isShared &&
+        order.postventaId?.trim() &&
+        split.postventaCommission !== 0
+      ) {
+        const pid = order.postventaId.trim();
         results.push({
-          sellerId: pid || "__postventa__",
+          sellerId: pid,
           sellerName: order.postventaName?.trim() || "Post venta",
           productId: product.id,
           productName: product.name,

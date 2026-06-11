@@ -26,21 +26,6 @@ function formatMetricUsdAmount(
   })
 }
 
-/** Totales legacy aún sumados en Bs (facturado, cobrado). */
-function formatMetricBsAmount(
-  amountBs: number,
-  liveRates?: { USD?: { rate: number }; EUR?: { rate: number } },
-): string {
-  const rate = liveRates?.USD?.rate
-  if (rate && rate > 0) {
-    return formatCommercialDualDisplay(amountBs / rate, "USD", {
-      commercialRates: liveRates,
-      liveRates,
-    })
-  }
-  return formatCurrency(amountBs, "Bs")
-}
-
 export function MetricsCards({ metrics, isLoading = false }: MetricsCardsProps) {
   const [liveRatesInput, setLiveRatesInput] = useState<
     { USD?: { rate: number }; EUR?: { rate: number } } | undefined
@@ -71,11 +56,6 @@ export function MetricsCards({ metrics, isLoading = false }: MetricsCardsProps) 
     )
   }, [metrics.pendingPayments, metrics.averageOrderValue, liveRatesInput])
 
-  const formatBsAmount = (amount: number) =>
-    liveRatesInput
-      ? formatMetricBsAmount(amount, liveRatesInput)
-      : formatCurrency(amount, "Bs")
-
   const formatUsdAmount = (amount: number) =>
     liveRatesInput
       ? formatMetricUsdAmount(amount, liveRatesInput)
@@ -93,13 +73,13 @@ export function MetricsCards({ metrics, isLoading = false }: MetricsCardsProps) 
     {
       title: "Total Facturado",
       subtitle: "(base imponible)",
-      value: formatBsAmount(metrics.totalInvoiced || 0),
+      value: formatUsdAmount(metrics.totalInvoiced || 0),
       change: null,
     },
     {
       title: "Total Cobrado",
       subtitle: "(ingresos reales)",
-      value: formatBsAmount(metrics.totalCollected || 0),
+      value: formatUsdAmount(metrics.totalCollected || 0),
       change: null,
       icon: TrendingUp,
       iconColor: "text-green-500",

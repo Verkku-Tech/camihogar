@@ -75,7 +75,7 @@ import {
 } from "@/components/orders/constants";
 import {
   isSistemaApartado,
-  isSaWarehouseHighlight,
+  isSaRowHighlight,
   purchaseTypeLabel,
   getOrderPendingTotal,
 } from "@/lib/order-sa";
@@ -647,7 +647,7 @@ export default function PedidosPage() {
                           <TableRow
                             key={order.id}
                             className={
-                              isSaWarehouseHighlight(order)
+                              isSaRowHighlight(order)
                                 ? "bg-amber-50/70 dark:bg-amber-950/25 border-l-4 border-l-amber-500/80"
                                 : undefined
                             }
