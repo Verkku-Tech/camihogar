@@ -1190,9 +1190,17 @@ export default function OrderDetailPage() {
     const formatProductData = () => {
       if (!order || categories.length === 0 || allProducts.length === 0) return;
 
-      const base = getOrderBaseCurrency(order);
       const fmtAmount = (amount: number) =>
         formatOrderAmountWithOrderRateBs(amount, order);
+      /** Formatea un monto en su moneda nativa (evita doble conversión en desglose). */
+      const fmtAmountInCurrency = (
+        amount: number,
+        currency: Currency = "Bs",
+      ) =>
+        formatOrderAmountWithOrderRateBs(amount, {
+          ...order,
+          baseCurrency: currency,
+        });
 
       const formattedDiscounts: Record<
         string,
@@ -1299,12 +1307,16 @@ export default function OrderDetailPage() {
         }
 
         const basePriceCurrency =
-          lineCurrencyStored || originalProduct?.priceCurrency || "Bs";
-        // Formatear precio base siempre en USD como principal
-        const basePriceFormatted = fmtAmount(
-          base === "USD" && lineCurrencyStored === "USD"
+          (lineCurrencyStored ||
+            originalProduct?.priceCurrency ||
+            "Bs") as Currency;
+        const basePriceAmount =
+          basePriceCurrency === "USD" || basePriceCurrency === "EUR"
             ? orderProduct.price
-            : basePriceInBs,
+            : basePriceInBs;
+        const basePriceFormatted = fmtAmountInCurrency(
+          basePriceAmount,
+          basePriceCurrency,
         );
 
         // Calcular ajustes de atributos normales
@@ -1318,8 +1330,10 @@ export default function OrderDetailPage() {
           (adj) => ({
             name: adj.attributeName,
             value: adj.selectedValueLabel,
-            // Formatear ajuste siempre en USD como principal
-            adjustment: fmtAmount(adj.adjustment),
+            adjustment: fmtAmountInCurrency(
+              adj.adjustmentInOriginalCurrency,
+              (adj.originalCurrency as Currency) || "Bs",
+            ),
             adjustmentValue: adj.adjustment, // Mantener el valor en Bs para cálculos
           }),
         );
@@ -1362,19 +1376,12 @@ export default function OrderDetailPage() {
               if (!foundProduct) continue;
 
               const productPrice = foundProduct.price;
-              const productCurrency = foundProduct.priceCurrency || "Bs";
-              // Convertir precio del producto a Bs primero si no está en Bs
-              let productPriceInBsForDisplay = productPrice;
-              if (productCurrency !== "Bs") {
-                const rate =
-                  productCurrency === "USD"
-                    ? localExchangeRates?.USD?.rate
-                    : localExchangeRates?.EUR?.rate;
-                if (rate && rate > 0) {
-                  productPriceInBsForDisplay = productPrice * rate;
-                }
-              }
-              const productPriceFormatted = fmtAmount(productPriceInBsForDisplay);
+              const productCurrency = (foundProduct.priceCurrency ||
+                "Bs") as Currency;
+              const productPriceFormatted = fmtAmountInCurrency(
+                productPrice,
+                productCurrency,
+              );
 
               // Convertir precio del producto a Bs para cálculos
               let productPriceInBs = productPrice;
@@ -1414,8 +1421,10 @@ export default function OrderDetailPage() {
                   productAttrAdjustments = rawAdjustments.map((adj) => ({
                     name: adj.attributeName,
                     value: adj.selectedValueLabel,
-                    // Formatear ajuste siempre en USD como principal
-                    adjustment: fmtAmount(adj.adjustment),
+                    adjustment: fmtAmountInCurrency(
+                      adj.adjustmentInOriginalCurrency,
+                      (adj.originalCurrency as Currency) || "Bs",
+                    ),
                     adjustmentValue: adj.adjustment, // Mantener el valor en Bs para cálculos
                   }));
                 }
@@ -1451,7 +1460,7 @@ export default function OrderDetailPage() {
           });
         });
 
-        const unitPriceFormatted = fmtAmount(unitPriceInBs);
+        const unitPriceFormatted = fmtAmountInCurrency(unitPriceInBs, "Bs");
 
         breakdowns[orderProduct.id] = {
           basePrice: basePriceFormatted,

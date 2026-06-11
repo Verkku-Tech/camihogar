@@ -5,8 +5,6 @@ import {
 } from "@/lib/order-payments"
 import { getSaleTypeLabel } from "@/components/orders/constants"
 
-const WAREHOUSE_STATUSES = new Set(["En Almacén", "Almacén"])
-
 /** Plazo de pago (días) para Sistema de Apartado: el día 91 desde el pedido es el primer vencido. */
 export const SA_LAYAWAY_DAYS = 90
 
@@ -44,13 +42,12 @@ export function isSistemaApartado(order: {
   return order.type === "order" && order.saleType === "sistema_apartado"
 }
 
-/** Resaltar fila en listados cuando un SA está en almacén (lista densa). */
-export function isSaWarehouseHighlight(order: {
+/** Resaltar fila en listados para pedidos Sistema de Apartado. */
+export function isSaRowHighlight(order: {
   type?: string
   saleType?: string
-  status: string
 }): boolean {
-  return isSistemaApartado(order) && WAREHOUSE_STATUSES.has(order.status.trim())
+  return isSistemaApartado(order)
 }
 
 export function purchaseTypeLabel(saleType?: string): string | undefined {

@@ -123,6 +123,38 @@ function backendPaymentMethodForFilter(selected: string): string {
   return selected
 }
 
+/** Valor del filtro virtual: pagos en divisas sin cuenta asignada. */
+const NO_APLICA_CUENTA_FILTER = "__no_aplica__"
+const NO_APLICA_CUENTA_DISPLAY = "N/A"
+
+function isForeignCurrency(moneda: string): boolean {
+  const m = (moneda || "").trim().toUpperCase()
+  return m === "USD" || m === "EUR"
+}
+
+function isEmptyAccountDisplay(cuenta: string): boolean {
+  const c = (cuenta || "").trim()
+  return c === "" || c === "-"
+}
+
+/** Pagos en divisas sin cuenta receptora se muestran como N/A para poder filtrarlos. */
+function resolveReportCuentaDisplay(
+  monedaOriginal: string,
+  cuentaRaw: string,
+): string {
+  if (
+    isForeignCurrency(monedaOriginal) &&
+    isEmptyAccountDisplay(cuentaRaw)
+  ) {
+    return NO_APLICA_CUENTA_DISPLAY
+  }
+  return cuentaRaw || "-"
+}
+
+function isNoAplicaAccountFilter(selected: string): boolean {
+  return selected === NO_APLICA_CUENTA_FILTER
+}
+
 export function PaymentsReport() {
   const { hasPermission } = useAuth()
   const canConciliate = hasPermission("finance.conciliate")
@@ -147,13 +179,16 @@ export function PaymentsReport() {
     if (effectiveCurrencyFilter) {
       data = data.filter((r) => r.monedaOriginal === effectiveCurrencyFilter)
     }
+    if (isNoAplicaAccountFilter(selectedAccount)) {
+      data = data.filter((r) => r.cuenta === NO_APLICA_CUENTA_DISPLAY)
+    }
     if (conciliationFilter === "Conciliados") {
       data = data.filter((r) => r.isConciliated)
     } else if (conciliationFilter === "Pendientes") {
       data = data.filter((r) => !r.isConciliated)
     }
     return data
-  }, [reportData, effectiveCurrencyFilter, conciliationFilter])
+  }, [reportData, effectiveCurrencyFilter, selectedAccount, conciliationFilter])
 
   const reportTotals = useMemo(() => {
     const rows = filteredReportData
@@ -269,7 +304,10 @@ export function PaymentsReport() {
         if (backendPm !== "Todos") {
           params.append("paymentMethod", backendPm)
         }
-        if (selectedAccount !== "Todos") {
+        if (
+          selectedAccount !== "Todos" &&
+          !isNoAplicaAccountFilter(selectedAccount)
+        ) {
           params.append("accountId", selectedAccount)
         }
 
@@ -317,7 +355,10 @@ export function PaymentsReport() {
               return Number.isFinite(n) ? n : undefined
             })(),
             referencia: String(row.referencia ?? ""),
-            cuenta: String(row.cuenta ?? ""),
+            cuenta: resolveReportCuentaDisplay(
+              String(row.monedaOriginal ?? ""),
+              String(row.cuenta ?? ""),
+            ),
             orderId,
             paymentIndex,
             paymentType: paymentType as "mixed" | "partial" | "main",
@@ -410,7 +451,10 @@ export function PaymentsReport() {
               return
             }
 
-            if (selectedAccount !== "Todos") {
+            if (
+              selectedAccount !== "Todos" &&
+              !isNoAplicaAccountFilter(selectedAccount)
+            ) {
               const paymentAccountId = payment.paymentDetails?.accountId
               if (!paymentAccountId || paymentAccountId !== selectedAccount) {
                 return
@@ -418,7 +462,7 @@ export function PaymentsReport() {
             }
 
             const referencia = getPaymentReference(payment, order)
-            const cuenta = getAccountDisplay(payment)
+            const cuentaRaw = getAccountDisplay(payment)
 
             const originalPayment = getOriginalPaymentAmount(payment)
             const montoOriginal = originalPayment.amount
@@ -447,7 +491,7 @@ export function PaymentsReport() {
                 payment.paymentDetails?.exchangeRate,
               ),
               referencia: referencia,
-              cuenta: cuenta,
+              cuenta: resolveReportCuentaDisplay(monedaOriginal, cuentaRaw),
               orderId: order.id,
               paymentIndex: index,
               paymentType: activePaymentType,
@@ -467,7 +511,10 @@ export function PaymentsReport() {
           }
 
           // Filtrar por cuenta - solo si se especifica cuenta y el pago tiene accountId que coincida
-          if (selectedAccount !== "Todos") {
+          if (
+            selectedAccount !== "Todos" &&
+            !isNoAplicaAccountFilter(selectedAccount)
+          ) {
             const paymentAccountId = order.paymentDetails?.accountId
             if (!paymentAccountId || paymentAccountId !== selectedAccount) {
               return
@@ -475,7 +522,7 @@ export function PaymentsReport() {
           }
 
           const referencia = getMainPaymentReference(order)
-          const cuenta = getMainAccountDisplay(order)
+          const cuentaRaw = getMainAccountDisplay(order)
           
           // Para el pago principal, manejar especialmente pagos en efectivo
           let montoOriginal: number
@@ -514,7 +561,7 @@ export function PaymentsReport() {
               order.paymentDetails?.exchangeRate,
             ),
             referencia: referencia,
-            cuenta: cuenta,
+            cuenta: resolveReportCuentaDisplay(monedaOriginal, cuentaRaw),
             orderId: order.id,
             paymentIndex: -1,
             paymentType: "main",
@@ -527,6 +574,11 @@ export function PaymentsReport() {
       let finalRows = rows
       if (currF) {
         finalRows = rows.filter((r) => r.monedaOriginal === currF)
+      }
+      if (isNoAplicaAccountFilter(selectedAccount)) {
+        finalRows = finalRows.filter(
+          (r) => r.cuenta === NO_APLICA_CUENTA_DISPLAY,
+        )
       }
 
       // Ordenar por fecha (más reciente primero)
@@ -780,7 +832,10 @@ export function PaymentsReport() {
       if (excelBackendPm !== "Todos") {
         params.append("paymentMethod", excelBackendPm)
       }
-      if (selectedAccount !== "Todos") {
+      if (
+        selectedAccount !== "Todos" &&
+        !isNoAplicaAccountFilter(selectedAccount)
+      ) {
         params.append("accountId", selectedAccount)
       }
 
@@ -872,6 +927,9 @@ export function PaymentsReport() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Todos">Todos</SelectItem>
+                  <SelectItem value={NO_APLICA_CUENTA_FILTER}>
+                    No aplica (divisas sin cuenta)
+                  </SelectItem>
                   {accounts
                     .filter((account) => account.id && account.id.trim() !== "")
                     .map((account) => (
@@ -1099,7 +1157,16 @@ export function PaymentsReport() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm">{row.cuenta}</span>
+                        <span
+                          className="text-sm"
+                          title={
+                            row.cuenta === NO_APLICA_CUENTA_DISPLAY
+                              ? "No aplica: pago en divisa sin cuenta asignada"
+                              : undefined
+                          }
+                        >
+                          {row.cuenta}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <span className="max-w-xs truncate">
