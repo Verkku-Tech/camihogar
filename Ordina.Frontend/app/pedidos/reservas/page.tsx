@@ -90,6 +90,7 @@ export default function ReservasPage() {
   const canConfirmReservation =
     user &&
     (user.role === "Store Seller" ||
+      user.role === "Online Seller" ||
       user.role === "Administrator" ||
       user.role === "Super Administrator");
 
