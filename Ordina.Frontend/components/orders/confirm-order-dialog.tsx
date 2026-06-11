@@ -37,6 +37,7 @@ import type { Order, OrderProduct, PartialPayment } from "@/lib/storage";
 import { ProductSelectionDialog } from "@/components/orders/product-selection-dialog";
 import { ProductEditDialog } from "@/components/orders/product-edit-dialog";
 import { RemoveProductDialog } from "@/components/orders/remove-product-dialog";
+import { useNestedModalGuard } from "@/hooks/use-nested-modal-guard";
 import { PAYMENT_CONDITIONS } from "@/components/orders/new-order-dialog";
 import {
   normalizePaymentsForSave,
@@ -559,17 +560,15 @@ export function ConfirmOrderDialog({
   const nestedModalOpen =
     removeOpen || editOpen || productSelectOpen;
 
-  const preventCloseOnNestedModal = (e: Event) => {
-    if (nestedModalOpen) e.preventDefault();
-  };
+  const { preventClose, closeNested } = useNestedModalGuard(nestedModalOpen);
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           className="max-w-3xl max-h-[90vh] overflow-y-auto"
-          onInteractOutside={preventCloseOnNestedModal}
-          onPointerDownOutside={preventCloseOnNestedModal}
+          onInteractOutside={preventClose}
+          onPointerDownOutside={preventClose}
         >
           <DialogHeader>
             <DialogTitle>Confirmar pedido (tienda)</DialogTitle>
@@ -842,36 +841,54 @@ export function ConfirmOrderDialog({
 
       <ProductSelectionDialog
         open={productSelectOpen}
-        onOpenChange={setProductSelectOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setProductSelectOpen(true);
+          else closeNested(() => setProductSelectOpen(false));
+        }}
         onProductsSelect={setProducts}
         selectedProducts={products}
       />
 
       <ProductEditDialog
         open={editOpen}
-        onOpenChange={setEditOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setEditOpen(true);
+          else {
+            closeNested(() => {
+              setEditOpen(false);
+              setEditingProduct(null);
+            });
+          }
+        }}
         product={editingProduct}
         onProductUpdate={(updated) => {
           setProducts((list) =>
             list.map((p) => (p.id === updated.id ? updated : p)),
           );
-          setEditOpen(false);
-          setEditingProduct(null);
+          closeNested(() => {
+            setEditOpen(false);
+            setEditingProduct(null);
+          });
         }}
       />
 
       <RemoveProductDialog
         open={removeOpen}
         onOpenChange={(nextOpen) => {
-          setRemoveOpen(nextOpen);
-          if (!nextOpen) setRemovingProduct(null);
+          if (nextOpen) setRemoveOpen(true);
+          else {
+            closeNested(() => {
+              setRemoveOpen(false);
+              setRemovingProduct(null);
+            });
+          }
         }}
         product={removingProduct}
         onConfirm={() => {
           if (!removingProduct) return;
           const id = removingProduct.id;
           setProducts((list) => list.filter((p) => p.id !== id));
-          setRemoveOpen(false);
+          closeNested(() => setRemoveOpen(false));
         }}
       />
     </>

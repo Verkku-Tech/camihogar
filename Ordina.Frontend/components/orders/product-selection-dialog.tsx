@@ -53,6 +53,7 @@ import {
 } from "@/lib/currency-utils";
 import { useCurrency } from "@/contexts/currency-context";
 import { toast } from "sonner";
+import { useNestedModalGuard } from "@/hooks/use-nested-modal-guard";
 
 interface ProductSelectionDialogProps {
   open: boolean
@@ -90,6 +91,7 @@ export function ProductSelectionDialog({
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [productToEdit, setProductToEdit] = useState<OrderProduct | null>(null)
+  const { preventClose, closeNested } = useNestedModalGuard(isEditDialogOpen)
   const [exchangeRates, setExchangeRates] = useState<{ USD?: any; EUR?: any }>({})
   const { formatWithPreference, preferredCurrency } = useCurrency()
   const [productPrices, setProductPrices] = useState<Record<number, string>>({})
@@ -275,8 +277,10 @@ export function ProductSelectionDialog({
     const updatedProducts = [...selectedProducts, product];
 
     onProductsSelect(updatedProducts);
-    setIsEditDialogOpen(false);
-    setProductToEdit(null);
+    closeNested(() => {
+      setIsEditDialogOpen(false);
+      setProductToEdit(null);
+    });
 
     // Resetear cantidad para este producto base (extraer ID base antes del primer guión)
     const productBaseId = product.id.split("-")[0];
@@ -304,17 +308,13 @@ export function ProductSelectionDialog({
     return matchingProducts.reduce((sum, p) => sum + (p.quantity || 0), 0);
   };
 
-  const preventCloseOnNestedModal = (e: Event) => {
-    if (isEditDialogOpen) e.preventDefault();
-  };
-
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-4xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4"
-          onInteractOutside={preventCloseOnNestedModal}
-          onPointerDownOutside={preventCloseOnNestedModal}
+          onInteractOutside={preventClose}
+          onPointerDownOutside={preventClose}
         >
           <DialogHeader className="pb-2 sm:pb-4">
             <DialogTitle className="text-lg sm:text-xl">
@@ -573,7 +573,15 @@ export function ProductSelectionDialog({
 
       <ProductEditDialog
         open={isEditDialogOpen}
-        onOpenChange={setIsEditDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setIsEditDialogOpen(true);
+          else {
+            closeNested(() => {
+              setIsEditDialogOpen(false);
+              setProductToEdit(null);
+            });
+          }
+        }}
         product={productToEdit}
         onProductUpdate={handleConfirmAdd}
         mode="add"

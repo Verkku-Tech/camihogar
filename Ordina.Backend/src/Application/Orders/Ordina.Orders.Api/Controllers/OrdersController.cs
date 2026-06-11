@@ -68,6 +68,7 @@ public class OrdersController : ControllerBase
         var role = user.FindFirstValue(ClaimTypes.Role);
         if (string.IsNullOrWhiteSpace(role)) return false;
         return string.Equals(role, "Store Seller", StringComparison.Ordinal)
+            || string.Equals(role, "Online Seller", StringComparison.Ordinal)
             || string.Equals(role, "Administrator", StringComparison.Ordinal)
             || string.Equals(role, "Super Administrator", StringComparison.Ordinal);
     }

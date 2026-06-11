@@ -54,6 +54,7 @@ import {
   AttributeSingleSearchSelect,
   buildAttributeOptions,
 } from "@/components/inventory/attribute-multi-search-select";
+import { useNestedModalGuard } from "@/hooks/use-nested-modal-guard";
 interface ProductEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -886,6 +887,11 @@ export function ProductEditDialog({
   const [selectedProductForEdit, setSelectedProductForEdit] =
     useState<Product | null>(null);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
+
+  const attributeNestedOpen =
+    editingAttributeId !== null && selectedProductForEdit !== null;
+  const { preventClose, closeNested } = useNestedModalGuard(attributeNestedOpen);
+
   const [productAttributes, setProductAttributes] = useState<{
     [key: string]: Array<{
       productId: number;
@@ -1597,9 +1603,11 @@ export function ProductEditDialog({
       return newAttributes;
     });
 
-    setEditingAttributeId(null);
-    setSelectedProductForEdit(null);
-    setEditingProductId(null);
+    closeNested(() => {
+      setEditingAttributeId(null);
+      setSelectedProductForEdit(null);
+      setEditingProductId(null);
+    });
     toast.success("Atributos actualizados correctamente");
   };
 
@@ -1908,23 +1916,19 @@ export function ProductEditDialog({
   if (!product) return null;
 
   const categoryAttrs = currentCategory?.attributes || [];
-  const attributeDialogOpen =
-    editingAttributeId !== null && selectedProductForEdit !== null;
-
-  const preventCloseOnNestedModal = (e: Event) => {
-    if (attributeDialogOpen) e.preventDefault();
-  };
 
   return (
     <>
       {/* Diálogo para editar atributos del producto seleccionado */}
       <Dialog
-        open={editingAttributeId !== null && selectedProductForEdit !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setEditingAttributeId(null);
-            setSelectedProductForEdit(null);
-            setEditingProductId(null);
+        open={attributeNestedOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            closeNested(() => {
+              setEditingAttributeId(null);
+              setSelectedProductForEdit(null);
+              setEditingProductId(null);
+            });
           }
         }}
       >
@@ -1958,9 +1962,11 @@ export function ProductEditDialog({
                   );
                 }}
                 onCancel={() => {
-                  setEditingAttributeId(null);
-                  setSelectedProductForEdit(null);
-                  setEditingProductId(null);
+                  closeNested(() => {
+                    setEditingAttributeId(null);
+                    setSelectedProductForEdit(null);
+                    setEditingProductId(null);
+                  });
                 }}
               />
             )}
@@ -1970,8 +1976,8 @@ export function ProductEditDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           className="max-w-lg max-h-[90vh] overflow-y-auto"
-          onInteractOutside={preventCloseOnNestedModal}
-          onPointerDownOutside={preventCloseOnNestedModal}
+          onInteractOutside={preventClose}
+          onPointerDownOutside={preventClose}
         >
           <DialogHeader className="pb-3">
             <DialogTitle className="text-lg">

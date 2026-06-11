@@ -48,6 +48,7 @@ import {
   casheaInStorePaymentsExceedTotal,
   getCasheaTotalDueBs,
 } from "@/lib/order-payments";
+import { useNestedModalGuard } from "@/hooks/use-nested-modal-guard";
 import { tryComputeOverpaymentUsd } from "@/lib/order-store-credit-usd";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
@@ -143,6 +144,18 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   );
   const reservationPromptClosingForLoadRef = useRef(false);
 
+  const nestedModalOpen =
+    isRemoveProductOpen ||
+    isProductEditOpen ||
+    isClientLookupOpen ||
+    isProductSelectionOpen ||
+    isConfirmationOpen ||
+    orderForm.needsDraftPrompt ||
+    pendingReservationPrompt !== null ||
+    isCheckingClientReservation;
+
+  const { preventClose, closeNested } = useNestedModalGuard(nestedModalOpen);
+
   const applySelectedClientToForm = (client: OrderFormSelectedClient) => {
     orderForm.setSelectedClient(client);
     if (orderForm.hasDelivery && client.address) {
@@ -170,8 +183,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           : p,
       ),
     );
-    setIsProductEditOpen(false);
-    setEditingProduct(null);
+    closeNested(() => {
+      setIsProductEditOpen(false);
+      setEditingProduct(null);
+    });
   };
 
   const handleRemoveProduct = (product: OrderProduct) => {
@@ -185,7 +200,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     orderForm.setSelectedProducts((products) =>
       products.filter((p) => p.id !== id),
     );
-    setIsRemoveProductOpen(false);
+    closeNested(() => setIsRemoveProductOpen(false));
   };
 
   // Handlers de pagos (mantener aquí por ahora, pueden moverse al hook después)
@@ -1085,27 +1100,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     }
   };
 
-  const nestedModalOpen =
-    isRemoveProductOpen ||
-    isProductEditOpen ||
-    isClientLookupOpen ||
-    isProductSelectionOpen ||
-    isConfirmationOpen ||
-    orderForm.needsDraftPrompt ||
-    pendingReservationPrompt !== null ||
-    isCheckingClientReservation;
-
-  const preventCloseOnNestedModal = (e: Event) => {
-    if (nestedModalOpen) e.preventDefault();
-  };
-
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4"
-          onInteractOutside={preventCloseOnNestedModal}
-          onPointerDownOutside={preventCloseOnNestedModal}
+          onInteractOutside={preventClose}
+          onPointerDownOutside={preventClose}
         >
           {/* relative solo en wrapper interno: evita que tailwind-merge quite position:fixed del DialogContent base */}
           <div className="relative flex min-h-0 flex-1 flex-col gap-4">
@@ -1247,7 +1248,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       {/* Diálogos modales */}
       <ClientLookupDialog
         open={isClientLookupOpen}
-        onOpenChange={setIsClientLookupOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setIsClientLookupOpen(true);
+          else closeNested(() => setIsClientLookupOpen(false));
+        }}
         onClientSelect={(client) => {
           void (async () => {
             setIsCheckingClientReservation(true);
@@ -1289,7 +1293,10 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       <ProductSelectionDialog
         open={isProductSelectionOpen}
-        onOpenChange={setIsProductSelectionOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setIsProductSelectionOpen(true);
+          else closeNested(() => setIsProductSelectionOpen(false));
+        }}
         onProductsSelect={orderForm.handleProductsSelect}
         selectedProducts={orderForm.selectedProducts}
         preloadedProducts={orderForm.allProducts}
@@ -1300,7 +1307,15 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       <ProductEditDialog
         open={isProductEditOpen}
-        onOpenChange={setIsProductEditOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setIsProductEditOpen(true);
+          else {
+            closeNested(() => {
+              setIsProductEditOpen(false);
+              setEditingProduct(null);
+            });
+          }
+        }}
         product={editingProduct}
         onProductUpdate={handleUpdateProduct}
       />
@@ -1308,8 +1323,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       <RemoveProductDialog
         open={isRemoveProductOpen}
         onOpenChange={(nextOpen) => {
-          setIsRemoveProductOpen(nextOpen);
-          if (!nextOpen) setProductToRemove(null);
+          if (nextOpen) setIsRemoveProductOpen(true);
+          else {
+            closeNested(() => {
+              setIsRemoveProductOpen(false);
+              setProductToRemove(null);
+            });
+          }
         }}
         product={productToRemove}
         onConfirm={confirmRemoveProduct}
