@@ -48,6 +48,7 @@ import {
   getFrozenCommercialTotalsFromOrder,
   type CommercialRatesMap,
 } from "@/lib/order-currency-display";
+import { useNestedModalGuard } from "@/hooks/use-nested-modal-guard";
 import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
@@ -268,6 +269,16 @@ export function EditOrderDialog({
     amountUsd: number;
   } | null>(null);
 
+  const nestedModalOpen =
+    isRemoveProductOpen ||
+    isProductEditOpen ||
+    isClientLookupOpen ||
+    isProductSelectionOpen ||
+    isConfirmationOpen ||
+    overpaymentPrompt !== null;
+
+  const { preventClose, closeNested } = useNestedModalGuard(nestedModalOpen);
+
   const offerOverpaymentPromptOrReload = (saved: Order) => {
     if (typeof navigator === "undefined" || !navigator.onLine) {
       window.location.reload();
@@ -299,8 +310,10 @@ export function EditOrderDialog({
           : p,
       ),
     );
-    setIsProductEditOpen(false);
-    setEditingProduct(null);
+    closeNested(() => {
+      setIsProductEditOpen(false);
+      setEditingProduct(null);
+    });
   };
 
   const handleRemoveProduct = (product: OrderProduct) => {
@@ -314,7 +327,7 @@ export function EditOrderDialog({
     orderForm.setSelectedProducts((products) =>
       products.filter((p) => p.id !== id),
     );
-    setIsRemoveProductOpen(false);
+    closeNested(() => setIsRemoveProductOpen(false));
   };
 
   // Handlers de pagos (mantener aquí por ahora, pueden moverse al hook después)
@@ -1382,25 +1395,13 @@ export function EditOrderDialog({
     }
   };
 
-  const nestedModalOpen =
-    isRemoveProductOpen ||
-    isProductEditOpen ||
-    isClientLookupOpen ||
-    isProductSelectionOpen ||
-    isConfirmationOpen ||
-    overpaymentPrompt !== null;
-
-  const preventCloseOnNestedModal = (e: Event) => {
-    if (nestedModalOpen) e.preventDefault();
-  };
-
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4"
-          onInteractOutside={preventCloseOnNestedModal}
-          onPointerDownOutside={preventCloseOnNestedModal}
+          onInteractOutside={preventClose}
+          onPointerDownOutside={preventClose}
         >
           <DialogHeader className="pb-2 sm:pb-4">
             <DialogTitle className="text-lg sm:text-xl">
@@ -1544,7 +1545,10 @@ export function EditOrderDialog({
       {/* Diálogos modales */}
       <ClientLookupDialog
         open={isClientLookupOpen}
-        onOpenChange={setIsClientLookupOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setIsClientLookupOpen(true);
+          else closeNested(() => setIsClientLookupOpen(false));
+        }}
         onClientSelect={(client) => {
           orderForm.setSelectedClient(client);
           if (orderForm.hasDelivery && client.address) {
@@ -1558,14 +1562,25 @@ export function EditOrderDialog({
 
       <ProductSelectionDialog
         open={isProductSelectionOpen}
-        onOpenChange={setIsProductSelectionOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setIsProductSelectionOpen(true);
+          else closeNested(() => setIsProductSelectionOpen(false));
+        }}
         onProductsSelect={orderForm.handleProductsSelect}
         selectedProducts={orderForm.selectedProducts}
       />
 
       <ProductEditDialog
         open={isProductEditOpen}
-        onOpenChange={setIsProductEditOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setIsProductEditOpen(true);
+          else {
+            closeNested(() => {
+              setIsProductEditOpen(false);
+              setEditingProduct(null);
+            });
+          }
+        }}
         product={editingProduct}
         onProductUpdate={handleUpdateProduct}
       />
@@ -1573,8 +1588,13 @@ export function EditOrderDialog({
       <RemoveProductDialog
         open={isRemoveProductOpen}
         onOpenChange={(nextOpen) => {
-          setIsRemoveProductOpen(nextOpen);
-          if (!nextOpen) setProductToRemove(null);
+          if (nextOpen) setIsRemoveProductOpen(true);
+          else {
+            closeNested(() => {
+              setIsRemoveProductOpen(false);
+              setProductToRemove(null);
+            });
+          }
         }}
         product={productToRemove}
         onConfirm={confirmRemoveProduct}
