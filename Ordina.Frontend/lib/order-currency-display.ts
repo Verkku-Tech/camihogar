@@ -20,6 +20,7 @@ import {
 import {
   getActivePaymentsList,
   getOrderPendingTotal,
+  isCasheaCommerciallySettled,
   sumPaymentBsEquivalentsForDisplay,
   sumPaymentsToUsd,
   type PartialMixedPaymentsSource,
@@ -261,8 +262,13 @@ export function getOrderPendingUsd(
     baseCurrency?: Currency;
     exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
     appliedStoreCreditUsd?: number;
+    paymentCondition?: Order["paymentCondition"];
+    paymentMethod?: string;
   },
 ): number {
+  if (isCasheaCommerciallySettled(order)) {
+    return 0;
+  }
   if (isUsdBaseOrder(order)) {
     return getOrderPendingTotal(order);
   }

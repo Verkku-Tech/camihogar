@@ -130,10 +130,76 @@ export type OrderPendingTotalInput = PartialMixedPaymentsSource & {
   baseCurrency?: Order["baseCurrency"];
   exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
   appliedStoreCreditUsd?: number;
+  paymentCondition?: Order["paymentCondition"];
+  paymentMethod?: string;
 };
+
+/** Pedido Cashea (actual + legacy sin paymentCondition en API). */
+export function isCasheaOrder(order: {
+  paymentCondition?: Order["paymentCondition"];
+  paymentMethod?: string;
+}): boolean {
+  if (order.paymentCondition === "cashea") return true;
+  if (order.paymentMethod?.trim().toLowerCase() === "cashea") return true;
+  return false;
+}
+
+/** Líneas de financiación Cashea (stub sintético al guardar). */
+export function getCasheaFinancedPayments(
+  payments: PartialPayment[],
+): PartialPayment[] {
+  return payments.filter(isCasheaFinancedPayment);
+}
+
+/**
+ * Cashea con cobro inicial + stub de financiación que cubren el total del pedido.
+ * Usado solo para saldo pendiente en visualización (no altera cobros en tienda).
+ */
+export function isCasheaCommerciallySettled(
+  order: OrderPendingTotalInput,
+): boolean {
+  if (!isCasheaOrder(order)) return false;
+
+  const payments = getActivePaymentsList(order);
+  const inStore = payments.filter((p) => !isCasheaFinancedPayment(p));
+  const financed = getCasheaFinancedPayments(payments);
+
+  if (inStore.length === 0 || financed.length === 0) return false;
+
+  const credit = order.appliedStoreCreditUsd ?? 0;
+
+  if (isUsdBaseOrder(order)) {
+    const totalDue = Math.max(0, order.total - credit);
+    const inStoreUsd = sumPaymentsToUsd(inStore, order);
+    const financedUsd = financed.reduce(
+      (sum, p) => sum + paymentToUsd(p, order),
+      0,
+    );
+    return (
+      inStoreUsd + financedUsd >= totalDue - PAYMENT_BALANCE_EPSILON_USD
+    );
+  }
+
+  let creditBs = 0;
+  if (credit > 0 && order.exchangeRatesAtCreation) {
+    const rates = normalizeExchangeRatesAtCreation(
+      order.exchangeRatesAtCreation,
+    );
+    const rate = rates?.USD?.rate;
+    if (rate && rate > 0) creditBs = credit * rate;
+  }
+  const totalDue = Math.max(0, order.total - creditBs);
+  const inStoreBs = sumPaymentsInStoreBs(inStore);
+  const financedBs = financed.reduce((sum, p) => sum + (p.amount || 0), 0);
+  return inStoreBs + financedBs >= totalDue - PAYMENT_BALANCE_EPSILON_BS;
+}
 
 /** Saldo pendiente vs el total: USD si baseCurrency USD, si no Bs (legacy). */
 export function getOrderPendingTotal(order: OrderPendingTotalInput): number {
+  if (isCasheaCommerciallySettled(order)) {
+    return 0;
+  }
+
   const payments = getActivePaymentsList(order);
   if (isUsdBaseOrder(order)) {
     const paidUsd = sumPaymentsToUsd(payments, order);

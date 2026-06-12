@@ -1970,13 +1970,13 @@ public class ReportService : IReportService
                 usdRate = GetUsdExchangeRate(order);
                 importeTotalUsd = OrderCommercialCurrency.GetOrderTotalUsd(order, usdRate);
                 var totalPagadoUsd = OrderCommercialCurrency.SumPaymentsToUsd(order);
-                saldoPendiente = Math.Max(0m, importeTotalUsd - totalPagadoUsd);
+                saldoPendiente = OrderCommercialCurrency.GetOrderPendingUsd(order, usdRate);
                 importeTotalUsd = decimal.Round(importeTotalUsd, 2, MidpointRounding.AwayFromZero);
                 totalPagadoUsd = decimal.Round(totalPagadoUsd, 2, MidpointRounding.AwayFromZero);
                 saldoPendiente = decimal.Round(saldoPendiente, 2, MidpointRounding.AwayFromZero);
                 estadoPago = OrderCommercialCurrency.DeterminePaymentStatusInUsd(
                     importeTotalUsd,
-                    totalPagadoUsd);
+                    importeTotalUsd - saldoPendiente);
             }
             catch (InvalidOperationException ex)
             {

@@ -9,6 +9,7 @@ import {
 import type { Order, Client, PartialPayment } from "@/lib/storage";
 import {
   getActivePaymentsList,
+  isCasheaCommerciallySettled,
   paymentToUsd,
   sumPaymentBsEquivalentsForDisplay,
 } from "@/lib/order-payments";
@@ -27,6 +28,7 @@ import {
   commercialRatesToExchangeRatesInput,
   formatDualCurrencyAmounts,
   getCommercialRatesFromOrder,
+  getCommercialTotalUsd,
   getDisplayBaseCurrency,
   getOrderPaidUsd,
   getOrderPendingUsd,
@@ -324,6 +326,10 @@ export function OrderPdfDocument({
   const orderBaseCurrency = getDisplayBaseCurrency(order);
   const pendingAmountUsd = getOrderPendingUsd(order);
   const paidAmountUsd = getOrderPaidUsd(order);
+  const casheaSettled = isCasheaCommerciallySettled(order);
+  const paidDisplayUsd = casheaSettled
+    ? getCommercialTotalUsd(order)
+    : paidAmountUsd;
   const paidBsEquivalent = sumPaymentBsEquivalentsForDisplay(payments, order);
 
   const addressForDelivery =
@@ -479,14 +485,19 @@ export function OrderPdfDocument({
             />
           </View>
           <View style={styles.totalRow}>
-            <Text>Pagado</Text>
+            <Text>{casheaSettled ? "Total cubierto" : "Pagado"}</Text>
             <View style={{ alignItems: "flex-end" }}>
               <Text style={styles.amountPrimary}>
-                {formatCurrency(paidAmountUsd, "USD")}
+                {formatCurrency(paidDisplayUsd, "USD")}
               </Text>
               {paidBsEquivalent > 0 ? (
                 <Text style={styles.amountSecondary}>
                   {formatCurrency(paidBsEquivalent, "Bs")}
+                  {casheaSettled ? " (incl. financiación Cashea)" : ""}
+                </Text>
+              ) : casheaSettled ? (
+                <Text style={styles.amountSecondary}>
+                  incl. financiación Cashea
                 </Text>
               ) : null}
             </View>

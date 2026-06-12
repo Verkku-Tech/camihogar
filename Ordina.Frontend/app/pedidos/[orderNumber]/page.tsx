@@ -53,6 +53,7 @@ import {
   formatOrderAmountWithOrderRateBs,
   formatOrderPaymentTotalsDisplay,
   formatOrderPaymentUsdWithOrderRateBs,
+  getCommercialTotalUsd,
   getOrderPaidUsd,
   getOrderPendingUsd,
 } from "@/lib/order-currency-display";
@@ -766,6 +767,11 @@ export default function OrderDetailPage() {
       ),
     [order, activePayments],
   );
+
+  const casheaTotalCoveredUsd = useMemo(() => {
+    if (!order || !casheaHasFinancedLine) return totalPaidUsd;
+    return getCommercialTotalUsd(order);
+  }, [order, casheaHasFinancedLine, totalPaidUsd]);
 
   const individualDiscountsSummaryLabel = useMemo(
     () =>
@@ -2680,7 +2686,7 @@ export default function OrderDetailPage() {
                             : "Total Pagado:"}
                         </span>
                         <OrderPaymentCurrency
-                          amountUsd={totalPaidUsd}
+                          amountUsd={casheaTotalCoveredUsd}
                           showCollectedBs
                         />
                       </div>
