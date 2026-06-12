@@ -55,16 +55,34 @@ export function mapOrderProductsToConfirmDto(
 
 /**
  * Resuelve el producto de catálogo asociado a una línea de pedido.
- * Estrategia única: usar `catalogProductId` (string libre, sin restricción ObjectId).
- * El `Id` de la línea es siempre ObjectId de Mongo y NO debe usarse para resolver el catálogo.
+ *
+ * El "precio base" del desglose vive en el catálogo, no en la línea del pedido.
+ * Para mostrarlo basta con encontrar el producto en `allProducts`.
+ *
+ * Estrategias en orden de confianza:
+ *   1. `catalogProductId` (pedidos nuevos): match exacto al catálogo.
+ *   2. `name` + `category` (pedidos viejos): siempre presentes en la línea.
+ *
+ * NUNCA usar `line.id` para resolver el catálogo: ese campo es ObjectId de Mongo.
  */
 export function resolveCatalogProductForOrderLine(
   line: OrderProduct,
   allProducts: Product[],
 ): Product | undefined {
   const id = line.catalogProductId?.trim();
-  if (!id) return undefined;
+  if (id) {
+    const byId = allProducts.find(
+      (p) => p.backendId === id || p.id.toString() === id,
+    );
+    if (byId) return byId;
+  }
+
+  const name = line.name?.trim();
+  if (!name) return undefined;
+  const category = line.category?.trim();
   return allProducts.find(
-    (p) => p.backendId === id || p.id.toString() === id,
+    (p) =>
+      p.name?.trim() === name &&
+      (!category || p.category?.trim() === category),
   );
 }
