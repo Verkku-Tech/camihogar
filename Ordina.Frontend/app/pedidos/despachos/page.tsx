@@ -34,10 +34,8 @@ import {
   formatOrderAmountForDisplay,
   getCommercialRatesFromOrder,
 } from "@/lib/order-currency-display"
-import {
-  getLinePriceCurrency,
-  type ExchangeRatesInput,
-} from "@/lib/order-line-pricing"
+import type { Currency } from "@/lib/currency-utils"
+import type { ExchangeRatesInput } from "@/lib/order-line-pricing"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import { DELIVERY_TYPES, DELIVERY_ZONES } from "@/components/orders/new-order-dialog"
@@ -146,6 +144,83 @@ const deliveryZoneLabel = (zone: string | undefined): string => {
   return found?.label ?? zone
 }
 
+type DeliveredHistoryOrder = Pick<
+  UnifiedOrder,
+  "baseCurrency" | "total" | "exchangeRatesAtCreation" | "products"
+>
+
+const LEGACY_USD_TOTAL_THRESHOLD = 100_000
+
+/** ¿Pedido comercialmente USD? (espejo de OrderCommercialCurrency en backend) */
+function isDeliveredHistoryUsdOrder(order: DeliveredHistoryOrder): boolean {
+  const base = order.baseCurrency?.trim()
+  if (base?.toUpperCase() === "USD") return true
+  if (base) return false
+
+  const lines = order.products ?? []
+  if (lines.length > 0) {
+    const currencies = lines.map((l) => l.priceCurrency ?? "Bs")
+    if (currencies.every((c) => c === "USD")) return true
+    if (currencies.some((c) => c === "USD") && !currencies.some((c) => c === "Bs")) {
+      return true
+    }
+  }
+
+  const ex = order.exchangeRatesAtCreation as
+    | { USD?: { rate: number }; usd?: { rate: number } }
+    | undefined
+  const usdRate = ex?.USD?.rate ?? ex?.usd?.rate
+  if (
+    usdRate &&
+    usdRate > 0 &&
+    order.total > 0 &&
+    order.total <= LEGACY_USD_TOTAL_THRESHOLD
+  ) {
+    return true
+  }
+
+  return false
+}
+
+function getDeliveredHistoryOrderCurrency(order: DeliveredHistoryOrder): Currency {
+  return isDeliveredHistoryUsdOrder(order) ? "USD" : "Bs"
+}
+
+function formatDeliveredHistoryOrderTotal(
+  order: UnifiedOrder,
+  exchangeRates: { USD?: { rate: number }; EUR?: { rate: number } } | undefined,
+): string {
+  const commercial = commercialRatesToExchangeRatesInput(
+    getCommercialRatesFromOrder(order),
+  )
+  const live: ExchangeRatesInput = {
+    USD: exchangeRates?.USD,
+    EUR: exchangeRates?.EUR,
+  }
+  return formatCommercialDualDisplay(
+    order.total,
+    getDeliveredHistoryOrderCurrency(order),
+    { commercialRates: commercial, liveRates: live },
+  )
+}
+
+function getDeliveredHistoryRowSortTime(row: DeliveredRow): number {
+  const candidates: string[] = []
+  if (row.product.deliveredAt?.trim()) {
+    candidates.push(row.product.deliveredAt)
+  }
+  if (row.order.completedAt?.trim()) {
+    candidates.push(row.order.completedAt)
+  }
+  if (row.order.dispatchDate?.trim()) {
+    candidates.push(row.order.dispatchDate)
+  }
+  const times = candidates
+    .map((iso) => new Date(iso).getTime())
+    .filter((t) => !Number.isNaN(t))
+  return times.length > 0 ? Math.max(...times) : 0
+}
+
 // Helper: Verifica si el pedido debe mostrarse en una pestaña específica
 const isOrderInTab = (order: UnifiedOrder, tab: TabType): boolean => {
   if (order.type !== "order") return false
@@ -215,8 +290,8 @@ export default function DespachosPage() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [categories, setCategories] = useState<Category[]>([])
-  /** Totales de línea formateados (pestaña despachados, filas paginadas). */
-  const [lineTotalLabels, setLineTotalLabels] = useState<Record<string, string>>({})
+  /** Importe total del pedido formateado (pestaña despachados, filas paginadas). */
+  const [orderTotalLabels, setOrderTotalLabels] = useState<Record<string, string>>({})
 
   const toggleOrderExpanded = (orderId: string) => {
     setExpandedOrders((prev) => {
@@ -429,6 +504,12 @@ export default function DespachosPage() {
         rows.push({ order, product })
       }
     }
+    rows.sort((a, b) => {
+      const diff =
+        getDeliveredHistoryRowSortTime(b) - getDeliveredHistoryRowSortTime(a)
+      if (diff !== 0) return diff
+      return b.order.orderNumber.localeCompare(a.order.orderNumber)
+    })
     return rows
   }, [filteredOrders, deliveredDateFrom, deliveredDateTo])
 
@@ -439,25 +520,14 @@ export default function DespachosPage() {
       "Vendedor",
       "Producto",
       "Cantidad",
-      "Precio de venta",
+      "Importe total",
       "Zona entrega",
       "Fecha entrega",
     ]
     const rows: string[][] = []
     try {
       for (const { order, product } of deliveredRows) {
-        const commercial = commercialRatesToExchangeRatesInput(
-          getCommercialRatesFromOrder(order),
-        )
-        const live: ExchangeRatesInput = {
-          USD: exchangeRates?.USD,
-          EUR: exchangeRates?.EUR,
-        }
-        const precioVenta = formatCommercialDualDisplay(
-          product.total,
-          getLinePriceCurrency(product),
-          { commercialRates: commercial, liveRates: live },
-        )
+        const precioVenta = formatDeliveredHistoryOrderTotal(order, exchangeRates)
         rows.push([
           order.orderNumber,
           order.clientName,
@@ -509,14 +579,19 @@ export default function DespachosPage() {
   const paginatedDeliveredRows = deliveredRowsPagination.paginatedData
   const deliveredCurrentPage = deliveredRowsPagination.currentPage
 
-  const deliveredPageLineTotalsSignature = useMemo(() => {
+  const deliveredPageOrderTotalsSignature = useMemo(() => {
     if (activeTab !== "despachados") return ""
     const start = (deliveredCurrentPage - 1) * itemsPerPage
     const pageRows = deliveredRows.slice(start, start + itemsPerPage)
     if (pageRows.length === 0) return ""
-    return pageRows
-      .map(({ order, product }) => `${order.id}|${product.id}|${product.total}`)
-      .join("|")
+    const seen = new Set<string>()
+    const parts: string[] = []
+    for (const { order } of pageRows) {
+      if (seen.has(order.id)) continue
+      seen.add(order.id)
+      parts.push(`${order.id}|${order.total}`)
+    }
+    return parts.join("|")
   }, [activeTab, deliveredRows, deliveredCurrentPage, itemsPerPage])
 
   const listPagination =
@@ -531,7 +606,7 @@ export default function DespachosPage() {
   } = listPagination
 
   useEffect(() => {
-    if (activeTab !== "despachados" || deliveredPageLineTotalsSignature === "") {
+    if (activeTab !== "despachados" || deliveredPageOrderTotalsSignature === "") {
       return
     }
     const start = (deliveredCurrentPage - 1) * itemsPerPage
@@ -540,31 +615,22 @@ export default function DespachosPage() {
 
     let cancelled = false
     const run = () => {
-      const live: ExchangeRatesInput = {
-        USD: exchangeRates?.USD,
-        EUR: exchangeRates?.EUR,
-      }
       const next: Record<string, string> = {}
-      for (const { order, product } of pageRows) {
-        const k = `${order.id}|${product.id}`
-        const commercial = commercialRatesToExchangeRatesInput(
-          getCommercialRatesFromOrder(order),
-        )
-        next[k] = formatCommercialDualDisplay(
-          product.total,
-          getLinePriceCurrency(product),
-          { commercialRates: commercial, liveRates: live },
-        )
+      const seen = new Set<string>()
+      for (const { order } of pageRows) {
+        if (seen.has(order.id)) continue
+        seen.add(order.id)
+        next[order.id] = formatDeliveredHistoryOrderTotal(order, exchangeRates)
       }
       if (!cancelled) {
-        setLineTotalLabels((prev) => ({ ...prev, ...next }))
+        setOrderTotalLabels((prev) => ({ ...prev, ...next }))
       }
     }
     run()
     return () => {
       cancelled = true
     }
-  }, [activeTab, deliveredPageLineTotalsSignature, exchangeRates])
+  }, [activeTab, deliveredPageOrderTotalsSignature, exchangeRates])
 
   // Manejar selección individual de productos relevantes a la pestaña
   const handleToggleSelect = (orderId: string) => {
@@ -1012,7 +1078,7 @@ export default function DespachosPage() {
                                 <TableHead className="whitespace-nowrap">Número de orden</TableHead>
                                 <TableHead className="whitespace-nowrap">Fecha de entrega</TableHead>
                                 <TableHead>Descripción del producto</TableHead>
-                                <TableHead className="text-right whitespace-nowrap">Precio de venta</TableHead>
+                                <TableHead className="text-right whitespace-nowrap">Importe total</TableHead>
                                 <TableHead className="w-[72px] text-center">
                                   <span className="sr-only">Ver pedido</span>
                                 </TableHead>
@@ -1060,7 +1126,8 @@ export default function DespachosPage() {
                                       </HoverCard>
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums font-medium">
-                                      {lineTotalLabels[lineKey] ?? `Bs.${product.total.toFixed(2)}`}
+                                      {orderTotalLabels[order.id] ??
+                                        `Bs.${order.total.toFixed(2)}`}
                                     </TableCell>
                                     <TableCell className="text-center">
                                       <Button
