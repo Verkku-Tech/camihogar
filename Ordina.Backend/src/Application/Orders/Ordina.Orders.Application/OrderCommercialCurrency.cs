@@ -9,6 +9,8 @@ public static class OrderCommercialCurrency
 {
     private const string CasheaFinancedMethodLabel = "Cashea (financiación)";
     private const decimal LegacyUsdTotalThreshold = 100_000m;
+    private const decimal PaymentBalanceEpsilonUsd = 0.01m;
+    private const decimal PaymentBalanceEpsilonBs = 0.1m;
 
     public static bool IsUsdBaseOrder(Order order)
     {
@@ -142,6 +144,60 @@ public static class OrderCommercialCurrency
     private static bool IsCasheaFinancingStub(PartialPayment payment) =>
         payment.PaymentDetails?.CasheaFinancedPortion == true
         || string.Equals(payment.Method, CasheaFinancedMethodLabel, StringComparison.Ordinal);
+
+    public static bool IsCasheaOrder(Order order)
+    {
+        if (string.Equals(order.PaymentCondition?.Trim(), "cashea", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return string.Equals(order.PaymentMethod?.Trim(), "cashea", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsCasheaCommerciallySettled(Order order, decimal usdRate)
+    {
+        if (!IsCasheaOrder(order))
+            return false;
+
+        var (payments, _) = GetActivePaymentsForReport(order);
+        var inStore = payments.Where(p => !IsCasheaFinancingStub(p)).ToList();
+        var financed = payments.Where(IsCasheaFinancingStub).ToList();
+
+        if (inStore.Count == 0 || financed.Count == 0)
+            return false;
+
+        var creditUsd = order.AppliedStoreCreditUsd;
+
+        if (IsUsdBaseOrder(order))
+        {
+            var totalDue = Math.Max(0m, order.Total - creditUsd);
+            var inStoreUsd = inStore.Sum(p => PaymentToUsd(p, order));
+            var financedUsd = financed.Sum(p => PaymentToUsd(p, order));
+            return inStoreUsd + financedUsd >= totalDue - PaymentBalanceEpsilonUsd;
+        }
+
+        var creditBs = creditUsd > 0 && order.ExchangeRatesAtCreation?.Usd?.Rate is > 0
+            ? creditUsd * order.ExchangeRatesAtCreation.Usd.Rate
+            : 0m;
+        var totalDueBs = Math.Max(0m, order.Total - creditBs);
+        var inStoreBs = inStore.Sum(p => p.Amount);
+        var financedBs = financed.Sum(p => p.Amount);
+        return inStoreBs + financedBs >= totalDueBs - PaymentBalanceEpsilonBs;
+    }
+
+    /// <summary>
+    /// Saldo pendiente comercial en USD para visualización y reportes.
+    /// Cashea cubierto (inicial + financiación) se reporta como 0 sin alterar SumPaymentsToUsd.
+    /// </summary>
+    public static decimal GetOrderPendingUsd(Order order, decimal usdRate)
+    {
+        if (IsCasheaCommerciallySettled(order, usdRate))
+            return 0m;
+
+        var totalUsd = GetOrderTotalUsd(order, usdRate);
+        var paidUsd = SumPaymentsToUsd(order);
+        var credit = order.AppliedStoreCreditUsd;
+        return Math.Max(0m, totalUsd - credit - paidUsd);
+    }
 
     public static string DeterminePaymentStatusInUsd(decimal totalUsd, decimal paidUsd)
     {

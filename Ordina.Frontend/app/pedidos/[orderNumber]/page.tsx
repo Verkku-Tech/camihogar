@@ -44,15 +44,19 @@ import {
   type ExchangeRate,
 } from "@/lib/currency-utils";
 import {
+  getProductLineSurchargeInBaseCurrency,
   getOrderBaseCurrency,
   isUsdBaseOrder,
 } from "@/lib/order-line-pricing";
 import { resolveCatalogProductForOrderLine } from "@/lib/order-product-confirm-map";
 import {
+  commercialRatesToExchangeRatesInput,
   formatDualCurrencyAmounts,
   formatOrderAmountWithOrderRateBs,
   formatOrderPaymentTotalsDisplay,
   formatOrderPaymentUsdWithOrderRateBs,
+  getCommercialRatesFromOrder,
+  getCommercialTotalUsd,
   getOrderPaidUsd,
   getOrderPendingUsd,
 } from "@/lib/order-currency-display";
@@ -547,6 +551,9 @@ export default function OrderDetailPage() {
   const [formattedProductTotals, setFormattedProductTotals] = useState<
     Record<string, { primary: string; secondary?: string }>
   >({});
+  const [formattedProductSurcharges, setFormattedProductSurcharges] = useState<
+    Record<string, { primary: string; secondary?: string }>
+  >({});
   const [categories, setCategories] = useState<Category[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [client, setClient] = useState<Client | null>(null);
@@ -767,6 +774,11 @@ export default function OrderDetailPage() {
     [order, activePayments],
   );
 
+  const casheaTotalCoveredUsd = useMemo(() => {
+    if (!order || !casheaHasFinancedLine) return totalPaidUsd;
+    return getCommercialTotalUsd(order);
+  }, [order, casheaHasFinancedLine, totalPaidUsd]);
+
   const individualDiscountsSummaryLabel = useMemo(
     () =>
       order
@@ -783,6 +795,25 @@ export default function OrderDetailPage() {
       order ? getGeneralDiscountSummaryLabel(order) : "Descuento general:",
     [order],
   );
+
+  const productSurchargeTotal = useMemo(() => {
+    if (!order?.products?.length || categories.length === 0) return 0;
+    const base = getOrderBaseCurrency(order);
+    const rates = commercialRatesToExchangeRatesInput(
+      getCommercialRatesFromOrder(order),
+    );
+    return order.products.reduce(
+      (sum, p) =>
+        sum +
+        getProductLineSurchargeInBaseCurrency(p, {
+          baseCurrency: base,
+          exchangeRates: rates,
+          categories,
+          allProducts,
+        }),
+      0,
+    );
+  }, [order, categories, allProducts]);
 
   const handleValidateOrder = async () => {
     if (!canValidateOrders) {
@@ -1080,11 +1111,18 @@ export default function OrderDetailPage() {
         );
       }
 
+      if (productSurchargeTotal > 0) {
+        totals.productSurchargeTotal = formatOrderAmountWithOrderRateBs(
+          productSurchargeTotal,
+          order,
+        );
+      }
+
       setFormattedTotals(totals);
     };
 
     formatTotals();
-  }, [order, localExchangeRates]);
+  }, [order, localExchangeRates, productSurchargeTotal]);
 
   // Formatear pagos cuando cambia la moneda seleccionada
   useEffect(() => {
@@ -1220,6 +1258,14 @@ export default function OrderDetailPage() {
         string,
         { primary: string; secondary?: string }
       > = {};
+      const formattedSurcharges: Record<
+        string,
+        { primary: string; secondary?: string }
+      > = {};
+      const linePricingRates = commercialRatesToExchangeRatesInput(
+        getCommercialRatesFromOrder(order),
+      );
+      const linePricingBase = getOrderBaseCurrency(order);
       const breakdowns: Record<
         string,
         {
@@ -1271,6 +1317,25 @@ export default function OrderDetailPage() {
         }
         const productTotal = orderProduct.total - (orderProduct.discount || 0);
         formattedTotals[orderProduct.id] = fmtAmount(productTotal);
+
+        if (
+          orderProduct.surchargeEnabled &&
+          orderProduct.surchargeAmount &&
+          orderProduct.surchargeAmount > 0
+        ) {
+          const surchargeAmt = getProductLineSurchargeInBaseCurrency(
+            orderProduct,
+            {
+              baseCurrency: linePricingBase,
+              exchangeRates: linePricingRates,
+              categories,
+              allProducts,
+            },
+          );
+          if (surchargeAmt > 0) {
+            formattedSurcharges[orderProduct.id] = fmtAmount(surchargeAmt);
+          }
+        }
 
         // Calcular desglose detallado
         const category = categories.find(
@@ -1465,6 +1530,7 @@ export default function OrderDetailPage() {
       setFormattedProductDiscounts(formattedDiscounts);
       setFormattedProductPrices(formattedPrices);
       setFormattedProductTotals(formattedTotals);
+      setFormattedProductSurcharges(formattedSurcharges);
       setProductBreakdowns(breakdowns);
     };
     formatProductData();
@@ -2186,6 +2252,31 @@ export default function OrderDetailPage() {
                                       )}
                                     </>
                                   )}
+
+                                  {product.surchargeEnabled &&
+                                    product.surchargeAmount &&
+                                    product.surchargeAmount > 0 && (
+                                      <div className="flex justify-between text-orange-600 dark:text-orange-400">
+                                        <span>
+                                          Sobreprecio
+                                          {product.surchargeReason
+                                            ? ` (${product.surchargeReason})`
+                                            : ""}
+                                          :
+                                        </span>
+                                        {formattedProductSurcharges[
+                                          product.id
+                                        ] ? (
+                                          <FormattedCurrencyDisplay
+                                            formatted={
+                                              formattedProductSurcharges[
+                                                product.id
+                                              ]
+                                            }
+                                          />
+                                        ) : null}
+                                      </div>
+                                    )}
                                 </div>
                               )}
 
@@ -2385,6 +2476,18 @@ export default function OrderDetailPage() {
                         <OrderCurrency amount={order.taxAmount} />
                       )}
                     </div>
+                    {productSurchargeTotal > 0 && (
+                      <div className="flex justify-between">
+                        <span>Sobreprecio:</span>
+                        {formattedTotals.productSurchargeTotal ? (
+                          <FormattedCurrencyDisplay
+                            formatted={formattedTotals.productSurchargeTotal}
+                          />
+                        ) : (
+                          <OrderCurrency amount={productSurchargeTotal} />
+                        )}
+                      </div>
+                    )}
                     {order.generalDiscountAmount &&
                       order.generalDiscountAmount > 0 && (
                         <div className="flex justify-between text-red-600">
@@ -2680,7 +2783,7 @@ export default function OrderDetailPage() {
                             : "Total Pagado:"}
                         </span>
                         <OrderPaymentCurrency
-                          amountUsd={totalPaidUsd}
+                          amountUsd={casheaTotalCoveredUsd}
                           showCollectedBs
                         />
                       </div>

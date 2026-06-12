@@ -131,4 +131,78 @@ public class OrderCommercialCurrencyTests
 
         Assert.True(OrderCommercialCurrency.IsUsdBaseOrder(order));
     }
+
+    [Fact]
+    public void GetOrderPendingUsd_WhenCasheaUsdFullySettled_ReturnsZero()
+    {
+        const decimal usdRate = 676m;
+        var order = UsdOrder(243.60m);
+        order.PaymentCondition = "cashea";
+        order.PartialPayments = new List<PartialPayment>
+        {
+            new()
+            {
+                Amount = 130m,
+                Method = "Efectivo",
+                PaymentDetails = new PaymentDetails
+                {
+                    OriginalAmount = 130m,
+                    OriginalCurrency = "USD",
+                },
+            },
+            new()
+            {
+                Amount = 113.60m * usdRate,
+                Method = "Cashea (financiación)",
+                PaymentDetails = new PaymentDetails
+                {
+                    CasheaFinancedPortion = true,
+                    OriginalAmount = 113.60m * usdRate,
+                    OriginalCurrency = "Bs",
+                },
+            },
+        };
+
+        Assert.True(OrderCommercialCurrency.IsCasheaCommerciallySettled(order, usdRate));
+        Assert.Equal(0m, OrderCommercialCurrency.GetOrderPendingUsd(order, usdRate));
+        Assert.Equal(130m, OrderCommercialCurrency.SumPaymentsToUsd(order));
+        Assert.Equal(
+            "Pagado",
+            OrderCommercialCurrency.DeterminePaymentStatusInUsd(
+                243.60m,
+                243.60m - OrderCommercialCurrency.GetOrderPendingUsd(order, usdRate)));
+    }
+
+    [Fact]
+    public void GetOrderPendingUsd_WhenCasheaWithoutFinancingStub_ReturnsRemainingBalance()
+    {
+        const decimal usdRate = 676m;
+        var order = UsdOrder(243.60m);
+        order.PaymentCondition = "cashea";
+        order.PartialPayments = new List<PartialPayment>
+        {
+            new()
+            {
+                Amount = 130m,
+                Method = "Efectivo",
+                PaymentDetails = new PaymentDetails
+                {
+                    OriginalAmount = 130m,
+                    OriginalCurrency = "USD",
+                },
+            },
+        };
+
+        Assert.False(OrderCommercialCurrency.IsCasheaCommerciallySettled(order, usdRate));
+        Assert.Equal(113.60m, OrderCommercialCurrency.GetOrderPendingUsd(order, usdRate));
+    }
+
+    [Fact]
+    public void IsCasheaOrder_WhenLegacyPaymentMethodOnly_ReturnsTrue()
+    {
+        var order = UsdOrder(200m);
+        order.PaymentMethod = "Cashea";
+
+        Assert.True(OrderCommercialCurrency.IsCasheaOrder(order));
+    }
 }
