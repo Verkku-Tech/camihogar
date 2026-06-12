@@ -1345,6 +1345,37 @@ export function resolveCatalogProductFromOrderProductId(
     const n = Number.parseInt(trimmed, 10);
     return allProducts.find((p) => p.id === n);
   }
+  // Instancia de línea: "{numericId}-{timestamp}-{random}"
+  const compositeMatch = trimmed.match(/^(\d+)-/);
+  if (compositeMatch) {
+    const n = Number.parseInt(compositeMatch[1], 10);
+    const byPrefix = allProducts.find((p) => p.id === n);
+    if (byPrefix) return byPrefix;
+  }
+  return undefined;
+}
+
+/** Resuelve el producto de catálogo de una línea de pedido (id compuesto, catalogProductId, etc.). */
+export function resolveCatalogProductFromOrderLine(
+  line: Pick<OrderProduct, "id" | "catalogProductId" | "name">,
+  allProducts: Product[],
+): Product | undefined {
+  const catalogId = line.catalogProductId?.trim();
+  if (catalogId) {
+    const byCatalog = allProducts.find(
+      (p) => p.backendId === catalogId || p.id.toString() === catalogId,
+    );
+    if (byCatalog) return byCatalog;
+  }
+
+  const fromId = resolveCatalogProductFromOrderProductId(line.id, allProducts);
+  if (fromId) return fromId;
+
+  const name = line.name?.trim();
+  if (name) {
+    return allProducts.find((p) => p.name === name);
+  }
+
   return undefined;
 }
 

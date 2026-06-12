@@ -60,15 +60,19 @@ import {
   sumPaymentsToUsd,
 } from "@/lib/order-payments";
 import {
+  computeLineBasePriceInBs,
+  getLineCatalogPriceCurrency,
+  getLineNativeBasePrice,
   ORDER_BASE_CURRENCY,
   type ExchangeRatesInput,
 } from "@/lib/order-line-pricing";
+import { formatCommercialDualDisplay } from "@/lib/order-currency-display";
 import { getSaleTypeLabel } from "@/components/orders/constants";
 import { useCurrency } from "@/contexts/currency-context";
 import {
   getCategories,
   getProducts,
-  resolveCatalogProductFromOrderProductId,
+  resolveCatalogProductFromOrderLine,
 } from "@/lib/storage";
 
 // Función helper para obtener el monto original del pago en su moneda
@@ -496,26 +500,28 @@ export function OrderConfirmationDialog({
         );
         if (!category) continue;
 
-        const originalProduct = resolveCatalogProductFromOrderProductId(
-          product.id,
-          allProducts
+        const originalProduct = resolveCatalogProductFromOrderLine(
+          product,
+          allProducts,
         );
-        
-        // Calcular precio base en Bs
-        let basePriceInBs = product.price;
-        if (originalProduct) {
-          const originalPrice = originalProduct.price;
-          const originalCurrency = originalProduct.priceCurrency || "Bs";
-          if (originalCurrency === "Bs") {
-            basePriceInBs = originalPrice;
-          } else if (originalCurrency === "USD" && exchangeRates?.USD?.rate) {
-            basePriceInBs = originalPrice * exchangeRates.USD.rate;
-          } else if (originalCurrency === "EUR" && exchangeRates?.EUR?.rate) {
-            basePriceInBs = originalPrice * exchangeRates.EUR.rate;
-          }
-        }
-
-        const basePriceFormatted = formatCurrency(basePriceInBs, "Bs");
+        const lineCurrency = getLineCatalogPriceCurrency(
+          product,
+          originalProduct,
+        );
+        const basePriceInBs = computeLineBasePriceInBs(
+          product,
+          originalProduct,
+          exchangeRates ?? undefined,
+        );
+        const nativeBasePrice = getLineNativeBasePrice(product, originalProduct);
+        const basePriceFormatted = formatCommercialDualDisplay(
+          nativeBasePrice,
+          lineCurrency,
+          {
+            commercialRates: exchangeRates ?? undefined,
+            liveRates: exchangeRates ?? undefined,
+          },
+        );
 
         // Calcular ajustes de atributos normales
         const attributeAdjustments = calculateDetailedAttributeAdjustments(
