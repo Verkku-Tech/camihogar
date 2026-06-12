@@ -1414,10 +1414,12 @@ public class ReportService : IReportService
                 var isExclusiveVendor = CommissionExclusivityModes.IsExclusive(exclusivityMode);
                 var vendorBaseSalary = mainVendor?.BaseSalary ?? 0m;
                 var hasReferrer = !string.IsNullOrWhiteSpace(lineCtx.EffectiveReferrerId);
+                var isSharedSale = exclusivityMode == CommissionExclusivityModes.Shared
+                    || lineCtx.IsSharedSale;
 
                 var (vendorCommission, referrerCommission, postventaCommission, baseRate, appliedVendorRate, appliedReferrerRate, appliedPostventaRate) =
                     CalculateProductCommission(
-                        product, order, productCommissions, saleTypeRules, exclusivityMode, lineCtx.IsSharedSale, hasReferrer);
+                        product, order, productCommissions, saleTypeRules, exclusivityMode, isSharedSale, hasReferrer);
 
                 if (vendorCommission == 0m && referrerCommission == 0m && postventaCommission == 0m)
                     continue;

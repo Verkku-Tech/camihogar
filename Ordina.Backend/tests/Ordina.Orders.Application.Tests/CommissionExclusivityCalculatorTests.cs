@@ -43,6 +43,25 @@ public class CommissionExclusivityCalculatorTests
     }
 
     [Fact]
+    public void Shared_mode_without_referrer_still_applies_postventa_from_rule()
+    {
+        var rule = EncargoTier25Rule();
+
+        var result = CommissionExclusivityCalculator.Calculate(
+            CommissionExclusivityModes.Shared,
+            isSharedSale: true,
+            hasReferrer: false,
+            baseCommissionRate: 2.5m,
+            quantity: 1,
+            familyCommission: 2.5m,
+            rule);
+
+        Assert.Equal(2m, result.VendorCommission);
+        Assert.Equal(0m, result.ReferrerCommission);
+        Assert.Equal(1m, result.PostventaCommission);
+    }
+
+    [Fact]
     public void Exclusive_mode_gives_full_family_to_vendor()
     {
         var rule = EncargoTier25Rule();
