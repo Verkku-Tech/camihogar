@@ -29,7 +29,7 @@ import {
   type Client,
   getCategories,
   getProducts,
-  resolveCatalogProductFromOrderLine,
+  resolveCatalogProductFromOrderProductId,
   type Product,
   type Category,
   type OrderProduct,
@@ -45,15 +45,11 @@ import {
   type ExchangeRate,
 } from "@/lib/currency-utils";
 import {
-  computeLineBasePriceInBs,
-  getLineCatalogPriceCurrency,
-  getLineNativeBasePrice,
   getOrderBaseCurrency,
   isUsdBaseOrder,
 } from "@/lib/order-line-pricing";
 import {
   formatDualCurrencyAmounts,
-  formatNativeLineAmountDual,
   formatOrderAmountWithOrderRateBs,
   formatOrderPaymentTotalsDisplay,
   formatOrderPaymentUsdWithOrderRateBs,
@@ -1244,25 +1240,25 @@ export default function OrderDetailPage() {
       > = {};
 
       for (const orderProduct of order.products) {
-        const catalogProduct = resolveCatalogProductFromOrderLine(
-          orderProduct,
-          allProducts,
-        );
-        const lineCurrency = getLineCatalogPriceCurrency(
-          orderProduct,
-          catalogProduct,
-        );
-        const nativeLinePrice = getLineNativeBasePrice(
-          orderProduct,
-          catalogProduct,
-        );
+        const lineCurrency =
+          orderProduct.priceCurrency ||
+          resolveCatalogProductFromOrderProductId(orderProduct.id, allProducts)
+            ?.priceCurrency ||
+          "Bs";
         formattedPrices[orderProduct.id] =
           lineCurrency === "USD" || lineCurrency === "EUR"
-            ? formatNativeLineAmountDual(
-                nativeLinePrice,
-                lineCurrency,
-                localExchangeRates ?? undefined,
-              )
+            ? {
+                primary: formatCurrency(orderProduct.price, lineCurrency),
+                ...(localExchangeRates?.USD?.rate &&
+                lineCurrency === "USD"
+                  ? {
+                      secondary: formatCurrency(
+                        orderProduct.price * localExchangeRates.USD.rate,
+                        "Bs",
+                      ),
+                    }
+                  : {}),
+              }
             : fmtAmount(orderProduct.price);
         if (orderProduct.discount && orderProduct.discount > 0) {
           formattedDiscounts[orderProduct.id] = fmtAmount(orderProduct.discount);
@@ -1276,25 +1272,51 @@ export default function OrderDetailPage() {
         );
         if (!category) continue;
 
-        const originalProduct = catalogProduct;
+        const originalProduct = resolveCatalogProductFromOrderProductId(
+          orderProduct.id,
+          allProducts,
+        );
 
-        const basePriceCurrency = getLineCatalogPriceCurrency(
-          orderProduct,
-          originalProduct,
-        );
-        const basePriceInBs = computeLineBasePriceInBs(
-          orderProduct,
-          originalProduct,
-          localExchangeRates ?? undefined,
-        );
-        const nativeBasePrice = getLineNativeBasePrice(
-          orderProduct,
-          originalProduct,
-        );
-        const basePriceFormatted = formatNativeLineAmountDual(
-          nativeBasePrice,
+        // Calcular precio base en Bs (usar precio original del producto, no el convertido)
+        // IMPORTANTE: orderProduct.price ya está en Bs, pero necesitamos el precio original
+        // para mostrarlo correctamente y calcular el desglose
+        const lineCurrencyStored = orderProduct.priceCurrency;
+        let basePriceInBs = orderProduct.price;
+        if (lineCurrencyStored === "USD" && localExchangeRates?.USD?.rate) {
+          basePriceInBs = orderProduct.price * localExchangeRates.USD.rate;
+        } else if (lineCurrencyStored === "EUR" && localExchangeRates?.EUR?.rate) {
+          basePriceInBs = orderProduct.price * localExchangeRates.EUR.rate;
+        } else if (!lineCurrencyStored && originalProduct) {
+          const originalPrice = originalProduct.price;
+          const originalCurrency = originalProduct.priceCurrency || "Bs";
+          if (originalCurrency === "Bs") {
+            basePriceInBs = originalPrice;
+          } else if (
+            originalCurrency === "USD" &&
+            localExchangeRates?.USD?.rate
+          ) {
+            basePriceInBs = originalPrice * localExchangeRates.USD.rate;
+          } else if (
+            originalCurrency === "EUR" &&
+            localExchangeRates?.EUR?.rate
+          ) {
+            basePriceInBs = originalPrice * localExchangeRates.EUR.rate;
+          } else {
+            basePriceInBs = originalPrice;
+          }
+        }
+
+        const basePriceCurrency =
+          (lineCurrencyStored ||
+            originalProduct?.priceCurrency ||
+            "Bs") as Currency;
+        const basePriceAmount =
+          basePriceCurrency === "USD" || basePriceCurrency === "EUR"
+            ? orderProduct.price
+            : basePriceInBs;
+        const basePriceFormatted = fmtAmountInCurrency(
+          basePriceAmount,
           basePriceCurrency,
-          localExchangeRates ?? undefined,
         );
 
         // Calcular ajustes de atributos normales

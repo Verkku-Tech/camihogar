@@ -23,7 +23,7 @@ import {
   getCategories,
   getProducts,
   resolveProductFromAttributeValue,
-  resolveCatalogProductFromOrderLine,
+  resolveCatalogProductFromOrderProductId,
   type AttributeValue,
   type OrderProduct,
   type Product,
@@ -1078,7 +1078,10 @@ export function ProductEditDialog({
         return;
       }
 
-      const original = resolveCatalogProductFromOrderLine(product, allProducts);
+      const original = resolveCatalogProductFromOrderProductId(
+        product.id,
+        allProducts,
+      );
       setOriginalProduct(original ?? null);
     };
 

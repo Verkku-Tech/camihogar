@@ -13,7 +13,6 @@ import {
 import { readDiscountUiFromProduct } from "@/lib/product-discount-ui";
 import {
   calculateProductUnitPriceWithAttributes,
-  resolveCatalogProductFromOrderLine,
   type Category,
   type Order,
   type OrderProduct,
@@ -29,39 +28,6 @@ export type ExchangeRatesInput = {
 
 export function getLinePriceCurrency(line: OrderProduct): Currency {
   return line.priceCurrency ?? "Bs";
-}
-
-export function getLineCatalogPriceCurrency(
-  line: Pick<OrderProduct, "priceCurrency">,
-  catalog?: Product | null,
-): Currency {
-  return (line.priceCurrency || catalog?.priceCurrency || "Bs") as Currency;
-}
-
-export function getLineNativeBasePrice(
-  line: Pick<OrderProduct, "price">,
-  catalog?: Product | null,
-): number {
-  return catalog?.price ?? line.price;
-}
-
-/** Precio base de catálogo convertido a Bs para cálculos de desglose. */
-export function computeLineBasePriceInBs(
-  line: Pick<OrderProduct, "price" | "priceCurrency">,
-  catalog: Product | undefined | null,
-  rates?: ExchangeRatesInput,
-): number {
-  const currency = getLineCatalogPriceCurrency(line, catalog);
-  const native = getLineNativeBasePrice(line, catalog);
-  if (currency === "USD") {
-    const rate = rates?.USD?.rate;
-    if (rate && rate > 0) return native * rate;
-  }
-  if (currency === "EUR") {
-    const rate = rates?.EUR?.rate;
-    if (rate && rate > 0) return native * rate;
-  }
-  return native;
 }
 
 /** Infiere moneda base cuando el API no devuelve baseCurrency (pedidos nuevos en USD). */
@@ -186,7 +152,13 @@ export function normalizeLegacyOrderLines(
   allProducts: Product[],
 ): OrderProduct[] {
   return lines.map((line) => {
-    const catalog = resolveCatalogProductFromOrderLine(line, allProducts) ?? null;
+    const catalog =
+      allProducts.find(
+        (p) =>
+          p.id.toString() === line.catalogProductId ||
+          p.backendId === line.catalogProductId ||
+          p.name === line.name,
+      ) ?? null;
     return normalizeLegacyOrderLine(line, catalog);
   });
 }

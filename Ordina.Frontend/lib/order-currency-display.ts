@@ -211,35 +211,6 @@ export function formatDualCurrencyAmounts(
   return { primary: formatCurrency(bsAmount, "Bs") };
 }
 
-/** Formato dual para un monto en la moneda nativa de la línea (USD/EUR/Bs). */
-export function formatNativeLineAmountDual(
-  amount: number,
-  currency: Currency,
-  rates?: ExchangeRatesInput,
-): DualCurrencyFormatted {
-  if (currency === "USD") {
-    return formatDualCurrencyAmounts(amount, "USD", {
-      commercialRates: rates,
-      liveRates: rates,
-    });
-  }
-  if (currency === "EUR") {
-    const primary = formatCurrency(amount, "EUR");
-    const eurRate = rates?.EUR?.rate;
-    if (eurRate && eurRate > 0) {
-      return {
-        primary,
-        secondary: formatCurrency(amount * eurRate, "Bs"),
-      };
-    }
-    return { primary };
-  }
-  return formatDualCurrencyAmounts(amount, "Bs", {
-    commercialRates: rates,
-    liveRates: rates,
-  });
-}
-
 /** Una línea para tablas (paso 1): `$X (Bs. Y)` o solo primario. */
 export function formatCommercialDualDisplay(
   amount: number,
