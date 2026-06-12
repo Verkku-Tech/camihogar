@@ -54,4 +54,6 @@ public class ConfirmOrderDto
     public string? ConvertedFromNumber { get; set; }
 
     public ExchangeRatesAtCreationDto? ExchangeRatesAtCreation { get; set; }
+
+    public string? BaseCurrency { get; set; }
 }
