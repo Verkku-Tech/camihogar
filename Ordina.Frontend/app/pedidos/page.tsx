@@ -705,7 +705,14 @@ export default function PedidosPage() {
                                 <OrderPdfRowAction
                                   orderId={order.id}
                                   orderType={order.type}
-                                  client={clientById.get(order.clientId) ?? null}
+                                  order={
+                                    order.type === "order"
+                                      ? (order as Order)
+                                      : undefined
+                                  }
+                                  client={
+                                    clientById.get(order.clientId) ?? null
+                                  }
                                 />
                                 {canEditOrder(order) && (
                                   <Button
