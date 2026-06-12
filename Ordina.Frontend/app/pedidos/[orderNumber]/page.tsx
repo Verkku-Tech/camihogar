@@ -29,7 +29,6 @@ import {
   type Client,
   getCategories,
   getProducts,
-  resolveCatalogProductFromOrderProductId,
   type Product,
   type Category,
   type OrderProduct,
@@ -48,6 +47,7 @@ import {
   getOrderBaseCurrency,
   isUsdBaseOrder,
 } from "@/lib/order-line-pricing";
+import { resolveCatalogProductForOrderLine } from "@/lib/order-product-confirm-map";
 import {
   formatDualCurrencyAmounts,
   formatOrderAmountWithOrderRateBs,
@@ -1202,33 +1202,11 @@ export default function OrderDetailPage() {
           baseCurrency: currency,
         });
 
-      /** Resolución de catálogo solo para detalle (IDs compuestos / catalogProductId). */
+      /** Resolución de catálogo para desglose (incl. pedidos convertidos desde reserva). */
       const resolveCatalogForDetail = (
         line: OrderProduct,
-      ): Product | undefined => {
-        const fromId = resolveCatalogProductFromOrderProductId(
-          line.id,
-          allProducts,
-        );
-        if (fromId) return fromId;
-
-        const catalogId = line.catalogProductId?.trim();
-        if (catalogId) {
-          const byCatalog = allProducts.find(
-            (p) =>
-              p.backendId === catalogId || p.id.toString() === catalogId,
-          );
-          if (byCatalog) return byCatalog;
-        }
-
-        const compositeMatch = line.id?.match(/^(\d+)-/);
-        if (compositeMatch) {
-          const n = Number.parseInt(compositeMatch[1], 10);
-          return allProducts.find((p) => p.id === n);
-        }
-
-        return undefined;
-      };
+      ): Product | undefined =>
+        resolveCatalogProductForOrderLine(line, allProducts);
 
       const formattedDiscounts: Record<
         string,
@@ -1300,63 +1278,38 @@ export default function OrderDetailPage() {
         );
         if (!category) continue;
 
-        // Calcular precio base en Bs (usar precio original del producto, no el convertido)
-        // IMPORTANTE: orderProduct.price ya está en Bs, pero necesitamos el precio original
-        // para mostrarlo correctamente y calcular el desglose
-        const lineCurrencyStored = orderProduct.priceCurrency;
-        let basePriceInBs = orderProduct.price;
-        if (lineCurrencyStored === "USD" && localExchangeRates?.USD?.rate) {
-          basePriceInBs = orderProduct.price * localExchangeRates.USD.rate;
-        } else if (lineCurrencyStored === "EUR" && localExchangeRates?.EUR?.rate) {
-          basePriceInBs = orderProduct.price * localExchangeRates.EUR.rate;
-        } else if (!lineCurrencyStored && originalProduct) {
-          const originalPrice = originalProduct.price;
-          const originalCurrency = originalProduct.priceCurrency || "Bs";
-          if (originalCurrency === "Bs") {
-            basePriceInBs = originalPrice;
-          } else if (
-            originalCurrency === "USD" &&
-            localExchangeRates?.USD?.rate
-          ) {
-            basePriceInBs = originalPrice * localExchangeRates.USD.rate;
-          } else if (
-            originalCurrency === "EUR" &&
-            localExchangeRates?.EUR?.rate
-          ) {
-            basePriceInBs = originalPrice * localExchangeRates.EUR.rate;
-          } else {
-            basePriceInBs = originalPrice;
-          }
-        }
-
-        const basePriceCurrency =
-          (lineCurrencyStored ||
-            originalProduct?.priceCurrency ||
-            "Bs") as Currency;
-        const nativeBasePrice = originalProduct?.price ?? orderProduct.price;
+        // Precio base = precio de catálogo (originalProduct.price).
+        // orderProduct.price es el unitario configurado (incluye atributos), NO el precio base.
+        // Si no resuelve el catálogo, mostramos '—' en el label (no inventamos con el total).
+        const basePriceCurrency = (originalProduct?.priceCurrency ||
+          orderProduct.priceCurrency ||
+          "Bs") as Currency;
+        const nativeBasePrice = originalProduct?.price;
+        const rate =
+          basePriceCurrency === "USD"
+            ? localExchangeRates?.USD?.rate
+            : basePriceCurrency === "EUR"
+              ? localExchangeRates?.EUR?.rate
+              : undefined;
+        const toBs = (amt: number) =>
+          basePriceCurrency === "Bs" ? amt : rate ? amt * rate : amt;
+        // basePriceInBs alimenta el cálculo del unitario mostrado en el desglose.
+        // Sin catálogo, fallback al precio de línea para no romper el unitario.
+        const basePriceInBs =
+          nativeBasePrice != null ? toBs(nativeBasePrice) : toBs(orderProduct.price);
         const basePriceFormatted =
-          basePriceCurrency === "USD" || basePriceCurrency === "EUR"
-            ? {
-                primary: formatCurrency(nativeBasePrice, basePriceCurrency),
-                ...(localExchangeRates?.USD?.rate &&
-                basePriceCurrency === "USD"
-                  ? {
-                      secondary: formatCurrency(
-                        nativeBasePrice * localExchangeRates.USD.rate,
-                        "Bs",
-                      ),
-                    }
-                  : localExchangeRates?.EUR?.rate &&
-                      basePriceCurrency === "EUR"
+          nativeBasePrice == null
+            ? { primary: "—" }
+            : basePriceCurrency === "USD" || basePriceCurrency === "EUR"
+              ? {
+                  primary: formatCurrency(nativeBasePrice, basePriceCurrency),
+                  ...(rate
                     ? {
-                        secondary: formatCurrency(
-                          nativeBasePrice * localExchangeRates.EUR.rate,
-                          "Bs",
-                        ),
+                        secondary: formatCurrency(nativeBasePrice * rate, "Bs"),
                       }
                     : {}),
-              }
-            : fmtAmountInCurrency(basePriceInBs, "Bs");
+                }
+              : fmtAmountInCurrency(basePriceInBs, "Bs");
 
         // Calcular ajustes de atributos normales
         const attributeAdjustments = calculateDetailedAttributeAdjustments(

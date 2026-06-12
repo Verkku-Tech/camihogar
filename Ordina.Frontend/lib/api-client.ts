@@ -2224,6 +2224,7 @@ export interface ConfirmOrderDto {
   postventaId?: string;
   postventaName?: string;
   exchangeRatesAtCreation?: CreateOrderDto["exchangeRatesAtCreation"];
+  baseCurrency?: "Bs" | "USD" | "EUR";
 }
 
 /** Cambio granular en auditoría de pedidos */

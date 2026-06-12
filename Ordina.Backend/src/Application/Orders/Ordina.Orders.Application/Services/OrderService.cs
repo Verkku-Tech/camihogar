@@ -367,6 +367,8 @@ public class OrderService : IOrderService
         else
             finalProducts = CloneOrderProducts(pcf.Products);
 
+        EnrichProductsFromReservationBaseline(finalProducts, baseline);
+
         // PIN DESHABILITADO TEMPORALMENTE - vendedores de tienda pueden confirmar reservas con cambios de productos sin PIN
         // var structureChanged = HasProductStructureChanges(baseline, finalProducts);
         // if (structureChanged && !IsAdministratorOrSuperAdministrator(callerRole))
@@ -462,6 +464,9 @@ public class OrderService : IOrderService
             ExchangeRatesAtCreation = confirmDto.ExchangeRatesAtCreation != null
                 ? MapExchangeRatesFromDto(confirmDto.ExchangeRatesAtCreation)
                 : pcf.ExchangeRatesAtCreation,
+            BaseCurrency = !string.IsNullOrWhiteSpace(confirmDto.BaseCurrency)
+                ? confirmDto.BaseCurrency.Trim()
+                : pcf.BaseCurrency,
             Type = "Order",
             OriginalOrderId = pcf.Id,
             OriginalProducts = CloneOrderProducts(baseline),
@@ -1171,13 +1176,56 @@ public class OrderService : IOrderService
         };
     }
 
+    // OrderProduct.Id es [BsonRepresentation(BsonType.ObjectId)]: Mongo solo acepta ObjectId hex.
+    // Para enlazar al catálogo se usa CatalogProductId (string libre), no el Id de línea.
+    private static string ResolveOrderProductLineId(string? dtoId)
+    {
+        if (string.IsNullOrWhiteSpace(dtoId))
+            return ObjectId.GenerateNewId().ToString();
+
+        var trimmed = dtoId.Trim();
+        return ObjectId.TryParse(trimmed, out _)
+            ? trimmed
+            : ObjectId.GenerateNewId().ToString();
+    }
+
+    private static void EnrichProductsFromReservationBaseline(
+        IList<OrderProduct> finalProducts,
+        IReadOnlyList<OrderProduct> baseline)
+    {
+        foreach (var line in finalProducts)
+        {
+            var match = baseline.FirstOrDefault(b => string.Equals(b.Id, line.Id, StringComparison.Ordinal));
+            if (match == null && !string.IsNullOrWhiteSpace(line.CatalogProductId))
+            {
+                match = baseline.FirstOrDefault(b =>
+                    string.Equals(b.CatalogProductId, line.CatalogProductId, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(
+                        CommissionLineClassifier.GetCatalogProductId(b.Id),
+                        line.CatalogProductId,
+                        StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (match == null)
+                continue;
+
+            if (string.IsNullOrWhiteSpace(line.PriceCurrency))
+                line.PriceCurrency = match.PriceCurrency;
+
+            if (string.IsNullOrWhiteSpace(line.CatalogProductId))
+            {
+                line.CatalogProductId = !string.IsNullOrWhiteSpace(match.CatalogProductId)
+                    ? match.CatalogProductId
+                    : CommissionLineClassifier.GetCatalogProductId(match.Id);
+            }
+        }
+    }
+
     private OrderProduct MapProductFromDto(OrderProductDto dto)
     {
         return new OrderProduct
         {
-            Id = string.IsNullOrEmpty(dto.Id) || !ObjectId.TryParse(dto.Id, out _)
-                ? ObjectId.GenerateNewId().ToString()
-                : dto.Id,
+            Id = ResolveOrderProductLineId(dto.Id),
             Name = dto.Name,
             Price = dto.Price,
             PriceCurrency = dto.PriceCurrency,
@@ -1222,8 +1270,24 @@ public class OrderService : IOrderService
                 Size = img.Size
             }).ToList(),
             CommissionLineSource = dto.CommissionLineSource,
-            CatalogProductId = dto.CatalogProductId
+            CatalogProductId = ResolveCatalogProductId(dto)
         };
+    }
+
+    // CatalogProductId del DTO o derivado del id compuesto {catalogId}-{timestamp}-{random}.
+    // Nunca un ObjectId suelto (eso no identifica al catálogo).
+    private static string? ResolveCatalogProductId(OrderProductDto dto)
+    {
+        if (!string.IsNullOrWhiteSpace(dto.CatalogProductId))
+            return dto.CatalogProductId;
+
+        if (string.IsNullOrWhiteSpace(dto.Id) || ObjectId.TryParse(dto.Id, out _))
+            return null;
+
+        var derived = CommissionLineClassifier.GetCatalogProductId(dto.Id);
+        return string.IsNullOrWhiteSpace(derived) || string.Equals(derived, dto.Id, StringComparison.Ordinal)
+            ? null
+            : derived;
     }
 
     private PaymentDetailsDto MapPaymentDetailsToDto(PaymentDetails paymentDetails)

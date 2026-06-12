@@ -2414,6 +2414,8 @@ export const orderToBackendDto = (
       newProviderId: r.newProviderId,
       newProviderName: r.newProviderName,
     })),
+    commissionLineSource: p.commissionLineSource,
+    catalogProductId: p.catalogProductId,
   })),
   subtotal: order.subtotal,
   taxAmount: order.taxAmount,
