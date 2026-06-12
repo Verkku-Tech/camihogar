@@ -130,16 +130,17 @@ export type OrderPendingTotalInput = PartialMixedPaymentsSource & {
   baseCurrency?: Order["baseCurrency"];
   exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
   appliedStoreCreditUsd?: number;
-  paymentCondition?: Order["paymentCondition"];
+  /** Acepta DTO API (string) y Order tipado. */
+  paymentCondition?: string;
   paymentMethod?: string;
 };
 
 /** Pedido Cashea (actual + legacy sin paymentCondition en API). */
 export function isCasheaOrder(order: {
-  paymentCondition?: Order["paymentCondition"];
+  paymentCondition?: string;
   paymentMethod?: string;
 }): boolean {
-  if (order.paymentCondition === "cashea") return true;
+  if (order.paymentCondition?.trim().toLowerCase() === "cashea") return true;
   if (order.paymentMethod?.trim().toLowerCase() === "cashea") return true;
   return false;
 }

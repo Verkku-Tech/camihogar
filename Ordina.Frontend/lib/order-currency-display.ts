@@ -262,7 +262,7 @@ export function getOrderPendingUsd(
     baseCurrency?: Currency;
     exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
     appliedStoreCreditUsd?: number;
-    paymentCondition?: Order["paymentCondition"];
+    paymentCondition?: string;
     paymentMethod?: string;
   },
 ): number {
