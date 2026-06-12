@@ -1,21 +1,5 @@
 import type { OrderProductDto } from "@/lib/api-client";
 import type { OrderProduct, Product } from "@/lib/storage";
-import { resolveCatalogProductFromOrderProductId } from "@/lib/storage";
-
-/** Paridad con CommissionLineClassifier.GetCatalogProductId en backend. */
-export function getCatalogProductIdFromLineId(lineId: string): string {
-  const trimmed = lineId?.trim() ?? "";
-  if (!trimmed) return "";
-
-  const parts = trimmed.split("-");
-  if (parts.length >= 3) {
-    const ts = parts[parts.length - 2];
-    if (/^\d+$/.test(ts)) {
-      return parts.slice(0, -2).join("-");
-    }
-  }
-  return trimmed;
-}
 
 /** Mapea líneas de pedido al DTO de confirmación preservando metadatos de catálogo/moneda. */
 export function mapOrderProductsToConfirmDto(
@@ -65,60 +49,22 @@ export function mapOrderProductsToConfirmDto(
       newProviderName: r.newProviderName,
     })),
     commissionLineSource: p.commissionLineSource,
-    catalogProductId:
-      p.catalogProductId?.trim() ||
-      getCatalogProductIdFromLineId(p.id) ||
-      undefined,
+    catalogProductId: p.catalogProductId,
   }));
 }
 
-function findCatalogByStableId(
-  catalogId: string,
+/**
+ * Resuelve el producto de catálogo asociado a una línea de pedido.
+ * Estrategia única: usar `catalogProductId` (string libre, sin restricción ObjectId).
+ * El `Id` de la línea es siempre ObjectId de Mongo y NO debe usarse para resolver el catálogo.
+ */
+export function resolveCatalogProductForOrderLine(
+  line: OrderProduct,
   allProducts: Product[],
 ): Product | undefined {
-  const id = catalogId.trim();
+  const id = line.catalogProductId?.trim();
   if (!id) return undefined;
   return allProducts.find(
     (p) => p.backendId === id || p.id.toString() === id,
   );
-}
-
-/** Resuelve producto de catálogo para desglose (línea ORD/RES, incl. post-conversión). */
-export function resolveCatalogProductForOrderLine(
-  line: OrderProduct,
-  allProducts: Product[],
-  originalProducts?: OrderProduct[],
-): Product | undefined {
-  const fromLineId = resolveCatalogProductFromOrderProductId(
-    line.id,
-    allProducts,
-  );
-  if (fromLineId) return fromLineId;
-
-  const stableId =
-    line.catalogProductId?.trim() || getCatalogProductIdFromLineId(line.id);
-  const fromStable = stableId
-    ? findCatalogByStableId(stableId, allProducts)
-    : undefined;
-  if (fromStable) return fromStable;
-
-  const compositeMatch = line.id?.match(/^(\d+)-/);
-  if (compositeMatch) {
-    const n = Number.parseInt(compositeMatch[1], 10);
-    const byNum = allProducts.find((p) => p.id === n);
-    if (byNum) return byNum;
-  }
-
-  if (originalProducts?.length) {
-    const orig = originalProducts.find(
-      (o) =>
-        o.id === line.id ||
-        (o.name === line.name && o.category === line.category),
-    );
-    if (orig && orig.id !== line.id) {
-      return resolveCatalogProductForOrderLine(orig, allProducts);
-    }
-  }
-
-  return undefined;
 }
