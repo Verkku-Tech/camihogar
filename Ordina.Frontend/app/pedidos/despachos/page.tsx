@@ -34,10 +34,8 @@ import {
   formatOrderAmountForDisplay,
   getCommercialRatesFromOrder,
 } from "@/lib/order-currency-display"
-import {
-  getLinePriceCurrency,
-  type ExchangeRatesInput,
-} from "@/lib/order-line-pricing"
+import type { Currency } from "@/lib/currency-utils"
+import type { ExchangeRatesInput } from "@/lib/order-line-pricing"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import { DELIVERY_TYPES, DELIVERY_ZONES } from "@/components/orders/new-order-dialog"
@@ -144,6 +142,88 @@ const deliveryZoneLabel = (zone: string | undefined): string => {
   if (!zone) return ""
   const found = DELIVERY_ZONES.find((z) => z.value === zone)
   return found?.label ?? zone
+}
+
+type DeliveredHistoryOrder = Pick<
+  UnifiedOrder,
+  "baseCurrency" | "total" | "exchangeRatesAtCreation" | "products"
+>
+
+const LEGACY_USD_TOTAL_THRESHOLD = 100_000
+
+/** ¿Pedido comercialmente USD? (espejo de OrderCommercialCurrency en backend) */
+function isDeliveredHistoryUsdOrder(order: DeliveredHistoryOrder): boolean {
+  const base = order.baseCurrency?.trim()
+  if (base?.toUpperCase() === "USD") return true
+  if (base) return false
+
+  const lines = order.products ?? []
+  if (lines.length > 0) {
+    const currencies = lines.map((l) => l.priceCurrency ?? "Bs")
+    if (currencies.every((c) => c === "USD")) return true
+    if (currencies.some((c) => c === "USD") && !currencies.some((c) => c === "Bs")) {
+      return true
+    }
+  }
+
+  const ex = order.exchangeRatesAtCreation as
+    | { USD?: { rate: number }; usd?: { rate: number } }
+    | undefined
+  const usdRate = ex?.USD?.rate ?? ex?.usd?.rate
+  if (
+    usdRate &&
+    usdRate > 0 &&
+    order.total > 0 &&
+    order.total <= LEGACY_USD_TOTAL_THRESHOLD
+  ) {
+    return true
+  }
+
+  return false
+}
+
+function getDeliveredHistoryLineCurrency(
+  product: OrderProduct,
+  order: DeliveredHistoryOrder,
+): Currency {
+  if (product.priceCurrency) return product.priceCurrency
+  return isDeliveredHistoryUsdOrder(order) ? "USD" : "Bs"
+}
+
+function formatDeliveredHistorySalePrice(
+  product: OrderProduct,
+  order: UnifiedOrder,
+  exchangeRates: { USD?: { rate: number }; EUR?: { rate: number } } | undefined,
+): string {
+  const commercial = commercialRatesToExchangeRatesInput(
+    getCommercialRatesFromOrder(order),
+  )
+  const live: ExchangeRatesInput = {
+    USD: exchangeRates?.USD,
+    EUR: exchangeRates?.EUR,
+  }
+  return formatCommercialDualDisplay(
+    product.total,
+    getDeliveredHistoryLineCurrency(product, order),
+    { commercialRates: commercial, liveRates: live },
+  )
+}
+
+function getDeliveredHistoryRowSortTime(row: DeliveredRow): number {
+  const candidates: string[] = []
+  if (row.product.deliveredAt?.trim()) {
+    candidates.push(row.product.deliveredAt)
+  }
+  if (row.order.completedAt?.trim()) {
+    candidates.push(row.order.completedAt)
+  }
+  if (row.order.dispatchDate?.trim()) {
+    candidates.push(row.order.dispatchDate)
+  }
+  const times = candidates
+    .map((iso) => new Date(iso).getTime())
+    .filter((t) => !Number.isNaN(t))
+  return times.length > 0 ? Math.max(...times) : 0
 }
 
 // Helper: Verifica si el pedido debe mostrarse en una pestaña específica
@@ -429,6 +509,12 @@ export default function DespachosPage() {
         rows.push({ order, product })
       }
     }
+    rows.sort((a, b) => {
+      const diff =
+        getDeliveredHistoryRowSortTime(b) - getDeliveredHistoryRowSortTime(a)
+      if (diff !== 0) return diff
+      return b.order.orderNumber.localeCompare(a.order.orderNumber)
+    })
     return rows
   }, [filteredOrders, deliveredDateFrom, deliveredDateTo])
 
@@ -446,17 +532,10 @@ export default function DespachosPage() {
     const rows: string[][] = []
     try {
       for (const { order, product } of deliveredRows) {
-        const commercial = commercialRatesToExchangeRatesInput(
-          getCommercialRatesFromOrder(order),
-        )
-        const live: ExchangeRatesInput = {
-          USD: exchangeRates?.USD,
-          EUR: exchangeRates?.EUR,
-        }
-        const precioVenta = formatCommercialDualDisplay(
-          product.total,
-          getLinePriceCurrency(product),
-          { commercialRates: commercial, liveRates: live },
+        const precioVenta = formatDeliveredHistorySalePrice(
+          product,
+          order,
+          exchangeRates,
         )
         rows.push([
           order.orderNumber,
@@ -540,20 +619,13 @@ export default function DespachosPage() {
 
     let cancelled = false
     const run = () => {
-      const live: ExchangeRatesInput = {
-        USD: exchangeRates?.USD,
-        EUR: exchangeRates?.EUR,
-      }
       const next: Record<string, string> = {}
       for (const { order, product } of pageRows) {
         const k = `${order.id}|${product.id}`
-        const commercial = commercialRatesToExchangeRatesInput(
-          getCommercialRatesFromOrder(order),
-        )
-        next[k] = formatCommercialDualDisplay(
-          product.total,
-          getLinePriceCurrency(product),
-          { commercialRates: commercial, liveRates: live },
+        next[k] = formatDeliveredHistorySalePrice(
+          product,
+          order,
+          exchangeRates,
         )
       }
       if (!cancelled) {
