@@ -1202,6 +1202,34 @@ export default function OrderDetailPage() {
           baseCurrency: currency,
         });
 
+      /** Resolución de catálogo solo para detalle (IDs compuestos / catalogProductId). */
+      const resolveCatalogForDetail = (
+        line: OrderProduct,
+      ): Product | undefined => {
+        const fromId = resolveCatalogProductFromOrderProductId(
+          line.id,
+          allProducts,
+        );
+        if (fromId) return fromId;
+
+        const catalogId = line.catalogProductId?.trim();
+        if (catalogId) {
+          const byCatalog = allProducts.find(
+            (p) =>
+              p.backendId === catalogId || p.id.toString() === catalogId,
+          );
+          if (byCatalog) return byCatalog;
+        }
+
+        const compositeMatch = line.id?.match(/^(\d+)-/);
+        if (compositeMatch) {
+          const n = Number.parseInt(compositeMatch[1], 10);
+          return allProducts.find((p) => p.id === n);
+        }
+
+        return undefined;
+      };
+
       const formattedDiscounts: Record<
         string,
         { primary: string; secondary?: string }
@@ -1240,10 +1268,10 @@ export default function OrderDetailPage() {
       > = {};
 
       for (const orderProduct of order.products) {
+        const originalProduct = resolveCatalogForDetail(orderProduct);
         const lineCurrency =
           orderProduct.priceCurrency ||
-          resolveCatalogProductFromOrderProductId(orderProduct.id, allProducts)
-            ?.priceCurrency ||
+          originalProduct?.priceCurrency ||
           "Bs";
         formattedPrices[orderProduct.id] =
           lineCurrency === "USD" || lineCurrency === "EUR"
@@ -1271,11 +1299,6 @@ export default function OrderDetailPage() {
           (cat) => cat.name === orderProduct.category,
         );
         if (!category) continue;
-
-        const originalProduct = resolveCatalogProductFromOrderProductId(
-          orderProduct.id,
-          allProducts,
-        );
 
         // Calcular precio base en Bs (usar precio original del producto, no el convertido)
         // IMPORTANTE: orderProduct.price ya está en Bs, pero necesitamos el precio original
@@ -1310,14 +1333,30 @@ export default function OrderDetailPage() {
           (lineCurrencyStored ||
             originalProduct?.priceCurrency ||
             "Bs") as Currency;
-        const basePriceAmount =
+        const nativeBasePrice = originalProduct?.price ?? orderProduct.price;
+        const basePriceFormatted =
           basePriceCurrency === "USD" || basePriceCurrency === "EUR"
-            ? orderProduct.price
-            : basePriceInBs;
-        const basePriceFormatted = fmtAmountInCurrency(
-          basePriceAmount,
-          basePriceCurrency,
-        );
+            ? {
+                primary: formatCurrency(nativeBasePrice, basePriceCurrency),
+                ...(localExchangeRates?.USD?.rate &&
+                basePriceCurrency === "USD"
+                  ? {
+                      secondary: formatCurrency(
+                        nativeBasePrice * localExchangeRates.USD.rate,
+                        "Bs",
+                      ),
+                    }
+                  : localExchangeRates?.EUR?.rate &&
+                      basePriceCurrency === "EUR"
+                    ? {
+                        secondary: formatCurrency(
+                          nativeBasePrice * localExchangeRates.EUR.rate,
+                          "Bs",
+                        ),
+                      }
+                    : {}),
+              }
+            : fmtAmountInCurrency(basePriceInBs, "Bs");
 
         // Calcular ajustes de atributos normales
         const attributeAdjustments = calculateDetailedAttributeAdjustments(
