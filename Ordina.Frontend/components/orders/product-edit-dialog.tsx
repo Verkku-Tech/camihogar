@@ -19,11 +19,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { resolveCatalogProductForOrderLine } from "@/lib/order-product-confirm-map";
 import {
   getCategories,
   getProducts,
   resolveProductFromAttributeValue,
-  resolveCatalogProductFromOrderProductId,
   type AttributeValue,
   type OrderProduct,
   type Product,
@@ -1078,10 +1078,7 @@ export function ProductEditDialog({
         return;
       }
 
-      const original = resolveCatalogProductFromOrderProductId(
-        product.id,
-        allProducts,
-      );
+      const original = resolveCatalogProductForOrderLine(product, allProducts);
       setOriginalProduct(original ?? null);
     };
 
@@ -1339,13 +1336,17 @@ export function ProductEditDialog({
   useEffect(() => {
     const updateFormattedTotals = async () => {
       if (!product || !currentCategory) return;
+      if (mode !== "add" && productsLoaded && !originalProduct) return;
 
       const lineCurrency = (
         mode === "add"
           ? ORDER_BASE_CURRENCY
           : originalProduct?.priceCurrency || product.priceCurrency || "Bs"
       ) as Currency;
-      const basePriceNative = originalProduct?.price ?? product.price;
+      const basePriceNative =
+        mode === "add"
+          ? (originalProduct?.price ?? product.price)
+          : (originalProduct?.price ?? 0);
       const basePriceCurrency = (originalProduct?.priceCurrency ||
         product.priceCurrency ||
         "Bs") as Currency;
@@ -1553,6 +1554,7 @@ export function ProductEditDialog({
     surchargeEnabled,
     surchargeAmount,
     mode,
+    productsLoaded,
   ]);
 
   // Obtener la categoría del producto seleccionado para editar sus atributos
@@ -1800,12 +1802,22 @@ export function ProductEditDialog({
       }
     }
 
+    if (mode !== "add" && productsLoaded && !originalProduct) {
+      toast.error(
+        "No se encontró el producto en catálogo; no se puede recalcular el precio.",
+      );
+      return;
+    }
+
     const lineCurrency = (
       mode === "add"
         ? ORDER_BASE_CURRENCY
         : originalProduct?.priceCurrency || product.priceCurrency || "Bs"
     ) as Currency;
-    const basePrice = originalProduct ? originalProduct.price : product.price;
+    const basePrice =
+      mode === "add"
+        ? (originalProduct?.price ?? product.price)
+        : (originalProduct!.price);
     const basePriceCurrency = (originalProduct?.priceCurrency ||
       product.priceCurrency ||
       "Bs") as Currency;
@@ -1912,6 +1924,9 @@ export function ProductEditDialog({
     onProductUpdate(updatedProduct);
   };
 
+  const catalogMissingForEdit =
+    mode !== "add" && productsLoaded && product != null && !originalProduct;
+
   if (!product) return null;
 
   const categoryAttrs = currentCategory?.attributes || [];
@@ -1988,6 +2003,14 @@ export function ProductEditDialog({
                 : "Modifica los detalles y atributos del producto seleccionado"}
             </DialogDescription>
           </DialogHeader>
+
+          {catalogMissingForEdit && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              No se encontró este producto en el catálogo. No se puede recalcular
+              el precio base hasta que exista en inventario (nombre y categoría
+              deben coincidir).
+            </div>
+          )}
 
           <div className="space-y-3">
             {/* Product Info */}
@@ -2701,7 +2724,7 @@ export function ProductEditDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSave}>
+            <Button onClick={handleSave} disabled={catalogMissingForEdit}>
               {mode === "add" ? "Agregar" : "Guardar Cambios"}
             </Button>
           </div>

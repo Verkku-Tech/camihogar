@@ -1328,7 +1328,11 @@ export const getProductByBackendId = async (
   }
 };
 
-/** orderProduct.id suele ser ObjectId string; evitar Number.parseInt sobre hex. */
+/**
+ * Resuelve catálogo por id de línea de pedido (ObjectId o numérico).
+ * @deprecated No usar para líneas de pedido/reserva: el id de línea no es el del catálogo.
+ * Usar `resolveCatalogProductForOrderLine` en `@/lib/order-product-confirm-map`.
+ */
 export function resolveCatalogProductFromOrderProductId(
   orderProductId: string,
   allProducts: Product[],

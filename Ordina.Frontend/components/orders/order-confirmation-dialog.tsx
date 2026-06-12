@@ -65,11 +65,8 @@ import {
 } from "@/lib/order-line-pricing";
 import { getSaleTypeLabel } from "@/components/orders/constants";
 import { useCurrency } from "@/contexts/currency-context";
-import {
-  getCategories,
-  getProducts,
-  resolveCatalogProductFromOrderProductId,
-} from "@/lib/storage";
+import { resolveCatalogProductForOrderLine } from "@/lib/order-product-confirm-map";
+import { getCategories, getProducts } from "@/lib/storage";
 
 // Función helper para obtener el monto original del pago en su moneda
 const getOriginalPaymentAmount = (
@@ -496,9 +493,9 @@ export function OrderConfirmationDialog({
         );
         if (!category) continue;
 
-        const originalProduct = resolveCatalogProductFromOrderProductId(
-          product.id,
-          allProducts
+        const originalProduct = resolveCatalogProductForOrderLine(
+          product,
+          allProducts,
         );
         
         // Calcular precio base en Bs

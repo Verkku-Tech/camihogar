@@ -11,6 +11,7 @@ import {
   type ExchangeRatesAtCreationRaw,
 } from "@/lib/currency-utils";
 import { readDiscountUiFromProduct } from "@/lib/product-discount-ui";
+import { resolveCatalogProductForOrderLine } from "@/lib/order-product-confirm-map";
 import {
   calculateProductUnitPriceWithAttributes,
   type Category,
@@ -250,25 +251,48 @@ function getProductLinePartsInBaseCurrency(
   if (!category) {
     lineTotalNative = Math.max(0, (product.total ?? 0) - surchargeNative);
   } else {
-    const storedLine = (product.price ?? 0) * qty;
-    const recalcUnit = calculateProductUnitPriceWithAttributes(
-      product.price,
-      product.attributes,
-      category,
-      rates,
-      options.allProducts,
-      options.categories,
-      { targetCurrency: lineCurrency, basePriceCurrency: lineCurrency },
-    );
-    const recalcLine = recalcUnit * qty;
+    const catalogProduct =
+      options.allProducts.length > 0
+        ? resolveCatalogProductForOrderLine(product, options.allProducts)
+        : undefined;
 
-    // product.price del modal/API ya incluye atributos; no sumar atributos otra vez.
-    if (storedLine > 0 && recalcLine > storedLine + 0.005) {
-      lineTotalNative = storedLine;
-    } else if ((product.total ?? 0) > surchargeNative + 0.005) {
-      lineTotalNative = Math.max(0, product.total! - surchargeNative);
+    if (catalogProduct) {
+      const catalogBaseCurrency = (catalogProduct.priceCurrency ||
+        lineCurrency) as Currency;
+      const recalcUnit = calculateProductUnitPriceWithAttributes(
+        catalogProduct.price,
+        product.attributes,
+        category,
+        rates,
+        options.allProducts,
+        options.categories,
+        {
+          targetCurrency: lineCurrency,
+          basePriceCurrency: catalogBaseCurrency,
+        },
+      );
+      lineTotalNative = recalcUnit * qty;
     } else {
-      lineTotalNative = recalcLine;
+      const storedLine = (product.price ?? 0) * qty;
+      const recalcUnit = calculateProductUnitPriceWithAttributes(
+        product.price,
+        product.attributes,
+        category,
+        rates,
+        options.allProducts,
+        options.categories,
+        { targetCurrency: lineCurrency, basePriceCurrency: lineCurrency },
+      );
+      const recalcLine = recalcUnit * qty;
+
+      // product.price del modal/API ya incluye atributos; no sumar atributos otra vez.
+      if (storedLine > 0 && recalcLine > storedLine + 0.005) {
+        lineTotalNative = storedLine;
+      } else if ((product.total ?? 0) > surchargeNative + 0.005) {
+        lineTotalNative = Math.max(0, product.total! - surchargeNative);
+      } else {
+        lineTotalNative = recalcLine;
+      }
     }
   }
 
