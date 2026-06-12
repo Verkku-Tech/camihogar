@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Search, Download, FileSpreadsheet, Wifi, WifiOff, Loader2, Check, ChevronsUpDown } from "lucide-react"
 import { getProviders, getOrders, type Provider, type Order, type OrderProduct } from "@/lib/storage"
+import { isReservationOrder } from "@/lib/order-document-types"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -43,6 +44,7 @@ function orderHasProductInManufacturingStatus(
   order: Order,
   status: ManufacturingStatus,
 ): boolean {
+  if (isReservationOrder(order)) return false
   if (order.status === "Generado" || order.status === "Generada") {
     return false
   }
@@ -375,6 +377,7 @@ export function ManufacturingReport() {
     const result: Array<{ order: Order; product: OrderProduct; orderDate: string }> = []
 
     orders.forEach(order => {
+      if (isReservationOrder(order)) return
       if (order.status === "Generado" || order.status === "Generada") {
         return
       }
