@@ -24,9 +24,32 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Search, Eye, ClipboardCheck, Loader2, ClipboardList } from "lucide-react";
+import {
+  Search,
+  Eye,
+  ClipboardCheck,
+  Loader2,
+  ClipboardList,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
-import { getReservations, getClients, type Order, type Client } from "@/lib/storage";
+import {
+  getReservations,
+  getClients,
+  deleteOrder,
+  type Order,
+  type Client,
+} from "@/lib/storage";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { buildClientFilterHaystack, digitsOnly } from "@/lib/order-client-search";
 import { getActiveExchangeRates } from "@/lib/currency-utils";
 import {
@@ -71,7 +94,7 @@ function reservationOnlineVendor(order: Order): string {
 
 export default function ReservasPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const { applies: onlineSellerFilter, isTeamOrder } =
     useOnlineSellerVisibility();
   const [reservations, setReservations] = useState<Order[]>([]);
@@ -86,6 +109,12 @@ export default function ReservasPage() {
   const [reservationToConfirm, setReservationToConfirm] = useState<Order | null>(
     null,
   );
+  const [reservationToDelete, setReservationToDelete] = useState<Order | null>(
+    null,
+  );
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+  const canDeleteReservation = hasPermission("orders.delete");
 
   const canConfirmReservation =
     user &&
@@ -209,6 +238,36 @@ export default function ReservasPage() {
     data: filteredReservations,
     itemsPerPage,
   });
+
+  const handleDeleteClick = (order: Order) => {
+    if (!canDeleteReservation) {
+      toast.error("No tienes permiso para eliminar reservas.");
+      return;
+    }
+    setReservationToDelete(order);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!reservationToDelete) return;
+    if (!canDeleteReservation) {
+      toast.error("No tienes permiso para eliminar reservas.");
+      setIsDeleteDialogOpen(false);
+      setReservationToDelete(null);
+      return;
+    }
+
+    try {
+      await deleteOrder(reservationToDelete.id);
+      setIsDeleteDialogOpen(false);
+      setReservationToDelete(null);
+      toast.success("Reserva eliminada");
+      await loadReservations();
+    } catch (error) {
+      console.error("Error deleting reservation:", error);
+      toast.error("Error al eliminar la reserva. Por favor intenta nuevamente.");
+    }
+  };
 
   return (
     <ProtectedRoute>
@@ -371,6 +430,18 @@ export default function ReservasPage() {
                                           </span>
                                         </Button>
                                       )}
+                                      {canDeleteReservation && pending && (
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950"
+                                          title="Eliminar reserva"
+                                          onClick={() => handleDeleteClick(order)}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      )}
                                       <Button
                                         type="button"
                                         variant="ghost"
@@ -424,6 +495,40 @@ export default function ReservasPage() {
           void loadReservations();
         }}
       />
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar reserva?</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas eliminar la reserva &quot;
+              {reservationToDelete?.orderNumber}&quot;?
+              <br />
+              <span className="mt-2 block text-sm text-muted-foreground">
+                Cliente: {reservationToDelete?.clientName} — Total:{" "}
+                {reservationToDelete
+                  ? (orderTotals[reservationToDelete.id] ?? "—")
+                  : "—"}
+              </span>
+              <br />
+              <span className="mt-2 block text-sm font-medium text-red-600">
+                Esta acción no se puede deshacer.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setReservationToDelete(null)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void handleDelete()}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ProtectedRoute>
   );
 }
