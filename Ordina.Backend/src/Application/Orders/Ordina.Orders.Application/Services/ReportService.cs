@@ -103,6 +103,11 @@ public class ReportService : IReportService
     /// <summary>Misma cadena que CASHEA_FINANCED_METHOD_LABEL en el front (order-payments.ts).</summary>
     private const string CasheaFinancedMethodLabel = "Cashea (financiación)";
 
+    /// <summary>Mismo valor que NO_APLICA_CUENTA_FILTER en payments-report.tsx.</summary>
+    private const string NoAplicaCuentaFilterValue = "__no_aplica__";
+
+    private const string NoAplicaCuentaDisplay = "N/A";
+
     private readonly IOrderRepository _orderRepository;
     private readonly IProviderRepository _providerRepository;
     private readonly ICategoryRepository _categoryRepository;
@@ -320,6 +325,13 @@ public class ReportService : IReportService
             // Alinear con Inventario → Fabricación: no listar pedidos aún no validados
             if (string.Equals(order.Status, "Generado", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(order.Status, "Generada", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // Alinear con Inventario → Fabricación: reservas no van al reporte hasta confirmarse como pedido
+            if (OrderDocumentTypes.IsReservationType(order.Type)
+                || OrderDocumentTypes.IsReservationOrderNumber(order.OrderNumber))
             {
                 continue;
             }
@@ -912,8 +924,8 @@ public class ReportService : IReportService
                         continue;
                     }
 
-                    // Filtrar por cuenta - solo si se especifica accountId y el pago tiene accountId que coincida
-                    if (!string.IsNullOrWhiteSpace(accountId))
+                    // Filtrar por cuenta concreta (no el filtro virtual de divisas sin cuenta)
+                    if (!string.IsNullOrWhiteSpace(accountId) && !IsNoAplicaCuentaFilter(accountId))
                     {
                         var paymentAccountId = payment.PaymentDetails?.AccountId;
                         if (string.IsNullOrWhiteSpace(paymentAccountId) || paymentAccountId != accountId)
@@ -924,6 +936,10 @@ public class ReportService : IReportService
 
                     var row = await CreatePaymentReportRowAsync(
                         order, payment, payment.Date, activePaymentType, i);
+                    if (IsNoAplicaCuentaFilter(accountId) && row.Cuenta != NoAplicaCuentaDisplay)
+                    {
+                        continue;
+                    }
                     reportData.Add(row);
                 }
             }
@@ -940,8 +956,8 @@ public class ReportService : IReportService
                     continue;
                 }
 
-                // Filtrar por cuenta - solo si se especifica accountId y el pago tiene accountId que coincida
-                if (!string.IsNullOrWhiteSpace(accountId))
+                // Filtrar por cuenta concreta (no el filtro virtual de divisas sin cuenta)
+                if (!string.IsNullOrWhiteSpace(accountId) && !IsNoAplicaCuentaFilter(accountId))
                 {
                     var paymentAccountId = order.PaymentDetails?.AccountId;
                     if (string.IsNullOrWhiteSpace(paymentAccountId) || paymentAccountId != accountId)
@@ -951,7 +967,7 @@ public class ReportService : IReportService
                 }
 
                 var referencia = GetPaymentReference(order.PaymentDetails, order.PaymentMethod);
-                var cuenta = await GetAccountDisplayAsync(order.PaymentDetails);
+                var cuentaRaw = await GetAccountDisplayAsync(order.PaymentDetails);
 
                 // Usar originalAmount y originalCurrency si están disponibles
                 // Si no hay originalAmount, intentar usar CashReceived y CashCurrency para efectivo
@@ -967,6 +983,12 @@ public class ReportService : IReportService
                     montoOriginal,
                     monedaOriginal,
                     order.PaymentDetails?.ExchangeRate);
+
+                var cuenta = ResolveReportCuentaDisplay(monedaOriginal, cuentaRaw);
+                if (IsNoAplicaCuentaFilter(accountId) && cuenta != NoAplicaCuentaDisplay)
+                {
+                    continue;
+                }
 
                 reportData.Add(new PaymentReportRow
                 {
@@ -989,6 +1011,36 @@ public class ReportService : IReportService
         }
 
         return reportData;
+    }
+
+    private static bool IsNoAplicaCuentaFilter(string? accountId) =>
+        string.Equals(accountId, NoAplicaCuentaFilterValue, StringComparison.Ordinal);
+
+    private static bool IsForeignCurrencyForReport(string? monedaOriginal)
+    {
+        var m = (monedaOriginal ?? string.Empty).Trim().ToUpperInvariant();
+        return m is "USD" or "EUR";
+    }
+
+    private static bool IsEmptyAccountDisplay(string? cuenta)
+    {
+        var c = (cuenta ?? string.Empty).Trim();
+        return c.Length == 0 || c == "-";
+    }
+
+    private static bool IsNoAplicaAccountLabel(string? cuenta) =>
+        string.Equals((cuenta ?? string.Empty).Trim(), "no aplica", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Alineado con resolveReportCuentaDisplay en payments-report.tsx.</summary>
+    private static string ResolveReportCuentaDisplay(string monedaOriginal, string cuentaRaw)
+    {
+        if (IsForeignCurrencyForReport(monedaOriginal) &&
+            (IsEmptyAccountDisplay(cuentaRaw) || IsNoAplicaAccountLabel(cuentaRaw)))
+        {
+            return NoAplicaCuentaDisplay;
+        }
+
+        return string.IsNullOrWhiteSpace(cuentaRaw) ? "-" : cuentaRaw;
     }
 
     /// <summary>
@@ -1041,7 +1093,7 @@ public class ReportService : IReportService
         int paymentIndex)
     {
         var referencia = GetPaymentReference(payment.PaymentDetails, payment.Method);
-        var cuenta = await GetAccountDisplayAsync(payment.PaymentDetails);
+        var cuentaRaw = await GetAccountDisplayAsync(payment.PaymentDetails);
 
         // Usar originalAmount y originalCurrency si están disponibles
         // Si no hay originalAmount, intentar usar CashReceived y CashCurrency para efectivo
@@ -1069,7 +1121,7 @@ public class ReportService : IReportService
             MonedaOriginal = monedaOriginal,
             MontoBs = montoBs,
             MontoUsd = GetMontoUsdForBsPayment(order, monedaOriginal, montoBs),
-            Cuenta = cuenta,
+            Cuenta = ResolveReportCuentaDisplay(monedaOriginal, cuentaRaw),
             Referencia = referencia,
             OrderId = order.Id,
             PaymentType = paymentType,
@@ -1916,13 +1968,15 @@ public class ReportService : IReportService
             try
             {
                 usdRate = GetUsdExchangeRate(order);
-                importeTotalUsd = order.Total / usdRate;
-                estadoPago = DeterminePaymentStatusInUsd(order, usdRate);
-                var totalPagadoBs = CalculateTotalPaid(order);
-                var totalPagadoUsd = totalPagadoBs / usdRate;
+                importeTotalUsd = OrderCommercialCurrency.GetOrderTotalUsd(order, usdRate);
+                var totalPagadoUsd = OrderCommercialCurrency.SumPaymentsToUsd(order);
                 saldoPendiente = Math.Max(0m, importeTotalUsd - totalPagadoUsd);
                 importeTotalUsd = decimal.Round(importeTotalUsd, 2, MidpointRounding.AwayFromZero);
+                totalPagadoUsd = decimal.Round(totalPagadoUsd, 2, MidpointRounding.AwayFromZero);
                 saldoPendiente = decimal.Round(saldoPendiente, 2, MidpointRounding.AwayFromZero);
+                estadoPago = OrderCommercialCurrency.DeterminePaymentStatusInUsd(
+                    importeTotalUsd,
+                    totalPagadoUsd);
             }
             catch (InvalidOperationException ex)
             {
@@ -1978,36 +2032,6 @@ public class ReportService : IReportService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error al determinar estado de pago para pedido {OrderNumber}", order.OrderNumber);
-            return "Pendiente";
-        }
-    }
-
-    private string DeterminePaymentStatusInUsd(Order order, decimal usdRate)
-    {
-        try
-        {
-            // Calcular total pagado en Bs
-            var totalPagadoBs = CalculateTotalPaid(order);
-            var totalBs = order.Total;
-
-            // Convertir a USD
-            var totalPagadoUsd = totalPagadoBs / usdRate;
-            var totalUsd = totalBs / usdRate;
-
-            if (totalUsd <= 0)
-                return "Pendiente";
-
-            if (totalPagadoUsd >= totalUsd)
-                return "Pagado";
-
-            if (totalPagadoUsd > 0)
-                return $"Parcial (${totalPagadoUsd:F2})";
-
-            return "Pendiente";
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error al determinar estado de pago en USD para pedido {OrderNumber}", order.OrderNumber);
             return "Pendiente";
         }
     }

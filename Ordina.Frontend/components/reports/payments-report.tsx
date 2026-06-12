@@ -137,6 +137,17 @@ function isEmptyAccountDisplay(cuenta: string): boolean {
   return c === "" || c === "-"
 }
 
+function isNoAplicaAccountLabel(cuenta: string): boolean {
+  return (cuenta || "").trim().toLowerCase() === "no aplica"
+}
+
+/** Cuenta catálogo "No Aplica": se unifica con el filtro virtual de divisas sin cuenta. */
+function isNoAplicaDbAccount(account: Account): boolean {
+  const label = (account.label || "").trim().toLowerCase()
+  const code = (account.code || "").trim().toLowerCase()
+  return label === "no aplica" || code === "no aplica"
+}
+
 /** Pagos en divisas sin cuenta receptora se muestran como N/A para poder filtrarlos. */
 function resolveReportCuentaDisplay(
   monedaOriginal: string,
@@ -144,15 +155,32 @@ function resolveReportCuentaDisplay(
 ): string {
   if (
     isForeignCurrency(monedaOriginal) &&
-    isEmptyAccountDisplay(cuentaRaw)
+    (isEmptyAccountDisplay(cuentaRaw) || isNoAplicaAccountLabel(cuentaRaw))
   ) {
     return NO_APLICA_CUENTA_DISPLAY
   }
   return cuentaRaw || "-"
 }
 
+function rowMatchesNoAplicaCuentaFilter(row: PaymentReportRow): boolean {
+  return row.cuenta === NO_APLICA_CUENTA_DISPLAY
+}
+
 function isNoAplicaAccountFilter(selected: string): boolean {
   return selected === NO_APLICA_CUENTA_FILTER
+}
+
+function appendAccountFilterToParams(
+  params: URLSearchParams,
+  selectedAccount: string,
+): void {
+  if (selectedAccount === "Todos") return
+  params.append(
+    "accountId",
+    isNoAplicaAccountFilter(selectedAccount)
+      ? NO_APLICA_CUENTA_FILTER
+      : selectedAccount,
+  )
 }
 
 export function PaymentsReport() {
@@ -174,13 +202,36 @@ export function PaymentsReport() {
 
   const effectiveCurrencyFilter = effectiveCashCurrencyFilter(selectedPaymentMethod)
 
+  const noAplicaDbAccountId = useMemo(
+    () => accounts.find(isNoAplicaDbAccount)?.id ?? null,
+    [accounts],
+  )
+
+  const reportAccounts = useMemo(
+    () =>
+      accounts.filter(
+        (account) =>
+          account.id &&
+          account.id.trim() !== "" &&
+          !isNoAplicaDbAccount(account),
+      ),
+    [accounts],
+  )
+
+  // Si quedó seleccionada la cuenta catálogo "No Aplica", usar el filtro virtual unificado
+  useEffect(() => {
+    if (noAplicaDbAccountId && selectedAccount === noAplicaDbAccountId) {
+      setSelectedAccount(NO_APLICA_CUENTA_FILTER)
+    }
+  }, [noAplicaDbAccountId, selectedAccount])
+
   const filteredReportData = useMemo(() => {
     let data = reportData
     if (effectiveCurrencyFilter) {
       data = data.filter((r) => r.monedaOriginal === effectiveCurrencyFilter)
     }
     if (isNoAplicaAccountFilter(selectedAccount)) {
-      data = data.filter((r) => r.cuenta === NO_APLICA_CUENTA_DISPLAY)
+      data = data.filter(rowMatchesNoAplicaCuentaFilter)
     }
     if (conciliationFilter === "Conciliados") {
       data = data.filter((r) => r.isConciliated)
@@ -304,12 +355,7 @@ export function PaymentsReport() {
         if (backendPm !== "Todos") {
           params.append("paymentMethod", backendPm)
         }
-        if (
-          selectedAccount !== "Todos" &&
-          !isNoAplicaAccountFilter(selectedAccount)
-        ) {
-          params.append("accountId", selectedAccount)
-        }
+        appendAccountFilterToParams(params, selectedAccount)
 
         const url = `/api/proxy/orders/api/Reports/Payments/Preview?${params.toString()}`
         const response = await fetch(url, {
@@ -576,9 +622,7 @@ export function PaymentsReport() {
         finalRows = rows.filter((r) => r.monedaOriginal === currF)
       }
       if (isNoAplicaAccountFilter(selectedAccount)) {
-        finalRows = finalRows.filter(
-          (r) => r.cuenta === NO_APLICA_CUENTA_DISPLAY,
-        )
+        finalRows = finalRows.filter(rowMatchesNoAplicaCuentaFilter)
       }
 
       // Ordenar por fecha (más reciente primero)
@@ -832,12 +876,7 @@ export function PaymentsReport() {
       if (excelBackendPm !== "Todos") {
         params.append("paymentMethod", excelBackendPm)
       }
-      if (
-        selectedAccount !== "Todos" &&
-        !isNoAplicaAccountFilter(selectedAccount)
-      ) {
-        params.append("accountId", selectedAccount)
-      }
+      appendAccountFilterToParams(params, selectedAccount)
 
       const url = `/api/proxy/orders/api/Reports/Payments/Excel?${params.toString()}`
       const response = await fetch(url, {
@@ -930,9 +969,7 @@ export function PaymentsReport() {
                   <SelectItem value={NO_APLICA_CUENTA_FILTER}>
                     No aplica (divisas sin cuenta)
                   </SelectItem>
-                  {accounts
-                    .filter((account) => account.id && account.id.trim() !== "")
-                    .map((account) => (
+                  {reportAccounts.map((account) => (
                       <SelectItem key={account.id} value={account.id}>
                         {account.accountType === "Cuentas Digitales"
                           ? account.email || "Cuenta Digital"

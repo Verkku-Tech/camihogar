@@ -799,6 +799,13 @@ public class OrderService : IOrderService
                 return false;
             }
 
+            if (OrderDocumentTypes.IsReservationType(existing.Type)
+                && !OrderDocumentTypes.IsActiveReservationStatus(existing.Status))
+            {
+                throw new ArgumentException(
+                    "Solo se pueden eliminar reservas pendientes de confirmación.");
+            }
+
             EnsureOnlineSellerCanMutate(existing, userId, callerRole);
 
             await _auditLogService.LogOrderDeletedAsync(existing, userId, userName);
