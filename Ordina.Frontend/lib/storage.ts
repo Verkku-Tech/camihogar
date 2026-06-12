@@ -6514,11 +6514,13 @@ export type ProductCommissionSplit = {
   isShared: boolean;
 };
 
+/** ID simbólico para el pool de post venta (el admin liquida manualmente). */
+export const POSTVENTA_POOL_SELLER_ID = "__postventa__";
+
 function computeCommissionExclusivitySplit(
   exclusivityMode: CommissionExclusivityMode,
   isSharedSale: boolean,
   hasReferrer: boolean,
-  hasPostventa: boolean,
   qty: number,
   familyCommission: number,
   rule?: SaleTypeCommissionRule | null,
@@ -6564,7 +6566,7 @@ function computeCommissionExclusivitySplit(
       return {
         vendorCommission: rule.vendorRate * qty,
         referrerCommission: hasReferrer ? rule.referrerRate * qty : 0,
-        postventaCommission: hasPostventa ? postventaRate * qty : 0,
+        postventaCommission: postventaRate * qty,
         isShared: true,
       };
     }
@@ -6595,7 +6597,6 @@ export const computeProductCommissionSplit = (
   const exclusivityMode = getUserCommissionExclusivityMode(mainVendor);
   const referrerId = order.referrerId?.trim();
   const hasReferrer = !!referrerId;
-  const hasPostventa = !!order.postventaId?.trim();
   const isSharedSale =
     exclusivityMode === COMMISSION_EXCLUSIVITY_MODES.Shared;
 
@@ -6654,7 +6655,6 @@ export const computeProductCommissionSplit = (
     exclusivityMode,
     isSharedSale,
     hasReferrer,
-    hasPostventa,
     qty,
     familyCommission,
     rule,
@@ -6755,14 +6755,9 @@ export const calculateOrderCommissions = async (
         });
       }
 
-      if (
-        split.isShared &&
-        order.postventaId?.trim() &&
-        split.postventaCommission !== 0
-      ) {
-        const pid = order.postventaId.trim();
+      if (split.isShared && split.postventaCommission !== 0) {
         results.push({
-          sellerId: pid,
+          sellerId: order.postventaId?.trim() || POSTVENTA_POOL_SELLER_ID,
           sellerName: order.postventaName?.trim() || "Post venta",
           productId: product.id,
           productName: product.name,

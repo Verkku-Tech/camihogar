@@ -38,7 +38,7 @@ public static class CommissionExclusivityCalculator
                 return FullVendorSplit(baseCommissionRate, familyCommission);
 
             case CommissionExclusivityModes.Shared when isSharedSale:
-                return CalculateSharedSplit(baseCommissionRate, qty, familyCommission, rule);
+                return CalculateSharedSplit(baseCommissionRate, qty, familyCommission, hasReferrer, rule);
 
             default:
                 return FullVendorSplit(baseCommissionRate, familyCommission);
@@ -49,13 +49,14 @@ public static class CommissionExclusivityCalculator
         decimal baseCommissionRate,
         int qty,
         decimal familyCommission,
+        bool hasReferrer,
         SaleTypeCommissionRule? rule)
     {
         if (rule != null)
         {
             return new CommissionSplitResult(
                 rule.VendorRate * qty,
-                rule.ReferrerRate * qty,
+                hasReferrer ? rule.ReferrerRate * qty : 0m,
                 rule.PostventaRate * qty,
                 rule.VendorRate,
                 rule.ReferrerRate,
