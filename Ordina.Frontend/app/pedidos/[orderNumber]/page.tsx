@@ -29,7 +29,6 @@ import {
   type Client,
   getCategories,
   getProducts,
-  resolveCatalogProductFromOrderProductId,
   type Product,
   type Category,
   type OrderProduct,
@@ -48,6 +47,7 @@ import {
   getOrderBaseCurrency,
   isUsdBaseOrder,
 } from "@/lib/order-line-pricing";
+import { resolveCatalogProductForOrderLine } from "@/lib/order-product-confirm-map";
 import {
   formatDualCurrencyAmounts,
   formatOrderAmountWithOrderRateBs,
@@ -1202,33 +1202,15 @@ export default function OrderDetailPage() {
           baseCurrency: currency,
         });
 
-      /** Resolución de catálogo solo para detalle (IDs compuestos / catalogProductId). */
+      /** Resolución de catálogo para desglose (incl. pedidos convertidos desde reserva). */
       const resolveCatalogForDetail = (
         line: OrderProduct,
-      ): Product | undefined => {
-        const fromId = resolveCatalogProductFromOrderProductId(
-          line.id,
+      ): Product | undefined =>
+        resolveCatalogProductForOrderLine(
+          line,
           allProducts,
+          order.originalProducts,
         );
-        if (fromId) return fromId;
-
-        const catalogId = line.catalogProductId?.trim();
-        if (catalogId) {
-          const byCatalog = allProducts.find(
-            (p) =>
-              p.backendId === catalogId || p.id.toString() === catalogId,
-          );
-          if (byCatalog) return byCatalog;
-        }
-
-        const compositeMatch = line.id?.match(/^(\d+)-/);
-        if (compositeMatch) {
-          const n = Number.parseInt(compositeMatch[1], 10);
-          return allProducts.find((p) => p.id === n);
-        }
-
-        return undefined;
-      };
 
       const formattedDiscounts: Record<
         string,

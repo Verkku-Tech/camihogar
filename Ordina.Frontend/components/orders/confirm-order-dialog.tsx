@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -31,7 +31,6 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   apiClient,
   type ConfirmOrderDto,
-  type OrderProductDto,
 } from "@/lib/api-client";
 import type { Order, OrderProduct, PartialPayment } from "@/lib/storage";
 import { ProductSelectionDialog } from "@/components/orders/product-selection-dialog";
@@ -50,9 +49,15 @@ import {
   convertAmountBetweenOrKeep,
   getLineDiscountInBaseCurrency,
   getProductDiscountCurrencyForTotals,
+  getOrderBaseCurrency,
 } from "@/lib/order-line-pricing";
 import { readDiscountUiFromProduct } from "@/lib/product-discount-ui";
 import { normalizeExchangeRatesAtCreation } from "@/lib/currency-utils";
+import {
+  applyOrderCurrencyMetadata,
+} from "@/lib/order-currency-display";
+import { mapOrderProductsToConfirmDto } from "@/lib/order-product-confirm-map";
+import { orderFromBackendDto } from "@/lib/storage";
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
 import type { Currency } from "@/lib/currency-utils";
@@ -60,51 +65,6 @@ import {
   isActiveReservationStatus,
   isReservationType,
 } from "@/lib/order-document-types";
-
-function mapProductsToDto(products: OrderProduct[]): OrderProductDto[] {
-  return products.map((p) => ({
-    id: p.id,
-    name: p.name,
-    price: p.price,
-    quantity: p.quantity,
-    total: p.total,
-    category: p.category,
-    stock: p.stock,
-    attributes: p.attributes,
-    discount: p.discount,
-    observations: p.observations,
-    images: p.images?.map((img) => ({
-      id: img.id,
-      base64: img.base64,
-      filename: img.filename,
-      type: img.type,
-      uploadedAt: img.uploadedAt,
-      size: img.size,
-    })),
-    availabilityStatus: p.availabilityStatus,
-    manufacturingStatus: p.manufacturingStatus,
-    manufacturingProviderId: p.manufacturingProviderId,
-    manufacturingProviderName: p.manufacturingProviderName,
-    manufacturingStartedAt: p.manufacturingStartedAt,
-    manufacturingCompletedAt: p.manufacturingCompletedAt,
-    manufacturingNotes: p.manufacturingNotes,
-    locationStatus: p.locationStatus,
-    logisticStatus: p.logisticStatus,
-    surchargeEnabled: p.surchargeEnabled,
-    surchargeAmount: p.surchargeAmount,
-    surchargeReason: p.surchargeReason,
-    refabricationReason: p.refabricationReason,
-    refabricatedAt: p.refabricatedAt,
-    refabricationHistory: p.refabricationHistory?.map((r) => ({
-      reason: r.reason,
-      date: r.date,
-      previousProviderId: r.previousProviderId,
-      previousProviderName: r.previousProviderName,
-      newProviderId: r.newProviderId,
-      newProviderName: r.newProviderName,
-    })),
-  }));
-}
 
 export interface ConfirmOrderDialogProps {
   open: boolean;
@@ -121,6 +81,10 @@ export function ConfirmOrderDialog({
   onConfirmed,
 }: ConfirmOrderDialogProps) {
   const { user } = useAuth();
+  const reservationSourceRef = useRef<Order | null>(null);
+  const [formBaseCurrency, setFormBaseCurrency] = useState<Currency>(
+    ORDER_BASE_CURRENCY,
+  );
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pcfType, setPcfType] = useState<string | null>(null);
@@ -197,6 +161,8 @@ export function ConfirmOrderDialog({
     setDeliveryServices(undefined);
     setPaymentCondition("pagara_en_tienda");
     setPayments([]);
+    reservationSourceRef.current = null;
+    setFormBaseCurrency(ORDER_BASE_CURRENCY);
   }, []);
 
   useEffect(() => {
@@ -214,45 +180,10 @@ export function ConfirmOrderDialog({
         setPcfType(dto.type ?? "");
         setPcfStatus(dto.status ?? "");
         setClientLabel(`${dto.clientName} (${dto.clientId})`);
-        setProducts(
-          dto.products.map((p) => ({
-            id: p.id,
-            name: p.name,
-            price: p.price,
-            quantity: p.quantity,
-            total: p.total,
-            category: p.category,
-            stock: p.stock,
-            attributes: p.attributes,
-            discount: p.discount,
-            observations: p.observations,
-            images: p.images?.map((img) => ({
-              id: img.id,
-              base64: img.base64,
-              filename: img.filename,
-              type: img.type,
-              uploadedAt: img.uploadedAt,
-              size: img.size,
-            })),
-            availabilityStatus:
-              p.availabilityStatus as OrderProduct["availabilityStatus"],
-            manufacturingStatus:
-              p.manufacturingStatus as OrderProduct["manufacturingStatus"],
-            manufacturingProviderId: p.manufacturingProviderId,
-            manufacturingProviderName: p.manufacturingProviderName,
-            manufacturingStartedAt: p.manufacturingStartedAt,
-            manufacturingCompletedAt: p.manufacturingCompletedAt,
-            manufacturingNotes: p.manufacturingNotes,
-            locationStatus: p.locationStatus as OrderProduct["locationStatus"],
-            logisticStatus: p.logisticStatus,
-            surchargeEnabled: p.surchargeEnabled,
-            surchargeAmount: p.surchargeAmount,
-            surchargeReason: p.surchargeReason,
-            refabricationReason: p.refabricationReason,
-            refabricatedAt: p.refabricatedAt,
-            refabricationHistory: p.refabricationHistory,
-          })),
-        );
+        const mappedReservation = orderFromBackendDto(dto);
+        reservationSourceRef.current = mappedReservation;
+        setFormBaseCurrency(getOrderBaseCurrency(mappedReservation));
+        setProducts(mappedReservation.products);
         setSaleType(dto.saleType ?? "");
         setDeliveryType(dto.deliveryType ?? "");
         setDeliveryZone(dto.deliveryZone ?? "");
@@ -481,7 +412,7 @@ export function ConfirmOrderDialog({
     const body: ConfirmOrderDto = {
       storeVendorId: user.id,
       storeVendorName: user.name || user.username,
-      products: mapProductsToDto(products),
+      products: mapOrderProductsToConfirmDto(products),
       paymentType,
       paymentMethod,
       paymentCondition: paymentCondition || undefined,
@@ -534,11 +465,16 @@ export function ConfirmOrderDialog({
       postventaId,
       postventaName,
       exchangeRatesAtCreation,
+      baseCurrency: formBaseCurrency,
     };
 
     setSubmitting(true);
     try {
       const created = await apiClient.confirmReservation(pendingOrderId, body);
+      applyOrderCurrencyMetadata(
+        orderFromBackendDto(created),
+        reservationSourceRef.current ?? undefined,
+      );
       toast.success(`Pedido ${created.orderNumber} confirmado.`);
       onOpenChange(false);
       onConfirmed?.(created.orderNumber);

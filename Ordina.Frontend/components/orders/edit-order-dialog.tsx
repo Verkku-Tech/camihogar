@@ -36,7 +36,6 @@ import { buildGeneralDiscountPersistPayload } from "@/lib/general-discount-meta"
 import {
   apiClient,
   type ConfirmOrderDto,
-  type OrderProductDto,
 } from "@/lib/api-client";
 import { Currency } from "@/lib/currency-utils";
 import {
@@ -44,10 +43,12 @@ import {
   ORDER_BASE_CURRENCY,
 } from "@/lib/order-line-pricing";
 import {
+  applyOrderCurrencyMetadata,
   buildExchangeRatesAtCreationPayload,
   getFrozenCommercialTotalsFromOrder,
   type CommercialRatesMap,
 } from "@/lib/order-currency-display";
+import { mapOrderProductsToConfirmDto } from "@/lib/order-product-confirm-map";
 import { useNestedModalGuard } from "@/hooks/use-nested-modal-guard";
 import {
   normalizePaymentsForSave,
@@ -118,53 +119,6 @@ function resolveCommercialTotalsFieldsForUpdate(
     deliveryCost: orderForm.deliveryCost,
     total: orderForm.total,
   };
-}
-
-function mapOrderProductsToConfirmDto(
-  products: OrderProduct[],
-): OrderProductDto[] {
-  return products.map((p) => ({
-    id: p.id,
-    name: p.name,
-    price: p.price,
-    quantity: p.quantity,
-    total: p.total,
-    category: p.category,
-    stock: p.stock,
-    attributes: p.attributes,
-    discount: p.discount,
-    observations: p.observations,
-    images: p.images?.map((img) => ({
-      id: img.id,
-      base64: img.base64,
-      filename: img.filename,
-      type: img.type,
-      uploadedAt: img.uploadedAt,
-      size: img.size,
-    })),
-    availabilityStatus: p.availabilityStatus,
-    manufacturingStatus: p.manufacturingStatus,
-    manufacturingProviderId: p.manufacturingProviderId,
-    manufacturingProviderName: p.manufacturingProviderName,
-    manufacturingStartedAt: p.manufacturingStartedAt,
-    manufacturingCompletedAt: p.manufacturingCompletedAt,
-    manufacturingNotes: p.manufacturingNotes,
-    locationStatus: p.locationStatus,
-    logisticStatus: p.logisticStatus,
-    surchargeEnabled: p.surchargeEnabled,
-    surchargeAmount: p.surchargeAmount,
-    surchargeReason: p.surchargeReason,
-    refabricationReason: p.refabricationReason,
-    refabricatedAt: p.refabricatedAt,
-    refabricationHistory: p.refabricationHistory?.map((r) => ({
-      reason: r.reason,
-      date: r.date,
-      previousProviderId: r.previousProviderId,
-      previousProviderName: r.previousProviderName,
-      newProviderId: r.newProviderId,
-      newProviderName: r.newProviderName,
-    })),
-  }));
 }
 
 interface EditOrderDialogProps {
@@ -1203,10 +1157,14 @@ export function EditOrderDialog({
             order,
             orderForm.commercialExchangeRates,
           ),
+          baseCurrency: orderForm.formBaseCurrency,
         };
 
         const created = await apiClient.confirmReservation(order.id, body);
-        const createdOrder = orderFromBackendDto(created);
+        const createdOrder = applyOrderCurrencyMetadata(
+          orderFromBackendDto(created),
+          order,
+        );
         setIsConfirmationOpen(false);
         onOpenChange(false);
         toast.success(`Pedido ${created.orderNumber} confirmado.`);
