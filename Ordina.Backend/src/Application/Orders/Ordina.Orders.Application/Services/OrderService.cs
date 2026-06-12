@@ -1176,17 +1176,17 @@ public class OrderService : IOrderService
         };
     }
 
+    // OrderProduct.Id es [BsonRepresentation(BsonType.ObjectId)]: Mongo solo acepta ObjectId hex.
+    // Para enlazar al catálogo se usa CatalogProductId (string libre), no el Id de línea.
     private static string ResolveOrderProductLineId(string? dtoId)
     {
         if (string.IsNullOrWhiteSpace(dtoId))
             return ObjectId.GenerateNewId().ToString();
 
         var trimmed = dtoId.Trim();
-        if (ObjectId.TryParse(trimmed, out _))
-            return trimmed;
-
-        // IDs compuestos de línea ({catalogId}-{timestamp}-{random}) — preservar para catálogo/comisión.
-        return trimmed;
+        return ObjectId.TryParse(trimmed, out _)
+            ? trimmed
+            : ObjectId.GenerateNewId().ToString();
     }
 
     private static void EnrichProductsFromReservationBaseline(
@@ -1270,8 +1270,24 @@ public class OrderService : IOrderService
                 Size = img.Size
             }).ToList(),
             CommissionLineSource = dto.CommissionLineSource,
-            CatalogProductId = dto.CatalogProductId
+            CatalogProductId = ResolveCatalogProductId(dto)
         };
+    }
+
+    // CatalogProductId del DTO o derivado del id compuesto {catalogId}-{timestamp}-{random}.
+    // Nunca un ObjectId suelto (eso no identifica al catálogo).
+    private static string? ResolveCatalogProductId(OrderProductDto dto)
+    {
+        if (!string.IsNullOrWhiteSpace(dto.CatalogProductId))
+            return dto.CatalogProductId;
+
+        if (string.IsNullOrWhiteSpace(dto.Id) || ObjectId.TryParse(dto.Id, out _))
+            return null;
+
+        var derived = CommissionLineClassifier.GetCatalogProductId(dto.Id);
+        return string.IsNullOrWhiteSpace(derived) || string.Equals(derived, dto.Id, StringComparison.Ordinal)
+            ? null
+            : derived;
     }
 
     private PaymentDetailsDto MapPaymentDetailsToDto(PaymentDetails paymentDetails)
