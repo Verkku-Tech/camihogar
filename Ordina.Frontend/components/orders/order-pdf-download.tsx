@@ -18,6 +18,7 @@ export function OrderPdfDownloadButton({
 }) {
   return (
     <PDFDownloadLink
+      key={`${order.id}-${client?.id ?? "no-client"}`}
       document={<OrderPdfDocument order={order} client={client} />}
       fileName={`Pedido-${order.orderNumber}.pdf`}
     >

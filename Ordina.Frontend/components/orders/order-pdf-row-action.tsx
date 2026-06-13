@@ -6,7 +6,6 @@ import {
   getOrder,
   getOrderFromCache,
   getClient,
-  getClientFromCache,
   type Order,
   type Client,
 } from "@/lib/storage";
@@ -24,16 +23,19 @@ const OrderPdfDownloadButton = dynamic(
 type Props = {
   orderId: string;
   orderType: "order" | "budget";
-  /** Pedido ya cargado (p. ej. desde lista); evita peticiones por fila. */
+  /** Pedido ya cargado (p. ej. desde lista); evita IndexedDB desactualizado. */
   order?: Order | null;
-  /** Cliente ya cargado (p. ej. mapa de la página de pedidos). */
+  /** Cliente del mapa de la página; se complementa con getClient si falta. */
   client?: Client | null;
   /**
    * Si true y faltan datos, no se consulta la API al montar; solo al usar PDF.
-   * Por defecto false cuando no hay `order` (intenta IndexedDB al montar).
    */
   lazyLoad?: boolean;
 };
+
+function clientMatchesOrder(c: Client | null | undefined, clientId: string) {
+  return Boolean(c && c.id === clientId);
+}
 
 /** Botón PDF en tablas: solo pedidos (no presupuesto); incluye Generado/Generada. */
 export function OrderPdfRowAction({
@@ -46,7 +48,8 @@ export function OrderPdfRowAction({
   const eligible = orderType === "order";
 
   const [order, setOrder] = useState<Order | null>(orderProp ?? null);
-  const [client, setClient] = useState<Client | null>(clientProp ?? null);
+  const [client, setClient] = useState<Client | null>(null);
+  const [dataReady, setDataReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
@@ -54,28 +57,23 @@ export function OrderPdfRowAction({
     setOrder(orderProp ?? null);
   }, [orderProp]);
 
-  useEffect(() => {
-    setClient(clientProp ?? null);
-  }, [clientProp]);
-
   const resolveClient = useCallback(
     async (o: Order): Promise<Client | null> => {
-      if (clientProp) return clientProp;
-      if (client && client.id === o.clientId) return client;
       if (!o.clientId) return null;
-      const cached = await getClientFromCache(o.clientId);
-      if (cached) return cached;
+      if (clientMatchesOrder(clientProp, o.clientId)) return clientProp!;
+      if (clientMatchesOrder(client, o.clientId)) return client;
       return (await getClient(o.clientId)) ?? null;
     },
     [clientProp, client],
   );
 
-  const ensureOrderAndClient = useCallback(async (): Promise<boolean> => {
+  const loadOrderAndClient = useCallback(async () => {
     if (!eligible) return false;
     setLoading(true);
     setLoadError(false);
+    setDataReady(false);
     try {
-      let o = order ?? orderProp ?? null;
+      let o = orderProp ?? order ?? null;
       if (!o) {
         o = (await getOrderFromCache(orderId)) ?? null;
       }
@@ -89,6 +87,7 @@ export function OrderPdfRowAction({
       setOrder(o);
       const c = await resolveClient(o);
       setClient(c);
+      setDataReady(true);
       return true;
     } catch {
       setLoadError(true);
@@ -99,21 +98,56 @@ export function OrderPdfRowAction({
   }, [eligible, order, orderProp, orderId, resolveClient]);
 
   useEffect(() => {
-    if (!eligible || orderProp || lazyLoad) return;
+    if (!eligible || lazyLoad) return;
+
     let cancelled = false;
+
     (async () => {
-      const cached = await getOrderFromCache(orderId);
+      setDataReady(false);
+      setLoadError(false);
+
+      let o = orderProp ?? null;
+      if (!o) {
+        o = (await getOrderFromCache(orderId)) ?? null;
+      }
+
       if (cancelled) return;
-      if (cached) {
-        setOrder(cached);
-        if (clientProp) {
-          setClient(clientProp);
-        } else if (cached.clientId) {
-          const c = await getClientFromCache(cached.clientId);
-          if (!cancelled) setClient(c ?? null);
+
+      if (!o) {
+        setOrder(null);
+        setClient(null);
+        setDataReady(true);
+        return;
+      }
+
+      setOrder(o);
+
+      if (!o.clientId) {
+        setClient(null);
+        setDataReady(true);
+        return;
+      }
+
+      if (clientMatchesOrder(clientProp, o.clientId)) {
+        setClient(clientProp!);
+        setDataReady(true);
+        return;
+      }
+
+      try {
+        const c = (await getClient(o.clientId)) ?? null;
+        if (!cancelled) {
+          setClient(c);
+          setDataReady(true);
+        }
+      } catch {
+        if (!cancelled) {
+          setLoadError(true);
+          setDataReady(true);
         }
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -121,13 +155,32 @@ export function OrderPdfRowAction({
 
   if (!eligible) return null;
 
-  if (order) {
+  if (order && dataReady) {
     return (
-      <OrderPdfDownloadButton order={order} client={client} compact />
+      <OrderPdfDownloadButton
+        key={`${order.id}-${client?.id ?? "no-client"}`}
+        order={order}
+        client={client}
+        compact
+      />
     );
   }
 
   if (loading) {
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0"
+        disabled
+        aria-hidden
+      >
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      </Button>
+    );
+  }
+
+  if (!dataReady && orderProp) {
     return (
       <Button
         variant="ghost"
@@ -154,7 +207,7 @@ export function OrderPdfRowAction({
           : "Descargar PDF del pedido"
       }
       aria-label="Descargar PDF del pedido"
-      onClick={() => void ensureOrderAndClient()}
+      onClick={() => void loadOrderAndClient()}
     >
       <FileText className="h-4 w-4" />
     </Button>
