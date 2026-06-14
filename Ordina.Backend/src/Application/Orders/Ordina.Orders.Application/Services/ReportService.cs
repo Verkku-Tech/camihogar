@@ -50,7 +50,6 @@ public interface IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? team = null,
         string? storeId = null);
 
     Task<Stream> GenerateCommissionsReportFromDataAsync(
@@ -60,7 +59,6 @@ public interface IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? team = null,
         string? storeId = null);
 
     Task<Stream> GenerateDispatchReportAsync(
@@ -1239,7 +1237,6 @@ public class ReportService : IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? team = null,
         string? storeId = null)
     {
         try
@@ -1250,7 +1247,6 @@ public class ReportService : IReportService
                 startDate,
                 endDate,
                 vendorId,
-                team,
                 storeId);
 
             // Convertir de CommissionReportRow (clase interna) a CommissionReportRowDto
@@ -1379,7 +1375,6 @@ public class ReportService : IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? team = null,
         string? storeId = null)
     {
         try
@@ -1390,7 +1385,6 @@ public class ReportService : IReportService
                 startDate,
                 endDate,
                 vendorId,
-                team,
                 storeId);
 
             // Ordenar por fecha (más reciente primero)
@@ -1434,12 +1428,10 @@ public class ReportService : IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? team = null,
         string? storeId = null)
     {
-        var (adjustedStartDate, adjustedEndDate) = AdjustDateRangeForTeam(startDate, endDate, team);
-        var rangeStart = NormalizeCommissionReportStartDate(adjustedStartDate);
-        var rangeEnd = NormalizeCommissionReportEndDate(adjustedEndDate);
+        var rangeStart = NormalizeCommissionReportStartDate(startDate);
+        var rangeEnd = NormalizeCommissionReportEndDate(endDate);
 
         var orders = await _orderRepository.GetByCreatedAtRangeAsync(rangeStart, rangeEnd);
         var productCommissions = await _productCommissionRepository.GetAllAsync();
@@ -1767,17 +1759,6 @@ public class ReportService : IReportService
             "entrega_programada" => "Entrega programada",
             _ => code
         };
-    }
-
-    private (DateTime start, DateTime end) AdjustDateRangeForTeam(DateTime startDate, DateTime endDate, string? team)
-    {
-        // Si no se especifica equipo, usar las fechas tal cual
-        if (string.IsNullOrWhiteSpace(team))
-            return (startDate, endDate);
-
-        // Los ajustes por equipo se pueden hacer aquí si es necesario
-        // Por ahora, retornamos las fechas tal cual
-        return (startDate, endDate);
     }
 
     private class PaymentReportRow
