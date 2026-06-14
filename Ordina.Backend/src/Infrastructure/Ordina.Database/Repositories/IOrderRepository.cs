@@ -27,6 +27,13 @@ public interface IOrderRepository
     Task<IEnumerable<Order>> GetByStatusAsync(
         string status,
         IReadOnlyCollection<string>? onlineSellerTeamIds = null);
+
+    /// <summary>Pedidos cuyo <see cref="Order.CreatedAt"/> cae en el rango inclusive.</summary>
+    Task<IEnumerable<Order>> GetByCreatedAtRangeAsync(
+        DateTime startInclusive,
+        DateTime endInclusive,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null);
+
     Task<Order?> GetByOrderNumberAsync(string orderNumber);
     Task<Order> CreateAsync(Order order);
     Task<Order> UpdateAsync(Order order);

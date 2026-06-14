@@ -371,7 +371,8 @@ public class ReportsController : ControllerBase
         [FromQuery] string startDate,
         [FromQuery] string endDate,
         [FromQuery] string? vendorId = null,
-        [FromQuery] string? team = null)
+        [FromQuery] string? team = null,
+        [FromQuery] string? storeId = null)
     {
         try
         {
@@ -395,7 +396,8 @@ public class ReportsController : ControllerBase
                 parsedStartDate,
                 parsedEndDate,
                 vendorId,
-                team);
+                team,
+                storeId);
             
             var fileName = $"Reporte_Comisiones_{DateTime.UtcNow:yyyyMMdd}.xlsx";
             
@@ -430,7 +432,8 @@ public class ReportsController : ControllerBase
         [FromQuery] string startDate,
         [FromQuery] string endDate,
         [FromQuery] string? vendorId = null,
-        [FromQuery] string? team = null)
+        [FromQuery] string? team = null,
+        [FromQuery] string? storeId = null)
     {
         try
         {
@@ -454,7 +457,8 @@ public class ReportsController : ControllerBase
                 parsedStartDate,
                 parsedEndDate,
                 vendorId,
-                team);
+                team,
+                storeId);
             
             return Ok(reportData);
         }

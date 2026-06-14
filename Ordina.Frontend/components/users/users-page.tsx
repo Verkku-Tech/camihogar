@@ -62,6 +62,7 @@ import { toast } from "sonner";
 import { useUsers } from "@/hooks/use-users";
 import { apiClient } from "@/lib/api-client";
 import type { CreateUserDto, UpdateUserDto } from "@/lib/api-client";
+import { getStores, type Store } from "@/lib/storage";
 
 function generateRandomPassword(length = 16): string {
   const chars =
@@ -128,7 +129,11 @@ interface UserDisplay {
     | "Vendedor Online";
   status: "Activo" | "Inactivo";
   createdAt: string;
+  storeId?: string;
+  storeName?: string;
 }
+
+const isStoreSellerDisplayRole = (role: string) => role === "Vendedor de tienda";
 
 export function UsersPage() {
   const {
@@ -149,6 +154,7 @@ export function UsersPage() {
   const [editingUser, setEditingUser] = useState<UserDisplay | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [isRegeneratingPassword, setIsRegeneratingPassword] = useState(false);
+  const [activeStores, setActiveStores] = useState<Store[]>([]);
   const [formData, setFormData] = useState({
     fullName: "",
     username: "",
@@ -157,7 +163,16 @@ export function UsersPage() {
     confirmPassword: "",
     role: "",
     status: "Activo" as "Activo" | "Inactivo",
+    storeId: "",
   });
+
+  useEffect(() => {
+    getStores()
+      .then((stores) =>
+        setActiveStores(stores.filter((s) => s.status === "active")),
+      )
+      .catch(console.error);
+  }, []);
 
   // Convertir usuarios de API a formato display
   const users: UserDisplay[] = apiUsers.map((u) => ({
@@ -168,6 +183,8 @@ export function UsersPage() {
     role: mapRoleFromApi(u.role) as UserDisplay["role"],
     status: mapStatusFromApi(u.status) as UserDisplay["status"],
     createdAt: u.createdAt || new Date().toISOString(),
+    storeId: u.storeId,
+    storeName: u.storeName,
   }));
 
   const filteredUsers = users.filter((user) => {
@@ -207,6 +224,11 @@ export function UsersPage() {
 
     if (!formData.role) {
       toast.error("El rol es requerido");
+      return;
+    }
+
+    if (isStoreSellerDisplayRole(formData.role) && !formData.storeId) {
+      toast.error("La tienda es obligatoria para vendedores de tienda");
       return;
     }
 
@@ -261,6 +283,9 @@ export function UsersPage() {
         role: mapRoleToApi(formData.role),
         status: mapStatusToApi(formData.status) || "active",
         password: formData.password,
+        ...(isStoreSellerDisplayRole(formData.role)
+          ? { storeId: formData.storeId }
+          : {}),
       };
       
       const createdUser = await createUser(createUserDto);
@@ -328,6 +353,11 @@ export function UsersPage() {
       return;
     }
 
+    if (isStoreSellerDisplayRole(formData.role) && !formData.storeId) {
+      toast.error("La tienda es obligatoria para vendedores de tienda");
+      return;
+    }
+
     // Validar correo y username existentes (excluyendo el usuario actual)
     const emailToCheck = formData.email.trim().toLowerCase();
     const usernameToCheck = formData.username.trim().toLowerCase();
@@ -390,6 +420,9 @@ export function UsersPage() {
         email: formData.email.trim(),
         role: mapRoleToApi(formData.role),
         status: mapStatusToApi(formData.status),
+        ...(isStoreSellerDisplayRole(formData.role)
+          ? { storeId: formData.storeId }
+          : { storeId: "" }),
       };
       
       const updatedUser = await updateUser(editingUser.id, updateUserDto);
@@ -499,6 +532,7 @@ export function UsersPage() {
       confirmPassword: "",
       role: user.role,
       status: user.status,
+      storeId: user.storeId || "",
     });
     setIsEditDialogOpen(true);
   };
@@ -512,8 +546,64 @@ export function UsersPage() {
       confirmPassword: "",
       role: "",
       status: "Activo" as "Activo" | "Inactivo",
+      storeId: "",
     });
     setShowPassword(false);
+  };
+
+  const handleRoleChange = (value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      role: value,
+      storeId: isStoreSellerDisplayRole(value) ? prev.storeId : "",
+    }));
+  };
+
+  const renderStoreSelect = (id: string) => {
+    if (!isStoreSellerDisplayRole(formData.role)) return null;
+
+    return (
+      <div>
+        <Label htmlFor={id}>Tienda *</Label>
+        <Select
+          value={formData.storeId || undefined}
+          onValueChange={(value) =>
+            setFormData({ ...formData, storeId: value })
+          }
+        >
+          <SelectTrigger id={id}>
+            <SelectValue placeholder="Selecciona una tienda" />
+          </SelectTrigger>
+          <SelectContent>
+            {activeStores.length === 0 ? (
+              <SelectItem value="__none" disabled>
+                No hay tiendas activas
+              </SelectItem>
+            ) : (
+              activeStores.map((store) => (
+                <SelectItem key={store.id} value={store.id}>
+                  {store.name}
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+      </div>
+    );
+  };
+
+  const renderStoreCell = (user: UserDisplay) => {
+    if (!isStoreSellerDisplayRole(user.role)) {
+      return <span className="text-muted-foreground">—</span>;
+    }
+    if (user.storeName) {
+      return user.storeName;
+    }
+    return (
+      <Badge variant="outline" className="text-amber-700 border-amber-600">
+        Sin tienda
+      </Badge>
+    );
   };
 
   const getRoleColor = (role: string) => {
@@ -636,9 +726,7 @@ export function UsersPage() {
                     <Label htmlFor="role">Rol *</Label>
                     <Select
                       value={formData.role}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, role: value })
-                      }
+                      onValueChange={handleRoleChange}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecciona un rol" />
@@ -660,6 +748,7 @@ export function UsersPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {renderStoreSelect("storeId")}
                   <div>
                     <Label htmlFor="password">Contraseña generada *</Label>
                     <p className="text-xs text-muted-foreground mb-2">
@@ -820,6 +909,7 @@ export function UsersPage() {
                     <TableHead>Usuario</TableHead>
                     <TableHead>Correo</TableHead>
                     <TableHead>Rol</TableHead>
+                    <TableHead>Tienda</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Fecha Creación</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
@@ -838,6 +928,7 @@ export function UsersPage() {
                           {user.role}
                         </Badge>
                       </TableCell>
+                      <TableCell>{renderStoreCell(user)}</TableCell>
                       <TableCell>
                         <Badge
                           variant={
@@ -981,9 +1072,7 @@ export function UsersPage() {
               <Label htmlFor="editRole">Rol *</Label>
               <Select
                 value={formData.role}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, role: value })
-                }
+                onValueChange={handleRoleChange}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona un rol" />
@@ -1003,6 +1092,7 @@ export function UsersPage() {
                 </SelectContent>
               </Select>
             </div>
+            {renderStoreSelect("editStoreId")}
             <div>
               <Label htmlFor="editStatus">Estado *</Label>
               <Select

@@ -111,6 +111,23 @@ public class OrderRepository : IOrderRepository
             .ToListAsync();
     }
 
+    public async Task<IEnumerable<Order>> GetByCreatedAtRangeAsync(
+        DateTime startInclusive,
+        DateTime endInclusive,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null)
+    {
+        var filterBuilder = Builders<Order>.Filter;
+        var dateFilter = filterBuilder.And(
+            filterBuilder.Gte(o => o.CreatedAt, startInclusive),
+            filterBuilder.Lte(o => o.CreatedAt, endInclusive));
+
+        var filter = CombineFilters(dateFilter, onlineSellerTeamIds);
+
+        return await _collection.Find(filter)
+            .SortByDescending(o => o.CreatedAt)
+            .ToListAsync();
+    }
+
     public async Task<Order?> GetByOrderNumberAsync(string orderNumber)
     {
         return await _collection.Find(o => o.OrderNumber == orderNumber).FirstOrDefaultAsync();

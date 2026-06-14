@@ -2030,6 +2030,8 @@ export interface User {
   exclusiveCommission?: boolean; // Legacy; derivado del modo
   baseSalary?: number; // Sueldo fijo del vendedor
   baseSalaryCurrency?: string; // Moneda del sueldo
+  storeId?: string;
+  storeName?: string;
 }
 
 export function getUserCommissionExclusivityMode(
@@ -5868,6 +5870,8 @@ const userFromBackendDto = (dto: UserResponseDto): User => ({
       ? Number(dto.baseSalary)
       : undefined,
   baseSalaryCurrency: dto.baseSalaryCurrency,
+  storeId: dto.storeId,
+  storeName: dto.storeName,
 });
 
 const repopulateUsersCache = async (users: User[]): Promise<void> => {

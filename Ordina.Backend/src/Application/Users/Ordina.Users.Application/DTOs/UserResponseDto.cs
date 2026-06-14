@@ -17,5 +17,7 @@ public class UserResponseDto
     public bool ExclusiveCommission { get; set; } = false;
     public decimal BaseSalary { get; set; } = 0;
     public string BaseSalaryCurrency { get; set; } = "USD";
+    public string? StoreId { get; set; }
+    public string? StoreName { get; set; }
 }
 

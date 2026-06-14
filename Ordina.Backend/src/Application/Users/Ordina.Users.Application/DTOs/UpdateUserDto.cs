@@ -32,5 +32,7 @@ public class UpdateUserDto
 
     [StringLength(10, ErrorMessage = "La moneda del sueldo no puede exceder 10 caracteres")]
     public string? BaseSalaryCurrency { get; set; } // Moneda del sueldo
+
+    public string? StoreId { get; set; }
 }
 
