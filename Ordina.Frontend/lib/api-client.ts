@@ -1,4 +1,5 @@
 // API Client para comunicación con el backend
+import { APP_UI_VERSION } from "./app-version";
 // URLs base para cada microservicio (solo para servidor/SSR)
 const SECURITY_API_URL_DIRECT = process.env.NEXT_PUBLIC_SECURITY_API_URL ?? "";
 const USERS_API_URL_DIRECT = process.env.NEXT_PUBLIC_USERS_API_URL ?? "";
@@ -113,7 +114,27 @@ interface CachedApiResponse {
   timestamp: number;
 }
 
+/** GET que no deben persistirse ni servirse desde cache offline (datos volátiles). */
+const NO_OFFLINE_CACHE_PREFIXES = [
+  "/api/Reports/",
+  "/api/Orders",
+  "/api/orders",
+];
+
 export class ApiClient {
+  private requiresNetworkWhenOffline(endpoint: string): boolean {
+    return NO_OFFLINE_CACHE_PREFIXES.some((prefix) =>
+      endpoint.startsWith(prefix),
+    );
+  }
+
+  private shouldPersistCache(endpoint: string): boolean {
+    return !this.requiresNetworkWhenOffline(endpoint);
+  }
+
+  private getCacheKey(endpoint: string): string {
+    return `api_cache_${APP_UI_VERSION}_${endpoint}`;
+  }
   getBaseUrl(endpoint: string): string {
     // Determinar qué servicio usar según el endpoint
     let service:
@@ -229,11 +250,10 @@ export class ApiClient {
     return availableEndpoints.some((path) => endpoint.startsWith(path));
   }
 
-  // Obtener datos desde cache (IndexedDB)
   private async getFromCache<T>(endpoint: string): Promise<T> {
     try {
       const { get } = await import("./indexeddb");
-      const cacheKey = `api_cache_${endpoint}`;
+      const cacheKey = this.getCacheKey(endpoint);
       const cached = await get<CachedApiResponse>("api_cache", cacheKey);
       if (cached && cached.data) {
         console.log("📦 Datos obtenidos de cache:", endpoint);
@@ -247,9 +267,11 @@ export class ApiClient {
 
   // Cachear respuesta de API
   private async cacheResponse(endpoint: string, data: any): Promise<void> {
+    if (!this.shouldPersistCache(endpoint)) return;
+
     try {
       const { add } = await import("./indexeddb");
-      const cacheKey = `api_cache_${endpoint}`;
+      const cacheKey = this.getCacheKey(endpoint);
       await add("api_cache", {
         id: cacheKey,
         endpoint,
@@ -260,7 +282,7 @@ export class ApiClient {
       // Si ya existe, actualizar
       try {
         const { update } = await import("./indexeddb");
-        const cacheKey = `api_cache_${endpoint}`;
+        const cacheKey = this.getCacheKey(endpoint);
         await update("api_cache", {
           id: cacheKey,
           endpoint,
@@ -362,6 +384,11 @@ export class ApiClient {
       options.method === "GET" &&
       this.isBackendEndpoint(endpoint)
     ) {
+      if (this.requiresNetworkWhenOffline(endpoint)) {
+        throw new Error(
+          "Sin conexión — esta consulta requiere internet (reportes y listados de pedidos no están disponibles offline).",
+        );
+      }
       try {
         return await this.getFromCache<T>(endpoint);
       } catch (error) {
@@ -498,7 +525,8 @@ export class ApiClient {
       if (
         options.method === "GET" &&
         response.ok &&
-        this.isBackendEndpoint(endpoint)
+        this.isBackendEndpoint(endpoint) &&
+        this.shouldPersistCache(endpoint)
       ) {
         try {
           const data = await response.clone().json();
@@ -557,6 +585,11 @@ export class ApiClient {
             } as T;
           }
           if (options.method === "GET") {
+            if (this.requiresNetworkWhenOffline(endpoint)) {
+              throw new Error(
+                "Sin conexión — esta consulta requiere internet (reportes y listados de pedidos no están disponibles offline).",
+              );
+            }
             try {
               return await this.getFromCache<T>(endpoint);
             } catch {
