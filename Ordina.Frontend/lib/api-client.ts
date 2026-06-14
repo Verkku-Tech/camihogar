@@ -1,4 +1,5 @@
 // API Client para comunicación con el backend
+import { APP_UI_VERSION } from "./app-version";
 // URLs base para cada microservicio (solo para servidor/SSR)
 const SECURITY_API_URL_DIRECT = process.env.NEXT_PUBLIC_SECURITY_API_URL ?? "";
 const USERS_API_URL_DIRECT = process.env.NEXT_PUBLIC_USERS_API_URL ?? "";
@@ -113,7 +114,27 @@ interface CachedApiResponse {
   timestamp: number;
 }
 
+/** GET que no deben persistirse ni servirse desde cache offline (datos volátiles). */
+const NO_OFFLINE_CACHE_PREFIXES = [
+  "/api/Reports/",
+  "/api/Orders",
+  "/api/orders",
+];
+
 export class ApiClient {
+  private requiresNetworkWhenOffline(endpoint: string): boolean {
+    return NO_OFFLINE_CACHE_PREFIXES.some((prefix) =>
+      endpoint.startsWith(prefix),
+    );
+  }
+
+  private shouldPersistCache(endpoint: string): boolean {
+    return !this.requiresNetworkWhenOffline(endpoint);
+  }
+
+  private getCacheKey(endpoint: string): string {
+    return `api_cache_${APP_UI_VERSION}_${endpoint}`;
+  }
   getBaseUrl(endpoint: string): string {
     // Determinar qué servicio usar según el endpoint
     let service:
@@ -235,11 +256,10 @@ export class ApiClient {
     return availableEndpoints.some((path) => endpoint.startsWith(path));
   }
 
-  // Obtener datos desde cache (IndexedDB)
   private async getFromCache<T>(endpoint: string): Promise<T> {
     try {
       const { get } = await import("./indexeddb");
-      const cacheKey = `api_cache_${endpoint}`;
+      const cacheKey = this.getCacheKey(endpoint);
       const cached = await get<CachedApiResponse>("api_cache", cacheKey);
       if (cached && cached.data) {
         console.log("📦 Datos obtenidos de cache:", endpoint);
@@ -253,9 +273,11 @@ export class ApiClient {
 
   // Cachear respuesta de API
   private async cacheResponse(endpoint: string, data: any): Promise<void> {
+    if (!this.shouldPersistCache(endpoint)) return;
+
     try {
       const { add } = await import("./indexeddb");
-      const cacheKey = `api_cache_${endpoint}`;
+      const cacheKey = this.getCacheKey(endpoint);
       await add("api_cache", {
         id: cacheKey,
         endpoint,
@@ -266,7 +288,7 @@ export class ApiClient {
       // Si ya existe, actualizar
       try {
         const { update } = await import("./indexeddb");
-        const cacheKey = `api_cache_${endpoint}`;
+        const cacheKey = this.getCacheKey(endpoint);
         await update("api_cache", {
           id: cacheKey,
           endpoint,
@@ -368,6 +390,11 @@ export class ApiClient {
       options.method === "GET" &&
       this.isBackendEndpoint(endpoint)
     ) {
+      if (this.requiresNetworkWhenOffline(endpoint)) {
+        throw new Error(
+          "Sin conexión — esta consulta requiere internet (reportes y listados de pedidos no están disponibles offline).",
+        );
+      }
       try {
         return await this.getFromCache<T>(endpoint);
       } catch (error) {
@@ -504,7 +531,8 @@ export class ApiClient {
       if (
         options.method === "GET" &&
         response.ok &&
-        this.isBackendEndpoint(endpoint)
+        this.isBackendEndpoint(endpoint) &&
+        this.shouldPersistCache(endpoint)
       ) {
         try {
           const data = await response.clone().json();
@@ -563,6 +591,11 @@ export class ApiClient {
             } as T;
           }
           if (options.method === "GET") {
+            if (this.requiresNetworkWhenOffline(endpoint)) {
+              throw new Error(
+                "Sin conexión — esta consulta requiere internet (reportes y listados de pedidos no están disponibles offline).",
+              );
+            }
             try {
               return await this.getFromCache<T>(endpoint);
             } catch {
@@ -1618,6 +1651,55 @@ export class ApiClient {
       method: "DELETE",
     });
   }
+
+  private buildCommissionsReportQuery(
+    params: CommissionsReportQueryParams,
+  ): string {
+    const q = new URLSearchParams();
+    q.set("startDate", params.startDate);
+    q.set("endDate", params.endDate);
+    if (params.vendorId) q.set("vendorId", params.vendorId);
+    if (params.storeId) q.set("storeId", params.storeId);
+    return q.toString();
+  }
+
+  async getCommissionsReportPreview(
+    params: CommissionsReportQueryParams,
+  ): Promise<CommissionReportRowDto[]> {
+    const query = this.buildCommissionsReportQuery(params);
+    return this.request<CommissionReportRowDto[]>(
+      `/api/Reports/Commissions/Preview?${query}`,
+    );
+  }
+
+  async downloadCommissionsReportExcel(
+    params: CommissionsReportQueryParams,
+  ): Promise<Blob> {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const baseUrl = this.getBaseUrl("/api/Reports/Commissions/Excel");
+    const query = this.buildCommissionsReportQuery(params);
+    const url = `${baseUrl}/api/Reports/Commissions/Excel?${query}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let message = `Error ${response.status}`;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.message) message = parsed.message;
+      } catch {
+        if (text) message = text;
+      }
+      throw new Error(message);
+    }
+
+    return response.blob();
+  }
 }
 
 // Product Commission Types
@@ -1702,6 +1784,8 @@ export interface UserResponseDto {
   commissionExclusivityMode?: "shared" | "exclusive" | "exclusive_with_referrer";
   baseSalary?: number;
   baseSalaryCurrency?: string;
+  storeId?: string;
+  storeName?: string;
 }
 
 export interface CreateUserDto {
@@ -1711,6 +1795,7 @@ export interface CreateUserDto {
   role: string;
   status?: string;
   password?: string;
+  storeId?: string;
 }
 
 export interface UpdateUserDto {
@@ -1723,6 +1808,37 @@ export interface UpdateUserDto {
   commissionExclusivityMode?: "shared" | "exclusive" | "exclusive_with_referrer";
   baseSalary?: number;
   baseSalaryCurrency?: string;
+  storeId?: string;
+}
+
+export interface CommissionsReportQueryParams {
+  startDate: string;
+  endDate: string;
+  vendorId?: string;
+  storeId?: string;
+}
+
+export interface CommissionReportRowDto {
+  fecha: string;
+  cliente: string;
+  vendedor: string;
+  pedido: string;
+  descripcion: string;
+  cantidadArticulos: number;
+  tipoVenta: string;
+  comisionFamiliaUsdPorUnidad: number;
+  comision: number;
+  vendedorSecundario?: string | null;
+  comisionSecundaria?: number | null;
+  vendedorPostventa?: string | null;
+  comisionPostventa?: number | null;
+  sueldoBase: number;
+  tasaComisionBase: number;
+  tasaAplicadaVendedor: number;
+  tasaAplicadaReferido?: number | null;
+  tasaAplicadaPostventa?: number | null;
+  esVentaCompartida: boolean;
+  esVendedorExclusivo: boolean;
 }
 
 export interface RoleResponseDto {

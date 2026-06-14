@@ -16,6 +16,10 @@ FROM node:20-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
+# Versión de la app (inyectada en build para PWA y NEXT_PUBLIC_APP_VERSION)
+ARG GIT_SHA=dev
+ENV NEXT_PUBLIC_APP_VERSION=${GIT_SHA}
+
 # Copiar dependencias instaladas
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -26,6 +30,10 @@ ENV NODE_ENV=production
 
 # Construir la aplicación
 RUN pnpm build
+
+# Deploy PWA: cada build genera APP_VERSION única (prebuild).
+# Los usuarios ven un banner de actualización; si no actúan, recarga automática en ~5 min.
+# Para cambios que rompan datos offline, incrementar migraciones en bootSync (lib/storage.ts).
 
 # Stage 3: Runner
 FROM node:20-alpine AS runner

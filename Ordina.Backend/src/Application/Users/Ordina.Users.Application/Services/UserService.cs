@@ -9,12 +9,19 @@ namespace Ordina.Users.Application.Services;
 
 public class UserService : IUserService
 {
+    private const string StoreSellerRole = "Store Seller";
+
     private readonly IUserRepository _userRepository;
+    private readonly IStoreRepository _storeRepository;
     private readonly ILogger<UserService> _logger;
 
-    public UserService(IUserRepository userRepository, ILogger<UserService> logger)
+    public UserService(
+        IUserRepository userRepository,
+        IStoreRepository storeRepository,
+        ILogger<UserService> logger)
     {
         _userRepository = userRepository;
+        _storeRepository = storeRepository;
         _logger = logger;
     }
 
@@ -117,14 +124,19 @@ public class UserService : IUserService
                 throw new InvalidOperationException($"Ya existe un usuario con el email '{createDto.Email}'");
             }
 
+            var normalizedRole = NormalizeUserRole(createDto.Role);
+            var (storeId, storeName) = await ValidateAndResolveStoreAsync(createDto.StoreId, normalizedRole);
+
             var user = new User
             {
                 Username = createDto.Username,
                 Email = createDto.Email,
                 Name = createDto.Name,
-                Role = NormalizeUserRole(createDto.Role),
+                Role = normalizedRole,
                 Status = createDto.Status ?? "active",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                StoreId = storeId,
+                StoreName = storeName,
             };
 
             // Hashear la contraseña antes de guardarla
@@ -220,6 +232,43 @@ public class UserService : IUserService
             if (!string.IsNullOrWhiteSpace(updateDto.BaseSalaryCurrency))
                 existingUser.BaseSalaryCurrency = updateDto.BaseSalaryCurrency;
 
+            var effectiveRole = !string.IsNullOrWhiteSpace(updateDto.Role)
+                ? NormalizeUserRole(updateDto.Role)
+                : existingUser.Role;
+
+            if (updateDto.StoreId != null)
+            {
+                var (storeId, storeName) = await ValidateAndResolveStoreAsync(
+                    string.IsNullOrWhiteSpace(updateDto.StoreId) ? null : updateDto.StoreId.Trim(),
+                    effectiveRole);
+                existingUser.StoreId = storeId;
+                existingUser.StoreName = storeName;
+            }
+            else if (!string.IsNullOrWhiteSpace(updateDto.Role))
+            {
+                if (IsStoreSellerRole(effectiveRole))
+                {
+                    var (storeId, storeName) = await ValidateAndResolveStoreAsync(
+                        existingUser.StoreId,
+                        effectiveRole);
+                    existingUser.StoreId = storeId;
+                    existingUser.StoreName = storeName;
+                }
+                else
+                {
+                    existingUser.StoreId = null;
+                    existingUser.StoreName = null;
+                }
+            }
+            else if (IsStoreSellerRole(effectiveRole))
+            {
+                var (storeId, storeName) = await ValidateAndResolveStoreAsync(
+                    existingUser.StoreId,
+                    effectiveRole);
+                existingUser.StoreId = storeId;
+                existingUser.StoreName = storeName;
+            }
+
             var updatedUser = await _userRepository.UpdateAsync(existingUser);
             return MapToDto(updatedUser);
         }
@@ -313,6 +362,40 @@ public class UserService : IUserService
         return trimmed;
     }
 
+    private static bool IsStoreSellerRole(string role) =>
+        string.Equals(NormalizeUserRole(role), StoreSellerRole, StringComparison.Ordinal);
+
+    private async Task<(string? StoreId, string? StoreName)> ValidateAndResolveStoreAsync(
+        string? storeId,
+        string role)
+    {
+        var normalizedRole = NormalizeUserRole(role);
+        var trimmedStoreId = string.IsNullOrWhiteSpace(storeId) ? null : storeId.Trim();
+
+        if (IsStoreSellerRole(normalizedRole) && trimmedStoreId == null)
+        {
+            throw new ArgumentException("La tienda es obligatoria para vendedores de tienda");
+        }
+
+        if (trimmedStoreId == null)
+        {
+            return (null, null);
+        }
+
+        var store = await _storeRepository.GetByIdAsync(trimmedStoreId);
+        if (store == null)
+        {
+            throw new ArgumentException($"No existe una tienda con ID '{trimmedStoreId}'");
+        }
+
+        if (!string.Equals(store.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"La tienda '{store.Name}' no está activa");
+        }
+
+        return (store.Id, store.Name);
+    }
+
     private static UserResponseDto MapToDto(User user)
     {
         user.NormalizeCommissionExclusivity();
@@ -329,7 +412,9 @@ public class UserService : IUserService
             CommissionExclusivityMode = user.CommissionExclusivityMode,
             ExclusiveCommission = user.ExclusiveCommission,
             BaseSalary = user.BaseSalary,
-            BaseSalaryCurrency = user.BaseSalaryCurrency
+            BaseSalaryCurrency = user.BaseSalaryCurrency,
+            StoreId = user.StoreId,
+            StoreName = user.StoreName,
         };
     }
 

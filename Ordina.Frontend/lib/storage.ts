@@ -439,6 +439,21 @@ export const bootSync = async (): Promise<void> => {
     console.warn("bootSync: error al limpiar api_cache", e);
   }
   try {
+    const { APP_UI_VERSION, APP_UI_VERSION_KEY } = await import(
+      "./app-version"
+    );
+    const storedAppVersion = localStorage.getItem(APP_UI_VERSION_KEY);
+    if (storedAppVersion !== APP_UI_VERSION) {
+      await clearLastOrdersSyncAt();
+      localStorage.setItem(APP_UI_VERSION_KEY, APP_UI_VERSION);
+      console.log(
+        `bootSync: nueva versión de app (${APP_UI_VERSION}); se forzará resync completa de pedidos`,
+      );
+    }
+  } catch (e) {
+    console.warn("bootSync: error en migración de versión de app", e);
+  }
+  try {
     const role = getStoredUserRoleFromLocalStorage();
     if (isOnlineSellerRole(role)) {
       const stored = localStorage.getItem(ONLINE_SELLER_VISIBILITY_VERSION_KEY);
@@ -2030,6 +2045,8 @@ export interface User {
   exclusiveCommission?: boolean; // Legacy; derivado del modo
   baseSalary?: number; // Sueldo fijo del vendedor
   baseSalaryCurrency?: string; // Moneda del sueldo
+  storeId?: string;
+  storeName?: string;
 }
 
 export function getUserCommissionExclusivityMode(
@@ -5868,6 +5885,8 @@ const userFromBackendDto = (dto: UserResponseDto): User => ({
       ? Number(dto.baseSalary)
       : undefined,
   baseSalaryCurrency: dto.baseSalaryCurrency,
+  storeId: dto.storeId,
+  storeName: dto.storeName,
 });
 
 const repopulateUsersCache = async (users: User[]): Promise<void> => {

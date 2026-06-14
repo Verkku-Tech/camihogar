@@ -50,7 +50,7 @@ public interface IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? team = null);
+        string? storeId = null);
 
     Task<Stream> GenerateCommissionsReportFromDataAsync(
         List<CommissionReportRowDto> reportData);
@@ -59,7 +59,7 @@ public interface IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? team = null);
+        string? storeId = null);
 
     Task<Stream> GenerateDispatchReportAsync(
         string? deliveryZone = null,
@@ -1237,7 +1237,7 @@ public class ReportService : IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? team = null)
+        string? storeId = null)
     {
         try
         {
@@ -1247,7 +1247,7 @@ public class ReportService : IReportService
                 startDate,
                 endDate,
                 vendorId,
-                team);
+                storeId);
 
             // Convertir de CommissionReportRow (clase interna) a CommissionReportRowDto
             var dtoData = reportData.Select(row => new CommissionReportRowDto
@@ -1375,7 +1375,7 @@ public class ReportService : IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? team = null)
+        string? storeId = null)
     {
         try
         {
@@ -1385,7 +1385,7 @@ public class ReportService : IReportService
                 startDate,
                 endDate,
                 vendorId,
-                team);
+                storeId);
 
             // Ordenar por fecha (más reciente primero)
             reportData = reportData
@@ -1428,37 +1428,44 @@ public class ReportService : IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? team = null)
+        string? storeId = null)
     {
-        var orders = await _orderRepository.GetAllAsync();
+        var rangeStart = NormalizeCommissionReportStartDate(startDate);
+        var rangeEnd = NormalizeCommissionReportEndDate(endDate);
+
+        var orders = await _orderRepository.GetByCreatedAtRangeAsync(rangeStart, rangeEnd);
         var productCommissions = await _productCommissionRepository.GetAllAsync();
         var saleTypeRules = await _saleTypeCommissionRuleRepository.GetAllAsync();
-        var users = await _userRepository.GetAllAsync();
+        var users = (await _userRepository.GetAllAsync()).ToList();
         var reportData = new List<CommissionReportRow>();
-
-        // Ajustar rango de fechas según el equipo si es necesario
-        var (adjustedStartDate, adjustedEndDate) = AdjustDateRangeForTeam(startDate, endDate, team);
 
         foreach (var order in orders)
         {
-            // Filtrar por fecha (OBLIGATORIO)
-            if (order.CreatedAt < adjustedStartDate || order.CreatedAt > adjustedEndDate)
-                continue;
-
             if (OrderDocumentTypes.IsReservationType(order.Type)
                 || OrderDocumentTypes.IsReservationOrderNumber(order.OrderNumber))
                 continue;
 
-            // Filtrar por vendedor si se especifica
-            if (!string.IsNullOrWhiteSpace(vendorId) && order.VendorId != vendorId)
-                continue;
-
             var tipoVentaLabel = GetCommissionSaleTypeLabel(order, saleTypeRules);
 
-            // Procesar cada producto del pedido (una fila por producto)
             foreach (var product in order.Products)
             {
                 var lineCtx = ResolveLineCommissionContext(product, order);
+                var postventaId = order.PostventaId?.Trim();
+
+                if (!RowMatchesVendorFilter(
+                        vendorId,
+                        lineCtx.EffectiveVendorId,
+                        lineCtx.EffectiveReferrerId,
+                        postventaId))
+                    continue;
+
+                if (!RowMatchesStoreFilter(
+                        storeId,
+                        users,
+                        lineCtx.EffectiveVendorId,
+                        lineCtx.EffectiveReferrerId,
+                        postventaId))
+                    continue;
 
                 var mainVendor = users.FirstOrDefault(u => u.Id == lineCtx.EffectiveVendorId);
                 mainVendor?.NormalizeCommissionExclusivity();
@@ -1529,6 +1536,72 @@ public class ReportService : IReportService
         }
 
         return reportData;
+    }
+
+    private static DateTime NormalizeCommissionReportStartDate(DateTime startDate) =>
+        startDate.Date;
+
+    private static DateTime NormalizeCommissionReportEndDate(DateTime endDate) =>
+        endDate.Date.AddDays(1).AddTicks(-1);
+
+    private static bool RowMatchesVendorFilter(
+        string? vendorId,
+        string effectiveVendorId,
+        string? effectiveReferrerId,
+        string? postventaId)
+    {
+        if (string.IsNullOrWhiteSpace(vendorId))
+            return true;
+
+        var filter = vendorId.Trim();
+        return string.Equals(effectiveVendorId, filter, StringComparison.Ordinal)
+            || (!string.IsNullOrWhiteSpace(effectiveReferrerId)
+                && string.Equals(effectiveReferrerId.Trim(), filter, StringComparison.Ordinal))
+            || (!string.IsNullOrWhiteSpace(postventaId)
+                && string.Equals(postventaId, filter, StringComparison.Ordinal));
+    }
+
+    private static bool RowMatchesStoreFilter(
+        string? storeFilter,
+        IReadOnlyList<User> users,
+        string effectiveVendorId,
+        string? effectiveReferrerId,
+        string? postventaId)
+    {
+        if (string.IsNullOrWhiteSpace(storeFilter))
+            return true;
+
+        var participantIds = new[]
+            {
+                effectiveVendorId,
+                effectiveReferrerId?.Trim(),
+                postventaId,
+            }
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (participantIds.Count == 0)
+            return false;
+
+        if (storeFilter.Equals("unassigned", StringComparison.OrdinalIgnoreCase))
+        {
+            return participantIds.Any(pid =>
+            {
+                var user = users.FirstOrDefault(u => u.Id == pid);
+                return user != null
+                    && string.Equals(user.Role, "Store Seller", StringComparison.Ordinal)
+                    && string.IsNullOrWhiteSpace(user.StoreId);
+            });
+        }
+
+        return participantIds.Any(pid =>
+        {
+            var user = users.FirstOrDefault(u => u.Id == pid);
+            return user != null
+                && string.Equals(user.StoreId, storeFilter.Trim(), StringComparison.Ordinal);
+        });
     }
 
     private sealed record LineCommissionContext(
@@ -1686,17 +1759,6 @@ public class ReportService : IReportService
             "entrega_programada" => "Entrega programada",
             _ => code
         };
-    }
-
-    private (DateTime start, DateTime end) AdjustDateRangeForTeam(DateTime startDate, DateTime endDate, string? team)
-    {
-        // Si no se especifica equipo, usar las fechas tal cual
-        if (string.IsNullOrWhiteSpace(team))
-            return (startDate, endDate);
-
-        // Los ajustes por equipo se pueden hacer aquí si es necesario
-        // Por ahora, retornamos las fechas tal cual
-        return (startDate, endDate);
     }
 
     private class PaymentReportRow

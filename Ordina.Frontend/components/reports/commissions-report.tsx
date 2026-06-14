@@ -11,32 +11,22 @@ import { toast } from "sonner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
-  getOrders,
-  calculateOrderCommissions,
-  getCategories,
-  getProducts,
-  getSaleTypeCommissionRules,
-  getCommissionSaleTypeLabelForOrder,
-  getProductCommissions,
-  getFamilyCommissionUsdPerUnitForProduct,
   getUsers,
-  type Order,
-  type Category,
-  type Product,
-  type OrderCommissionLine,
+  getStores,
   type User,
+  type Store,
 } from "@/lib/storage"
-import { isDateInReportRange, parseReportDateRange } from "@/lib/report-date-range"
-import { isReservationOrder } from "@/lib/order-document-types"
+import {
+  apiClient,
+  type CommissionReportRowDto,
+  type CommissionsReportQueryParams,
+} from "@/lib/api-client"
 
 interface CommissionReportRow {
   fecha: string
   cliente: string
   pedido: string
   vendedor: string
-  vendorId: string
-  referrerId?: string
-  postventaId?: string
   descripcion: string
   cantidadArticulos: number
   tipoVenta: string
@@ -48,59 +38,49 @@ interface CommissionReportRow {
   vendedorReferido?: string
 }
 
-function aggregateCommissionsByProduct(lines: OrderCommissionLine[]) {
-  const m = new Map<string, { vendor: number; postventa: number; referrer: number }>()
-  for (const c of lines) {
-    if (!m.has(c.productId)) {
-      m.set(c.productId, { vendor: 0, postventa: 0, referrer: 0 })
-    }
-    const b = m.get(c.productId)!
-    if (c.payoutRole === "vendor") b.vendor += c.commission
-    else if (c.payoutRole === "postventa") b.postventa += c.commission
-    else b.referrer += c.commission
-  }
-  return m
-}
-
-function filterRowsByVendor(rows: CommissionReportRow[], vendorId: string) {
-  if (vendorId === "all") return rows
-  return rows.filter(
-    (row) =>
-      row.vendorId === vendorId ||
-      row.referrerId === vendorId ||
-      row.postventaId === vendorId,
-  )
-}
-
-function resolveReferrerDisplayName(
-  order: Order,
-  userNameById: Map<string, string>,
-): string | undefined {
-  if (!order.referrerId && !order.referrerName?.trim()) return undefined
-  if (order.referrerName?.trim()) return order.referrerName.trim()
-  if (order.referrerId && userNameById.has(order.referrerId)) {
-    return userNameById.get(order.referrerId)
-  }
-  return "Referido (sin nombre)"
-}
-
 function isCommissionSeller(user: User) {
   return user.role === "Store Seller" || user.role === "Online Seller"
 }
 
-/** Solo pedidos confirmados (ORD-); excluye reservas para no duplicar al convertir RES→ORD. */
-function isCommissionReportOrder(order: Order): boolean {
-  if (order.status === "Generado" || order.status === "Generada") return false
-  if (isReservationOrder(order)) return false
-  return true
+function filterSellersByStore(sellers: User[], storeFilter: string): User[] {
+  if (storeFilter === "all") return sellers
+  if (storeFilter === "unassigned") {
+    return sellers.filter((u) => u.role === "Store Seller" && !u.storeId)
+  }
+  return sellers.filter((u) => u.storeId === storeFilter)
 }
 
-const TEAMS = [
-  { value: "all", label: "Todos" },
-  { value: "guatire", label: "Guatire (Lunes a Domingo)" },
-  { value: "caracas", label: "Caracas (Sábado a Viernes)" },
-  { value: "rrss", label: "RRSS (Mensual)" },
-] as const
+function mapDtoToTableRows(dtos: CommissionReportRowDto[]): CommissionReportRow[] {
+  return dtos.map((row) => ({
+    fecha: row.fecha,
+    cliente: row.cliente,
+    pedido: row.pedido,
+    vendedor: row.vendedor,
+    descripcion: row.descripcion,
+    cantidadArticulos: row.cantidadArticulos,
+    tipoVenta: row.tipoVenta,
+    comisionFamiliaUsdPorUnidad: row.comisionFamiliaUsdPorUnidad,
+    comisionVendedor: row.comision,
+    comisionPostventa: row.comisionPostventa ?? 0,
+    comisionReferido: row.comisionSecundaria ?? 0,
+    vendedorPostventa: row.vendedorPostventa ?? undefined,
+    vendedorReferido: row.vendedorSecundario ?? undefined,
+  }))
+}
+
+function buildReportQueryParams(
+  startDate: string,
+  endDate: string,
+  selectedStoreId: string,
+  selectedVendorId: string,
+): CommissionsReportQueryParams {
+  return {
+    startDate,
+    endDate,
+    vendorId: selectedVendorId === "all" ? undefined : selectedVendorId,
+    storeId: selectedStoreId === "all" ? undefined : selectedStoreId,
+  }
+}
 
 function CommissionPayoutCell({
   name,
@@ -129,130 +109,34 @@ function CommissionPayoutCell({
 export function CommissionsReport() {
   const [startDate, setStartDate] = useState<string>("")
   const [endDate, setEndDate] = useState<string>("")
-  const [selectedTeam, setSelectedTeam] = useState<string>("all")
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("all")
   const [selectedVendorId, setSelectedVendorId] = useState<string>("all")
   const [commissionSellers, setCommissionSellers] = useState<User[]>([])
+  const [stores, setStores] = useState<Store[]>([])
   const [reportData, setReportData] = useState<CommissionReportRow[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [hasError, setHasError] = useState(false)
 
   useEffect(() => {
-    getUsers()
-      .then((users) => {
+    Promise.all([getUsers(), getStores()])
+      .then(([users, allStores]) => {
         setCommissionSellers(
           users.filter((u) => u.status === "active" && isCommissionSeller(u)),
         )
+        setStores(allStores.filter((s) => s.status === "active"))
       })
       .catch(console.error)
   }, [])
 
-  const formatProductDescription = async (
-    product: Order["products"][number],
-    categories: Category[],
-  ): Promise<string> => {
-    const parts = [product.name]
+  const sellersForStoreFilter = filterSellersByStore(
+    commissionSellers,
+    selectedStoreId,
+  )
 
-    if (product.attributes && Object.keys(product.attributes).length > 0) {
-      const category = categories.find((c) => c.name === product.category)
-      if (category?.attributes) {
-        const attributeStrings: string[] = []
-
-        for (const [key, value] of Object.entries(product.attributes)) {
-          const attr = category.attributes.find(
-            (a) => a.id?.toString() === key || a.title === key,
-          )
-          if (attr) {
-            let valueLabel = ""
-            if (Array.isArray(value)) {
-              const labels = value
-                .map((v) => {
-                  const attrValue = attr.values?.find((av) => {
-                    if (typeof av === "string") return av === v
-                    return av.id === v || av.label === v
-                  })
-                  return typeof attrValue === "string"
-                    ? attrValue
-                    : attrValue?.label || v
-                })
-                .filter(Boolean)
-              valueLabel = labels.join(", ")
-            } else {
-              const attrValue = attr.values?.find((av) => {
-                if (typeof av === "string") return av === value
-                return av.id === value || av.label === value
-              })
-              valueLabel =
-                typeof attrValue === "string"
-                  ? attrValue
-                  : attrValue?.label || String(value)
-            }
-            if (valueLabel) {
-              attributeStrings.push(`${attr.title || attr.id}: ${valueLabel}`)
-            }
-          }
-        }
-
-        if (attributeStrings.length > 0) {
-          parts.push(attributeStrings.join(", "))
-        }
-      }
-    }
-
-    return parts.join(" | ")
-  }
-
-  const buildReportRows = async (
-    filteredOrders: Order[],
-    categories: Category[],
-    saleTypeRules: Awaited<ReturnType<typeof getSaleTypeCommissionRules>>,
-    productCommissions: Awaited<ReturnType<typeof getProductCommissions>>,
-    userNameById: Map<string, string>,
-  ): Promise<CommissionReportRow[]> => {
-    const reportRows: CommissionReportRow[] = []
-
-    for (const order of filteredOrders) {
-      const tipoVenta = getCommissionSaleTypeLabelForOrder(order, saleTypeRules)
-      const lines = await calculateOrderCommissions(order)
-      const byProduct = aggregateCommissionsByProduct(lines)
-      const referrerDisplay = resolveReferrerDisplayName(order, userNameById)
-
-      for (const product of order.products) {
-        const agg = byProduct.get(product.id)
-        if (!agg) continue
-        if (agg.vendor === 0 && agg.postventa === 0 && agg.referrer === 0) continue
-
-        const productDesc = await formatProductDescription(product, categories)
-        const comisionFamiliaUsdPorUnidad = getFamilyCommissionUsdPerUnitForProduct(
-          product,
-          productCommissions,
-        )
-
-        reportRows.push({
-          fecha: order.createdAt,
-          cliente: order.clientName,
-          pedido: order.orderNumber,
-          vendedor: order.vendorName,
-          vendorId: order.vendorId,
-          referrerId: order.referrerId?.trim() || undefined,
-          postventaId: order.postventaId?.trim() || undefined,
-          descripcion: productDesc,
-          cantidadArticulos: product.quantity,
-          tipoVenta,
-          comisionFamiliaUsdPorUnidad,
-          comisionVendedor: agg.vendor,
-          comisionPostventa: agg.postventa,
-          comisionReferido: agg.referrer,
-          vendedorPostventa:
-            agg.postventa > 0 ? order.postventaName?.trim() || "Post venta" : undefined,
-          vendedorReferido: agg.referrer > 0 ? referrerDisplay : undefined,
-        })
-      }
-    }
-
-    reportRows.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-    return reportRows
-  }
+  const unassignedStoreSellersCount = commissionSellers.filter(
+    (u) => u.role === "Store Seller" && !u.storeId,
+  ).length
 
   useEffect(() => {
     const loadReportData = async () => {
@@ -265,35 +149,15 @@ export function CommissionsReport() {
       setHasError(false)
 
       try {
-        const [orders, categories, saleTypeRules, productCommissions, users] =
-          await Promise.all([
-            getOrders(),
-            getCategories(),
-            getSaleTypeCommissionRules(),
-            getProductCommissions(),
-            getUsers(),
-          ])
-
-        const userNameById = new Map(
-          users.map((u) => [u.id, u.name] as const),
+        const rows = await apiClient.getCommissionsReportPreview(
+          buildReportQueryParams(
+            startDate,
+            endDate,
+            selectedStoreId,
+            selectedVendorId,
+          ),
         )
-        const { start, end } = parseReportDateRange(startDate, endDate)
-
-        const filteredOrders = orders.filter(
-          (order) =>
-            isCommissionReportOrder(order) &&
-            isDateInReportRange(order.createdAt, start, end),
-        )
-
-        let reportRows = await buildReportRows(
-          filteredOrders,
-          categories,
-          saleTypeRules,
-          productCommissions,
-          userNameById,
-        )
-        reportRows = filterRowsByVendor(reportRows, selectedVendorId)
-        setReportData(reportRows)
+        setReportData(mapDtoToTableRows(rows))
       } catch (error) {
         console.error("Error calculating commissions report:", error)
         toast.error("Error al calcular el reporte de comisiones")
@@ -305,7 +169,7 @@ export function CommissionsReport() {
     }
 
     loadReportData()
-  }, [startDate, endDate, selectedTeam, selectedVendorId])
+  }, [startDate, endDate, selectedStoreId, selectedVendorId])
 
   const handleDownloadExcel = async () => {
     if (!startDate || !endDate) {
@@ -316,90 +180,15 @@ export function CommissionsReport() {
     setIsDownloading(true)
 
     try {
-      const [orders, categories, saleTypeRules, productCommissions, users] =
-        await Promise.all([
-          getOrders(),
-          getCategories(),
-          getSaleTypeCommissionRules(),
-          getProductCommissions(),
-          getUsers(),
-        ])
-
-      const userNameById = new Map(users.map((u) => [u.id, u.name] as const))
-      const { start, end } = parseReportDateRange(startDate, endDate)
-
-      const filteredOrders = orders.filter(
-        (order) =>
-          isCommissionReportOrder(order) &&
-          isDateInReportRange(order.createdAt, start, end),
+      const blob = await apiClient.downloadCommissionsReportExcel(
+        buildReportQueryParams(
+          startDate,
+          endDate,
+          selectedStoreId,
+          selectedVendorId,
+        ),
       )
 
-      let reportRows = await buildReportRows(
-        filteredOrders,
-        categories,
-        saleTypeRules,
-        productCommissions,
-        userNameById,
-      )
-      reportRows = filterRowsByVendor(reportRows, selectedVendorId)
-
-      const commissionData: Record<string, unknown>[] = reportRows.map((row) => {
-        const shared = row.comisionReferido > 0 || row.comisionPostventa > 0
-        return {
-          fecha: row.fecha,
-          cliente: row.cliente,
-          vendedor: row.vendedor,
-          pedido: row.pedido,
-          descripcion: row.descripcion,
-          cantidadArticulos: row.cantidadArticulos,
-          tipoVenta: row.tipoVenta,
-          comisionFamiliaUsdPorUnidad: row.comisionFamiliaUsdPorUnidad,
-          comision: row.comisionVendedor,
-          vendedorSecundario:
-            row.comisionReferido > 0 ? row.vendedorReferido ?? null : null,
-          comisionSecundaria: row.comisionReferido > 0 ? row.comisionReferido : null,
-          vendedorPostventa:
-            row.comisionPostventa > 0 ? row.vendedorPostventa ?? null : null,
-          comisionPostventa:
-            row.comisionPostventa > 0 ? row.comisionPostventa : null,
-          sueldoBase: 0,
-          tasaComisionBase: row.comisionFamiliaUsdPorUnidad,
-          tasaAplicadaVendedor: 0,
-          tasaAplicadaReferido: null,
-          tasaAplicadaPostventa: null,
-          esVentaCompartida: shared,
-          esVendedorExclusivo: false,
-        }
-      })
-
-      const token = localStorage.getItem("auth_token")
-      if (!token) {
-        toast.error("No hay sesión activa")
-        return
-      }
-
-      const response = await fetch(
-        `/api/proxy/orders/api/Reports/Commissions/Excel`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            startDate,
-            endDate,
-            team: selectedTeam === "all" ? null : selectedTeam,
-            data: commissionData,
-          }),
-        },
-      )
-
-      if (!response.ok) {
-        throw new Error("Error al generar el Excel")
-      }
-
-      const blob = await response.blob()
       const downloadUrl = window.URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = downloadUrl
@@ -452,9 +241,13 @@ export function CommissionsReport() {
         <CardHeader>
           <CardTitle>Parámetros del Reporte</CardTitle>
           <CardDescription>
-            Las fechas son obligatorias. El filtro de equipo aplica al Excel descargado. La
-            comisión de post venta aplica en ventas compartidas con tipo Encargo o Sistema de
-            apartado; en entrega o encargo/entrega suele ser $0.
+            Las fechas son obligatorias. El reporte se calcula en el servidor (una sola
+            consulta por carga). El filtro de tienda agrupa vendedores por sede asignada
+            en su perfil.
+            {unassignedStoreSellersCount > 0 &&
+              ` Hay ${unassignedStoreSellersCount} vendedor${unassignedStoreSellersCount === 1 ? "" : "es"} de tienda sin sede asignada.`}
+            {" "}La comisión de post venta aplica en ventas compartidas con tipo Encargo o
+            Sistema de apartado; en entrega o encargo/entrega suele ser $0.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -484,15 +277,23 @@ export function CommissionsReport() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="team">Equipo (Opcional)</Label>
-              <Select value={selectedTeam} onValueChange={setSelectedTeam}>
-                <SelectTrigger id="team">
-                  <SelectValue placeholder="Seleccionar equipo" />
+              <Label htmlFor="store">Tienda (Opcional)</Label>
+              <Select
+                value={selectedStoreId}
+                onValueChange={(value) => {
+                  setSelectedStoreId(value)
+                  setSelectedVendorId("all")
+                }}
+              >
+                <SelectTrigger id="store">
+                  <SelectValue placeholder="Todas las tiendas" />
                 </SelectTrigger>
                 <SelectContent>
-                  {TEAMS.map((team) => (
-                    <SelectItem key={team.value} value={team.value}>
-                      {team.label}
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="unassigned">Sin tienda asignada</SelectItem>
+                  {stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -506,7 +307,7 @@ export function CommissionsReport() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  {commissionSellers.map((user) => (
+                  {sellersForStoreFilter.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
                       {user.name}
                     </SelectItem>
@@ -553,9 +354,14 @@ export function CommissionsReport() {
             <CardTitle>Resultados del Reporte</CardTitle>
             <CardDescription>
               {reportData.length} {reportData.length === 1 ? "registro" : "registros"} encontrados
+              {selectedStoreId !== "all" &&
+                (selectedStoreId === "unassigned"
+                  ? " · filtro: sin tienda asignada"
+                  : stores.find((s) => s.id === selectedStoreId) &&
+                    ` · tienda: ${stores.find((s) => s.id === selectedStoreId)?.name}`)}
               {selectedVendorId !== "all" &&
-                commissionSellers.find((u) => u.id === selectedVendorId) &&
-                ` · filtro: ${commissionSellers.find((u) => u.id === selectedVendorId)?.name}`}
+                sellersForStoreFilter.find((u) => u.id === selectedVendorId) &&
+                ` · vendedor: ${sellersForStoreFilter.find((u) => u.id === selectedVendorId)?.name}`}
             </CardDescription>
           </CardHeader>
           <CardContent>
