@@ -18,6 +18,8 @@ import {
   clearAllIndexedDBDataStores,
   getIndexedDBStoreStats,
 } from "@/lib/storage"
+import { APP_UI_VERSION } from "@/lib/app-version"
+import { checkForServiceWorkerUpdate } from "@/lib/pwa-update"
 import { Loader2, RefreshCw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -26,7 +28,9 @@ export function SystemPage() {
   const [stats, setStats] = useState<{ name: string; count: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [serverVersion, setServerVersion] = useState<string | null>(null)
 
   const loadStats = useCallback(async () => {
     setLoading(true)
@@ -41,11 +45,39 @@ export function SystemPage() {
     }
   }, [])
 
+  const loadServerVersion = useCallback(async () => {
+    try {
+      const response = await fetch("/version.json", { cache: "no-store" })
+      if (!response.ok) return
+      const data = (await response.json()) as { version?: string; builtAt?: string }
+      setServerVersion(data.version ?? null)
+    } catch {
+      setServerVersion(null)
+    }
+  }, [])
+
   useEffect(() => {
     if (user) {
       void loadStats()
+      void loadServerVersion()
     }
-  }, [user, loadStats])
+  }, [user, loadStats, loadServerVersion])
+
+  const handleCheckUpdates = async () => {
+    setCheckingUpdate(true)
+    try {
+      await checkForServiceWorkerUpdate()
+      await loadServerVersion()
+      toast.success(
+        "Búsqueda de actualizaciones completada. Si hay una versión nueva, verás un aviso en pantalla.",
+      )
+    } catch (e) {
+      console.error(e)
+      toast.error("No se pudo buscar actualizaciones")
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }
 
   const handleClear = async () => {
     setClearing(true)
@@ -83,9 +115,44 @@ export function SystemPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Sistema</h1>
           <p className="text-muted-foreground">
-            Herramientas de emergencia para el cache local del navegador (IndexedDB).
+            Versión de la aplicación y herramientas de emergencia para el cache local.
           </p>
         </div>
+
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+            <div>
+              <CardTitle>Versión de la aplicación</CardTitle>
+              <CardDescription>
+                La app se actualiza sola al detectar un deploy nuevo. En uso normal no
+                hace falta borrar caché manualmente.
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleCheckUpdates()}
+              disabled={checkingUpdate}
+            >
+              {checkingUpdate ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              <span className="ml-2">Buscar actualizaciones</span>
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between gap-4 border-b pb-2">
+              <span className="text-muted-foreground">Versión instalada (bundle)</span>
+              <span className="font-mono text-xs">{APP_UI_VERSION}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Versión en servidor</span>
+              <span className="font-mono text-xs">{serverVersion ?? "—"}</span>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-start justify-between space-y-0">

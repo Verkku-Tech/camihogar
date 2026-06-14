@@ -6,6 +6,7 @@ import { NavigationProvider } from "@/contexts/navigation-context"
 import { CurrencyProvider } from "@/contexts/currency-context"
 import { Toaster } from "@/components/ui/sonner"
 import { RegisterServiceWorker } from "@/components/pwa/register-sw"
+import { AppUpdatePrompt } from "@/components/pwa/app-update-prompt"
 import { InstallPrompt } from "@/components/pwa/install-prompt"
 import "./globals.css"
 
@@ -64,6 +65,7 @@ export default function RootLayout({
       </head>
       <body>
         <RegisterServiceWorker />
+        <AppUpdatePrompt />
         <InstallPrompt />
         <ThemeProvider
           attribute="class"

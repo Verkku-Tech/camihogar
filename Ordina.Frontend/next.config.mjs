@@ -5,7 +5,7 @@ const nextConfig = {
     unoptimized: true,
   },
   output: "standalone",
-  // Headers para Service Worker
+  // Headers para Service Worker y version.json
   async headers() {
     return [
       {
@@ -18,6 +18,15 @@ const nextConfig = {
           {
             key: "Service-Worker-Allowed",
             value: "/",
+          },
+        ],
+      },
+      {
+        source: "/version.json",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
           },
         ],
       },
