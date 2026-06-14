@@ -361,7 +361,6 @@ public class ReportsController : ControllerBase
     /// <param name="startDate">Fecha de inicio OBLIGATORIA para filtrar (formato: yyyy-MM-dd)</param>
     /// <param name="endDate">Fecha de fin OBLIGATORIA para filtrar (formato: yyyy-MM-dd)</param>
     /// <param name="vendorId">ID opcional del vendedor para filtrar</param>
-    /// <param name="team">Equipo opcional para ajustar rango de fechas: "guatire", "caracas", "rrss"</param>
     /// <returns>Archivo Excel con el reporte</returns>
     [HttpGet("Commissions/Excel")]
     [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
@@ -371,7 +370,6 @@ public class ReportsController : ControllerBase
         [FromQuery] string startDate,
         [FromQuery] string endDate,
         [FromQuery] string? vendorId = null,
-        [FromQuery] string? team = null,
         [FromQuery] string? storeId = null)
     {
         try
@@ -396,7 +394,6 @@ public class ReportsController : ControllerBase
                 parsedStartDate,
                 parsedEndDate,
                 vendorId,
-                team,
                 storeId);
             
             var fileName = $"Reporte_Comisiones_{DateTime.UtcNow:yyyyMMdd}.xlsx";
@@ -422,7 +419,6 @@ public class ReportsController : ControllerBase
     /// <param name="startDate">Fecha de inicio OBLIGATORIA para filtrar (formato: yyyy-MM-dd)</param>
     /// <param name="endDate">Fecha de fin OBLIGATORIA para filtrar (formato: yyyy-MM-dd)</param>
     /// <param name="vendorId">ID opcional del vendedor para filtrar</param>
-    /// <param name="team">Equipo opcional para ajustar rango de fechas: "guatire", "caracas", "rrss"</param>
     /// <returns>Lista de datos del reporte en formato JSON</returns>
     [HttpGet("Commissions/Preview")]
     [ProducesResponseType(typeof(List<CommissionReportRowDto>), StatusCodes.Status200OK)]
@@ -432,7 +428,6 @@ public class ReportsController : ControllerBase
         [FromQuery] string startDate,
         [FromQuery] string endDate,
         [FromQuery] string? vendorId = null,
-        [FromQuery] string? team = null,
         [FromQuery] string? storeId = null)
     {
         try
@@ -457,7 +452,6 @@ public class ReportsController : ControllerBase
                 parsedStartDate,
                 parsedEndDate,
                 vendorId,
-                team,
                 storeId);
             
             return Ok(reportData);

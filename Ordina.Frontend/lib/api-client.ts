@@ -1654,7 +1654,6 @@ export class ApiClient {
     q.set("endDate", params.endDate);
     if (params.vendorId) q.set("vendorId", params.vendorId);
     if (params.storeId) q.set("storeId", params.storeId);
-    if (params.team) q.set("team", params.team);
     return q.toString();
   }
 
@@ -1811,7 +1810,6 @@ export interface CommissionsReportQueryParams {
   endDate: string;
   vendorId?: string;
   storeId?: string;
-  team?: string;
 }
 
 export interface CommissionReportRowDto {

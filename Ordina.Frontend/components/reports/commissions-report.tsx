@@ -38,13 +38,6 @@ interface CommissionReportRow {
   vendedorReferido?: string
 }
 
-const TEAMS = [
-  { value: "all", label: "Todos" },
-  { value: "guatire", label: "Guatire (Lunes a Domingo)" },
-  { value: "caracas", label: "Caracas (Sábado a Viernes)" },
-  { value: "rrss", label: "RRSS (Mensual)" },
-] as const
-
 function isCommissionSeller(user: User) {
   return user.role === "Store Seller" || user.role === "Online Seller"
 }
@@ -78,7 +71,6 @@ function mapDtoToTableRows(dtos: CommissionReportRowDto[]): CommissionReportRow[
 function buildReportQueryParams(
   startDate: string,
   endDate: string,
-  selectedTeam: string,
   selectedStoreId: string,
   selectedVendorId: string,
 ): CommissionsReportQueryParams {
@@ -87,7 +79,6 @@ function buildReportQueryParams(
     endDate,
     vendorId: selectedVendorId === "all" ? undefined : selectedVendorId,
     storeId: selectedStoreId === "all" ? undefined : selectedStoreId,
-    team: selectedTeam === "all" ? undefined : selectedTeam,
   }
 }
 
@@ -118,7 +109,6 @@ function CommissionPayoutCell({
 export function CommissionsReport() {
   const [startDate, setStartDate] = useState<string>("")
   const [endDate, setEndDate] = useState<string>("")
-  const [selectedTeam, setSelectedTeam] = useState<string>("all")
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all")
   const [selectedVendorId, setSelectedVendorId] = useState<string>("all")
   const [commissionSellers, setCommissionSellers] = useState<User[]>([])
@@ -163,7 +153,6 @@ export function CommissionsReport() {
           buildReportQueryParams(
             startDate,
             endDate,
-            selectedTeam,
             selectedStoreId,
             selectedVendorId,
           ),
@@ -180,7 +169,7 @@ export function CommissionsReport() {
     }
 
     loadReportData()
-  }, [startDate, endDate, selectedTeam, selectedStoreId, selectedVendorId])
+  }, [startDate, endDate, selectedStoreId, selectedVendorId])
 
   const handleDownloadExcel = async () => {
     if (!startDate || !endDate) {
@@ -195,7 +184,6 @@ export function CommissionsReport() {
         buildReportQueryParams(
           startDate,
           endDate,
-          selectedTeam,
           selectedStoreId,
           selectedVendorId,
         ),
@@ -254,8 +242,8 @@ export function CommissionsReport() {
           <CardTitle>Parámetros del Reporte</CardTitle>
           <CardDescription>
             Las fechas son obligatorias. El reporte se calcula en el servidor (una sola
-            consulta por carga). El filtro de equipo aplica al Excel descargado. El filtro
-            de tienda agrupa vendedores por sede asignada en su perfil.
+            consulta por carga). El filtro de tienda agrupa vendedores por sede asignada
+            en su perfil.
             {unassignedStoreSellersCount > 0 &&
               ` Hay ${unassignedStoreSellersCount} vendedor${unassignedStoreSellersCount === 1 ? "" : "es"} de tienda sin sede asignada.`}
             {" "}La comisión de post venta aplica en ventas compartidas con tipo Encargo o
@@ -263,7 +251,7 @@ export function CommissionsReport() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label htmlFor="startDate">
                 Fecha Desde <span className="text-red-500">*</span>
@@ -287,21 +275,6 @@ export function CommissionsReport() {
                 onChange={(e) => setEndDate(e.target.value)}
                 required
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="team">Equipo (Opcional)</Label>
-              <Select value={selectedTeam} onValueChange={setSelectedTeam}>
-                <SelectTrigger id="team">
-                  <SelectValue placeholder="Seleccionar equipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TEAMS.map((team) => (
-                    <SelectItem key={team.value} value={team.value}>
-                      {team.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="store">Tienda (Opcional)</Label>
