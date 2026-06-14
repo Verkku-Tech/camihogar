@@ -1618,6 +1618,56 @@ export class ApiClient {
       method: "DELETE",
     });
   }
+
+  private buildCommissionsReportQuery(
+    params: CommissionsReportQueryParams,
+  ): string {
+    const q = new URLSearchParams();
+    q.set("startDate", params.startDate);
+    q.set("endDate", params.endDate);
+    if (params.vendorId) q.set("vendorId", params.vendorId);
+    if (params.storeId) q.set("storeId", params.storeId);
+    if (params.team) q.set("team", params.team);
+    return q.toString();
+  }
+
+  async getCommissionsReportPreview(
+    params: CommissionsReportQueryParams,
+  ): Promise<CommissionReportRowDto[]> {
+    const query = this.buildCommissionsReportQuery(params);
+    return this.request<CommissionReportRowDto[]>(
+      `/api/Reports/Commissions/Preview?${query}`,
+    );
+  }
+
+  async downloadCommissionsReportExcel(
+    params: CommissionsReportQueryParams,
+  ): Promise<Blob> {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const baseUrl = this.getBaseUrl("/api/Reports/Commissions/Excel");
+    const query = this.buildCommissionsReportQuery(params);
+    const url = `${baseUrl}/api/Reports/Commissions/Excel?${query}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let message = `Error ${response.status}`;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.message) message = parsed.message;
+      } catch {
+        if (text) message = text;
+      }
+      throw new Error(message);
+    }
+
+    return response.blob();
+  }
 }
 
 // Product Commission Types
@@ -1702,6 +1752,8 @@ export interface UserResponseDto {
   commissionExclusivityMode?: "shared" | "exclusive" | "exclusive_with_referrer";
   baseSalary?: number;
   baseSalaryCurrency?: string;
+  storeId?: string;
+  storeName?: string;
 }
 
 export interface CreateUserDto {
@@ -1711,6 +1763,7 @@ export interface CreateUserDto {
   role: string;
   status?: string;
   password?: string;
+  storeId?: string;
 }
 
 export interface UpdateUserDto {
@@ -1723,6 +1776,38 @@ export interface UpdateUserDto {
   commissionExclusivityMode?: "shared" | "exclusive" | "exclusive_with_referrer";
   baseSalary?: number;
   baseSalaryCurrency?: string;
+  storeId?: string;
+}
+
+export interface CommissionsReportQueryParams {
+  startDate: string;
+  endDate: string;
+  vendorId?: string;
+  storeId?: string;
+  team?: string;
+}
+
+export interface CommissionReportRowDto {
+  fecha: string;
+  cliente: string;
+  vendedor: string;
+  pedido: string;
+  descripcion: string;
+  cantidadArticulos: number;
+  tipoVenta: string;
+  comisionFamiliaUsdPorUnidad: number;
+  comision: number;
+  vendedorSecundario?: string | null;
+  comisionSecundaria?: number | null;
+  vendedorPostventa?: string | null;
+  comisionPostventa?: number | null;
+  sueldoBase: number;
+  tasaComisionBase: number;
+  tasaAplicadaVendedor: number;
+  tasaAplicadaReferido?: number | null;
+  tasaAplicadaPostventa?: number | null;
+  esVentaCompartida: boolean;
+  esVendedorExclusivo: boolean;
 }
 
 export interface RoleResponseDto {

@@ -11,6 +11,22 @@ interface User {
   role: string
   status: string
   createdAt?: string
+  storeId?: string
+  storeName?: string
+}
+
+function mapApiUserToLocal(apiUser: UserResponseDto): User {
+  return {
+    id: apiUser.id,
+    username: apiUser.username,
+    email: apiUser.email,
+    name: apiUser.name,
+    role: apiUser.role,
+    status: apiUser.status,
+    createdAt: apiUser.createdAt,
+    storeId: apiUser.storeId,
+    storeName: apiUser.storeName,
+  }
 }
 
 interface UseUsersOptions {
@@ -75,27 +91,12 @@ export function useUsers(options: UseUsersOptions = {}) {
 
       // Actualizar IndexedDB con datos del servidor
       for (const apiUser of apiUsers) {
+        const mapped = mapApiUserToLocal(apiUser)
         const existingUser = await db.get<User>('users', apiUser.id)
         if (existingUser) {
-          await db.update('users', {
-            id: apiUser.id,
-            username: apiUser.username,
-            email: apiUser.email,
-            name: apiUser.name,
-            role: apiUser.role,
-            status: apiUser.status,
-            createdAt: apiUser.createdAt,
-          })
+          await db.update('users', mapped)
         } else {
-          await db.add('users', {
-            id: apiUser.id,
-            username: apiUser.username,
-            email: apiUser.email,
-            name: apiUser.name,
-            role: apiUser.role,
-            status: apiUser.status,
-            createdAt: apiUser.createdAt,
-          })
+          await db.add('users', mapped)
         }
       }
 
@@ -128,6 +129,7 @@ export function useUsers(options: UseUsersOptions = {}) {
         role: userData.role,
         status: userData.status || 'active',
         createdAt: new Date().toISOString(),
+        storeId: userData.storeId,
       }
 
       // Guardar en IndexedDB inmediatamente (offline-first)
@@ -138,39 +140,16 @@ export function useUsers(options: UseUsersOptions = {}) {
         try {
           // Intentar crear en el backend
           const createdUser = await apiClient.createUser(userData)
+          const mapped = mapApiUserToLocal(createdUser)
           
           // Actualizar con el ID real del servidor
           await db.remove('users', tempId)
-          await db.add('users', {
-            id: createdUser.id,
-            username: createdUser.username,
-            email: createdUser.email,
-            name: createdUser.name,
-            role: createdUser.role,
-            status: createdUser.status,
-            createdAt: createdUser.createdAt,
-          })
+          await db.add('users', mapped)
 
           // Actualizar estado
-          setUsers(prev => prev.map(u => u.id === tempId ? {
-            id: createdUser.id,
-            username: createdUser.username,
-            email: createdUser.email,
-            name: createdUser.name,
-            role: createdUser.role,
-            status: createdUser.status,
-            createdAt: createdUser.createdAt,
-          } : u))
+          setUsers(prev => prev.map(u => u.id === tempId ? mapped : u))
 
-          return {
-            id: createdUser.id,
-            username: createdUser.username,
-            email: createdUser.email,
-            name: createdUser.name,
-            role: createdUser.role,
-            status: createdUser.status,
-            createdAt: createdUser.createdAt,
-          }
+          return mapped
         } catch (apiError) {
           // Si falla el backend, mantener el usuario local y agregar a cola
           // El usuario ya está guardado localmente, así que no lanzamos error
@@ -224,37 +203,14 @@ export function useUsers(options: UseUsersOptions = {}) {
         try {
           // Intentar actualizar en el backend
           const apiUser = await apiClient.updateUser(id, userData)
+          const mapped = mapApiUserToLocal(apiUser)
           
           // Actualizar con datos del servidor
-          await db.update('users', {
-            id: apiUser.id,
-            username: apiUser.username,
-            email: apiUser.email,
-            name: apiUser.name,
-            role: apiUser.role,
-            status: apiUser.status,
-            createdAt: apiUser.createdAt,
-          })
+          await db.update('users', mapped)
 
-          setUsers(prev => prev.map(u => u.id === id ? {
-            id: apiUser.id,
-            username: apiUser.username,
-            email: apiUser.email,
-            name: apiUser.name,
-            role: apiUser.role,
-            status: apiUser.status,
-            createdAt: apiUser.createdAt,
-          } : u))
+          setUsers(prev => prev.map(u => u.id === id ? mapped : u))
 
-          return {
-            id: apiUser.id,
-            username: apiUser.username,
-            email: apiUser.email,
-            name: apiUser.name,
-            role: apiUser.role,
-            status: apiUser.status,
-            createdAt: apiUser.createdAt,
-          }
+          return mapped
         } catch (apiError) {
           // Si falla, verificar si el cambio realmente se guardó en el backend
           try {
@@ -270,33 +226,10 @@ export function useUsers(options: UseUsersOptions = {}) {
             if (dataMatches) {
               // El cambio sí se guardó, actualizar local y retornar éxito
               console.log('✅ Cambio verificado en backend a pesar del error inicial')
-              await db.update('users', {
-                id: verifyUser.id,
-                username: verifyUser.username,
-                email: verifyUser.email,
-                name: verifyUser.name,
-                role: verifyUser.role,
-                status: verifyUser.status,
-                createdAt: verifyUser.createdAt,
-              })
-              setUsers(prev => prev.map(u => u.id === id ? {
-                id: verifyUser.id,
-                username: verifyUser.username,
-                email: verifyUser.email,
-                name: verifyUser.name,
-                role: verifyUser.role,
-                status: verifyUser.status,
-                createdAt: verifyUser.createdAt,
-              } : u))
-              return {
-                id: verifyUser.id,
-                username: verifyUser.username,
-                email: verifyUser.email,
-                name: verifyUser.name,
-                role: verifyUser.role,
-                status: verifyUser.status,
-                createdAt: verifyUser.createdAt,
-              }
+              const mapped = mapApiUserToLocal(verifyUser)
+              await db.update('users', mapped)
+              setUsers(prev => prev.map(u => u.id === id ? mapped : u))
+              return mapped
             }
           } catch {
             // No se pudo verificar, continuar con el flujo de error original

@@ -26,5 +26,7 @@ public class CreateUserDto
 
     [StringLength(500, ErrorMessage = "La contraseña no puede exceder 500 caracteres")]
     public string? Password { get; set; }
+
+    public string? StoreId { get; set; }
 }
 

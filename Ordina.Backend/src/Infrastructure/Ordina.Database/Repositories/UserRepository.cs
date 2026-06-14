@@ -43,6 +43,11 @@ public class UserRepository : IUserRepository
         return await _collection.Find(u => u.Status == status).ToListAsync();
     }
 
+    public async Task<IEnumerable<User>> GetByStoreIdAsync(string storeId)
+    {
+        return await _collection.Find(u => u.StoreId == storeId).ToListAsync();
+    }
+
     public async Task<User> CreateAsync(User user)
     {
         user.CreatedAt = DateTime.UtcNow;

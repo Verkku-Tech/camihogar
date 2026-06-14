@@ -57,6 +57,13 @@ public class User
     [BsonElement("baseSalaryCurrency")]
     public string BaseSalaryCurrency { get; set; } = "USD"; // Moneda del sueldo
 
+    [BsonElement("storeId")]
+    [BsonRepresentation(BsonType.ObjectId)]
+    public string? StoreId { get; set; }
+
+    [BsonElement("storeName")]
+    public string? StoreName { get; set; }
+
     /// <summary>
     /// Normaliza el modo desde el valor almacenado o el flag legacy y sincroniza el flag legacy.
     /// </summary>

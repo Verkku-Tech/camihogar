@@ -174,6 +174,10 @@ public class UsersController : ControllerBase
             var userDto = await _userService.CreateUserAsync(createDto);
             return CreatedAtAction(nameof(GetUserById), new { id = userDto.Id }, userDto);
         }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         catch (InvalidOperationException ex)
         {
             return Conflict(new { message = ex.Message });

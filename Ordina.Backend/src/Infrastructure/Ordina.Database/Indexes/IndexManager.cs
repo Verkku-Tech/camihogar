@@ -226,6 +226,14 @@ public static class IndexManager
                 new CreateIndexOptions { Name = "idx_user_status" }
             )
         );
+
+        // Índice en StoreId para filtrar usuarios por tienda
+        collection.Indexes.CreateOne(
+            new CreateIndexModel<User>(
+                Builders<User>.IndexKeys.Ascending(x => x.StoreId),
+                new CreateIndexOptions { Name = "idx_user_store_id" }
+            )
+        );
     }
 
     private static void CreateVendorIndexes(IMongoCollection<Vendor> collection)
