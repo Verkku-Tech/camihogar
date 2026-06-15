@@ -1,3 +1,4 @@
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Ordina.Database.Entities.Order;
@@ -76,4 +77,12 @@ public class PaymentDetails
     /// <summary>Línea sintética Cashea: saldo por financiación (no cobro en caja). Misma clave que el front.</summary>
     [BsonElement("casheaFinancedPortion")]
     public bool CasheaFinancedPortion { get; set; }
+
+    /// <summary>Comisión informativa TDC (6%) registrada en el cobro.</summary>
+    [BsonElement("cardCommissionApplied")]
+    public bool CardCommissionApplied { get; set; }
+
+    [BsonElement("cardCommissionAmount")]
+    [BsonRepresentation(BsonType.Decimal128)]
+    public decimal? CardCommissionAmount { get; set; }
 }

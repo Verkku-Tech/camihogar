@@ -82,6 +82,8 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { ImageGallery } from "@/components/orders/image-gallery";
+import { CardCommissionDetailHint } from "@/components/orders/card-commission-toggle";
+import { shouldShowCardCommission } from "@/lib/card-commission";
 import { useAuth } from "@/contexts/auth-context";
 import {
   getLineDiscountDisplayMode,
@@ -2660,6 +2662,15 @@ export default function OrderDetailPage() {
                                   </div>
                                 )}
 
+                              {shouldShowCardCommission(payment) && (
+                                <CardCommissionDetailHint
+                                  commissionBs={
+                                    payment.paymentDetails!.cardCommissionAmount!
+                                  }
+                                  exchangeRate={paymentExchangeRate}
+                                />
+                              )}
+
                               {payment.date &&
                                 (!paymentExchangeRate ||
                                   paymentCurrency === "Bs") && (
@@ -2754,6 +2765,15 @@ export default function OrderDetailPage() {
                                   )}
                                 </div>
                               )}
+
+                            {shouldShowCardCommission(payment) && (
+                              <CardCommissionDetailHint
+                                commissionBs={
+                                  payment.paymentDetails!.cardCommissionAmount!
+                                }
+                                exchangeRate={paymentExchangeRate}
+                              />
+                            )}
 
                             {payment.date &&
                               (!paymentExchangeRate ||

@@ -1398,12 +1398,29 @@ public class OrderService : IOrderService
             Wallet = paymentDetails.Wallet,
             Envia = paymentDetails.Envia,
             IsConciliated = paymentDetails.IsConciliated,
-            CasheaFinancedPortion = paymentDetails.CasheaFinancedPortion
+            CasheaFinancedPortion = paymentDetails.CasheaFinancedPortion,
+            CardCommissionApplied = paymentDetails.CardCommissionApplied,
+            CardCommissionAmount = paymentDetails.CardCommissionAmount
         };
     }
 
     private PaymentDetails MapPaymentDetailsFromDto(PaymentDetailsDto dto)
     {
+        var cardCommissionApplied = dto.CardCommissionApplied;
+        decimal? cardCommissionAmount = null;
+        if (cardCommissionApplied)
+        {
+            var baseAmount = dto.OriginalAmount ?? dto.CashReceived ?? 0m;
+            if (baseAmount > 0)
+            {
+                cardCommissionAmount = Math.Round(baseAmount * 0.06m, 2, MidpointRounding.AwayFromZero);
+            }
+            else if (dto.CardCommissionAmount is > 0)
+            {
+                cardCommissionAmount = Math.Round(dto.CardCommissionAmount.Value, 2, MidpointRounding.AwayFromZero);
+            }
+        }
+
         return new PaymentDetails
         {
             PagomovilReference = dto.PagomovilReference,
@@ -1426,7 +1443,9 @@ public class OrderService : IOrderService
             Wallet = dto.Wallet,
             Envia = dto.Envia,
             IsConciliated = dto.IsConciliated,
-            CasheaFinancedPortion = dto.CasheaFinancedPortion
+            CasheaFinancedPortion = dto.CasheaFinancedPortion,
+            CardCommissionApplied = cardCommissionApplied,
+            CardCommissionAmount = cardCommissionAmount
         };
     }
 
@@ -1453,6 +1472,17 @@ public class OrderService : IOrderService
 
     private PartialPayment MapPartialPaymentFromDto(PartialPaymentDto dto)
     {
+        var paymentDetails = dto.PaymentDetails != null
+            ? MapPaymentDetailsFromDto(dto.PaymentDetails)
+            : null;
+        if (paymentDetails?.CardCommissionApplied == true)
+        {
+            var baseAmount = paymentDetails.OriginalAmount ?? dto.Amount;
+            paymentDetails.CardCommissionAmount = baseAmount > 0
+                ? Math.Round(baseAmount * 0.06m, 2, MidpointRounding.AwayFromZero)
+                : null;
+        }
+
         return new PartialPayment
         {
             Id = string.IsNullOrEmpty(dto.Id) || !ObjectId.TryParse(dto.Id, out _)
@@ -1470,7 +1500,7 @@ public class OrderService : IOrderService
                 UploadedAt = img.UploadedAt,
                 Size = img.Size
             }).ToList(),
-            PaymentDetails = dto.PaymentDetails != null ? MapPaymentDetailsFromDto(dto.PaymentDetails) : null
+            PaymentDetails = paymentDetails
         };
     }
 
