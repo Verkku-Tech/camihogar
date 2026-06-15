@@ -1885,6 +1885,9 @@ export interface Order {
     // Zelle
     envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
     isConciliated?: boolean;
+    /** Comisión informativa TDC (6%) registrada en el cobro. */
+    cardCommissionApplied?: boolean;
+    cardCommissionAmount?: number;
   };
   partialPayments?: PartialPayment[]; // Ahora usa la interfaz exportada
   mixedPayments?: PartialPayment[]; // Para pagos mixtos
