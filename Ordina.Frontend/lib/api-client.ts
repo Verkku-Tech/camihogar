@@ -2157,6 +2157,9 @@ export interface PaymentDetailsDto {
   envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
   /** Conciliación contable del pago */
   isConciliated?: boolean;
+  /** Comisión informativa TDC (6%) registrada en el cobro. */
+  cardCommissionApplied?: boolean;
+  cardCommissionAmount?: number;
 }
 
 /** Solicitud para marcar/desmarcar conciliación de un pago (alinea con ConciliatePaymentRequestDto en API). */

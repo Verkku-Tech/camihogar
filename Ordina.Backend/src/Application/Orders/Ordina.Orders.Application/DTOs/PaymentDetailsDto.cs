@@ -28,5 +28,10 @@ public class PaymentDetailsDto
 
     /// <summary>Financiación Cashea (no es cobro en tienda).</summary>
     public bool CasheaFinancedPortion { get; set; }
+
+    /// <summary>Comisión informativa TDC (6%) registrada en el cobro.</summary>
+    public bool CardCommissionApplied { get; set; }
+
+    public decimal? CardCommissionAmount { get; set; }
 }
 

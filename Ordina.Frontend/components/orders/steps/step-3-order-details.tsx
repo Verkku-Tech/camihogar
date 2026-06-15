@@ -51,6 +51,8 @@ import {
 } from "@/lib/order-payment-input";
 import { formatPercentForDisplay } from "@/lib/product-discount-ui";
 import { ImageUploader } from "../ImageUploader";
+import { CardCommissionToggle } from "../card-commission-toggle";
+import { computeCardCommissionBs } from "@/lib/card-commission";
 import {
   PAYMENT_CONDITIONS,
   PURCHASE_TYPES,
@@ -138,6 +140,21 @@ function BsToUsdHint({
         </span>
       </span>
     </div>
+  );
+}
+
+function syncCardCommissionForPayment(
+  paymentId: string,
+  amountBs: number,
+  applied: boolean,
+  updatePaymentDetails?: (id: string, field: string, value: unknown) => void,
+) {
+  if (!updatePaymentDetails) return;
+  updatePaymentDetails(paymentId, "cardCommissionApplied", applied);
+  updatePaymentDetails(
+    paymentId,
+    "cardCommissionAmount",
+    applied && amountBs > 0 ? computeCardCommissionBs(amountBs) : null,
   );
 }
 
@@ -1798,6 +1815,14 @@ export function Step3OrderDetails({
                                       "No hay tasa para la fecha del cobro; se usó la tasa de hoy.",
                                     );
                                   }
+                                  if (payment.paymentDetails?.cardCommissionApplied) {
+                                    syncCardCommissionForPayment(
+                                      payment.id,
+                                      inputValue,
+                                      true,
+                                      updatePaymentDetails,
+                                    );
+                                  }
                                 });
                               }}
                               placeholder="0.00"
@@ -1807,6 +1832,23 @@ export function Step3OrderDetails({
                               exchangeRate={
                                 payment.paymentDetails?.exchangeRate
                               }
+                            />
+                            <CardCommissionToggle
+                              applied={Boolean(
+                                payment.paymentDetails?.cardCommissionApplied,
+                              )}
+                              amountBs={payment.amount}
+                              exchangeRate={
+                                payment.paymentDetails?.exchangeRate
+                              }
+                              onAppliedChange={(applied) => {
+                                syncCardCommissionForPayment(
+                                  payment.id,
+                                  payment.amount,
+                                  applied,
+                                  updatePaymentDetails,
+                                );
+                              }}
                             />
                           </div>
                           {/* Selector de Banco */}
