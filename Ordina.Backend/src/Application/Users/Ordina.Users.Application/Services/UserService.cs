@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Ordina.Database.Entities.User;
 using Ordina.Database.Repositories;
 using Ordina.Users.Application.DTOs;
+using Ordina.Users.Domain.Constants;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -13,15 +14,18 @@ public class UserService : IUserService
 
     private readonly IUserRepository _userRepository;
     private readonly IStoreRepository _storeRepository;
+    private readonly IRoleRepository _roleRepository;
     private readonly ILogger<UserService> _logger;
 
     public UserService(
         IUserRepository userRepository,
         IStoreRepository storeRepository,
+        IRoleRepository roleRepository,
         ILogger<UserService> logger)
     {
         _userRepository = userRepository;
         _storeRepository = storeRepository;
+        _roleRepository = roleRepository;
         _logger = logger;
     }
 
@@ -126,6 +130,9 @@ public class UserService : IUserService
 
             var normalizedRole = NormalizeUserRole(createDto.Role);
             var (storeId, storeName) = await ValidateAndResolveStoreAsync(createDto.StoreId, normalizedRole);
+            var extraPermissions = await ResolveExtraPermissionsForRoleAsync(
+                normalizedRole,
+                createDto.ExtraPermissions);
 
             var user = new User
             {
@@ -137,6 +144,7 @@ public class UserService : IUserService
                 CreatedAt = DateTime.UtcNow,
                 StoreId = storeId,
                 StoreName = storeName,
+                ExtraPermissions = extraPermissions,
             };
 
             // Hashear la contraseña antes de guardarla
@@ -269,6 +277,13 @@ public class UserService : IUserService
                 existingUser.StoreName = storeName;
             }
 
+            if (updateDto.ExtraPermissions != null)
+            {
+                existingUser.ExtraPermissions = await ResolveExtraPermissionsForRoleAsync(
+                    effectiveRole,
+                    updateDto.ExtraPermissions);
+            }
+
             var updatedUser = await _userRepository.UpdateAsync(existingUser);
             return MapToDto(updatedUser);
         }
@@ -396,6 +411,29 @@ public class UserService : IUserService
         return (store.Id, store.Name);
     }
 
+    public IReadOnlyList<AssignablePermissionDto> GetAssignablePermissions()
+    {
+        return AssignableUserPermissions.GetAll()
+            .Select(p => new AssignablePermissionDto { Id = p.Id, Label = p.Label })
+            .ToList();
+    }
+
+    private async Task<List<string>> ResolveExtraPermissionsForRoleAsync(
+        string roleName,
+        IEnumerable<string>? requested)
+    {
+        var normalized = AssignableUserPermissions.Normalize(requested);
+        var rolePermissions = await GetRolePermissionsAsync(roleName);
+        return AssignableUserPermissions.SubtractRolePermissions(normalized, rolePermissions);
+    }
+
+    private async Task<List<string>> GetRolePermissionsAsync(string roleName)
+    {
+        if (string.IsNullOrWhiteSpace(roleName)) return [];
+        var role = await _roleRepository.GetByNameAsync(roleName);
+        return role?.Permissions ?? [];
+    }
+
     private static UserResponseDto MapToDto(User user)
     {
         user.NormalizeCommissionExclusivity();
@@ -415,6 +453,7 @@ public class UserService : IUserService
             BaseSalaryCurrency = user.BaseSalaryCurrency,
             StoreId = user.StoreId,
             StoreName = user.StoreName,
+            ExtraPermissions = user.ExtraPermissions ?? [],
         };
     }
 

@@ -64,6 +64,10 @@ public class User
     [BsonElement("storeName")]
     public string? StoreName { get; set; }
 
+    /// <summary>Permisos adicionales al rol; solo suman, no reemplazan.</summary>
+    [BsonElement("extraPermissions")]
+    public List<string> ExtraPermissions { get; set; } = new();
+
     /// <summary>
     /// Normaliza el modo desde el valor almacenado o el flag legacy y sincroniza el flag legacy.
     /// </summary>

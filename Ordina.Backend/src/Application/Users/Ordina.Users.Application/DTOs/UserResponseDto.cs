@@ -19,5 +19,8 @@ public class UserResponseDto
     public string BaseSalaryCurrency { get; set; } = "USD";
     public string? StoreId { get; set; }
     public string? StoreName { get; set; }
+
+    /// <summary>Permisos exclusivos del usuario (además del rol).</summary>
+    public List<string> ExtraPermissions { get; set; } = new();
 }
 

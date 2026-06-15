@@ -28,5 +28,7 @@ public class CreateUserDto
     public string? Password { get; set; }
 
     public string? StoreId { get; set; }
+
+    public List<string>? ExtraPermissions { get; set; }
 }
 
