@@ -1304,8 +1304,8 @@ public class ReportService : IReportService
                 // Headers en la fila 1 (según especificaciones del documento)
                 sl.SetCellValue(1, 1, "Fecha");
                 sl.SetCellValue(1, 2, "Cliente");
-                sl.SetCellValue(1, 3, "Vendedor");
-                sl.SetCellValue(1, 4, "Pedido");
+                sl.SetCellValue(1, 3, "Pedido");
+                sl.SetCellValue(1, 4, "Vendedor");
                 sl.SetCellValue(1, 5, "Descripción");
                 sl.SetCellValue(1, 6, "Cant. Artículos");
                 sl.SetCellValue(1, 7, "Tipo de venta");
@@ -1331,8 +1331,8 @@ public class ReportService : IReportService
                 {
                     sl.SetCellValue(row, 1, item.Fecha);
                     sl.SetCellValue(row, 2, item.Cliente);
-                    sl.SetCellValue(row, 3, item.Vendedor);
-                    sl.SetCellValue(row, 4, item.Pedido);
+                    sl.SetCellValue(row, 3, item.Pedido);
+                    sl.SetCellValue(row, 4, item.Vendedor);
                     sl.SetCellValue(row, 5, item.Descripcion);
                     sl.SetCellValue(row, 6, item.CantidadArticulos);
                     sl.SetCellValue(row, 7, item.TipoVenta);
@@ -1349,8 +1349,8 @@ public class ReportService : IReportService
                 // Ajustar ancho de columnas
                 sl.SetColumnWidth(1, 20);  // Fecha
                 sl.SetColumnWidth(2, 30);  // Cliente
-                sl.SetColumnWidth(3, 30);  // Vendedor
-                sl.SetColumnWidth(4, 15);  // Pedido
+                sl.SetColumnWidth(3, 15);  // Pedido
+                sl.SetColumnWidth(4, 30);  // Vendedor
                 sl.SetColumnWidth(5, 60);  // Descripción
                 sl.SetColumnWidth(6, 15);  // Cant. Artículos
                 sl.SetColumnWidth(7, 28);  // Tipo de venta
