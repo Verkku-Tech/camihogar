@@ -1306,20 +1306,21 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 2, "Cliente");
                 sl.SetCellValue(1, 3, "Vendedor");
                 sl.SetCellValue(1, 4, "Pedido");
-                sl.SetCellValue(1, 5, "Cant. Artículos");
-                sl.SetCellValue(1, 6, "Tipo de venta");
-                sl.SetCellValue(1, 7, "Comisión familia USD/u");
-                sl.SetCellValue(1, 8, "Comisión Vendedor");
-                sl.SetCellValue(1, 9, "Total Comisión + Sueldo");
-                sl.SetCellValue(1, 10, "Comisión Post venta");
-                sl.SetCellValue(1, 11, "Comisión Referido");
+                sl.SetCellValue(1, 5, "Descripción");
+                sl.SetCellValue(1, 6, "Cant. Artículos");
+                sl.SetCellValue(1, 7, "Tipo de venta");
+                sl.SetCellValue(1, 8, "Comisión familia USD/u");
+                sl.SetCellValue(1, 9, "Comisión Vendedor");
+                sl.SetCellValue(1, 10, "Total Comisión + Sueldo");
+                sl.SetCellValue(1, 11, "Comisión Post venta");
+                sl.SetCellValue(1, 12, "Comisión Referido");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
                 headerStyle.Font.Bold = true;
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 11; col++)
+                for (int col = 1; col <= 12; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -1332,15 +1333,16 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 2, item.Cliente);
                     sl.SetCellValue(row, 3, item.Vendedor);
                     sl.SetCellValue(row, 4, item.Pedido);
-                    sl.SetCellValue(row, 5, item.CantidadArticulos);
-                    sl.SetCellValue(row, 6, item.TipoVenta);
-                    sl.SetCellValue(row, 7, (double)(item.ComisionFamiliaUsdPorUnidad != 0m
+                    sl.SetCellValue(row, 5, item.Descripcion);
+                    sl.SetCellValue(row, 6, item.CantidadArticulos);
+                    sl.SetCellValue(row, 7, item.TipoVenta);
+                    sl.SetCellValue(row, 8, (double)(item.ComisionFamiliaUsdPorUnidad != 0m
                         ? item.ComisionFamiliaUsdPorUnidad
                         : item.TasaComisionBase));
-                    sl.SetCellValue(row, 8, (double)item.Comision);
-                    sl.SetCellValue(row, 9, (double)item.TotalComisionMasSueldo);
-                    sl.SetCellValue(row, 10, item.ComisionPostventa.HasValue ? (double)item.ComisionPostventa.Value : 0);
-                    sl.SetCellValue(row, 11, item.ComisionSecundaria.HasValue ? (double)item.ComisionSecundaria.Value : 0);
+                    sl.SetCellValue(row, 9, (double)item.Comision);
+                    sl.SetCellValue(row, 10, (double)item.TotalComisionMasSueldo);
+                    sl.SetCellValue(row, 11, item.ComisionPostventa.HasValue ? (double)item.ComisionPostventa.Value : 0);
+                    sl.SetCellValue(row, 12, item.ComisionSecundaria.HasValue ? (double)item.ComisionSecundaria.Value : 0);
                     row++;
                 }
 
@@ -1349,13 +1351,14 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(2, 30);  // Cliente
                 sl.SetColumnWidth(3, 30);  // Vendedor
                 sl.SetColumnWidth(4, 15);  // Pedido
-                sl.SetColumnWidth(5, 15);  // Cant. Artículos
-                sl.SetColumnWidth(6, 28);  // Tipo de venta
-                sl.SetColumnWidth(7, 16);  // USD/u familia
-                sl.SetColumnWidth(8, 18);  // Comisión Vendedor
-                sl.SetColumnWidth(9, 22);  // Total Comisión + Sueldo
-                sl.SetColumnWidth(10, 18);  // Post venta
-                sl.SetColumnWidth(11, 18); // Referido
+                sl.SetColumnWidth(5, 60);  // Descripción
+                sl.SetColumnWidth(6, 15);  // Cant. Artículos
+                sl.SetColumnWidth(7, 28);  // Tipo de venta
+                sl.SetColumnWidth(8, 16);  // USD/u familia
+                sl.SetColumnWidth(9, 18);  // Comisión Vendedor
+                sl.SetColumnWidth(10, 22); // Total Comisión + Sueldo
+                sl.SetColumnWidth(11, 18); // Post venta
+                sl.SetColumnWidth(12, 18); // Referido
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);

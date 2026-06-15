@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent } from "@/components/ui/card"
@@ -23,12 +23,15 @@ import {
   isOnlineSellerRole,
 } from "@/lib/order-online-seller-visibility"
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
+import { usePagination } from "@/hooks/use-pagination"
+import { TablePagination } from "@/components/ui/table-pagination"
 
 interface OrdersTableProps {
-  limit?: number
   /** Si el padre ya sincronizó pedidos, evita otro getOrders al montar. */
   prefetchedOrders?: Order[]
 }
+
+const DEFAULT_ITEMS_PER_PAGE = 10
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -66,7 +69,6 @@ const getStatusColor = (status: string) => {
 
 function filterAndSortGeneratedOrders(
   allOrders: Order[],
-  limit: number,
   userRole: string | undefined,
   onlineSellerIds: ReadonlySet<string>,
   onlineSellerFilterLoading: boolean,
@@ -79,10 +81,10 @@ function filterAndSortGeneratedOrders(
       isOrderVisibleToOnlineSellerTeam(o, onlineSellerIds),
     )
   }
-  return list.slice(0, limit)
+  return list
 }
 
-export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) {
+export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
   const router = useRouter()
   const { user } = useAuth()
   const { onlineSellerIds, isLoading: onlineSellerFilterLoading } =
@@ -93,26 +95,40 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
   const [isLoading, setIsLoading] = useState(true)
   const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
   const [validatingIds, setValidatingIds] = useState<Set<string>>(new Set())
+  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
+
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedOrders,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({ data: orders, itemsPerPage })
+
+  const pageIds = useMemo(
+    () => paginatedOrders.map((o) => o.id).join("|"),
+    [paginatedOrders],
+  )
 
   const reloadGeneratedOrders = useCallback(async () => {
     const allOrders = await getOrders()
     setOrders(
       filterAndSortGeneratedOrders(
         allOrders,
-        limit,
         user?.role,
         onlineSellerIds,
         onlineSellerFilterLoading,
       ),
     )
-  }, [limit, user?.role, onlineSellerIds, onlineSellerFilterLoading])
+  }, [user?.role, onlineSellerIds, onlineSellerFilterLoading])
 
   useEffect(() => {
     if (prefetchedOrders !== undefined) {
       setOrders(
         filterAndSortGeneratedOrders(
           prefetchedOrders,
-          limit,
           user?.role,
           onlineSellerIds,
           onlineSellerFilterLoading,
@@ -134,7 +150,6 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
     void loadOrders()
   }, [
     prefetchedOrders,
-    limit,
     reloadGeneratedOrders,
     user?.role,
     onlineSellerIds,
@@ -143,7 +158,7 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
 
   useEffect(() => {
     const formatAmounts = async () => {
-      if (orders.length === 0) {
+      if (paginatedOrders.length === 0) {
         setFormattedAmounts({})
         return
       }
@@ -152,7 +167,7 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
         const formatted: Record<string, string> = {}
         const fallbackRates = await getActiveExchangeRates()
 
-        for (const order of orders) {
+        for (const order of paginatedOrders) {
           const baseCurrency = getOrderBaseCurrency(order)
           const commercial = commercialRatesToExchangeRatesInput(
             getCommercialRatesFromOrder(order),
@@ -175,7 +190,7 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
     }
 
     formatAmounts()
-  }, [orders])
+  }, [pageIds, paginatedOrders])
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -285,7 +300,7 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
               </TableRow>
             </TableHeader>
             <TableBody>
-              {orders.map((order) => (
+              {paginatedOrders.map((order) => (
                 <TableRow
                   key={order.id}
                   className="hover:bg-muted/50 cursor-pointer"
@@ -330,6 +345,18 @@ export function OrdersTable({ limit = 10, prefetchedOrders }: OrdersTableProps) 
               ))}
             </TableBody>
           </Table>
+        </div>
+        <div className="border-t px-4 py-3">
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={goToPage}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
         </div>
       </CardContent>
     </Card>

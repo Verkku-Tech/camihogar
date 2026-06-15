@@ -35,7 +35,10 @@ import {
 } from "@/lib/storage";
 import { PAYMENT_CONDITIONS } from "@/components/orders/new-order-dialog";
 import { isReservationOrder } from "@/lib/order-document-types";
-import { getSaleTypeLabel } from "@/components/orders/constants";
+import {
+  getDeliveryTypeLabel,
+  getSaleTypeLabel,
+} from "@/components/orders/constants";
 import {
   formatCurrency,
   getActiveExchangeRates,
@@ -1790,6 +1793,16 @@ export default function OrderDetailPage() {
                         </p>
                         <p className="font-medium">
                           {client?.direccion || "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Tipo de Entrega
+                        </p>
+                        <p className="font-medium">
+                          {order.deliveryType
+                            ? getDeliveryTypeLabel(order.deliveryType)
+                            : "—"}
                         </p>
                       </div>
                     </div>
