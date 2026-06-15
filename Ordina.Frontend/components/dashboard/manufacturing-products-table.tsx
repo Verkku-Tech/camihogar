@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { getOrders, Order, OrderProduct } from "@/lib/storage"
 import { Clock, Package, Eye } from "lucide-react"
+import { usePagination } from "@/hooks/use-pagination"
+import { TablePagination } from "@/components/ui/table-pagination"
 
 interface ManufacturingProduct {
   orderId: string
@@ -16,10 +18,23 @@ interface ManufacturingProduct {
   status: "por_fabricar" | "fabricando"
 }
 
+const DEFAULT_ITEMS_PER_PAGE = 10
+
 export function ManufacturingProductsTable() {
   const router = useRouter()
   const [products, setProducts] = useState<ManufacturingProduct[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
+
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedProducts,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({ data: products, itemsPerPage })
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -162,7 +177,7 @@ export function ManufacturingProductsTable() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {products.map((item) => (
+              {paginatedProducts.map((item) => (
                 <TableRow key={`${item.orderId}-${item.product.id}`} className="hover:bg-muted/50">
                   <TableCell className="font-medium text-green-600">{item.orderNumber}</TableCell>
                   <TableCell>
@@ -190,6 +205,18 @@ export function ManufacturingProductsTable() {
               ))}
             </TableBody>
           </Table>
+        </div>
+        <div className="border-t px-4 py-3">
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={goToPage}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
         </div>
       </CardContent>
     </Card>

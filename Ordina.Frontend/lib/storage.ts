@@ -1797,6 +1797,9 @@ export interface PartialPayment {
     isConciliated?: boolean;
     /** Segunda línea sintética en pedidos Cashea: saldo cubierto vía financiación (no es un cobro en caja). */
     casheaFinancedPortion?: boolean;
+    /** Comisión informativa TDC (6%) registrada en el cobro. */
+    cardCommissionApplied?: boolean;
+    cardCommissionAmount?: number;
   };
 }
 
@@ -1882,6 +1885,9 @@ export interface Order {
     // Zelle
     envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
     isConciliated?: boolean;
+    /** Comisión informativa TDC (6%) registrada en el cobro. */
+    cardCommissionApplied?: boolean;
+    cardCommissionAmount?: number;
   };
   partialPayments?: PartialPayment[]; // Ahora usa la interfaz exportada
   mixedPayments?: PartialPayment[]; // Para pagos mixtos
@@ -2250,6 +2256,8 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
         wallet: dto.paymentDetails.wallet,
         envia: dto.paymentDetails.envia,
         isConciliated: dto.paymentDetails.isConciliated,
+        cardCommissionApplied: dto.paymentDetails.cardCommissionApplied,
+        cardCommissionAmount: dto.paymentDetails.cardCommissionAmount,
       }
     : undefined,
   partialPayments: dto.partialPayments?.map((p) => ({
@@ -2288,6 +2296,8 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
           wallet: p.paymentDetails.wallet,
           envia: p.paymentDetails.envia,
           isConciliated: p.paymentDetails.isConciliated,
+          cardCommissionApplied: p.paymentDetails.cardCommissionApplied,
+          cardCommissionAmount: p.paymentDetails.cardCommissionAmount,
         }
       : undefined,
   })),
@@ -2327,6 +2337,8 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
           wallet: p.paymentDetails.wallet,
           envia: p.paymentDetails.envia,
           isConciliated: p.paymentDetails.isConciliated,
+          cardCommissionApplied: p.paymentDetails.cardCommissionApplied,
+          cardCommissionAmount: p.paymentDetails.cardCommissionAmount,
         }
       : undefined,
   })),
@@ -2472,6 +2484,8 @@ export const orderToBackendDto = (
         wallet: order.paymentDetails.wallet,
         envia: order.paymentDetails.envia,
         isConciliated: order.paymentDetails.isConciliated,
+        cardCommissionApplied: order.paymentDetails.cardCommissionApplied,
+        cardCommissionAmount: order.paymentDetails.cardCommissionAmount,
       }
     : undefined,
   partialPayments: order.partialPayments?.map((p) => ({
@@ -2509,6 +2523,8 @@ export const orderToBackendDto = (
           wallet: p.paymentDetails.wallet,
           envia: p.paymentDetails.envia,
           isConciliated: p.paymentDetails.isConciliated,
+          cardCommissionApplied: p.paymentDetails.cardCommissionApplied,
+          cardCommissionAmount: p.paymentDetails.cardCommissionAmount,
         }
       : undefined,
   })),
@@ -2547,6 +2563,8 @@ export const orderToBackendDto = (
           wallet: p.paymentDetails.wallet,
           envia: p.paymentDetails.envia,
           isConciliated: p.paymentDetails.isConciliated,
+          cardCommissionApplied: p.paymentDetails.cardCommissionApplied,
+          cardCommissionAmount: p.paymentDetails.cardCommissionAmount,
         }
       : undefined,
   })),
@@ -3373,6 +3391,8 @@ export const updateOrder = async (
                           wallet: p.paymentDetails.wallet,
                           envia: p.paymentDetails.envia,
                           isConciliated: p.paymentDetails.isConciliated,
+          cardCommissionApplied: p.paymentDetails.cardCommissionApplied,
+          cardCommissionAmount: p.paymentDetails.cardCommissionAmount,
                         }
                       : undefined,
                   }))
@@ -3416,6 +3436,8 @@ export const updateOrder = async (
                           wallet: p.paymentDetails.wallet,
                           envia: p.paymentDetails.envia,
                           isConciliated: p.paymentDetails.isConciliated,
+          cardCommissionApplied: p.paymentDetails.cardCommissionApplied,
+          cardCommissionAmount: p.paymentDetails.cardCommissionAmount,
                         }
                       : undefined,
                   }))
@@ -3478,6 +3500,10 @@ export const updateOrder = async (
                       wallet: updatedOrder.paymentDetails.wallet,
                       envia: updatedOrder.paymentDetails.envia,
                       isConciliated: updatedOrder.paymentDetails.isConciliated,
+                      cardCommissionApplied:
+                        updatedOrder.paymentDetails.cardCommissionApplied,
+                      cardCommissionAmount:
+                        updatedOrder.paymentDetails.cardCommissionAmount,
                     }
                   : undefined
                 : undefined,
@@ -3654,6 +3680,8 @@ export const updateOrder = async (
                   wallet: p.paymentDetails.wallet,
                   envia: p.paymentDetails.envia,
                   isConciliated: p.paymentDetails.isConciliated,
+          cardCommissionApplied: p.paymentDetails.cardCommissionApplied,
+          cardCommissionAmount: p.paymentDetails.cardCommissionAmount,
                 }
               : undefined,
           })),
@@ -3693,6 +3721,8 @@ export const updateOrder = async (
                   wallet: p.paymentDetails.wallet,
                   envia: p.paymentDetails.envia,
                   isConciliated: p.paymentDetails.isConciliated,
+          cardCommissionApplied: p.paymentDetails.cardCommissionApplied,
+          cardCommissionAmount: p.paymentDetails.cardCommissionAmount,
                 }
               : undefined,
           })),
@@ -3725,6 +3755,10 @@ export const updateOrder = async (
                 wallet: updatedOrder.paymentDetails.wallet,
                 envia: updatedOrder.paymentDetails.envia,
                 isConciliated: updatedOrder.paymentDetails.isConciliated,
+                cardCommissionApplied:
+                  updatedOrder.paymentDetails.cardCommissionApplied,
+                cardCommissionAmount:
+                  updatedOrder.paymentDetails.cardCommissionAmount,
               }
             : undefined,
           saleType: updatedOrder.saleType,

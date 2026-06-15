@@ -35,7 +35,10 @@ import {
 } from "@/lib/storage";
 import { PAYMENT_CONDITIONS } from "@/components/orders/new-order-dialog";
 import { isReservationOrder } from "@/lib/order-document-types";
-import { getSaleTypeLabel } from "@/components/orders/constants";
+import {
+  getDeliveryTypeLabel,
+  getSaleTypeLabel,
+} from "@/components/orders/constants";
 import {
   formatCurrency,
   getActiveExchangeRates,
@@ -79,6 +82,8 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { ImageGallery } from "@/components/orders/image-gallery";
+import { CardCommissionDetailHint } from "@/components/orders/card-commission-toggle";
+import { shouldShowCardCommission } from "@/lib/card-commission";
 import { useAuth } from "@/contexts/auth-context";
 import {
   getLineDiscountDisplayMode,
@@ -1792,6 +1797,16 @@ export default function OrderDetailPage() {
                           {client?.direccion || "—"}
                         </p>
                       </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Tipo de Entrega
+                        </p>
+                        <p className="font-medium">
+                          {order.deliveryType
+                            ? getDeliveryTypeLabel(order.deliveryType)
+                            : "—"}
+                        </p>
+                      </div>
                     </div>
                     <div className="space-y-4">
                       <div>
@@ -2647,6 +2662,15 @@ export default function OrderDetailPage() {
                                   </div>
                                 )}
 
+                              {shouldShowCardCommission(payment) && (
+                                <CardCommissionDetailHint
+                                  commissionBs={
+                                    payment.paymentDetails!.cardCommissionAmount!
+                                  }
+                                  exchangeRate={paymentExchangeRate}
+                                />
+                              )}
+
                               {payment.date &&
                                 (!paymentExchangeRate ||
                                   paymentCurrency === "Bs") && (
@@ -2741,6 +2765,15 @@ export default function OrderDetailPage() {
                                   )}
                                 </div>
                               )}
+
+                            {shouldShowCardCommission(payment) && (
+                              <CardCommissionDetailHint
+                                commissionBs={
+                                  payment.paymentDetails!.cardCommissionAmount!
+                                }
+                                exchangeRate={paymentExchangeRate}
+                              />
+                            )}
 
                             {payment.date &&
                               (!paymentExchangeRate ||

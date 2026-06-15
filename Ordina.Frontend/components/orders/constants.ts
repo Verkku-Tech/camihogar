@@ -122,6 +122,16 @@ export const DELIVERY_TYPES = [
   { value: "retiro_almacen", label: "Retiro por almacén" },
 ] as const;
 
+/** Etiqueta legible del tipo de entrega (detalle, confirmación, listados). */
+export function getDeliveryTypeLabel(
+  deliveryType: string | undefined | null,
+): string {
+  if (!deliveryType) return "";
+  return (
+    DELIVERY_TYPES.find((t) => t.value === deliveryType)?.label ?? deliveryType
+  );
+}
+
 // Constantes para Zona de Entrega
 export const DELIVERY_ZONES = [
   { value: "caracas", label: "Caracas" },

@@ -43,6 +43,17 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    /// Lista permisos que pueden asignarse de forma exclusiva a un usuario (además del rol).
+    /// </summary>
+    [HttpGet("assignable-permissions")]
+    [Authorize]
+    [ProducesResponseType(typeof(IReadOnlyList<AssignablePermissionDto>), StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<AssignablePermissionDto>> GetAssignablePermissions()
+    {
+        return Ok(_userService.GetAssignablePermissions());
+    }
+
+    /// <summary>
     /// Obtiene un usuario por su ID
     /// </summary>
     /// <param name="id">ID del usuario</param>

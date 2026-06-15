@@ -3,6 +3,7 @@ using Ordina.Security.Application.DTOs;
 using Ordina.Database.Entities.User;
 using Ordina.Database.Entities.RefreshToken;
 using Ordina.Database.Repositories;
+using Ordina.Users.Domain.Constants;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -52,16 +53,18 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("Usuario o contraseña incorrectos");
         }
 
-        // Obtener permisos del rol
-        var permissions = new List<string>();
+        // Obtener permisos del rol + exclusivos del usuario
+        var rolePermissions = new List<string>();
         if (!string.IsNullOrEmpty(user.Role))
         {
             var role = await _roleRepository.GetByNameAsync(user.Role);
             if (role != null)
             {
-                permissions = role.Permissions;
+                rolePermissions = role.Permissions;
             }
         }
+
+        var permissions = UserPermissionResolver.Merge(rolePermissions, user.ExtraPermissions);
 
         // Generar tokens (el rol ya viene en la entidad MongoDB User.Role)
         var token = _tokenService.GenerateToken(user, permissions);
@@ -123,16 +126,18 @@ public class AuthService : IAuthService
         storedToken.IsRevoked = true;
         await _refreshTokenRepository.UpdateAsync(storedToken);
 
-        // Obtener permisos del rol
-        var permissions = new List<string>();
+        // Obtener permisos del rol + exclusivos del usuario
+        var rolePermissions = new List<string>();
         if (!string.IsNullOrEmpty(user.Role))
         {
             var role = await _roleRepository.GetByNameAsync(user.Role);
             if (role != null)
             {
-                permissions = role.Permissions;
+                rolePermissions = role.Permissions;
             }
         }
+
+        var permissions = UserPermissionResolver.Merge(rolePermissions, user.ExtraPermissions);
 
         // Generar nuevos tokens
         var newToken = _tokenService.GenerateToken(user, permissions);

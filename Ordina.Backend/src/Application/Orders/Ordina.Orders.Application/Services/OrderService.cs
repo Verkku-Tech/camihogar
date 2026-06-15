@@ -99,6 +99,83 @@ public class OrderService : IOrderService
         return false;
     }
 
+    /// <summary>
+    /// True si todos los cambios de despacho mueven productos solo a ruta (EN DESPACHO / En Ruta).
+    /// </summary>
+    private static bool IsRouteOnlyDispatchChange(Order existing, UpdateOrderDto dto)
+    {
+        if (dto.Products == null) return false;
+
+        var anyChange = false;
+        foreach (var p in dto.Products)
+        {
+            var ex = existing.Products.FirstOrDefault(x => x.Id == p.Id);
+            if (ex == null) continue;
+
+            var locChanged = !string.Equals(
+                NormalizeDispatchField(ex.LocationStatus),
+                NormalizeDispatchField(p.LocationStatus),
+                StringComparison.OrdinalIgnoreCase);
+            var logChanged = !string.Equals(
+                NormalizeDispatchField(ex.LogisticStatus),
+                NormalizeDispatchField(p.LogisticStatus),
+                StringComparison.OrdinalIgnoreCase);
+            var exDel = ex.DeliveredAt.HasValue;
+            var dtoDel = p.DeliveredAt.HasValue;
+            var delChanged = exDel != dtoDel
+                || (exDel && dtoDel && ex.DeliveredAt!.Value != p.DeliveredAt!.Value);
+
+            if (!locChanged && !logChanged && !delChanged) continue;
+
+            anyChange = true;
+
+            var newLoc = NormalizeDispatchField(p.LocationStatus);
+            var newLog = NormalizeDispatchField(p.LogisticStatus);
+
+            var isRoute =
+                string.Equals(newLoc, "EN DESPACHO", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(newLog, "En Ruta", StringComparison.OrdinalIgnoreCase);
+            var isDeliver = string.Equals(newLoc, "DESPACHADO", StringComparison.OrdinalIgnoreCase);
+            var isReturn =
+                string.Equals(newLoc, "EN TIENDA", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(newLog, "En Almacén", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(newLog, "En Almacen", StringComparison.OrdinalIgnoreCase);
+
+            if (isDeliver || isReturn) return false;
+            if (!isRoute) return false;
+        }
+
+        return anyChange;
+    }
+
+    private static void EnsureDispatchLogisticsAuthorized(
+        Order existing,
+        UpdateOrderDto updateDto,
+        string? callerRole,
+        bool callerHasDispatchUpdate,
+        bool callerHasDispatchSendToRoute)
+    {
+        if (!DispatchLogisticsWouldChange(existing, updateDto)) return;
+
+        if (IsAdministratorOrSuperAdministrator(callerRole)) return;
+
+        if (IsRouteOnlyDispatchChange(existing, updateDto))
+        {
+            var isOnlineSeller = OrderOnlineSellerVisibility.IsOnlineSellerRole(callerRole);
+            if (callerHasDispatchSendToRoute || callerHasDispatchUpdate || isOnlineSeller)
+                return;
+
+            throw new UnauthorizedAccessException(
+                "No autorizado a enviar productos a ruta. Se requiere permiso exclusivo o de despacho.");
+        }
+
+        if (!callerHasDispatchUpdate)
+        {
+            throw new UnauthorizedAccessException(
+                "No autorizado a modificar la logística de despacho (ubicación o estado de entrega de productos).");
+        }
+    }
+
     public async Task<IEnumerable<OrderResponseDto>> GetAllOrdersAsync(string? callerRole = null)
     {
         try
@@ -602,7 +679,8 @@ public class OrderService : IOrderService
         string userId,
         string userName,
         string? callerRole = null,
-        bool callerHasDispatchUpdate = false)
+        bool callerHasDispatchUpdate = false,
+        bool callerHasDispatchSendToRoute = false)
     {
         try
         {
@@ -619,13 +697,12 @@ public class OrderService : IOrderService
 
             EnsureOnlineSellerCanMutate(existingOrder, userId, callerRole);
 
-            if (DispatchLogisticsWouldChange(existingOrder, updateDto) &&
-                !IsAdministratorOrSuperAdministrator(callerRole) &&
-                !callerHasDispatchUpdate)
-            {
-                throw new UnauthorizedAccessException(
-                    "No autorizado a modificar la logística de despacho (ubicación o estado de entrega de productos).");
-            }
+            EnsureDispatchLogisticsAuthorized(
+                existingOrder,
+                updateDto,
+                callerRole,
+                callerHasDispatchUpdate,
+                callerHasDispatchSendToRoute);
 
             var oldSnapshot = OrderDeepClone.Clone(existingOrder);
             var previousAppliedStoreCreditUsd = existingOrder.AppliedStoreCreditUsd;
@@ -1321,12 +1398,29 @@ public class OrderService : IOrderService
             Wallet = paymentDetails.Wallet,
             Envia = paymentDetails.Envia,
             IsConciliated = paymentDetails.IsConciliated,
-            CasheaFinancedPortion = paymentDetails.CasheaFinancedPortion
+            CasheaFinancedPortion = paymentDetails.CasheaFinancedPortion,
+            CardCommissionApplied = paymentDetails.CardCommissionApplied,
+            CardCommissionAmount = paymentDetails.CardCommissionAmount
         };
     }
 
     private PaymentDetails MapPaymentDetailsFromDto(PaymentDetailsDto dto)
     {
+        var cardCommissionApplied = dto.CardCommissionApplied;
+        decimal? cardCommissionAmount = null;
+        if (cardCommissionApplied)
+        {
+            var baseAmount = dto.OriginalAmount ?? dto.CashReceived ?? 0m;
+            if (baseAmount > 0)
+            {
+                cardCommissionAmount = Math.Round(baseAmount * 0.06m, 2, MidpointRounding.AwayFromZero);
+            }
+            else if (dto.CardCommissionAmount is > 0)
+            {
+                cardCommissionAmount = Math.Round(dto.CardCommissionAmount.Value, 2, MidpointRounding.AwayFromZero);
+            }
+        }
+
         return new PaymentDetails
         {
             PagomovilReference = dto.PagomovilReference,
@@ -1349,7 +1443,9 @@ public class OrderService : IOrderService
             Wallet = dto.Wallet,
             Envia = dto.Envia,
             IsConciliated = dto.IsConciliated,
-            CasheaFinancedPortion = dto.CasheaFinancedPortion
+            CasheaFinancedPortion = dto.CasheaFinancedPortion,
+            CardCommissionApplied = cardCommissionApplied,
+            CardCommissionAmount = cardCommissionAmount
         };
     }
 
@@ -1376,6 +1472,17 @@ public class OrderService : IOrderService
 
     private PartialPayment MapPartialPaymentFromDto(PartialPaymentDto dto)
     {
+        var paymentDetails = dto.PaymentDetails != null
+            ? MapPaymentDetailsFromDto(dto.PaymentDetails)
+            : null;
+        if (paymentDetails?.CardCommissionApplied == true)
+        {
+            var baseAmount = paymentDetails.OriginalAmount ?? dto.Amount;
+            paymentDetails.CardCommissionAmount = baseAmount > 0
+                ? Math.Round(baseAmount * 0.06m, 2, MidpointRounding.AwayFromZero)
+                : null;
+        }
+
         return new PartialPayment
         {
             Id = string.IsNullOrEmpty(dto.Id) || !ObjectId.TryParse(dto.Id, out _)
@@ -1393,7 +1500,7 @@ public class OrderService : IOrderService
                 UploadedAt = img.UploadedAt,
                 Size = img.Size
             }).ToList(),
-            PaymentDetails = dto.PaymentDetails != null ? MapPaymentDetailsFromDto(dto.PaymentDetails) : null
+            PaymentDetails = paymentDetails
         };
     }
 

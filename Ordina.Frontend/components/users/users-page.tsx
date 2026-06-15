@@ -63,6 +63,11 @@ import { useUsers } from "@/hooks/use-users";
 import { apiClient } from "@/lib/api-client";
 import type { CreateUserDto, UpdateUserDto } from "@/lib/api-client";
 import { getStores, type Store } from "@/lib/storage";
+import { AssignablePermissionsPicker } from "@/components/users/assignable-permissions-picker";
+import {
+  ASSIGNABLE_USER_PERMISSIONS,
+  type AssignableUserPermission,
+} from "@/lib/user-extra-permissions";
 
 function generateRandomPassword(length = 16): string {
   const chars =
@@ -131,6 +136,7 @@ interface UserDisplay {
   createdAt: string;
   storeId?: string;
   storeName?: string;
+  extraPermissions: string[];
 }
 
 const isStoreSellerDisplayRole = (role: string) => role === "Vendedor de tienda";
@@ -155,6 +161,10 @@ export function UsersPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isRegeneratingPassword, setIsRegeneratingPassword] = useState(false);
   const [activeStores, setActiveStores] = useState<Store[]>([]);
+  const [assignablePermissions, setAssignablePermissions] = useState<
+    AssignableUserPermission[]
+  >(ASSIGNABLE_USER_PERMISSIONS);
+  const [extraPermissions, setExtraPermissions] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     fullName: "",
     username: "",
@@ -172,6 +182,15 @@ export function UsersPage() {
         setActiveStores(stores.filter((s) => s.status === "active")),
       )
       .catch(console.error);
+
+    apiClient
+      .getAssignableUserPermissions()
+      .then((perms) => {
+        if (perms.length > 0) setAssignablePermissions(perms);
+      })
+      .catch(() => {
+        // Usar lista local si el endpoint no está disponible
+      });
   }, []);
 
   // Convertir usuarios de API a formato display
@@ -185,6 +204,7 @@ export function UsersPage() {
     createdAt: u.createdAt || new Date().toISOString(),
     storeId: u.storeId,
     storeName: u.storeName,
+    extraPermissions: u.extraPermissions ?? [],
   }));
 
   const filteredUsers = users.filter((user) => {
@@ -286,6 +306,7 @@ export function UsersPage() {
         ...(isStoreSellerDisplayRole(formData.role)
           ? { storeId: formData.storeId }
           : {}),
+        extraPermissions,
       };
       
       const createdUser = await createUser(createUserDto);
@@ -423,6 +444,7 @@ export function UsersPage() {
         ...(isStoreSellerDisplayRole(formData.role)
           ? { storeId: formData.storeId }
           : { storeId: "" }),
+        extraPermissions,
       };
       
       const updatedUser = await updateUser(editingUser.id, updateUserDto);
@@ -433,6 +455,9 @@ export function UsersPage() {
         setEditingUser(null);
         resetForm();
         toast.success("Usuario actualizado exitosamente");
+        toast.info(
+          "Si cambiaste permisos exclusivos, el usuario debe cerrar sesión y volver a entrar para aplicarlos.",
+        );
         if (!isOnline) {
           toast.info(
             "Usuario actualizado localmente. Se sincronizará cuando vuelva la conexión."
@@ -534,6 +559,7 @@ export function UsersPage() {
       status: user.status,
       storeId: user.storeId || "",
     });
+    setExtraPermissions(user.extraPermissions ?? []);
     setIsEditDialogOpen(true);
   };
 
@@ -548,6 +574,7 @@ export function UsersPage() {
       status: "Activo" as "Activo" | "Inactivo",
       storeId: "",
     });
+    setExtraPermissions([]);
     setShowPassword(false);
   };
 
@@ -558,6 +585,20 @@ export function UsersPage() {
       storeId: isStoreSellerDisplayRole(value) ? prev.storeId : "",
     }));
   };
+
+  const renderExtraPermissionsSection = () => (
+    <div className="space-y-2">
+      <Label>Permisos exclusivos</Label>
+      <p className="text-xs text-muted-foreground">
+        Se suman al rol del usuario. No reemplazan los permisos existentes.
+      </p>
+      <AssignablePermissionsPicker
+        permissions={assignablePermissions}
+        selected={extraPermissions}
+        onChange={setExtraPermissions}
+      />
+    </div>
+  );
 
   const renderStoreSelect = (id: string) => {
     if (!isStoreSellerDisplayRole(formData.role)) return null;
@@ -749,6 +790,7 @@ export function UsersPage() {
                     </Select>
                   </div>
                   {renderStoreSelect("storeId")}
+                  {renderExtraPermissionsSection()}
                   <div>
                     <Label htmlFor="password">Contraseña generada *</Label>
                     <p className="text-xs text-muted-foreground mb-2">
@@ -924,9 +966,17 @@ export function UsersPage() {
                       <TableCell>{user.username}</TableCell>
                       <TableCell>{user.email}</TableCell>
                       <TableCell>
-                        <Badge className={getRoleColor(user.role)}>
-                          {user.role}
-                        </Badge>
+                        <div className="flex flex-col gap-1">
+                          <Badge className={getRoleColor(user.role)}>
+                            {user.role}
+                          </Badge>
+                          {user.extraPermissions.length > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              +{user.extraPermissions.length} permiso
+                              {user.extraPermissions.length === 1 ? "" : "s"} extra
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>{renderStoreCell(user)}</TableCell>
                       <TableCell>
@@ -1093,6 +1143,7 @@ export function UsersPage() {
               </Select>
             </div>
             {renderStoreSelect("editStoreId")}
+            {renderExtraPermissionsSection()}
             <div>
               <Label htmlFor="editStatus">Estado *</Label>
               <Select

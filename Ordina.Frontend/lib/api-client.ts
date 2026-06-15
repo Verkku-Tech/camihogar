@@ -696,6 +696,12 @@ export class ApiClient {
     );
   }
 
+  async getAssignableUserPermissions() {
+    return this.request<AssignablePermissionDto[]>(
+      "/api/users/assignable-permissions",
+    );
+  }
+
   async checkUserExistsByEmail(email: string): Promise<boolean> {
     try {
       await this.getUserByEmail(email, true);
@@ -1786,6 +1792,12 @@ export interface UserResponseDto {
   baseSalaryCurrency?: string;
   storeId?: string;
   storeName?: string;
+  extraPermissions?: string[];
+}
+
+export interface AssignablePermissionDto {
+  id: string;
+  label: string;
 }
 
 export interface CreateUserDto {
@@ -1796,6 +1808,7 @@ export interface CreateUserDto {
   status?: string;
   password?: string;
   storeId?: string;
+  extraPermissions?: string[];
 }
 
 export interface UpdateUserDto {
@@ -1809,6 +1822,7 @@ export interface UpdateUserDto {
   baseSalary?: number;
   baseSalaryCurrency?: string;
   storeId?: string;
+  extraPermissions?: string[];
 }
 
 export interface CommissionsReportQueryParams {
@@ -2149,6 +2163,9 @@ export interface PaymentDetailsDto {
   envia?: string; // Nombre del titular de la cuenta que paga (solo para Zelle)
   /** Conciliación contable del pago */
   isConciliated?: boolean;
+  /** Comisión informativa TDC (6%) registrada en el cobro. */
+  cardCommissionApplied?: boolean;
+  cardCommissionAmount?: number;
 }
 
 /** Solicitud para marcar/desmarcar conciliación de un pago (alinea con ConciliatePaymentRequestDto en API). */
