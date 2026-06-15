@@ -419,8 +419,9 @@ public class OrdersController : ControllerBase
             var (userId, userName) = GetActor(User);
             var callerRole = User.FindFirstValue(ClaimTypes.Role);
             var hasDispatchUpdate = UserHasPermission(User, "dispatch.update");
+            var hasDispatchSendToRoute = UserHasPermission(User, "dispatch.send_to_route");
             var order = await _orderService.UpdateOrderAsync(
-                id, updateDto, userId, userName, callerRole, hasDispatchUpdate);
+                id, updateDto, userId, userName, callerRole, hasDispatchUpdate, hasDispatchSendToRoute);
             return Ok(order);
         }
         catch (UnauthorizedAccessException uaex)

@@ -13,5 +13,6 @@ public interface IUserService
     Task<RegeneratePasswordResponseDto> RegeneratePasswordAsync(string id);
     Task<bool> DeleteUserAsync(string id);
     Task<bool> UserExistsAsync(string id);
+    IReadOnlyList<AssignablePermissionDto> GetAssignablePermissions();
 }
 

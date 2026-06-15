@@ -34,5 +34,8 @@ public class UpdateUserDto
     public string? BaseSalaryCurrency { get; set; } // Moneda del sueldo
 
     public string? StoreId { get; set; }
+
+    /// <summary>Permisos exclusivos (reemplaza la lista completa al actualizar).</summary>
+    public List<string>? ExtraPermissions { get; set; }
 }
 

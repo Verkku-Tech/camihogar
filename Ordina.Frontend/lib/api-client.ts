@@ -696,6 +696,12 @@ export class ApiClient {
     );
   }
 
+  async getAssignableUserPermissions() {
+    return this.request<AssignablePermissionDto[]>(
+      "/api/users/assignable-permissions",
+    );
+  }
+
   async checkUserExistsByEmail(email: string): Promise<boolean> {
     try {
       await this.getUserByEmail(email, true);
@@ -1786,6 +1792,12 @@ export interface UserResponseDto {
   baseSalaryCurrency?: string;
   storeId?: string;
   storeName?: string;
+  extraPermissions?: string[];
+}
+
+export interface AssignablePermissionDto {
+  id: string;
+  label: string;
 }
 
 export interface CreateUserDto {
@@ -1796,6 +1808,7 @@ export interface CreateUserDto {
   status?: string;
   password?: string;
   storeId?: string;
+  extraPermissions?: string[];
 }
 
 export interface UpdateUserDto {
@@ -1809,6 +1822,7 @@ export interface UpdateUserDto {
   baseSalary?: number;
   baseSalaryCurrency?: string;
   storeId?: string;
+  extraPermissions?: string[];
 }
 
 export interface CommissionsReportQueryParams {

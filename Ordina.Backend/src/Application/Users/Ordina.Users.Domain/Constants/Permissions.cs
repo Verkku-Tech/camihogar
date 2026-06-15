@@ -104,6 +104,8 @@ public static class Permissions
         public const string Read = "dispatch.read";
         public const string Create = "dispatch.create";
         public const string Update = "dispatch.update";
+        /// <summary>Pasar productos de almacén a ruta (permiso individual por usuario).</summary>
+        public const string SendToRoute = "dispatch.send_to_route";
         public const string EmitPayment = "dispatch.payment.emit";
         public const string DeletePayment = "dispatch.payment.delete";
         public const string Delete = "dispatch.delete";

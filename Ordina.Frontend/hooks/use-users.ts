@@ -13,6 +13,7 @@ interface User {
   createdAt?: string
   storeId?: string
   storeName?: string
+  extraPermissions?: string[]
 }
 
 function mapApiUserToLocal(apiUser: UserResponseDto): User {
@@ -26,6 +27,7 @@ function mapApiUserToLocal(apiUser: UserResponseDto): User {
     createdAt: apiUser.createdAt,
     storeId: apiUser.storeId,
     storeName: apiUser.storeName,
+    extraPermissions: apiUser.extraPermissions ?? [],
   }
 }
 
