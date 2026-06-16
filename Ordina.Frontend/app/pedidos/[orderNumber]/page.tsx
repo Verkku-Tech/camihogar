@@ -73,7 +73,10 @@ import { getAll } from "@/lib/indexeddb";
 import { apiClient } from "@/lib/api-client";
 import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
 import { CASHEA_FINANCED_METHOD_LABEL } from "@/lib/order-payments";
-import { appliedUsdToBs } from "@/lib/order-store-credit-usd";
+import {
+  appliedUsdToBs,
+  tryComputeOverpaymentUsd,
+} from "@/lib/order-store-credit-usd";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
@@ -547,6 +550,7 @@ export default function OrderDetailPage() {
   const [formattedTotalPaid, setFormattedTotalPaid] = useState<string>("");
   const [formattedPendingBalance, setFormattedPendingBalance] =
     useState<string>("");
+  const [formattedOverpayment, setFormattedOverpayment] = useState<string>("");
   const [formattedProductDiscounts, setFormattedProductDiscounts] = useState<
     Record<string, { primary: string; secondary?: string }>
   >({});
@@ -584,6 +588,18 @@ export default function OrderDetailPage() {
     if (!order) return false;
     return pendingBalanceUsd > PAYMENT_BALANCE_EPSILON_USD;
   }, [order, pendingBalanceUsd]);
+
+  const overpaymentUsd = useMemo(() => {
+    if (!order || activePayments.length === 0) return null;
+    return tryComputeOverpaymentUsd(order);
+  }, [order, activePayments.length]);
+
+  const hasMeaningfulOverpayment = useMemo(() => {
+    return (
+      overpaymentUsd != null &&
+      overpaymentUsd > PAYMENT_BALANCE_EPSILON_USD
+    );
+  }, [overpaymentUsd]);
 
   const totalPaidUsd = useMemo(() => {
     if (!order) return 0;
@@ -1135,6 +1151,7 @@ export default function OrderDetailPage() {
       if (!order || activePayments.length === 0) {
         setFormattedPayments([]);
         setFormattedTotalPaid("");
+        setFormattedOverpayment("");
         // Si no hay pagos, el saldo pendiente es el total del pedido
         if (order) {
           if (order.total > PENDING_BALANCE_EPSILON_BS) {
@@ -1214,6 +1231,23 @@ export default function OrderDetailPage() {
         setFormattedPendingBalance("");
       }
 
+      if (
+        overpaymentUsd != null &&
+        overpaymentUsd > PAYMENT_BALANCE_EPSILON_USD
+      ) {
+        if (selectedCurrency && selectedCurrency !== "Bs") {
+          const overpaymentFormatted = await formatWithSelectedCurrency(
+            overpaymentUsd,
+            "USD",
+          );
+          setFormattedOverpayment(overpaymentFormatted);
+        } else {
+          setFormattedOverpayment(formatCurrency(overpaymentUsd, "USD"));
+        }
+      } else {
+        setFormattedOverpayment("");
+      }
+
       setFormattedPayments(paymentsFormatted);
     };
 
@@ -1226,6 +1260,7 @@ export default function OrderDetailPage() {
     localExchangeRates,
     totalPaidUsd,
     pendingBalanceUsd,
+    overpaymentUsd,
   ]);
 
   // Formatear precios, descuentos, totales y calcular desglose detallado de productos
@@ -1700,6 +1735,18 @@ export default function OrderDetailPage() {
                               </span>{" "}
                               <OrderPaymentCurrency
                                 amountUsd={pendingBalanceUsd}
+                                inline
+                                className="inline font-medium"
+                              />
+                            </p>
+                          )}
+                          {hasMeaningfulOverpayment && overpaymentUsd != null && (
+                            <p className="text-sm text-blue-600 dark:text-blue-400">
+                              <span className="text-muted-foreground">
+                                Excedente:
+                              </span>{" "}
+                              <OrderPaymentCurrency
+                                amountUsd={overpaymentUsd}
                                 inline
                                 className="inline font-medium"
                               />
@@ -2858,6 +2905,38 @@ export default function OrderDetailPage() {
                             </div>
                           </>
                         )}
+
+                      {/* Excedente cuando el cliente pagó de más */}
+                      {formattedOverpayment && hasMeaningfulOverpayment && (
+                        <>
+                          <Separator />
+                          <div className="space-y-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-2">
+                                <DollarSign className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                <span className="font-semibold text-blue-700 dark:text-blue-300">
+                                  Excedente (cambio/vuelto a favor del
+                                  cliente):
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                {overpaymentUsd != null && (
+                                  <OrderPaymentCurrency
+                                    amountUsd={overpaymentUsd}
+                                    className="font-bold text-lg text-blue-700 dark:text-blue-300"
+                                  />
+                                )}
+                              </div>
+                            </div>
+                            {localExchangeRates?.USD?.rate && (
+                              <p className="text-xs text-blue-600/90 dark:text-blue-400/90">
+                                Excedente comercial en USD; equivalente en Bs
+                                con tasa del pedido
+                              </p>
+                            )}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
