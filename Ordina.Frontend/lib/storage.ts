@@ -4479,6 +4479,7 @@ export interface Budget {
   generalDiscountPercent?: number;
   deliveryAddress?: string;
   hasDelivery: boolean;
+  deliveryServices?: Order["deliveryServices"];
   status: "Presupuesto" | "Aprobado" | "Rechazado" | "Vencido" | "Convertido";
   createdAt: string;
   updatedAt?: string;
@@ -4527,6 +4528,7 @@ function orderMappedToBudget(
     generalDiscountPercent: order.generalDiscountPercent,
     deliveryAddress: order.deliveryAddress,
     hasDelivery: order.hasDelivery,
+    deliveryServices: order.deliveryServices,
     status: order.status as Budget["status"],
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
