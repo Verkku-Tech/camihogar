@@ -646,6 +646,69 @@ export function normalizeDeliveryServicesFromLegacy(
   };
 }
 
+export const DELIVERY_SERVICE_LABELS = {
+  deliveryExpress: "Delivery Express",
+  servicioAcarreo: "Servicio de Acarreo",
+  servicioArmado: "Servicio de Armado",
+} as const;
+
+export type DeliveryServiceKey = keyof typeof DELIVERY_SERVICE_LABELS;
+
+export type ActiveDeliveryServiceLine = {
+  key: DeliveryServiceKey;
+  label: string;
+  cost: number;
+  currency: Currency;
+  costInBase: number;
+};
+
+/** Líneas de servicios adicionales activas (enabled + costo > 0), en moneda base del pedido. */
+export function getActiveDeliveryServiceLines(
+  deliveryServices: Order["deliveryServices"] | undefined,
+  baseCurrency: Currency = ORDER_BASE_CURRENCY,
+  rates?: ExchangeRatesInput,
+): ActiveDeliveryServiceLine[] {
+  if (!deliveryServices) return [];
+
+  const normalized = normalizeDeliveryServicesFromLegacy(
+    deliveryServices,
+    rates,
+  );
+
+  const entries: {
+    key: DeliveryServiceKey;
+    line?:
+      | { enabled: boolean; cost?: number; currency?: Currency }
+      | { enabled: boolean; cost: number; currency: Currency };
+  }[] = [
+    { key: "deliveryExpress", line: normalized.deliveryExpress },
+    { key: "servicioAcarreo", line: normalized.servicioAcarreo },
+    { key: "servicioArmado", line: normalized.servicioArmado },
+  ];
+
+  return entries
+    .filter(
+      ({ line }) =>
+        line?.enabled && line.cost != null && line.cost > 0,
+    )
+    .map(({ key, line }) => {
+      const cost = line!.cost!;
+      const currency = line!.currency ?? baseCurrency;
+      return {
+        key,
+        label: DELIVERY_SERVICE_LABELS[key],
+        cost,
+        currency,
+        costInBase: convertAmountBetweenOrKeep(
+          cost,
+          currency,
+          baseCurrency,
+          rates,
+        ),
+      };
+    });
+}
+
 /** Descuento general en monto fijo → moneda base del pedido (USD comercial). */
 export function getGeneralDiscountInBaseCurrency(
   amount: number,
