@@ -1309,22 +1309,53 @@ export function OrderConfirmationDialog({
                           {renderCurrencyCell(orderData.total)}
                         </TableRow>
 
-                        <TableRow className="font-semibold border-t">
+                        <TableRow
+                          className={`font-semibold border-t ${
+                            isCasheaConfirmation
+                              ? ""
+                              : Math.abs(displayedRemainingConfirmationUsd) <
+                                  PAYMENT_BALANCE_EPSILON_USD
+                                ? "text-green-600"
+                                : displayedRemainingConfirmationUsd > 0
+                                  ? "text-orange-600"
+                                  : "text-blue-600"
+                          }`}
+                        >
                           <TableCell className="text-xs sm:text-sm">
                             {isCasheaConfirmation
                               ? "Resto vía Cashea (se registrará al confirmar):"
-                              : "Falta:"}
+                              : Math.abs(displayedRemainingConfirmationUsd) <
+                                  PAYMENT_BALANCE_EPSILON_USD
+                                ? "Estado:"
+                                : displayedRemainingConfirmationUsd > 0
+                                  ? "Falta:"
+                                  : "Excedente (cambio/vuelto):"}
                           </TableCell>
                           {renderPaymentTotalCell(
                             Math.abs(displayedRemainingConfirmationUsd),
-                            Math.abs(displayedRemainingConfirmationUsd) <
-                              PAYMENT_BALANCE_EPSILON_USD
-                              ? "text-sm sm:text-base font-semibold text-green-600"
-                              : "text-sm sm:text-base font-semibold",
+                            `text-sm sm:text-base font-semibold ${
+                              isCasheaConfirmation
+                                ? ""
+                                : Math.abs(displayedRemainingConfirmationUsd) <
+                                    PAYMENT_BALANCE_EPSILON_USD
+                                  ? "text-green-600"
+                                  : displayedRemainingConfirmationUsd > 0
+                                    ? "text-orange-600"
+                                    : "text-blue-600"
+                            }`,
                           )}
                         </TableRow>
                       </TableBody>
                     </Table>
+                    {!isCasheaConfirmation &&
+                      displayedRemainingConfirmationUsd <
+                        -PAYMENT_BALANCE_EPSILON_USD && (
+                        <p className="text-xs text-blue-600 dark:text-blue-400 text-center mt-2">
+                          El cliente pagó de más. Monto informativo; al
+                          confirmar podrá registrar el excedente como saldo a
+                          favor.
+                        </p>
+                      )}
                   </CardContent>
                 </Card>
               </div>

@@ -46,6 +46,7 @@ import {
   formatDualCurrencyAmounts,
   formatOrderPaymentTotalsDisplay,
   formatOrderPaymentUsdWithOrderRateBs,
+  getCommercialTotalUsd,
 } from "@/lib/order-currency-display";
 import {
   ORDER_BASE_CURRENCY,
@@ -1133,7 +1134,22 @@ export function useOrderForm(
     [total, exchangeRates, appliedStoreCreditUsd, payments],
   );
 
-  const remainingAmountUsd = remainingAmount;
+  const totalUsd = useMemo(
+    () =>
+      getCommercialTotalUsd({
+        total,
+        baseCurrency: ORDER_BASE_CURRENCY,
+        exchangeRatesAtCreation:
+          buildExchangeRatesAtCreationPayload(exchangeRates),
+      }),
+    [total, exchangeRates],
+  );
+
+  /** Puede ser negativo (excedente); distinto de remainingAmount que recorta a 0. */
+  const remainingAmountUsd = useMemo(
+    () => totalUsd - appliedStoreCreditUsd - totalPaidInUsd,
+    [totalUsd, appliedStoreCreditUsd, totalPaidInUsd],
+  );
 
   const isPaymentsValid =
     paymentCondition === "pago_a_entrega" ||

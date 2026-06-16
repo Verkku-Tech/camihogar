@@ -2937,41 +2937,62 @@ export function Step3OrderDetails({
                         {orderForm.renderCurrencyCell(orderForm.total)}
                       </TableRow>
 
-                      {/* Falta / Cambio / Estado */}
+                      {/* Falta / Estado (saldo pendiente; no incluye excedente) */}
                       <TableRow
                         className={`font-semibold border-t ${
                           orderForm.isPaymentsValid
                             ? "text-green-600"
-                            : orderForm.remainingAmountUsd > 0
+                            : orderForm.remainingAmount >
+                                PAYMENT_BALANCE_EPSILON_USD
                               ? "text-orange-600"
-                              : "text-blue-600"
+                              : "text-green-600"
                         }`}
                       >
                         <TableCell className="text-sm sm:text-base">
-                          {Math.abs(orderForm.remainingAmountUsd) <
+                          {orderForm.remainingAmount >
                           PAYMENT_BALANCE_EPSILON_USD
-                            ? "Estado:"
-                            : orderForm.remainingAmountUsd > 0
-                              ? "Falta:"
-                              : "Cambio/Vuelto:"}
+                            ? "Falta:"
+                            : "Estado:"}
                         </TableCell>
                         {orderForm.renderPaymentTotalCell(
-                          Math.abs(orderForm.remainingAmountUsd),
+                          orderForm.remainingAmount,
                           `text-sm sm:text-base font-semibold ${
                             orderForm.isPaymentsValid
                               ? "text-green-600"
-                              : orderForm.remainingAmountUsd > 0
+                              : orderForm.remainingAmount >
+                                  PAYMENT_BALANCE_EPSILON_USD
                                 ? "text-orange-600"
-                                : "text-blue-600"
+                                : "text-green-600"
                           }`,
                         )}
                       </TableRow>
+
+                      {/* Excedente informativo (fila aparte) */}
+                      {orderForm.remainingAmountUsd <
+                        -PAYMENT_BALANCE_EPSILON_USD && (
+                        <TableRow className="font-semibold text-blue-600">
+                          <TableCell className="text-sm sm:text-base">
+                            Excedente (cambio/vuelto):
+                          </TableCell>
+                          {orderForm.renderPaymentTotalCell(
+                            Math.abs(orderForm.remainingAmountUsd),
+                            "text-sm sm:text-base font-semibold text-blue-600",
+                          )}
+                        </TableRow>
+                      )}
                     </TableBody>
                   </Table>
-                  {Math.abs(orderForm.remainingAmountUsd) <
+                  {orderForm.remainingAmount <
                     PAYMENT_BALANCE_EPSILON_USD && (
                     <p className="text-xs text-green-600 text-center mt-2">
                       (Pagado completo)
+                    </p>
+                  )}
+                  {orderForm.remainingAmountUsd <
+                    -PAYMENT_BALANCE_EPSILON_USD && (
+                    <p className="text-xs text-blue-600 dark:text-blue-400 text-center mt-2">
+                      El cliente pagó de más. Monto informativo; al guardar
+                      podrá registrar el excedente como saldo a favor.
                     </p>
                   )}
                 </div>
