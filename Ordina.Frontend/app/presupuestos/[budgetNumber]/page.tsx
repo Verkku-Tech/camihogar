@@ -41,6 +41,7 @@ import {
 import type { AttributeValue } from "@/lib/storage"
 import { getAll } from "@/lib/indexeddb"
 import { getProductLineSurchargeInBaseCurrency } from "@/lib/order-line-pricing"
+import { DeliveryServicesSummaryLines } from "@/components/orders/delivery-services-summary-lines"
 const formatBudgetDual = (
   amount: number,
   baseCurrency: Currency,
@@ -837,19 +838,34 @@ export default function BudgetDetailPage() {
                       </div>
                     )}
                     {budget.deliveryCost > 0 && (
-                      <div className="flex justify-between">
-                        <span>Servicios Adicionales:</span>
-                        {formattedTotals.deliveryCost ? (
-                          <FormattedCurrencyDisplay formatted={formattedTotals.deliveryCost} />
-                        ) : (
+                      <DeliveryServicesSummaryLines
+                        deliveryCost={budget.deliveryCost}
+                        deliveryServices={budget.deliveryServices}
+                        baseCurrency={displayBaseCurrency}
+                        exchangeRates={commercialRatesInput}
+                        renderTotalAmount={() =>
+                          formattedTotals.deliveryCost ? (
+                            <FormattedCurrencyDisplay
+                              formatted={formattedTotals.deliveryCost}
+                            />
+                          ) : (
+                            <CurrencyDisplay
+                              amount={budget.deliveryCost}
+                              baseCurrency={displayBaseCurrency}
+                              exchangeRates={commercialRatesInput}
+                              liveRates={liveRatesInput}
+                            />
+                          )
+                        }
+                        renderLineAmount={(amountInBase) => (
                           <CurrencyDisplay
-                            amount={budget.deliveryCost}
+                            amount={amountInBase}
                             baseCurrency={displayBaseCurrency}
                             exchangeRates={commercialRatesInput}
-                          liveRates={liveRatesInput}
+                            liveRates={liveRatesInput}
                           />
                         )}
-                      </div>
+                      />
                     )}
                     <Separator />
                     <div className="flex justify-between text-xl font-bold">

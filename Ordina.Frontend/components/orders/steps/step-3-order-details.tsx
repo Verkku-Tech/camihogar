@@ -54,6 +54,10 @@ import { ImageUploader } from "../ImageUploader";
 import { CardCommissionToggle } from "../card-commission-toggle";
 import { computeCardCommissionBs } from "@/lib/card-commission";
 import {
+  getActiveDeliveryServiceLines,
+  ORDER_BASE_CURRENCY,
+} from "@/lib/order-line-pricing";
+import {
   PAYMENT_CONDITIONS,
   PURCHASE_TYPES,
   type PurchaseTypeUiValue,
@@ -234,6 +238,16 @@ export function Step3OrderDetails({
 
   const casheaOneLineOnly =
     orderForm.paymentCondition === "cashea" && orderForm.payments.length >= 1;
+
+  const activeDeliveryServiceLines = useMemo(
+    () =>
+      getActiveDeliveryServiceLines(
+        orderForm.deliveryServices,
+        ORDER_BASE_CURRENCY,
+        orderForm.exchangeRates,
+      ),
+    [orderForm.deliveryServices, orderForm.exchangeRates],
+  );
 
   const handlePaymentDateChange = async (
     payment: PartialPayment,
@@ -683,36 +697,14 @@ export function Step3OrderDetails({
                       )}
 
                       {/* Servicios complementarios (se suman después del impuesto) */}
-                      {(
-                        [
-                          {
-                            label: "Delivery Express:",
-                            line: orderForm.deliveryServices.deliveryExpress,
-                          },
-                          {
-                            label: "Servicio de Acarreo:",
-                            line: orderForm.deliveryServices.servicioAcarreo,
-                          },
-                          {
-                            label: "Servicio de Armado:",
-                            line: orderForm.deliveryServices.servicioArmado,
-                          },
-                        ] as const
-                      )
-                        .filter(
-                          (row) =>
-                            row.line?.enabled &&
-                            row.line.cost != null &&
-                            row.line.cost > 0,
-                        )
-                        .map((row) => (
-                          <TableRow key={row.label}>
+                      {activeDeliveryServiceLines.map((line) => (
+                          <TableRow key={line.key}>
                             <TableCell className="text-xs sm:text-sm font-medium">
-                              {row.label}
+                              {line.label}:
                             </TableCell>
                             {orderForm.renderServiceLineCell(
-                              row.line!.cost!,
-                              row.line!.currency || "USD",
+                              line.cost,
+                              line.currency || "USD",
                               "text-xs sm:text-sm",
                             )}
                           </TableRow>

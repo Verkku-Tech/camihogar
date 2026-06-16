@@ -72,6 +72,7 @@ import type { AttributeValue } from "@/lib/storage";
 import { getAll } from "@/lib/indexeddb";
 import { apiClient } from "@/lib/api-client";
 import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
+import { DeliveryServicesSummaryLines } from "@/components/orders/delivery-services-summary-lines";
 import { CASHEA_FINANCED_METHOD_LABEL } from "@/lib/order-payments";
 import {
   appliedUsdToBs,
@@ -2564,16 +2565,26 @@ export default function OrderDetailPage() {
                         </div>
                       )}
                     {order.deliveryCost > 0 && (
-                      <div className="flex justify-between">
-                        <span>Servicios Adicionales:</span>
-                        {formattedTotals.deliveryCost ? (
-                          <FormattedCurrencyDisplay
-                            formatted={formattedTotals.deliveryCost}
-                          />
-                        ) : (
-                          <OrderCurrency amount={order.deliveryCost} />
+                      <DeliveryServicesSummaryLines
+                        deliveryCost={order.deliveryCost}
+                        deliveryServices={order.deliveryServices}
+                        baseCurrency={orderBaseCurrency}
+                        exchangeRates={commercialRatesToExchangeRatesInput(
+                          getCommercialRatesFromOrder(order),
                         )}
-                      </div>
+                        renderTotalAmount={() =>
+                          formattedTotals.deliveryCost ? (
+                            <FormattedCurrencyDisplay
+                              formatted={formattedTotals.deliveryCost}
+                            />
+                          ) : (
+                            <OrderCurrency amount={order.deliveryCost} />
+                          )
+                        }
+                        renderLineAmount={(amountInBase) => (
+                          <OrderCurrency amount={amountInBase} />
+                        )}
+                      />
                     )}
                     <Separator />
                     <div className="flex justify-between text-xl font-bold">
