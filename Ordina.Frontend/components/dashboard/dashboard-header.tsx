@@ -32,10 +32,6 @@ import { useRouter } from "next/navigation";
 
 interface DashboardHeaderProps {
   onMenuClick: () => void;
-  /**
-   * Pedidos del Dashboard a reutilizar en el buscador: null = cargando; undefined = no usar (páginas que no pasan dato).
-   */
-  orderSearchPreloaded?: Order[] | null;
 }
 
 import { CurrencyCalculatorDialog } from "@/components/currency/currency-calculator-dialog";
@@ -54,11 +50,9 @@ import {
 import { Label } from "@/components/ui/label";
 import { apiClient } from "@/lib/api-client";
 import { toast } from "sonner";
-import type { Order } from "@/lib/storage";
 
 export function DashboardHeader({
   onMenuClick,
-  orderSearchPreloaded,
 }: DashboardHeaderProps) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -211,7 +205,7 @@ export function DashboardHeader({
           </Button>
         </div>
         <div className="flex items-center gap-4">
-          <OrderSearchCombobox preloadedOrders={orderSearchPreloaded} />
+          <OrderSearchCombobox />
 
           <CalculatorButton />
           <AuditLogButton />
@@ -317,7 +311,7 @@ export function DashboardHeader({
       </div>
 
       <div className="flex items-center gap-4">
-        <OrderSearchCombobox preloadedOrders={orderSearchPreloaded} />
+        <OrderSearchCombobox />
 
           <CalculatorButton />
           <AuditLogButton />

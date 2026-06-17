@@ -145,35 +145,6 @@ export default function PedidosPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [clientById, setClientById] = useState<Map<string, Client>>(new Map());
 
-  const ordersForSearch: Order[] | null = useMemo(() => {
-    if (isLoading) return null
-    return orders
-      .filter((o) => o.type === "order")
-      .map((o) => ({
-        id: o.id,
-        orderNumber: o.orderNumber,
-        clientId: o.clientId,
-        clientName: o.clientName,
-        vendorId: o.vendorId,
-        vendorName: o.vendorName,
-        referrerId: o.referrerId,
-        referrerName: o.referrerName,
-        postventaId: o.postventaId,
-        postventaName: o.postventaName,
-        products: o.products,
-        subtotal: o.subtotal,
-        taxAmount: o.taxAmount,
-        deliveryCost: o.deliveryCost,
-        total: o.total,
-        paymentType: "directo" as const,
-        paymentMethod: o.paymentMethod ?? "",
-        status: o.status as Order["status"],
-        createdAt: o.createdAt,
-        updatedAt: o.updatedAt,
-        hasDelivery: o.hasDelivery,
-      }))
-  }, [orders, isLoading])
-
   useEffect(() => {
     const loadClients = async () => {
       try {
@@ -458,10 +429,7 @@ export default function PedidosPage() {
         <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
 
         <div className="flex-1 flex flex-col overflow-hidden">
-          <DashboardHeader
-            onMenuClick={() => setSidebarOpen(true)}
-            orderSearchPreloaded={isLoading ? null : ordersForSearch}
-          />
+          <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
           <main className="flex-1 overflow-y-auto p-4 lg:p-6">
             <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">

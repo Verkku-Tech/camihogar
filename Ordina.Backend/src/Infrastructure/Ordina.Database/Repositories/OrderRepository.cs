@@ -133,6 +133,46 @@ public class OrderRepository : IOrderRepository
         return await _collection.Find(o => o.OrderNumber == orderNumber).FirstOrDefaultAsync();
     }
 
+    public async Task<IReadOnlyList<Order>> SearchHeaderAsync(
+        string query,
+        IReadOnlyCollection<string>? matchingClientIds,
+        int limit,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null)
+    {
+        if (string.IsNullOrWhiteSpace(query) || limit <= 0)
+        {
+            return Array.Empty<Order>();
+        }
+
+        var fb = Builders<Order>.Filter;
+        var excludeReservations = fb.And(
+            fb.Nin(o => o.Type, new[] { "Reservation", "PendingConfirmation" }),
+            fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^RES-", "i"))),
+            fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^PCF-", "i"))));
+
+        var escaped = Regex.Escape(query.Trim());
+        var regex = new BsonRegularExpression(escaped, "i");
+
+        var orFilters = new List<FilterDefinition<Order>>
+        {
+            fb.Regex(o => o.OrderNumber, regex),
+            fb.Regex(o => o.ClientName, regex),
+        };
+
+        if (matchingClientIds is { Count: > 0 })
+        {
+            orFilters.Add(fb.In(o => o.ClientId, matchingClientIds));
+        }
+
+        var searchFilter = fb.And(excludeReservations, fb.Or(orFilters));
+        var filter = CombineFilters(searchFilter, onlineSellerTeamIds);
+
+        return await _collection.Find(filter)
+            .SortByDescending(o => o.CreatedAt)
+            .Limit(limit)
+            .ToListAsync();
+    }
+
     public async Task<Order> CreateAsync(Order order)
     {
         order.CreatedAt = DateTime.UtcNow;

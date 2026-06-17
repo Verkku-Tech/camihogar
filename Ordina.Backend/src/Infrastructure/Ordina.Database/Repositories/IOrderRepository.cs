@@ -35,6 +35,14 @@ public interface IOrderRepository
         IReadOnlyCollection<string>? onlineSellerTeamIds = null);
 
     Task<Order?> GetByOrderNumberAsync(string orderNumber);
+
+    /// <summary>Búsqueda para header: regex en número/cliente + clientIds coincidentes; excluye reservas.</summary>
+    Task<IReadOnlyList<Order>> SearchHeaderAsync(
+        string query,
+        IReadOnlyCollection<string>? matchingClientIds,
+        int limit,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null);
+
     Task<Order> CreateAsync(Order order);
     Task<Order> UpdateAsync(Order order);
     Task<bool> DeleteAsync(string id);
