@@ -21,17 +21,7 @@ public class ClientRepository : IClientRepository
 
     public async Task<(IEnumerable<Client> Items, long TotalCount)> GetAllAsync(int page, int pageSize, string? search)
     {
-        var filter = Builders<Client>.Filter.Empty;
-
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var regex = new BsonRegularExpression(search, "i");
-            filter = Builders<Client>.Filter.Or(
-                Builders<Client>.Filter.Regex(x => x.NombreRazonSocial, regex),
-                Builders<Client>.Filter.Regex(x => x.RutId, regex),
-                Builders<Client>.Filter.Regex(x => x.Apodo, regex)
-            );
-        }
+        var filter = BuildSearchFilter(search);
 
         var totalCount = await _collection.CountDocumentsAsync(filter);
         
@@ -41,6 +31,39 @@ public class ClientRepository : IClientRepository
             .ToListAsync();
 
         return (items, totalCount);
+    }
+
+    public async Task<IReadOnlyList<string>> FindIdsBySearchAsync(string search, int limit)
+    {
+        if (string.IsNullOrWhiteSpace(search) || limit <= 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        var filter = BuildSearchFilter(search);
+        var ids = await _collection.Find(filter)
+            .Limit(limit)
+            .Project(c => c.Id)
+            .ToListAsync();
+
+        return ids;
+    }
+
+    private static FilterDefinition<Client> BuildSearchFilter(string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return Builders<Client>.Filter.Empty;
+        }
+
+        var regex = new BsonRegularExpression(search.Trim(), "i");
+        return Builders<Client>.Filter.Or(
+            Builders<Client>.Filter.Regex(x => x.NombreRazonSocial, regex),
+            Builders<Client>.Filter.Regex(x => x.RutId, regex),
+            Builders<Client>.Filter.Regex(x => x.Apodo, regex),
+            Builders<Client>.Filter.Regex(x => x.Telefono, regex),
+            Builders<Client>.Filter.Regex(x => x.Telefono2, regex),
+            Builders<Client>.Filter.Regex(x => x.Email, regex));
     }
 
     public async Task<IEnumerable<Client>> GetAllAsync()

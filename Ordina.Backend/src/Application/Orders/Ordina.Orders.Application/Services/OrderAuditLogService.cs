@@ -8,6 +8,7 @@ using Ordina.Database.Entities.Order;
 using Ordina.Database.Repositories;
 using Ordina.Orders.Application;
 using Ordina.Orders.Application.DTOs;
+using Ordina.Orders.Application.Helpers;
 
 namespace Ordina.Orders.Application.Services;
 
@@ -208,7 +209,7 @@ public class OrderAuditLogService : IOrderAuditLogService
     {
         var orderForFilter = string.IsNullOrWhiteSpace(orderNumber)
             ? null
-            : NormalizeOrderNumberForFilter(orderNumber);
+            : OrderNumberNormalizer.Normalize(orderNumber);
         var (items, total) = await _repository.GetPagedAsync(
             page, pageSize, userId, orderForFilter, action, fromUtc, toUtc);
         var totalPages = (int)Math.Ceiling(total / (double)Math.Max(1, pageSize));
@@ -449,40 +450,6 @@ public class OrderAuditLogService : IOrderAuditLogService
                 });
             }
         }
-    }
-
-    /// <summary>
-    /// Alinea el filtro con ORD-xxx / PRE- / RES- (y PCF- legacy) + 3 dígitos (mismo criterio que en el front).
-    /// </summary>
-    private static string NormalizeOrderNumberForFilter(string orderNumber)
-    {
-        var s = orderNumber.Trim();
-        if (s.Length == 0)
-        {
-            return s;
-        }
-
-        static string Pad3(int n) => n.ToString("D3", CultureInfo.InvariantCulture);
-
-        var m = Regex.Match(s, @"^(?i)(ord|pre|res|pcf)\s*-\s*0*(\d+)$");
-        if (m.Success && int.TryParse(m.Groups[2].Value, out var n) && n >= 0)
-        {
-            return m.Groups[1].Value.ToUpperInvariant() switch
-            {
-                "ORD" => $"ORD-{Pad3(n)}",
-                "PRE" => $"PRE-{Pad3(n)}",
-                "RES" => $"{OrderDocumentTypes.ReservationPrefix}{Pad3(n)}",
-                "PCF" => $"{OrderDocumentTypes.ReservationPrefix}{Pad3(n)}",
-                _ => s
-            };
-        }
-
-        if (Regex.IsMatch(s, @"^\d+$") && int.TryParse(s, out var only) && only >= 0)
-        {
-            return $"ORD-{Pad3(only)}";
-        }
-
-        return s;
     }
 
     private static string FormatPaymentDetailsFull(PaymentDetails? d)

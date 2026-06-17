@@ -14,6 +14,12 @@ public interface IOrderService
         int pageSize = 50,
         DateTime? since = null,
         string? callerRole = null);
+
+    /// <summary>Búsqueda liviana para el combobox del header (número, cliente, teléfono/CI vía clientes).</summary>
+    Task<IReadOnlyList<OrderSearchResultDto>> SearchOrdersAsync(
+        string query,
+        int limit = 20,
+        string? callerRole = null);
     
     Task<IEnumerable<OrderResponseDto>> GetOrdersByClientIdAsync(
         string clientId,

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
+using Ordina.Database.Entities.Client;
 using Ordina.Database.Entities.Order;
 using Ordina.Database.Repositories;
 using Ordina.Orders.Application;
@@ -18,6 +19,7 @@ namespace Ordina.Orders.Application.Services;
 public class OrderService : IOrderService
 {
     private readonly IOrderRepository _orderRepository;
+    private readonly IClientRepository _clientRepository;
     private readonly IOrderAuditLogService _auditLogService;
     private readonly IClientCreditService _clientCreditService;
     private readonly IAccessPinService _accessPinService;
@@ -26,6 +28,7 @@ public class OrderService : IOrderService
 
     public OrderService(
         IOrderRepository orderRepository,
+        IClientRepository clientRepository,
         IOrderAuditLogService auditLogService,
         IClientCreditService clientCreditService,
         IAccessPinService accessPinService,
@@ -33,6 +36,7 @@ public class OrderService : IOrderService
         ILogger<OrderService> logger)
     {
         _orderRepository = orderRepository;
+        _clientRepository = clientRepository;
         _auditLogService = auditLogService;
         _clientCreditService = clientCreditService;
         _accessPinService = accessPinService;
@@ -320,6 +324,108 @@ public class OrderService : IOrderService
             _logger.LogError(ex, "Error al obtener pedido con número {OrderNumber}", orderNumber);
             throw;
         }
+    }
+
+    public async Task<IReadOnlyList<OrderSearchResultDto>> SearchOrdersAsync(
+        string query,
+        int limit = 20,
+        string? callerRole = null)
+    {
+        var trimmed = (query ?? string.Empty).Trim();
+        if (trimmed.Length < 2)
+        {
+            return Array.Empty<OrderSearchResultDto>();
+        }
+
+        limit = Math.Clamp(limit, 1, 50);
+        var teamFilter = await ResolveTeamFilterAsync(callerRole);
+
+        var merged = new List<Order>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        void TryAdd(Order? order)
+        {
+            if (order == null || !seen.Add(order.Id))
+            {
+                return;
+            }
+
+            if (IsHeaderSearchExcluded(order))
+            {
+                return;
+            }
+
+            merged.Add(order);
+        }
+
+        var normalizedNumber = OrderNumberNormalizer.Normalize(trimmed);
+        if (!string.IsNullOrWhiteSpace(normalizedNumber))
+        {
+            var exact = await _orderRepository.GetByOrderNumberAsync(normalizedNumber);
+            TryAdd(exact);
+        }
+
+        var matchingClientIds = await _clientRepository.FindIdsBySearchAsync(trimmed, 30);
+        var searchResults = await _orderRepository.SearchHeaderAsync(
+            trimmed,
+            matchingClientIds,
+            limit + 10,
+            teamFilter);
+
+        foreach (var order in searchResults)
+        {
+            TryAdd(order);
+        }
+
+        var visible = new List<Order>();
+        foreach (var order in merged)
+        {
+            if (!await IsOrderVisibleToCallerAsync(order, callerRole))
+            {
+                continue;
+            }
+
+            visible.Add(order);
+            if (visible.Count >= limit)
+            {
+                break;
+            }
+        }
+
+        var clientCache = new Dictionary<string, Client?>(StringComparer.Ordinal);
+        foreach (var clientId in visible.Select(o => o.ClientId).Distinct())
+        {
+            clientCache[clientId] = await _clientRepository.GetByIdAsync(clientId);
+        }
+
+        return visible
+            .Take(limit)
+            .Select(o => MapSearchResult(o, clientCache.GetValueOrDefault(o.ClientId)))
+            .ToList();
+    }
+
+    private static bool IsHeaderSearchExcluded(Order order) =>
+        OrderDocumentTypes.IsReservationType(order.Type)
+        || OrderDocumentTypes.IsReservationOrderNumber(order.OrderNumber);
+
+    private static OrderSearchResultDto MapSearchResult(Order order, Client? client)
+    {
+        var phone = client?.Telefono?.Trim();
+        if (string.IsNullOrWhiteSpace(phone))
+        {
+            phone = client?.Telefono2?.Trim();
+        }
+
+        return new OrderSearchResultDto
+        {
+            OrderId = order.Id,
+            OrderNumber = order.OrderNumber,
+            ClientName = order.ClientName,
+            ClientId = order.ClientId,
+            Type = string.IsNullOrWhiteSpace(order.Type) ? "Order" : order.Type,
+            ClientPhone = string.IsNullOrWhiteSpace(phone) ? null : phone,
+            ClientRutId = string.IsNullOrWhiteSpace(client?.RutId) ? null : client.RutId.Trim(),
+        };
     }
 
     public async Task<OrderResponseDto> CreateOrderAsync(CreateOrderDto createDto, string userId, string userName)
