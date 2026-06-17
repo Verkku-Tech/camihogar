@@ -175,6 +175,33 @@ public class OrdersController : ControllerBase
     }
 
     /// <summary>
+    /// Búsqueda liviana para el combobox del header (número, cliente, teléfono/CI).
+    /// </summary>
+    [HttpGet("search")]
+    [ProducesResponseType(typeof(IReadOnlyList<OrderSearchResultDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<OrderSearchResultDto>>> SearchOrders(
+        [FromQuery] string? q = null,
+        [FromQuery] int limit = 20)
+    {
+        try
+        {
+            var trimmed = (q ?? string.Empty).Trim();
+            if (trimmed.Length < 2)
+            {
+                return Ok(Array.Empty<OrderSearchResultDto>());
+            }
+
+            var results = await _orderService.SearchOrdersAsync(trimmed, limit, GetCallerRole(User));
+            return Ok(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al buscar pedidos con q={Query}", q);
+            return StatusCode(500, new { message = "Error interno del servidor al buscar pedidos" });
+        }
+    }
+
+    /// <summary>
     /// Obtiene un pedido por su ID
     /// </summary>
     /// <param name="id">ID del pedido</param>

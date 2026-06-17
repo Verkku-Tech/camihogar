@@ -1300,6 +1300,13 @@ export class ApiClient {
     );
   }
 
+  async searchOrders(q: string, limit = 20) {
+    const query = new URLSearchParams({ q, limit: limit.toString() });
+    return this.request<OrderSearchResultDto[]>(
+      `/api/Orders/search?${query.toString()}`,
+    );
+  }
+
   async getOrdersByClient(clientId: string) {
     return this.request<OrderResponseDto[]>(`/api/Orders/client/${clientId}`);
   }
@@ -2213,6 +2220,16 @@ export interface ClientStoreCreditBalanceDto {
 export interface RecordOverpaymentCreditResponseDto {
   amountCreditedUsd: number;
   newBalanceUsd: number;
+}
+
+export interface OrderSearchResultDto {
+  orderId: string;
+  orderNumber: string;
+  clientName: string;
+  clientId: string;
+  type: string;
+  clientPhone?: string | null;
+  clientRutId?: string | null;
 }
 
 export interface OrderResponseDto {

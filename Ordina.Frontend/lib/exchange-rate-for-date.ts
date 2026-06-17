@@ -8,16 +8,22 @@ import { getAll } from "@/lib/indexeddb";
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const rateCache = new Map<string, { rate: ExchangeRate; at: number }>();
 
-/** Normaliza a yyyy-MM-dd para API e inputs type=date. */
+/**
+ * Normaliza a yyyy-MM-dd para API e inputs type=date.
+ * Fechas de cobro son día calendario de negocio (VE): Mongo guarda medianoche VE como
+ * YYYY-MM-DDT04:00:00.000Z — el prefijo ISO es el día correcto sin depender del TZ del navegador.
+ */
 export function paymentDateToYyyyMmDd(date: string | undefined): string {
   if (date == null || String(date).trim() === "") return "";
   const s = String(date).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const isoPrefix = /^(\d{4}-\d{2}-\d{2})T/.exec(s);
+  if (isoPrefix) return isoPrefix[1];
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
@@ -29,7 +35,7 @@ export function todayPaymentDateYyyyMmDd(): string {
   return `${y}-${m}-${day}`;
 }
 
-/** dd/mm/yyyy para UI — solo calendario, sin desfase UTC. */
+/** dd/mm/yyyy para UI — día calendario del cobro, independiente del TZ del navegador. */
 export function formatPaymentDateForDisplay(date: string | undefined): string {
   const ymd = paymentDateToYyyyMmDd(date);
   if (!ymd) return "";

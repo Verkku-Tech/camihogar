@@ -107,10 +107,7 @@ export function Dashboard() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <DashboardHeader
-          onMenuClick={() => setSidebarOpen(true)}
-          orderSearchPreloaded={sharedOrders}
-        />
+        <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           {/* Breadcrumb */}
