@@ -520,7 +520,10 @@ export default function FabricacionPage() {
     manufacturingStatus: "por_fabricar",
     manufacturingStartedAt: undefined,
     manufacturingCompletedAt: undefined,
-    logisticStatus: "Generado",
+    logisticStatus:
+      current.logisticStatus === "Fabricándose"
+        ? "Validado"
+        : current.logisticStatus,
   })
 
   const handleProviderDialogConfirm = async (
