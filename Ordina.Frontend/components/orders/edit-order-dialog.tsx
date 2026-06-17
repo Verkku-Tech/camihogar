@@ -62,6 +62,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { usePinSession } from "@/hooks/use-pin-session";
 import { hasProductStructureChanges } from "@/lib/order-product-structure";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
+import { todayPaymentDateYyyyMmDd } from "@/lib/exchange-rate-for-date";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -291,7 +292,7 @@ export function EditOrderDialog({
       id: Date.now().toString(),
       amount: 0,
       method: "",
-      date: new Date().toISOString().split("T")[0],
+      date: todayPaymentDateYyyyMmDd(),
       currency: defaultCurrency,
       paymentDetails: {},
     };
@@ -550,9 +551,8 @@ export function EditOrderDialog({
         const useUsdTotals = isUsdBaseOrder({
           baseCurrency: orderForm.formBaseCurrency,
         });
-        paymentsNorm = buildCasheaPaymentsForSave(
-          paymentsNorm,
-          getCasheaTotalDueBs({
+        paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, {
+          orderTotalBs: getCasheaTotalDueBs({
             totalDueUsd: Math.max(
               0,
               orderForm.total - orderForm.appliedStoreCreditUsd,
@@ -564,7 +564,19 @@ export function EditOrderDialog({
             useUsdTotals,
             usdRate: orderForm.commercialExchangeRates.USD?.rate,
           }),
-        );
+          useUsdTotals,
+          totalDueUsd: Math.max(
+            0,
+            orderForm.total - orderForm.appliedStoreCreditUsd,
+          ),
+          usdRate: orderForm.commercialExchangeRates.USD?.rate,
+          order: {
+            baseCurrency: orderForm.formBaseCurrency,
+            exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+              orderForm.commercialExchangeRates,
+            ),
+          },
+        });
       }
       const multi = paymentsNorm.length > 1;
       const synced = await updateOrder(order.id, {
@@ -1006,9 +1018,8 @@ export function EditOrderDialog({
         const useUsdTotals = isUsdBaseOrder({
           baseCurrency: orderForm.formBaseCurrency,
         });
-        paymentsNorm = buildCasheaPaymentsForSave(
-          paymentsNorm,
-          getCasheaTotalDueBs({
+        paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, {
+          orderTotalBs: getCasheaTotalDueBs({
             totalDueUsd: Math.max(
               0,
               orderForm.total - orderForm.appliedStoreCreditUsd,
@@ -1020,7 +1031,19 @@ export function EditOrderDialog({
             useUsdTotals,
             usdRate: orderForm.commercialExchangeRates.USD?.rate,
           }),
-        );
+          useUsdTotals,
+          totalDueUsd: Math.max(
+            0,
+            orderForm.total - orderForm.appliedStoreCreditUsd,
+          ),
+          usdRate: orderForm.commercialExchangeRates.USD?.rate,
+          order: {
+            baseCurrency: orderForm.formBaseCurrency,
+            exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+              orderForm.commercialExchangeRates,
+            ),
+          },
+        });
       }
       const multi = paymentsNorm.length > 1;
 

@@ -14,6 +14,9 @@ import { bsOnlyPaymentMethods } from "@/components/orders/constants";
 export const PAYMENT_BALANCE_EPSILON_BS = 0.1;
 export const PAYMENT_BALANCE_EPSILON_USD = 0.01;
 
+/** Tolerancia al cerrar Cashea comercialmente (redondeo Bs↔USD en stub/reserva). */
+export const CASHEA_COMMERCIAL_SETTLEMENT_EPSILON_USD = 0.5;
+
 /** Líneas guardadas en pedido Cashea: el stub sintético tiene este método. */
 export const CASHEA_FINANCED_METHOD_LABEL = "Cashea (financiación)";
 
@@ -177,7 +180,8 @@ export function isCasheaCommerciallySettled(
       0,
     );
     return (
-      inStoreUsd + financedUsd >= totalDue - PAYMENT_BALANCE_EPSILON_USD
+      inStoreUsd + financedUsd >=
+      totalDue - CASHEA_COMMERCIAL_SETTLEMENT_EPSILON_USD
     );
   }
 
@@ -195,10 +199,51 @@ export function isCasheaCommerciallySettled(
   return inStoreBs + financedBs >= totalDue - PAYMENT_BALANCE_EPSILON_BS;
 }
 
+function getCasheaPendingAfterFinancing(
+  order: OrderPendingTotalInput,
+): number | null {
+  if (!isCasheaOrder(order)) return null;
+
+  const payments = getActivePaymentsList(order);
+  const financed = getCasheaFinancedPayments(payments);
+  if (financed.length === 0) return null;
+
+  const inStore = payments.filter((p) => !isCasheaFinancedPayment(p));
+  const credit = order.appliedStoreCreditUsd ?? 0;
+
+  if (isUsdBaseOrder(order)) {
+    const totalDue = Math.max(0, order.total - credit);
+    const inStoreUsd = sumPaymentsToUsd(inStore, order);
+    const financedUsd = financed.reduce(
+      (sum, p) => sum + paymentToUsd(p, order),
+      0,
+    );
+    return Math.max(0, totalDue - inStoreUsd - financedUsd);
+  }
+
+  let creditBs = 0;
+  if (credit > 0 && order.exchangeRatesAtCreation) {
+    const rates = normalizeExchangeRatesAtCreation(
+      order.exchangeRatesAtCreation,
+    );
+    const rate = rates?.USD?.rate;
+    if (rate && rate > 0) creditBs = credit * rate;
+  }
+  const totalDue = Math.max(0, order.total - creditBs);
+  const inStoreBs = sumPaymentsInStoreBs(inStore);
+  const financedBs = financed.reduce((sum, p) => sum + (p.amount || 0), 0);
+  return Math.max(0, totalDue - inStoreBs - financedBs);
+}
+
 /** Saldo pendiente vs el total: USD si baseCurrency USD, si no Bs (legacy). */
 export function getOrderPendingTotal(order: OrderPendingTotalInput): number {
   if (isCasheaCommerciallySettled(order)) {
     return 0;
+  }
+
+  const casheaPending = getCasheaPendingAfterFinancing(order);
+  if (casheaPending != null) {
+    return casheaPending;
   }
 
   const payments = getActivePaymentsList(order);
@@ -264,25 +309,127 @@ export function normalizePaymentsForSave(
   });
 }
 
+export type BuildCasheaPaymentsOptions = {
+  /** Total a cubrir en Bs (legacy o derivado de USD × tasa). */
+  orderTotalBs: number;
+  /** Pedido USD comercial: stub desde saldo USD restante (misma regla que saldo pendiente). */
+  useUsdTotals?: boolean;
+  totalDueUsd?: number;
+  usdRate?: number | null;
+  order?: PaymentOrderContext | null;
+};
+
+/** Alinea `amount` en Bs con el USD comercial del pedido al guardar Cashea. */
+function alignInStorePaymentsForCasheaSave(
+  inStore: PartialPayment[],
+  usdRate: number,
+  order?: PaymentOrderContext | null,
+): PartialPayment[] {
+  if (!(usdRate > 0)) return inStore;
+
+  return inStore.map((p) => {
+    const det = { ...(p.paymentDetails || {}) } as NonNullable<
+      PartialPayment["paymentDetails"]
+    >;
+    const originalCurrency = (det.originalCurrency ??
+      p.currency ??
+      "Bs") as "Bs" | "USD" | "EUR";
+    const inStoreUsd = paymentToUsd(p, order);
+
+    if (originalCurrency === "USD" && inStoreUsd > 0) {
+      const bsAmount = Math.round(inStoreUsd * usdRate * 100) / 100;
+      return {
+        ...p,
+        amount: bsAmount,
+        currency: p.currency ?? "Bs",
+        paymentDetails: {
+          ...det,
+          originalAmount: det.originalAmount ?? inStoreUsd,
+          originalCurrency: "USD",
+          exchangeRate: det.exchangeRate ?? usdRate,
+        },
+      };
+    }
+
+    return p;
+  });
+}
+
 /**
  * Tras normalizar los cobros en tienda (una o más filas), añade si aplica la línea de saldo financiado por Cashea.
  * Ignora filas que ya sean la porción financiada (re-guardado / edición).
- *
- * @param orderTotalBs Monto total que deben cubrir entre sí los cobros en tienda y la financiación Cashea
- *   (alinear con `isPaymentsValid`: p. ej. `total - appliedCreditBsApprox` si el crédito no va en `total`).
  */
 export function buildCasheaPaymentsForSave(
   normalizedPayments: PartialPayment[],
-  orderTotalBs: number,
+  orderTotalBsOrOptions: number | BuildCasheaPaymentsOptions,
 ): PartialPayment[] {
-  const inStore = normalizedPayments.filter(
+  const options: BuildCasheaPaymentsOptions =
+    typeof orderTotalBsOrOptions === "number"
+      ? { orderTotalBs: orderTotalBsOrOptions }
+      : orderTotalBsOrOptions;
+
+  const inStoreRaw = normalizedPayments.filter(
     (p) =>
       !p.paymentDetails?.casheaFinancedPortion &&
       p.method !== CASHEA_FINANCED_METHOD_LABEL,
   );
 
-  if (inStore.length === 0) {
+  if (inStoreRaw.length === 0) {
     throw new Error("Cashea: se requiere al menos un cobro en tienda.");
+  }
+
+  const useUsdPath =
+    options.useUsdTotals === true &&
+    options.totalDueUsd != null &&
+    options.usdRate != null &&
+    options.usdRate > 0 &&
+    options.order != null;
+
+  const inStore = useUsdPath
+    ? alignInStorePaymentsForCasheaSave(
+        inStoreRaw,
+        options.usdRate!,
+        options.order,
+      )
+    : inStoreRaw;
+
+  if (useUsdPath) {
+    const totalDueUsd = Math.max(0, options.totalDueUsd!);
+    const inStoreUsd = sumPaymentsToUsd(inStore, options.order);
+
+    if (inStoreUsd <= 0) {
+      throw new Error("Cashea: el total cobrado en tienda debe ser mayor a 0.");
+    }
+
+    if (inStoreUsd > totalDueUsd + PAYMENT_BALANCE_EPSILON_USD) {
+      throw new Error(
+        "Cashea: la suma de cobros en tienda supera el total a cubrir.",
+      );
+    }
+
+    const remainderUsd = totalDueUsd - inStoreUsd;
+    if (remainderUsd <= PAYMENT_BALANCE_EPSILON_USD) {
+      return inStore;
+    }
+
+    const stubAmount =
+      Math.round(Math.max(0, remainderUsd * options.usdRate!) * 100) / 100;
+    const dateRef = inStore[0]?.date;
+
+    const stub: PartialPayment = {
+      id: `cashea-fin-${Date.now().toString(36)}`,
+      amount: stubAmount,
+      method: CASHEA_FINANCED_METHOD_LABEL,
+      date: dateRef,
+      currency: "Bs",
+      paymentDetails: {
+        casheaFinancedPortion: true,
+        originalAmount: stubAmount,
+        originalCurrency: "Bs",
+      },
+    };
+
+    return [...inStore, stub];
   }
 
   const paidSum = inStore.reduce((s, p) => s + (p.amount || 0), 0);
@@ -291,13 +438,13 @@ export function buildCasheaPaymentsForSave(
     throw new Error("Cashea: el total cobrado en tienda debe ser mayor a 0.");
   }
 
-  if (paidSum > orderTotalBs + PAYMENT_BALANCE_EPSILON_BS) {
+  if (paidSum > options.orderTotalBs + PAYMENT_BALANCE_EPSILON_BS) {
     throw new Error(
       "Cashea: la suma de cobros en tienda supera el total a cubrir.",
     );
   }
 
-  const remainder = orderTotalBs - paidSum;
+  const remainder = options.orderTotalBs - paidSum;
 
   if (remainder <= PAYMENT_BALANCE_EPSILON_BS) {
     return inStore;

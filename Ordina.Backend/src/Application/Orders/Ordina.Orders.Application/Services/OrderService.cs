@@ -10,6 +10,7 @@ using Ordina.Database.Repositories;
 using Ordina.Orders.Application;
 using Ordina.Orders.Application.Commission;
 using Ordina.Orders.Application.DTOs;
+using Ordina.Orders.Application.Helpers;
 using Ordina.Orders.Application.OnlineSeller;
 
 namespace Ordina.Orders.Application.Services;
@@ -1490,7 +1491,7 @@ public class OrderService : IOrderService
                 : dto.Id,
             Amount = dto.Amount,
             Method = dto.Method,
-            Date = dto.Date,
+            Date = PaymentCalendarDate.NormalizeForStorage(dto.Date),
             Images = dto.Images?.Select(img => new ProductImage
             {
                 Id = img.Id,
