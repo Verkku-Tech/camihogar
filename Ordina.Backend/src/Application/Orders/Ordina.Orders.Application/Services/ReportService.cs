@@ -894,6 +894,12 @@ public class ReportService : IReportService
         var orders = await _orderRepository.GetAllAsync();
         _logger.LogInformation("Órdenes obtenidas: {Count}", orders.Count());
 
+        Ordina.Database.Entities.Account.Account? filterAccount = null;
+        if (!string.IsNullOrWhiteSpace(accountId) && !IsNoAplicaCuentaFilter(accountId))
+        {
+            filterAccount = await _accountRepository.GetByIdAsync(accountId);
+        }
+
         var reportData = new List<PaymentReportRow>();
 
         foreach (var order in orders)
@@ -927,8 +933,8 @@ public class ReportService : IReportService
                     // Filtrar por cuenta concreta (no el filtro virtual de divisas sin cuenta)
                     if (!string.IsNullOrWhiteSpace(accountId) && !IsNoAplicaCuentaFilter(accountId))
                     {
-                        var paymentAccountId = payment.PaymentDetails?.AccountId;
-                        if (string.IsNullOrWhiteSpace(paymentAccountId) || paymentAccountId != accountId)
+                        if (!PaymentMatchesAccountFilter(
+                                payment.PaymentDetails, accountId, filterAccount))
                         {
                             continue;
                         }
@@ -959,8 +965,8 @@ public class ReportService : IReportService
                 // Filtrar por cuenta concreta (no el filtro virtual de divisas sin cuenta)
                 if (!string.IsNullOrWhiteSpace(accountId) && !IsNoAplicaCuentaFilter(accountId))
                 {
-                    var paymentAccountId = order.PaymentDetails?.AccountId;
-                    if (string.IsNullOrWhiteSpace(paymentAccountId) || paymentAccountId != accountId)
+                    if (!PaymentMatchesAccountFilter(
+                            order.PaymentDetails, accountId, filterAccount))
                     {
                         continue;
                     }
@@ -1015,6 +1021,55 @@ public class ReportService : IReportService
 
     private static bool IsNoAplicaCuentaFilter(string? accountId) =>
         string.Equals(accountId, NoAplicaCuentaFilterValue, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Coincide por accountId o por nombre/código guardado en bank (TDD/TDC) u otros campos legacy.
+    /// Alineado con payments-report.tsx: el reporte muestra label en columna Cuenta sin exigir accountId.
+    /// </summary>
+    private static bool PaymentMatchesAccountFilter(
+        PaymentDetails? paymentDetails,
+        string filterAccountId,
+        Ordina.Database.Entities.Account.Account? filterAccount)
+    {
+        if (string.IsNullOrWhiteSpace(filterAccountId) || IsNoAplicaCuentaFilter(filterAccountId))
+            return true;
+
+        if (paymentDetails == null)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(paymentDetails.AccountId) &&
+            string.Equals(paymentDetails.AccountId, filterAccountId, StringComparison.Ordinal))
+            return true;
+
+        if (filterAccount == null)
+            return false;
+
+        if (PaymentTextMatchesAccountField(paymentDetails.Bank, filterAccount.Label) ||
+            PaymentTextMatchesAccountField(paymentDetails.Bank, filterAccount.Code))
+            return true;
+
+        if (PaymentTextMatchesAccountField(paymentDetails.PagomovilBank, filterAccount.Label) ||
+            PaymentTextMatchesAccountField(paymentDetails.PagomovilBank, filterAccount.Code) ||
+            PaymentTextMatchesAccountField(paymentDetails.TransferenciaBank, filterAccount.Label) ||
+            PaymentTextMatchesAccountField(paymentDetails.TransferenciaBank, filterAccount.Code))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(filterAccount.Email) &&
+            PaymentTextMatchesAccountField(paymentDetails.Email, filterAccount.Email))
+            return true;
+
+        return false;
+    }
+
+    private static bool PaymentTextMatchesAccountField(string? paymentValue, string? accountField)
+    {
+        if (string.IsNullOrWhiteSpace(paymentValue) || string.IsNullOrWhiteSpace(accountField))
+            return false;
+        return string.Equals(
+            paymentValue.Trim(),
+            accountField.Trim(),
+            StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool IsForeignCurrencyForReport(string? monedaOriginal)
     {

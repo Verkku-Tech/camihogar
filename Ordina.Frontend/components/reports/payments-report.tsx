@@ -183,6 +183,64 @@ function appendAccountFilterToParams(
   )
 }
 
+type PaymentDetailsLike = PartialPayment["paymentDetails"]
+
+function paymentTextMatchesAccountField(
+  paymentValue: string | undefined,
+  accountField: string | undefined,
+): boolean {
+  const p = (paymentValue ?? "").trim()
+  const a = (accountField ?? "").trim()
+  if (!p || !a) return false
+  return p.toLowerCase() === a.toLowerCase()
+}
+
+/** Por accountId o por label/código en bank (TDD/TDC) y campos legacy de PM/transferencia. */
+function paymentMatchesAccountFilter(
+  paymentDetails: PaymentDetailsLike | undefined,
+  filterAccountId: string,
+  accounts: Account[],
+): boolean {
+  if (!filterAccountId || filterAccountId === "Todos") return true
+  if (isNoAplicaAccountFilter(filterAccountId)) return false
+
+  if (!paymentDetails) return false
+
+  if (
+    paymentDetails.accountId &&
+    paymentDetails.accountId === filterAccountId
+  ) {
+    return true
+  }
+
+  const account = accounts.find((a) => a.id === filterAccountId)
+  if (!account) return false
+
+  const { label, code, email } = account
+
+  if (
+    paymentTextMatchesAccountField(paymentDetails.bank, label) ||
+    paymentTextMatchesAccountField(paymentDetails.bank, code)
+  ) {
+    return true
+  }
+
+  if (
+    paymentTextMatchesAccountField(paymentDetails.pagomovilBank, label) ||
+    paymentTextMatchesAccountField(paymentDetails.pagomovilBank, code) ||
+    paymentTextMatchesAccountField(paymentDetails.transferenciaBank, label) ||
+    paymentTextMatchesAccountField(paymentDetails.transferenciaBank, code)
+  ) {
+    return true
+  }
+
+  if (email && paymentTextMatchesAccountField(paymentDetails.email, email)) {
+    return true
+  }
+
+  return false
+}
+
 export function PaymentsReport() {
   const { hasPermission } = useAuth()
   const canConciliate = hasPermission("finance.conciliate")
@@ -501,8 +559,13 @@ export function PaymentsReport() {
               selectedAccount !== "Todos" &&
               !isNoAplicaAccountFilter(selectedAccount)
             ) {
-              const paymentAccountId = payment.paymentDetails?.accountId
-              if (!paymentAccountId || paymentAccountId !== selectedAccount) {
+              if (
+                !paymentMatchesAccountFilter(
+                  payment.paymentDetails,
+                  selectedAccount,
+                  accounts,
+                )
+              ) {
                 return
               }
             }
@@ -561,8 +624,13 @@ export function PaymentsReport() {
             selectedAccount !== "Todos" &&
             !isNoAplicaAccountFilter(selectedAccount)
           ) {
-            const paymentAccountId = order.paymentDetails?.accountId
-            if (!paymentAccountId || paymentAccountId !== selectedAccount) {
+            if (
+              !paymentMatchesAccountFilter(
+                order.paymentDetails,
+                selectedAccount,
+                accounts,
+              )
+            ) {
               return
             }
           }
@@ -708,6 +776,11 @@ export function PaymentsReport() {
         }
       }
     }
+
+    // TDD/TDC y similares: solo persisten bank (label del catálogo)
+    if (payment.paymentDetails.bank?.trim()) {
+      return payment.paymentDetails.bank.trim()
+    }
     
     return "-"
   }
@@ -736,6 +809,10 @@ export function PaymentsReport() {
           return `${account.label || account.code || ""}`
         }
       }
+    }
+
+    if (order.paymentDetails.bank?.trim()) {
+      return order.paymentDetails.bank.trim()
     }
     
     return "-"
