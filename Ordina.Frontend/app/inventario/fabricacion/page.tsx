@@ -47,6 +47,7 @@ import { TablePagination } from "@/components/ui/table-pagination"
 import { PURCHASE_TYPES } from "@/components/orders/constants"
 import { isSistemaApartado, isSistemaApartadoReadyForNormalFlow } from "@/lib/order-sa"
 import { isReservationOrder } from "@/lib/order-document-types"
+import { useAuth } from "@/contexts/auth-context"
 
 // Tipo para productos agrupados por pedido
 interface ProductRow {
@@ -82,6 +83,10 @@ const MANUFACTURING_STATUS_ORDER: Record<ProductRow["status"], number> = {
 }
 
 export default function FabricacionPage() {
+  const { user } = useAuth()
+  const isAdmin =
+    user?.role === "Super Administrator" ||
+    user?.role === "Administrator"
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -98,6 +103,13 @@ export default function FabricacionPage() {
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
   const [bulkManufactureDialogOpen, setBulkManufactureDialogOpen] = useState(false)
   const [bulkFabricatedDialogOpen, setBulkFabricatedDialogOpen] = useState(false)
+  const [bulkRevertDialogOpen, setBulkRevertDialogOpen] = useState(false)
+  const [individualRevertDialogOpen, setIndividualRevertDialogOpen] =
+    useState(false)
+  const [revertTarget, setRevertTarget] = useState<{
+    orderId: string
+    productId: string
+  } | null>(null)
   const [bulkSelectedProvider, setBulkSelectedProvider] = useState<{ id: string; name: string } | null>(null)
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [providerDialogMode, setProviderDialogMode] =
@@ -501,6 +513,16 @@ export default function FabricacionPage() {
     return updated
   }
 
+  const buildProductRevertToPorFabricar = (
+    current: OrderProduct,
+  ): OrderProduct => ({
+    ...current,
+    manufacturingStatus: "por_fabricar",
+    manufacturingStartedAt: undefined,
+    manufacturingCompletedAt: undefined,
+    logisticStatus: "Generado",
+  })
+
   const handleProviderDialogConfirm = async (
     providerId: string,
     providerName: string,
@@ -630,6 +652,109 @@ export default function FabricacionPage() {
     } catch (error: any) {
       console.error("Error marking as fabricated:", error)
       toast.error(error.message || "Error al actualizar el estado")
+    }
+  }
+
+  const revertProductInOrder = async (
+    orderId: string,
+    productId: string,
+  ): Promise<boolean> => {
+    const order = await getOrder(orderId)
+    if (!order) throw new Error("Pedido no encontrado")
+    if (!isSistemaApartadoReadyForNormalFlow(order)) {
+      toast.error(
+        "Sistema de Apartado: liquida el saldo en el pedido para continuar con la fabricación",
+      )
+      return false
+    }
+
+    const productIndex = order.products.findIndex((p) => p.id === productId)
+    if (productIndex === -1) throw new Error("Producto no encontrado")
+
+    const currentProduct = order.products[productIndex]
+    if (resolveManufacturingRowStatus(currentProduct.manufacturingStatus) !== "fabricando") {
+      throw new Error("El producto debe estar en Fabricando")
+    }
+
+    const updatedProducts = [...order.products]
+    updatedProducts[productIndex] =
+      buildProductRevertToPorFabricar(currentProduct)
+
+    await updateOrder(order.id, { products: updatedProducts })
+    return true
+  }
+
+  const handleRevertToPorFabricarClick = (
+    orderId: string,
+    productId: string,
+  ) => {
+    setRevertTarget({ orderId, productId })
+    setIndividualRevertDialogOpen(true)
+  }
+
+  const handleConfirmIndividualRevert = async () => {
+    if (!revertTarget) return
+
+    try {
+      const ok = await revertProductInOrder(
+        revertTarget.orderId,
+        revertTarget.productId,
+      )
+      if (!ok) return
+
+      const loadedOrders = await getOrders()
+      setOrders(loadedOrders)
+      toast.success("Producto devuelto a Por fabricar")
+    } catch (error: unknown) {
+      console.error("Error reverting manufacturing status:", error)
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error al devolver el producto a Por fabricar"
+      toast.error(message)
+    } finally {
+      setIndividualRevertDialogOpen(false)
+      setRevertTarget(null)
+    }
+  }
+
+  const handleBulkRevertToPorFabricarClick = () => {
+    if (getSelectedProductsForFabricated().length === 0) {
+      toast.error(
+        "Solo se pueden devolver productos con estado 'Fabricando'",
+      )
+      return
+    }
+    setBulkRevertDialogOpen(true)
+  }
+
+  const executeBulkRevertToPorFabricar = async () => {
+    const selectedKeys = getSelectedProductsForFabricated()
+    let successCount = 0
+    let errorCount = 0
+
+    for (const key of selectedKeys) {
+      const [orderId, productId] = key.split("|")
+      try {
+        const ok = await revertProductInOrder(orderId, productId)
+        if (ok) successCount++
+      } catch (error) {
+        console.error(`Error revirtiendo producto ${productId}:`, error)
+        errorCount++
+      }
+    }
+
+    const loadedOrders = await getOrders()
+    setOrders(loadedOrders)
+    setSelectedProducts(new Set())
+    setBulkRevertDialogOpen(false)
+
+    if (errorCount === 0) {
+      toast.success(
+        `${successCount} producto(s) devuelto(s) a Por fabricar`,
+      )
+    } else {
+      toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
     }
   }
 
@@ -1400,6 +1525,18 @@ export default function FabricacionPage() {
                         Marcar como Fabricado ({getSelectedProductsForFabricated().length})
                       </Button>
                     )}
+                    {isAdmin &&
+                      (filterStatus === "all" || filterStatus === "fabricating") &&
+                      getSelectedProductsForFabricated().length > 0 && (
+                      <Button
+                        onClick={handleBulkRevertToPorFabricarClick}
+                        variant="outline"
+                        className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/30"
+                      >
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Devolver a por fabricar ({getSelectedProductsForFabricated().length})
+                      </Button>
+                    )}
                     {(filterStatus === "all" || filterStatus === "warehouse") &&
                       getSelectedProductsForRefabrication().length > 0 && (
                       <Button
@@ -1709,16 +1846,35 @@ export default function FabricacionPage() {
                                                 </Button>
                                               )}
                                               {row.status === "fabricando" && (
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  onClick={(e) => {
-                                                    e.stopPropagation()
-                                                    handleMarkAsFabricated(row.orderId, row.product.id)
-                                                  }}
-                                                >
-                                                  En almacén
-                                                </Button>
+                                                <>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      handleMarkAsFabricated(row.orderId, row.product.id)
+                                                    }}
+                                                  >
+                                                    En almacén
+                                                  </Button>
+                                                  {isAdmin && (
+                                                    <Button
+                                                      size="sm"
+                                                      variant="outline"
+                                                      className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/30"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        handleRevertToPorFabricarClick(
+                                                          row.orderId,
+                                                          row.product.id,
+                                                        )
+                                                      }}
+                                                    >
+                                                      <RotateCcw className="w-4 h-4 mr-1" />
+                                                      Por fabricar
+                                                    </Button>
+                                                  )}
+                                                </>
                                               )}
                                               {row.status === "almacen_no_fabricado" && (
                                                 <Button
@@ -1821,6 +1977,57 @@ export default function FabricacionPage() {
               className="bg-blue-600 hover:bg-blue-700"
             >
               En almacén
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={individualRevertDialogOpen}
+        onOpenChange={(open) => {
+          setIndividualRevertDialogOpen(open)
+          if (!open) setRevertTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Devolver a Por fabricar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              El producto volverá a la cola de Por fabricar. El proveedor asignado
+              se mantiene.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-orange-600 hover:bg-orange-700"
+              onClick={handleConfirmIndividualRevert}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkRevertDialogOpen} onOpenChange={setBulkRevertDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Devolver a Por fabricar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas devolver{" "}
+              {getSelectedProductsForFabricated().length} producto(s) a Por
+              fabricar? El proveedor asignado se mantiene en cada línea.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setBulkRevertDialogOpen(false)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-orange-600 hover:bg-orange-700"
+              onClick={executeBulkRevertToPorFabricar}
+            >
+              Confirmar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

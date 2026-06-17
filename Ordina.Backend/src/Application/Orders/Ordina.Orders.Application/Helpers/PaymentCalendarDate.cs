@@ -7,11 +7,13 @@ namespace Ordina.Orders.Application.Helpers;
 public static class PaymentCalendarDate
 {
     private static readonly TimeSpan VenezuelaOffset = TimeSpan.FromHours(-4);
+    private static readonly TimeSpan CanonicalVeMidnightUtc = TimeSpan.FromHours(4);
 
     /// <summary>
     /// Día calendario del cobro.
     /// Unspecified (yyyy-MM-dd del formulario): .Date tal cual.
-    /// Utc (BSON/Mongo): instante convertido a calendario VE.
+    /// Utc T00:00Z (legacy) o T04:00Z (canónico): componentes UTC = día de negocio.
+    /// Otros Utc: instante convertido a calendario VE.
     /// </summary>
     public static DateOnly ToCalendarDate(DateTime value)
     {
@@ -23,6 +25,11 @@ public static class PaymentCalendarDate
         var utc = value.Kind == DateTimeKind.Utc
             ? value
             : value.ToUniversalTime();
+
+        if (IsUtcDateOnlyMarker(utc))
+        {
+            return new DateOnly(utc.Year, utc.Month, utc.Day);
+        }
 
         var veLocal = utc + VenezuelaOffset;
         return new DateOnly(veLocal.Year, veLocal.Month, veLocal.Day);
@@ -46,4 +53,11 @@ public static class PaymentCalendarDate
 
     public static string ToReportString(DateTime value) =>
         ToCalendarDate(value).ToString("yyyy-MM-dd");
+
+    /// <summary>
+    /// Marcadores de fecha calendario en Mongo: legacy T00:00Z o canónico T04:00Z (medianoche VE).
+    /// </summary>
+    private static bool IsUtcDateOnlyMarker(DateTime utc) =>
+        utc.Millisecond == 0 &&
+        (utc.TimeOfDay == TimeSpan.Zero || utc.TimeOfDay == CanonicalVeMidnightUtc);
 }
