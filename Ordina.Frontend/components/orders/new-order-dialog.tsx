@@ -63,6 +63,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
+import { todayPaymentDateYyyyMmDd } from "@/lib/exchange-rate-for-date";
 
 type OrderFormSelectedClient = {
   id: string;
@@ -210,7 +211,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       id: Date.now().toString(),
       amount: 0,
       method: "",
-      date: new Date().toISOString().split("T")[0],
+      date: todayPaymentDateYyyyMmDd(),
       currency: defaultCurrency,
       paymentDetails: {},
     };
@@ -891,14 +892,22 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           0,
           orderForm.total - orderForm.appliedStoreCreditUsd,
         );
-        paymentsNorm = buildCasheaPaymentsForSave(
-          paymentsNorm,
-          getCasheaTotalDueBs({
+        paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, {
+          orderTotalBs: getCasheaTotalDueBs({
             totalDueUsd: dueUsd,
             useUsdTotals: true,
             usdRate: orderForm.exchangeRates.USD?.rate,
           }),
-        );
+          useUsdTotals: true,
+          totalDueUsd: dueUsd,
+          usdRate: orderForm.exchangeRates.USD?.rate,
+          order: {
+            baseCurrency: ORDER_BASE_CURRENCY,
+            exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+              orderForm.exchangeRates,
+            ),
+          },
+        });
       }
       const multi = paymentsNorm.length > 1;
 

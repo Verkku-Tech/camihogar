@@ -73,7 +73,10 @@ import { getAll } from "@/lib/indexeddb";
 import { apiClient } from "@/lib/api-client";
 import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
 import { DeliveryServicesSummaryLines } from "@/components/orders/delivery-services-summary-lines";
-import { CASHEA_FINANCED_METHOD_LABEL } from "@/lib/order-payments";
+import {
+  CASHEA_FINANCED_METHOD_LABEL,
+  isCasheaOrder,
+} from "@/lib/order-payments";
 import {
   appliedUsdToBs,
   tryComputeOverpaymentUsd,
@@ -95,6 +98,7 @@ import {
   getGeneralDiscountSummaryLabel,
   getLineDiscountLabelLead,
 } from "@/lib/product-discount-ui";
+import { formatPaymentDateForDisplay } from "@/lib/exchange-rate-for-date";
 
 const OrderPdfDownloadButton = dynamic(
   () =>
@@ -776,7 +780,7 @@ export default function OrderDetailPage() {
   };
 
   const casheaPaidInStoreUsd = useMemo(() => {
-    if (!order || order.paymentCondition !== "cashea") return 0;
+    if (!order || !isCasheaOrder(order)) return 0;
     const inStore = activePayments.filter(
       (p) =>
         !p.paymentDetails?.casheaFinancedPortion &&
@@ -787,7 +791,7 @@ export default function OrderDetailPage() {
 
   const casheaHasFinancedLine = useMemo(
     () =>
-      order?.paymentCondition === "cashea" &&
+      isCasheaOrder(order ?? {}) &&
       activePayments.some(
         (p) =>
           p.paymentDetails?.casheaFinancedPortion ||
@@ -2711,9 +2715,9 @@ export default function OrderDetailPage() {
                                     {payment.date && (
                                       <span className="ml-2">
                                         (Fecha del pago:{" "}
-                                        {new Date(
+                                        {formatPaymentDateForDisplay(
                                           payment.date,
-                                        ).toLocaleDateString()}
+                                        )}
                                         )
                                       </span>
                                     )}
@@ -2734,9 +2738,7 @@ export default function OrderDetailPage() {
                                   paymentCurrency === "Bs") && (
                                   <div className="text-xs text-muted-foreground">
                                     Fecha:{" "}
-                                    {new Date(
-                                      payment.date,
-                                    ).toLocaleDateString()}
+                                    {formatPaymentDateForDisplay(payment.date)}
                                   </div>
                                 )}
 
@@ -2815,9 +2817,9 @@ export default function OrderDetailPage() {
                                   {payment.date && (
                                     <span className="ml-2">
                                       (Fecha del pago:{" "}
-                                      {new Date(
+                                      {formatPaymentDateForDisplay(
                                         payment.date,
-                                      ).toLocaleDateString()}
+                                      )}
                                       )
                                     </span>
                                   )}
@@ -2838,7 +2840,7 @@ export default function OrderDetailPage() {
                                 paymentCurrency === "Bs") && (
                                 <div className="text-xs text-muted-foreground">
                                   Fecha:{" "}
-                                  {new Date(payment.date).toLocaleDateString()}
+                                  {formatPaymentDateForDisplay(payment.date)}
                                 </div>
                               )}
 

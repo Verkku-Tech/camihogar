@@ -13,6 +13,7 @@ using Ordina.Orders.Application.Commission;
 using Ordina.Orders.Application;
 using Ordina.Orders.Application.Dispatch;
 using Ordina.Orders.Application.DTOs;
+using Ordina.Orders.Application.Helpers;
 
 namespace Ordina.Orders.Application.Services;
 
@@ -920,9 +921,19 @@ public class ReportService : IReportService
                     if (IsCasheaFinancingStubForReport(payment))
                         continue;
 
-                    // Filtrar por rango de fechas del pago
-                    if (startDate.HasValue && payment.Date < startDate.Value) continue;
-                    if (endDate.HasValue && payment.Date > endDate.Value.AddDays(1).AddSeconds(-1)) continue;
+                    // Filtrar por rango de fechas del pago (calendario VE)
+                    var paymentCalendarDate = PaymentCalendarDate.ToCalendarDate(payment.Date);
+                    if (startDate.HasValue &&
+                        paymentCalendarDate < DateOnly.FromDateTime(startDate.Value.Date))
+                    {
+                        continue;
+                    }
+
+                    if (endDate.HasValue &&
+                        paymentCalendarDate > DateOnly.FromDateTime(endDate.Value.Date))
+                    {
+                        continue;
+                    }
 
                     // Filtrar por método de pago
                     if (!string.IsNullOrWhiteSpace(paymentMethod) && payment.Method != paymentMethod)
@@ -1168,7 +1179,7 @@ public class ReportService : IReportService
 
         return new PaymentReportRow
         {
-            Fecha = paymentDate.ToString("yyyy-MM-dd"),
+            Fecha = PaymentCalendarDate.ToReportString(paymentDate),
             Pedido = order.OrderNumber,
             Cliente = order.ClientName,
             MetodoPago = payment.Method,
