@@ -60,6 +60,7 @@ import { mapOrderProductsToConfirmDto } from "@/lib/order-product-confirm-map";
 import { orderFromBackendDto } from "@/lib/storage";
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
+import { todayPaymentDateYyyyMmDd } from "@/lib/exchange-rate-for-date";
 import type { Currency } from "@/lib/currency-utils";
 import {
   isActiveReservationStatus,
@@ -289,7 +290,7 @@ export function ConfirmOrderDialog({
       id: Date.now().toString(),
       amount: 0,
       method: "",
-      date: new Date().toISOString().split("T")[0],
+      date: todayPaymentDateYyyyMmDd(),
       currency: "Bs" as Currency,
       paymentDetails: {},
     };
@@ -380,14 +381,20 @@ export function ConfirmOrderDialog({
       const usdRate =
         exchangeRatesAtCreation?.USD?.rate ??
         exchangeRatesAtCreation?.usd?.rate;
-      paymentsNorm = buildCasheaPaymentsForSave(
-        paymentsNorm,
-        getCasheaTotalDueBs({
+      paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, {
+        orderTotalBs: getCasheaTotalDueBs({
           totalDueUsd: total,
           useUsdTotals: true,
           usdRate,
         }),
-      );
+        useUsdTotals: true,
+        totalDueUsd: total,
+        usdRate,
+        order: {
+          baseCurrency: formBaseCurrency,
+          exchangeRatesAtCreation: exchangeRatesAtCreation ?? undefined,
+        },
+      });
     }
     const multi = paymentsNorm.length > 1;
 

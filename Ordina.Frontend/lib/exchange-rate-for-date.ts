@@ -29,6 +29,14 @@ export function todayPaymentDateYyyyMmDd(): string {
   return `${y}-${m}-${day}`;
 }
 
+/** dd/mm/yyyy para UI — solo calendario, sin desfase UTC. */
+export function formatPaymentDateForDisplay(date: string | undefined): string {
+  const ymd = paymentDateToYyyyMmDd(date);
+  if (!ymd) return "";
+  const [y, m, d] = ymd.split("-");
+  return `${d}/${m}/${y}`;
+}
+
 function normalizeApiRateRow(
   row: Record<string, unknown>,
   toCurrency: "USD" | "EUR",

@@ -19,6 +19,10 @@ import { useAuth } from "@/contexts/auth-context"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { digitalPaymentMethods } from "@/components/orders/constants"
+import {
+  formatPaymentDateForDisplay,
+  paymentDateToYyyyMmDd,
+} from "@/lib/exchange-rate-for-date"
 
 interface PaymentReportRow {
   id: string
@@ -546,10 +550,10 @@ export function PaymentsReport() {
               return
             }
 
-            const paymentDate = new Date(payment.date)
+            const paymentYmd = paymentDateToYyyyMmDd(payment.date)
 
-            if (startDateObj && paymentDate < startDateObj) return
-            if (endDateObj && paymentDate > endDateObj) return
+            if (startDate && paymentYmd < startDate) return
+            if (endDate && paymentYmd > endDate) return
 
             if (backendPm !== "Todos" && payment.method !== backendPm) {
               return
@@ -819,12 +823,7 @@ export function PaymentsReport() {
   }
 
   const formatDate = (dateString: string): string => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("es-VE", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    })
+    return formatPaymentDateForDisplay(dateString)
   }
 
   const formatCurrency = (amount: number, currency: string): string => {
