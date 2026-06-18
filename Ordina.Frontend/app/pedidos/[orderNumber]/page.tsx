@@ -1827,11 +1827,14 @@ export default function OrderDetailPage() {
                       <div>
                         <p className="text-sm text-muted-foreground">Cliente</p>
                         <p className="font-medium">{order.clientName}</p>
-                        {client?.rutId && (
-                          <p className="text-xs text-muted-foreground">
-                            RUT/ID: {client.rutId}
-                          </p>
-                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">
+                          Cédula / RUT
+                        </p>
+                        <p className="font-medium">
+                          {client?.rutId?.trim() || "—"}
+                        </p>
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">
