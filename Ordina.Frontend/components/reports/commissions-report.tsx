@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -11,6 +11,10 @@ import { toast } from "sonner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
+  AttributeSingleSearchSelect,
+  type AttributeOption,
+} from "@/components/inventory/attribute-multi-search-select"
+import {
   getUsers,
   getStores,
   type User,
@@ -19,6 +23,7 @@ import {
 import {
   apiClient,
   type CommissionReportRowDto,
+  type CommissionReferrerOptionDto,
   type CommissionsReportQueryParams,
 } from "@/lib/api-client"
 
@@ -73,12 +78,19 @@ function buildReportQueryParams(
   endDate: string,
   selectedStoreId: string,
   selectedVendorId: string,
+  selectedSellerType: string,
+  selectedReferrerId: string,
 ): CommissionsReportQueryParams {
   return {
     startDate,
     endDate,
     vendorId: selectedVendorId === "all" ? undefined : selectedVendorId,
     storeId: selectedStoreId === "all" ? undefined : selectedStoreId,
+    sellerType:
+      selectedSellerType === "all"
+        ? undefined
+        : (selectedSellerType as "store" | "online"),
+    referrerId: selectedReferrerId === "all" ? undefined : selectedReferrerId,
   }
 }
 
@@ -111,6 +123,9 @@ export function CommissionsReport() {
   const [endDate, setEndDate] = useState<string>("")
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all")
   const [selectedVendorId, setSelectedVendorId] = useState<string>("all")
+  const [selectedSellerType, setSelectedSellerType] = useState<string>("all")
+  const [selectedReferrerId, setSelectedReferrerId] = useState<string>("all")
+  const [referrersInRange, setReferrersInRange] = useState<CommissionReferrerOptionDto[]>([])
   const [commissionSellers, setCommissionSellers] = useState<User[]>([])
   const [stores, setStores] = useState<Store[]>([])
   const [reportData, setReportData] = useState<CommissionReportRow[]>([])
@@ -132,11 +147,72 @@ export function CommissionsReport() {
   const sellersForStoreFilter = filterSellersByStore(
     commissionSellers,
     selectedStoreId,
-  )
+  ).filter((user) => {
+    if (selectedSellerType === "store") return user.role === "Store Seller"
+    if (selectedSellerType === "online") return user.role === "Online Seller"
+    return true
+  })
 
   const unassignedStoreSellersCount = commissionSellers.filter(
     (u) => u.role === "Store Seller" && !u.storeId,
   ).length
+
+  const storeOptions = useMemo<AttributeOption[]>(
+    () => [
+      { value: "all", label: "Todas" },
+      { value: "unassigned", label: "Sin tienda asignada" },
+      ...stores.map((store) => ({ value: store.id, label: store.name })),
+    ],
+    [stores],
+  )
+
+  const vendorOptions = useMemo<AttributeOption[]>(
+    () => [
+      { value: "all", label: "Todos" },
+      ...sellersForStoreFilter.map((user) => ({ value: user.id, label: user.name })),
+    ],
+    [sellersForStoreFilter],
+  )
+
+  const referrerOptions = useMemo<AttributeOption[]>(
+    () => [
+      { value: "all", label: "Todos" },
+      ...referrersInRange.map((referrer) => ({
+        value: referrer.id,
+        label: referrer.name,
+      })),
+    ],
+    [referrersInRange],
+  )
+
+  useEffect(() => {
+    const loadReferrers = async () => {
+      if (!startDate || !endDate) {
+        setReferrersInRange([])
+        setSelectedReferrerId("all")
+        return
+      }
+
+      try {
+        const referrers = await apiClient.getCommissionReferrersInRange(
+          startDate,
+          endDate,
+        )
+        setReferrersInRange(referrers)
+        setSelectedReferrerId((current) =>
+          current !== "all" && !referrers.some((r) => r.id === current)
+            ? "all"
+            : current,
+        )
+      } catch (error) {
+        console.error("Error loading commission referrers:", error)
+        setReferrersInRange([])
+        setSelectedReferrerId("all")
+      }
+    }
+
+    loadReferrers()
+  }, [startDate, endDate])
 
   useEffect(() => {
     const loadReportData = async () => {
@@ -155,6 +231,8 @@ export function CommissionsReport() {
             endDate,
             selectedStoreId,
             selectedVendorId,
+            selectedSellerType,
+            selectedReferrerId,
           ),
         )
         setReportData(mapDtoToTableRows(rows))
@@ -169,7 +247,14 @@ export function CommissionsReport() {
     }
 
     loadReportData()
-  }, [startDate, endDate, selectedStoreId, selectedVendorId])
+  }, [
+    startDate,
+    endDate,
+    selectedStoreId,
+    selectedVendorId,
+    selectedSellerType,
+    selectedReferrerId,
+  ])
 
   const handleDownloadExcel = async () => {
     if (!startDate || !endDate) {
@@ -186,6 +271,8 @@ export function CommissionsReport() {
           endDate,
           selectedStoreId,
           selectedVendorId,
+          selectedSellerType,
+          selectedReferrerId,
         ),
       )
 
@@ -248,10 +335,12 @@ export function CommissionsReport() {
               ` Hay ${unassignedStoreSellersCount} vendedor${unassignedStoreSellersCount === 1 ? "" : "es"} de tienda sin sede asignada.`}
             {" "}La comisión de post venta aplica en ventas compartidas con tipo Encargo o
             Sistema de apartado; en entrega o encargo/entrega suele ser $0.
+            {" "}Puede filtrar por tipo de vendedor (tienda u online) y por referido
+            registrado en pedidos del rango de fechas.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="startDate">
                 Fecha Desde <span className="text-red-500">*</span>
@@ -277,43 +366,58 @@ export function CommissionsReport() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="store">Tienda (Opcional)</Label>
-              <Select
+              <Label>Tienda (Opcional)</Label>
+              <AttributeSingleSearchSelect
+                options={storeOptions}
                 value={selectedStoreId}
+                onChange={(value) => {
+                  setSelectedStoreId(value ?? "all")
+                  setSelectedVendorId("all")
+                }}
+                placeholder="Todas las tiendas"
+                searchPlaceholder="Buscar tienda..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Vendedor (Opcional)</Label>
+              <AttributeSingleSearchSelect
+                options={vendorOptions}
+                value={selectedVendorId}
+                onChange={(value) => setSelectedVendorId(value ?? "all")}
+                placeholder="Todos los vendedores"
+                searchPlaceholder="Buscar vendedor..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sellerType">Tipo de vendedor (Opcional)</Label>
+              <Select
+                value={selectedSellerType}
                 onValueChange={(value) => {
-                  setSelectedStoreId(value)
+                  setSelectedSellerType(value)
                   setSelectedVendorId("all")
                 }}
               >
-                <SelectTrigger id="store">
-                  <SelectValue placeholder="Todas las tiendas" />
+                <SelectTrigger id="sellerType">
+                  <SelectValue placeholder="Todos los tipos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="unassigned">Sin tienda asignada</SelectItem>
-                  {stores.map((store) => (
-                    <SelectItem key={store.id} value={store.id}>
-                      {store.name}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="store">Vendedor tienda</SelectItem>
+                  <SelectItem value="online">Vendedor online</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="vendor">Vendedor (Opcional)</Label>
-              <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
-                <SelectTrigger id="vendor">
-                  <SelectValue placeholder="Todos los vendedores" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {sellersForStoreFilter.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Referido (Opcional)</Label>
+              <AttributeSingleSearchSelect
+                options={referrerOptions}
+                value={selectedReferrerId}
+                onChange={(value) => setSelectedReferrerId(value ?? "all")}
+                placeholder="Todos los referidos"
+                searchPlaceholder="Buscar referido..."
+                disabled={!startDate || !endDate}
+                emptyMessage="No hay referidos en este rango de fechas"
+              />
             </div>
           </div>
         </CardContent>

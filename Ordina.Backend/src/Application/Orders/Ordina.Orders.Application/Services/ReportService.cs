@@ -51,7 +51,9 @@ public interface IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? storeId = null);
+        string? storeId = null,
+        string? sellerType = null,
+        string? referrerId = null);
 
     Task<Stream> GenerateCommissionsReportFromDataAsync(
         List<CommissionReportRowDto> reportData);
@@ -60,7 +62,13 @@ public interface IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? storeId = null);
+        string? storeId = null,
+        string? sellerType = null,
+        string? referrerId = null);
+
+    Task<List<CommissionReferrerOptionDto>> GetCommissionReferrersInRangeAsync(
+        DateTime startDate,
+        DateTime endDate);
 
     Task<Stream> GenerateDispatchReportAsync(
         string? deliveryZone = null,
@@ -1303,7 +1311,9 @@ public class ReportService : IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? storeId = null)
+        string? storeId = null,
+        string? sellerType = null,
+        string? referrerId = null)
     {
         try
         {
@@ -1313,7 +1323,9 @@ public class ReportService : IReportService
                 startDate,
                 endDate,
                 vendorId,
-                storeId);
+                storeId,
+                sellerType,
+                referrerId);
 
             // Convertir de CommissionReportRow (clase interna) a CommissionReportRowDto
             var dtoData = reportData.Select(row => new CommissionReportRowDto
@@ -1444,7 +1456,9 @@ public class ReportService : IReportService
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? storeId = null)
+        string? storeId = null,
+        string? sellerType = null,
+        string? referrerId = null)
     {
         try
         {
@@ -1454,7 +1468,9 @@ public class ReportService : IReportService
                 startDate,
                 endDate,
                 vendorId,
-                storeId);
+                storeId,
+                sellerType,
+                referrerId);
 
             // Ordenar por fecha (más reciente primero)
             reportData = reportData
@@ -1493,11 +1509,44 @@ public class ReportService : IReportService
         }
     }
 
+    public async Task<List<CommissionReferrerOptionDto>> GetCommissionReferrersInRangeAsync(
+        DateTime startDate,
+        DateTime endDate)
+    {
+        var rangeStart = NormalizeCommissionReportStartDate(startDate);
+        var rangeEnd = NormalizeCommissionReportEndDate(endDate);
+
+        var orders = await _orderRepository.GetByCreatedAtRangeAsync(rangeStart, rangeEnd);
+
+        return orders
+            .Where(order =>
+                !OrderDocumentTypes.IsReservationType(order.Type)
+                && !OrderDocumentTypes.IsReservationOrderNumber(order.OrderNumber)
+                && !string.IsNullOrWhiteSpace(order.ReferrerId))
+            .GroupBy(order => order.ReferrerId!.Trim(), StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var first = group.First();
+                var name = string.IsNullOrWhiteSpace(first.ReferrerName)
+                    ? group.Key
+                    : first.ReferrerName.Trim();
+                return new CommissionReferrerOptionDto
+                {
+                    Id = group.Key,
+                    Name = name
+                };
+            })
+            .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private async Task<List<CommissionReportRow>> GetFilteredCommissionsDataAsync(
         DateTime startDate,
         DateTime endDate,
         string? vendorId = null,
-        string? storeId = null)
+        string? storeId = null,
+        string? sellerType = null,
+        string? referrerId = null)
     {
         var rangeStart = NormalizeCommissionReportStartDate(startDate);
         var rangeEnd = NormalizeCommissionReportEndDate(endDate);
@@ -1534,6 +1583,12 @@ public class ReportService : IReportService
                         lineCtx.EffectiveVendorId,
                         lineCtx.EffectiveReferrerId,
                         postventaId))
+                    continue;
+
+                if (!RowMatchesSellerTypeFilter(sellerType, users, lineCtx.EffectiveVendorId))
+                    continue;
+
+                if (!RowMatchesReferrerFilter(referrerId, order, lineCtx.EffectiveReferrerId))
                     continue;
 
                 var mainVendor = users.FirstOrDefault(u => u.Id == lineCtx.EffectiveVendorId);
@@ -1628,6 +1683,39 @@ public class ReportService : IReportService
                 && string.Equals(effectiveReferrerId.Trim(), filter, StringComparison.Ordinal))
             || (!string.IsNullOrWhiteSpace(postventaId)
                 && string.Equals(postventaId, filter, StringComparison.Ordinal));
+    }
+
+    private static bool RowMatchesSellerTypeFilter(
+        string? sellerType,
+        IReadOnlyList<User> users,
+        string effectiveVendorId)
+    {
+        if (string.IsNullOrWhiteSpace(sellerType) || sellerType == "all")
+            return true;
+
+        var vendor = users.FirstOrDefault(u => u.Id == effectiveVendorId);
+        if (vendor == null)
+            return false;
+
+        return sellerType switch
+        {
+            "online" => string.Equals(vendor.Role, "Online Seller", StringComparison.Ordinal),
+            "store" => string.Equals(vendor.Role, "Store Seller", StringComparison.Ordinal),
+            _ => true
+        };
+    }
+
+    private static bool RowMatchesReferrerFilter(
+        string? referrerId,
+        Order order,
+        string? effectiveReferrerId)
+    {
+        if (string.IsNullOrWhiteSpace(referrerId))
+            return true;
+
+        var filter = referrerId.Trim();
+        return string.Equals(order.ReferrerId?.Trim(), filter, StringComparison.Ordinal)
+            || string.Equals(effectiveReferrerId?.Trim(), filter, StringComparison.Ordinal);
     }
 
     private static bool RowMatchesStoreFilter(

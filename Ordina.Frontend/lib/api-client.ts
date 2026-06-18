@@ -1667,6 +1667,10 @@ export class ApiClient {
     q.set("endDate", params.endDate);
     if (params.vendorId) q.set("vendorId", params.vendorId);
     if (params.storeId) q.set("storeId", params.storeId);
+    if (params.sellerType && params.sellerType !== "all") {
+      q.set("sellerType", params.sellerType);
+    }
+    if (params.referrerId) q.set("referrerId", params.referrerId);
     return q.toString();
   }
 
@@ -1706,6 +1710,18 @@ export class ApiClient {
     }
 
     return response.blob();
+  }
+
+  async getCommissionReferrersInRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<CommissionReferrerOptionDto[]> {
+    const q = new URLSearchParams();
+    q.set("startDate", startDate);
+    q.set("endDate", endDate);
+    return this.request<CommissionReferrerOptionDto[]>(
+      `/api/Reports/Commissions/Referrers?${q.toString()}`,
+    );
   }
 }
 
@@ -1831,6 +1847,13 @@ export interface CommissionsReportQueryParams {
   endDate: string;
   vendorId?: string;
   storeId?: string;
+  sellerType?: "all" | "store" | "online";
+  referrerId?: string;
+}
+
+export interface CommissionReferrerOptionDto {
+  id: string;
+  name: string;
 }
 
 export interface CommissionReportRowDto {
