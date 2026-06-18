@@ -18,6 +18,13 @@ public class ReportsController : ControllerBase
         "almacen_no_fabricado"
     }, System.StringComparer.OrdinalIgnoreCase);
 
+    private static readonly HashSet<string> CommissionSellerTypes = new HashSet<string>(new[]
+    {
+        "all",
+        "store",
+        "online"
+    }, System.StringComparer.OrdinalIgnoreCase);
+
     private readonly IReportService _reportService;
     private readonly ILogger<ReportsController> _logger;
 
@@ -370,31 +377,27 @@ public class ReportsController : ControllerBase
         [FromQuery] string startDate,
         [FromQuery] string endDate,
         [FromQuery] string? vendorId = null,
-        [FromQuery] string? storeId = null)
+        [FromQuery] string? storeId = null,
+        [FromQuery] string? sellerType = null,
+        [FromQuery] string? referrerId = null)
     {
         try
         {
-            // Validar fechas obligatorias
-            if (string.IsNullOrWhiteSpace(startDate) || string.IsNullOrWhiteSpace(endDate))
-            {
-                return BadRequest(new { message = "Las fechas de inicio y fin son obligatorias" });
-            }
+            var dateValidation = TryValidateCommissionReportDates(startDate, endDate, out var parsedStartDate, out var parsedEndDate);
+            if (dateValidation != null)
+                return dateValidation;
 
-            if (!DateTime.TryParse(startDate, out var parsedStartDate))
-            {
-                return BadRequest(new { message = "Formato de fecha de inicio inválido. Use yyyy-MM-dd" });
-            }
-
-            if (!DateTime.TryParse(endDate, out var parsedEndDate))
-            {
-                return BadRequest(new { message = "Formato de fecha de fin inválido. Use yyyy-MM-dd" });
-            }
+            var sellerTypeValidation = TryValidateCommissionSellerType(sellerType);
+            if (sellerTypeValidation != null)
+                return sellerTypeValidation;
 
             var stream = await _reportService.GenerateCommissionsReportAsync(
                 parsedStartDate,
                 parsedEndDate,
                 vendorId,
-                storeId);
+                storeId,
+                sellerType,
+                referrerId);
             
             var fileName = $"Reporte_Comisiones_{DateTime.UtcNow:yyyyMMdd}.xlsx";
             
@@ -428,31 +431,27 @@ public class ReportsController : ControllerBase
         [FromQuery] string startDate,
         [FromQuery] string endDate,
         [FromQuery] string? vendorId = null,
-        [FromQuery] string? storeId = null)
+        [FromQuery] string? storeId = null,
+        [FromQuery] string? sellerType = null,
+        [FromQuery] string? referrerId = null)
     {
         try
         {
-            // Validar fechas obligatorias
-            if (string.IsNullOrWhiteSpace(startDate) || string.IsNullOrWhiteSpace(endDate))
-            {
-                return BadRequest(new { message = "Las fechas de inicio y fin son obligatorias" });
-            }
+            var dateValidation = TryValidateCommissionReportDates(startDate, endDate, out var parsedStartDate, out var parsedEndDate);
+            if (dateValidation != null)
+                return dateValidation;
 
-            if (!DateTime.TryParse(startDate, out var parsedStartDate))
-            {
-                return BadRequest(new { message = "Formato de fecha de inicio inválido. Use yyyy-MM-dd" });
-            }
-
-            if (!DateTime.TryParse(endDate, out var parsedEndDate))
-            {
-                return BadRequest(new { message = "Formato de fecha de fin inválido. Use yyyy-MM-dd" });
-            }
+            var sellerTypeValidation = TryValidateCommissionSellerType(sellerType);
+            if (sellerTypeValidation != null)
+                return sellerTypeValidation;
 
             var reportData = await _reportService.GetCommissionsReportDataAsync(
                 parsedStartDate,
                 parsedEndDate,
                 vendorId,
-                storeId);
+                storeId,
+                sellerType,
+                referrerId);
             
             return Ok(reportData);
         }
@@ -465,6 +464,83 @@ public class ReportsController : ControllerBase
             _logger.LogError(ex, "Error al obtener datos del reporte de comisiones");
             return StatusCode(500, new { message = "Error interno del servidor al obtener los datos del reporte" });
         }
+    }
+
+    /// <summary>
+    /// Obtiene los referidos distintos presentes en pedidos del rango de fechas (para filtro del reporte).
+    /// </summary>
+    [HttpGet("Commissions/Referrers")]
+    [ProducesResponseType(typeof(List<CommissionReferrerOptionDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetCommissionReferrersInRange(
+        [FromQuery] string startDate,
+        [FromQuery] string endDate)
+    {
+        try
+        {
+            var dateValidation = TryValidateCommissionReportDates(startDate, endDate, out var parsedStartDate, out var parsedEndDate);
+            if (dateValidation != null)
+                return dateValidation;
+
+            var referrers = await _reportService.GetCommissionReferrersInRangeAsync(
+                parsedStartDate,
+                parsedEndDate);
+
+            return Ok(referrers);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener referidos del reporte de comisiones");
+            return StatusCode(500, new { message = "Error interno del servidor al obtener los referidos" });
+        }
+    }
+
+    private static IActionResult? TryValidateCommissionReportDates(
+        string startDate,
+        string endDate,
+        out DateTime parsedStartDate,
+        out DateTime parsedEndDate)
+    {
+        parsedStartDate = default;
+        parsedEndDate = default;
+
+        if (string.IsNullOrWhiteSpace(startDate) || string.IsNullOrWhiteSpace(endDate))
+        {
+            return new BadRequestObjectResult(new { message = "Las fechas de inicio y fin son obligatorias" });
+        }
+
+        if (!DateTime.TryParse(startDate, out parsedStartDate))
+        {
+            return new BadRequestObjectResult(new { message = "Formato de fecha de inicio inválido. Use yyyy-MM-dd" });
+        }
+
+        if (!DateTime.TryParse(endDate, out parsedEndDate))
+        {
+            return new BadRequestObjectResult(new { message = "Formato de fecha de fin inválido. Use yyyy-MM-dd" });
+        }
+
+        return null;
+    }
+
+    private static IActionResult? TryValidateCommissionSellerType(string? sellerType)
+    {
+        if (string.IsNullOrWhiteSpace(sellerType))
+            return null;
+
+        if (!CommissionSellerTypes.Contains(sellerType))
+        {
+            return new BadRequestObjectResult(new
+            {
+                message = "Tipo de vendedor inválido. Valores permitidos: all, store, online"
+            });
+        }
+
+        return null;
     }
 
     /// <summary>
