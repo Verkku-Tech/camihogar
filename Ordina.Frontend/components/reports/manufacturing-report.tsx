@@ -13,6 +13,7 @@ import { getProviders, getOrders, type Provider, type Order, type OrderProduct }
 import { isReservationOrder } from "@/lib/order-document-types"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
@@ -357,7 +358,7 @@ export function ManufacturingReport() {
       case "debe_fabricar":
         return "Debe fabricar"
       case "por_fabricar":
-        return "Por fabricar"
+        return REPORTE_FABRICACION_LABEL
       case "fabricando":
         return "Fabricando"
       case "almacen_no_fabricado":
@@ -519,7 +520,7 @@ export function ManufacturingReport() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="debe_fabricar">Debe fabricar</SelectItem>
-                    <SelectItem value="por_fabricar">Por fabricar</SelectItem>
+                    <SelectItem value="por_fabricar">{REPORTE_FABRICACION_LABEL}</SelectItem>
                     <SelectItem value="fabricando">Fabricando</SelectItem>
                     <SelectItem value="almacen_no_fabricado">En almacén</SelectItem>
                   </SelectContent>

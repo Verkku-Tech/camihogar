@@ -1130,6 +1130,15 @@ public class ReportService : IReportService
         return (new List<PartialPayment>(), string.Empty);
     }
 
+    private static bool IsPagoAEntregaCondition(Order order) =>
+        string.Equals(order.PaymentCondition?.Trim(), "pago_a_entrega", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasRecordedPaymentsForCommission(Order order)
+    {
+        var (payments, _) = GetActivePaymentsForReport(order);
+        return payments.Count > 0;
+    }
+
     /// <summary>Abono sintético Cashea por financiación: no debe aparecer en reporte de conciliación.</summary>
     private static bool IsCasheaFinancingStubForReport(PartialPayment payment) =>
         payment.PaymentDetails?.CasheaFinancedPortion == true ||
@@ -1522,6 +1531,7 @@ public class ReportService : IReportService
             .Where(order =>
                 !OrderDocumentTypes.IsReservationType(order.Type)
                 && !OrderDocumentTypes.IsReservationOrderNumber(order.OrderNumber)
+                && !(IsPagoAEntregaCondition(order) && !HasRecordedPaymentsForCommission(order))
                 && !string.IsNullOrWhiteSpace(order.ReferrerId))
             .GroupBy(order => order.ReferrerId!.Trim(), StringComparer.Ordinal)
             .Select(group =>
@@ -1561,6 +1571,9 @@ public class ReportService : IReportService
         {
             if (OrderDocumentTypes.IsReservationType(order.Type)
                 || OrderDocumentTypes.IsReservationOrderNumber(order.OrderNumber))
+                continue;
+
+            if (IsPagoAEntregaCondition(order) && !HasRecordedPaymentsForCommission(order))
                 continue;
 
             var tipoVentaLabel = GetCommissionSaleTypeLabel(order, saleTypeRules);
