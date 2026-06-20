@@ -16,7 +16,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { getProviders, type Provider } from "@/lib/storage"
 import { toast } from "sonner"
 import type { OrderProduct } from "@/lib/storage"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, Loader2 } from "lucide-react"
+import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels"
 
 export type ManufacturingProviderDialogMode =
   | "start" // por_fabricar → fabricando (proveedor obligatorio)
@@ -30,6 +31,8 @@ interface SelectProviderDialogProps {
   orderId: string
   onConfirm: (providerId: string, providerName: string, notes?: string, refabricationReason?: string) => void
   mode?: ManufacturingProviderDialogMode
+  /** Bloquea confirmar/cancelar mientras el padre procesa la acción. */
+  isSubmitting?: boolean
   /** @deprecated Usar mode="refabrication" */
   isRefabrication?: boolean
 }
@@ -41,6 +44,7 @@ export function SelectProviderDialog({
   orderId,
   onConfirm,
   mode: modeProp,
+  isSubmitting = false,
   isRefabrication = false,
 }: SelectProviderDialogProps) {
   const mode: ManufacturingProviderDialogMode =
@@ -77,6 +81,7 @@ export function SelectProviderDialog({
   }, [open])
 
   const handleConfirm = () => {
+    if (isSubmitting) return
     if (!providerOptional && !selectedProviderId) {
       toast.error("Por favor selecciona un proveedor")
       return
@@ -130,14 +135,14 @@ export function SelectProviderDialog({
         ? product
           ? (
               <>
-                El producto <strong>{product.name}</strong> pasará a Por fabricar (lote
-                semanal). El proveedor es opcional.
+                El producto <strong>{product.name}</strong> pasará a{" "}
+                {REPORTE_FABRICACION_LABEL} (lote semanal). El proveedor es opcional.
               </>
             )
           : (
               <>
-                Los productos seleccionados pasarán a Por fabricar. El proveedor es
-                opcional.
+                Los productos seleccionados pasarán a {REPORTE_FABRICACION_LABEL}. El
+                proveedor es opcional.
               </>
             )
         : product
@@ -166,11 +171,18 @@ export function SelectProviderDialog({
 
   const isConfirmDisabled =
     isLoading ||
+    isSubmitting ||
     (mode === "refabrication" && !refabricationReason.trim()) ||
     (!providerOptional && !selectedProviderId)
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (isSubmitting && !next) return
+        onOpenChange(next)
+      }}
+    >
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className={mode === "refabrication" ? "flex items-center gap-2 text-orange-600" : ""}>
@@ -243,7 +255,11 @@ export function SelectProviderDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isSubmitting}
+          >
             Cancelar
           </Button>
           <Button 
@@ -251,7 +267,14 @@ export function SelectProviderDialog({
             disabled={isConfirmDisabled}
             className={mode === "refabrication" ? "bg-orange-600 hover:bg-orange-700" : ""}
           >
-            {confirmButtonText}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Procesando...
+              </>
+            ) : (
+              confirmButtonText
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
