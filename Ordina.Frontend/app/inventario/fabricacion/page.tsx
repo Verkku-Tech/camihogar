@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,7 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight, RotateCcw } from "lucide-react"
+import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight, RotateCcw, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { getOrders, getOrder, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder } from "@/lib/storage"
 import {
@@ -48,6 +48,7 @@ import { PURCHASE_TYPES } from "@/components/orders/constants"
 import { isSistemaApartado, isSistemaApartadoReadyForNormalFlow } from "@/lib/order-sa"
 import { isReservationOrder } from "@/lib/order-document-types"
 import { useAuth } from "@/contexts/auth-context"
+import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels"
 
 // Tipo para productos agrupados por pedido
 interface ProductRow {
@@ -118,9 +119,51 @@ export default function FabricacionPage() {
     useState<ManufacturingProviderDialogMode>("queue")
   const bulkProviderDialogModeRef = useRef<ManufacturingProviderDialogMode>("queue")
   const [bulkIsRefabrication, setBulkIsRefabrication] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [processingProgress, setProcessingProgress] = useState<{
+    current: number
+    total: number
+  } | null>(null)
+  const processingToastIdRef = useRef<string | number | null>(null)
+  const processingLockRef = useRef(false)
   const router = useRouter()
 
+  const reportProcessingProgress = useCallback((current: number, total: number) => {
+    setProcessingProgress({ current, total })
+    const msg = `Procesando ${current} de ${total}...`
+    if (processingToastIdRef.current != null) {
+      toast.loading(msg, { id: processingToastIdRef.current })
+    } else {
+      processingToastIdRef.current = toast.loading(msg)
+    }
+  }, [])
+
+  const beginProcessing = useCallback((total?: number): boolean => {
+    if (processingLockRef.current) return false
+    processingLockRef.current = true
+    setIsProcessing(true)
+    if (total != null && total > 0) {
+      setProcessingProgress({ current: 0, total })
+      processingToastIdRef.current = toast.loading(`Procesando 0 de ${total}...`)
+    } else {
+      setProcessingProgress(null)
+      processingToastIdRef.current = toast.loading("Procesando...")
+    }
+    return true
+  }, [])
+
+  const endProcessing = useCallback(() => {
+    processingLockRef.current = false
+    if (processingToastIdRef.current != null) {
+      toast.dismiss(processingToastIdRef.current)
+      processingToastIdRef.current = null
+    }
+    setIsProcessing(false)
+    setProcessingProgress(null)
+  }, [])
+
   const openBulkProviderDialog = (mode: ManufacturingProviderDialogMode) => {
+    if (isProcessing) return
     bulkProviderDialogModeRef.current = mode
     setBulkIsRefabrication(mode === "refabrication")
     setBulkProviderDialogMode(mode)
@@ -280,7 +323,7 @@ export default function FabricacionPage() {
         return (
           <Badge className="bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200">
             <Package className="w-3 h-3 mr-1" />
-            Por Fabricar
+            {REPORTE_FABRICACION_LABEL}
           </Badge>
         )
       case "fabricando":
@@ -404,6 +447,7 @@ export default function FabricacionPage() {
   }
 
   const handleSendToQueueClick = (orderId: string, product: OrderProduct) => {
+    if (isProcessing) return
     if (!ensureOrderReadyForManufacturing(orderId)) return
     setSelectedProduct({ orderId, product })
     setProviderDialogMode("queue")
@@ -414,9 +458,11 @@ export default function FabricacionPage() {
     orderId: string,
     product: OrderProduct,
   ) => {
+    if (isProcessing) return
     if (!ensureOrderReadyForManufacturing(orderId)) return
 
     if (product.manufacturingProviderId && product.manufacturingProviderName) {
+      if (!beginProcessing()) return
       try {
         const order = await getOrder(orderId)
         if (!order) throw new Error("Pedido no encontrado")
@@ -439,6 +485,8 @@ export default function FabricacionPage() {
         const message =
           error instanceof Error ? error.message : "Error al actualizar el estado"
         toast.error(message)
+      } finally {
+        endProcessing()
       }
       return
     }
@@ -449,6 +497,7 @@ export default function FabricacionPage() {
   }
 
   const handleRefabricationClick = (orderId: string, product: OrderProduct) => {
+    if (isProcessing) return
     if (!ensureOrderReadyForManufacturing(orderId)) return
     setSelectedProduct({ orderId, product })
     setProviderDialogMode("refabrication")
@@ -532,10 +581,16 @@ export default function FabricacionPage() {
     notes?: string,
     refabricationReason?: string,
   ) => {
-    if (!selectedProduct) return
+    if (isProcessing || !selectedProduct) return
+
+    const snapshot = selectedProduct
+    const mode = providerDialogMode
+    setSelectProviderDialogOpen(false)
+    setSelectedProduct(null)
+    if (!beginProcessing()) return
 
     try {
-      const order = await getOrder(selectedProduct.orderId)
+      const order = await getOrder(snapshot.orderId)
       if (!order) throw new Error("Pedido no encontrado")
       if (!isSistemaApartadoReadyForNormalFlow(order)) {
         toast.error(
@@ -545,14 +600,14 @@ export default function FabricacionPage() {
       }
 
       const productIndex = order.products.findIndex(
-        (p) => p.id === selectedProduct.product.id,
+        (p) => p.id === snapshot.product.id,
       )
       if (productIndex === -1) throw new Error("Producto no encontrado")
 
       const currentProduct = order.products[productIndex]
       let updatedProduct: OrderProduct
 
-      if (providerDialogMode === "queue") {
+      if (mode === "queue") {
         const rowStatus = resolveManufacturingRowStatus(
           currentProduct.manufacturingStatus,
         )
@@ -565,7 +620,7 @@ export default function FabricacionPage() {
           providerName,
           notes,
         )
-      } else if (providerDialogMode === "start") {
+      } else if (mode === "start") {
         if (!providerId) {
           toast.error("Selecciona un proveedor para iniciar la fabricación")
           return
@@ -574,7 +629,7 @@ export default function FabricacionPage() {
           currentProduct.manufacturingStatus,
         )
         if (rowStatus !== "por_fabricar") {
-          throw new Error("El producto debe estar en Por fabricar")
+          throw new Error(`El producto debe estar en ${REPORTE_FABRICACION_LABEL}`)
         }
         updatedProduct = buildProductStartingManufacturing(currentProduct, {
           providerId,
@@ -604,25 +659,26 @@ export default function FabricacionPage() {
       setOrders(loadedOrders)
 
       const successMessage =
-        providerDialogMode === "queue"
-          ? "Producto enviado a Por fabricar"
-          : providerDialogMode === "refabrication"
+        mode === "queue"
+          ? `Producto enviado a ${REPORTE_FABRICACION_LABEL}`
+          : mode === "refabrication"
             ? `Producto reiniciado a fabricación con ${providerName}`
             : `Producto en fabricación con ${providerName}`
       toast.success(successMessage)
-
-      setSelectProviderDialogOpen(false)
-      setSelectedProduct(null)
     } catch (error: unknown) {
       console.error("Error updating manufacturing status:", error)
       const message =
         error instanceof Error ? error.message : "Error al actualizar el estado de fabricación"
       toast.error(message)
+    } finally {
+      endProcessing()
     }
   }
 
   // Marcar como En almacén (último paso de fabricación)
   const handleMarkAsFabricated = async (orderId: string, productId: string) => {
+    if (isProcessing) return
+    if (!beginProcessing()) return
     try {
       const order = await getOrder(orderId)
       if (!order) throw new Error("Pedido no encontrado")
@@ -655,6 +711,8 @@ export default function FabricacionPage() {
     } catch (error: any) {
       console.error("Error marking as fabricated:", error)
       toast.error(error.message || "Error al actualizar el estado")
+    } finally {
+      endProcessing()
     }
   }
 
@@ -691,13 +749,15 @@ export default function FabricacionPage() {
     orderId: string,
     productId: string,
   ) => {
+    if (isProcessing) return
     setRevertTarget({ orderId, productId })
     setIndividualRevertDialogOpen(true)
   }
 
   const handleConfirmIndividualRevert = async () => {
-    if (!revertTarget) return
+    if (!revertTarget || isProcessing) return
 
+    if (!beginProcessing()) return
     try {
       const ok = await revertProductInOrder(
         revertTarget.orderId,
@@ -707,21 +767,23 @@ export default function FabricacionPage() {
 
       const loadedOrders = await getOrders()
       setOrders(loadedOrders)
-      toast.success("Producto devuelto a Por fabricar")
+      toast.success(`Producto devuelto a ${REPORTE_FABRICACION_LABEL}`)
     } catch (error: unknown) {
       console.error("Error reverting manufacturing status:", error)
       const message =
         error instanceof Error
           ? error.message
-          : "Error al devolver el producto a Por fabricar"
+          : `Error al devolver el producto a ${REPORTE_FABRICACION_LABEL}`
       toast.error(message)
     } finally {
+      endProcessing()
       setIndividualRevertDialogOpen(false)
       setRevertTarget(null)
     }
   }
 
   const handleBulkRevertToPorFabricarClick = () => {
+    if (isProcessing) return
     if (getSelectedProductsForFabricated().length === 0) {
       toast.error(
         "Solo se pueden devolver productos con estado 'Fabricando'",
@@ -733,31 +795,38 @@ export default function FabricacionPage() {
 
   const executeBulkRevertToPorFabricar = async () => {
     const selectedKeys = getSelectedProductsForFabricated()
+    if (!beginProcessing(selectedKeys.length)) return
     let successCount = 0
     let errorCount = 0
 
-    for (const key of selectedKeys) {
-      const [orderId, productId] = key.split("|")
-      try {
-        const ok = await revertProductInOrder(orderId, productId)
-        if (ok) successCount++
-      } catch (error) {
-        console.error(`Error revirtiendo producto ${productId}:`, error)
-        errorCount++
+    try {
+      for (let i = 0; i < selectedKeys.length; i++) {
+        const key = selectedKeys[i]
+        reportProcessingProgress(i + 1, selectedKeys.length)
+        const [orderId, productId] = key.split("|")
+        try {
+          const ok = await revertProductInOrder(orderId, productId)
+          if (ok) successCount++
+        } catch (error) {
+          console.error(`Error revirtiendo producto ${productId}:`, error)
+          errorCount++
+        }
       }
-    }
 
-    const loadedOrders = await getOrders()
-    setOrders(loadedOrders)
-    setSelectedProducts(new Set())
-    setBulkRevertDialogOpen(false)
+      const loadedOrders = await getOrders()
+      setOrders(loadedOrders)
+      setSelectedProducts(new Set())
+      setBulkRevertDialogOpen(false)
 
-    if (errorCount === 0) {
-      toast.success(
-        `${successCount} producto(s) devuelto(s) a Por fabricar`,
-      )
-    } else {
-      toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      if (errorCount === 0) {
+        toast.success(
+          `${successCount} producto(s) devuelto(s) a ${REPORTE_FABRICACION_LABEL}`,
+        )
+      } else {
+        toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      }
+    } finally {
+      endProcessing()
     }
   }
 
@@ -800,6 +869,7 @@ export default function FabricacionPage() {
 
   // Manejar selección individual de productos
   const handleToggleSelect = (orderId: string, productId: string) => {
+    if (isProcessing) return
     const key = `${orderId}|${productId}`
     setSelectedProducts(prev => {
       const newSet = new Set(prev)
@@ -814,6 +884,7 @@ export default function FabricacionPage() {
 
   // Manejar selección de todos los productos filtrados (solo los paginados)
   const handleSelectAll = (checked: boolean) => {
+    if (isProcessing) return
     if (checked) {
       const keys = paginatedRows.map(row => `${row.orderId}|${row.product.id}`)
       setSelectedProducts(new Set(keys))
@@ -824,6 +895,7 @@ export default function FabricacionPage() {
 
   // Manejar selección de todos los productos de un pedido
   const handleToggleSelectOrder = (orderId: string) => {
+    if (isProcessing) return
     const orderProducts = paginatedRows.filter(row => row.orderId === orderId)
     const orderProductKeys = orderProducts.map(row => `${row.orderId}|${row.product.id}`)
     
@@ -864,6 +936,7 @@ export default function FabricacionPage() {
 
   // Manejar click en "Mandar a Fabricar" (masivo)
   const handleBulkManufacture = () => {
+    if (isProcessing) return
     if (selectedProducts.size === 0) {
       toast.error("Por favor selecciona al menos un producto")
       return
@@ -888,6 +961,7 @@ export default function FabricacionPage() {
   }
 
   const handleBulkStartManufacturing = async () => {
+    if (isProcessing) return
     if (selectedProducts.size === 0) {
       toast.error("Por favor selecciona al menos un producto")
       return
@@ -895,7 +969,7 @@ export default function FabricacionPage() {
 
     const validKeys = getSelectedProductsForStartManufacturing()
     if (validKeys.length === 0) {
-      toast.error("Solo se pueden iniciar productos con estado 'Por Fabricar'")
+      toast.error(`Solo se pueden iniciar productos en ${REPORTE_FABRICACION_LABEL}`)
       return
     }
 
@@ -927,6 +1001,7 @@ export default function FabricacionPage() {
 
   // Manejar click en "Marcar como Fabricado" (masivo)
   const handleBulkMarkAsFabricated = () => {
+    if (isProcessing) return
     if (selectedProducts.size === 0) {
       toast.error("Por favor selecciona al menos un producto")
       return
@@ -956,55 +1031,62 @@ export default function FabricacionPage() {
     notes?: string,
   ) => {
     const selectedKeys = getSelectedProductsForManufacture()
+    if (!beginProcessing(selectedKeys.length)) return
     let successCount = 0
     let errorCount = 0
 
-    for (const key of selectedKeys) {
-      const [orderId, productId] = key.split("|")
-      try {
-        const order = await getOrder(orderId)
-        if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
+    try {
+      for (let i = 0; i < selectedKeys.length; i++) {
+        const key = selectedKeys[i]
+        reportProcessingProgress(i + 1, selectedKeys.length)
+        const [orderId, productId] = key.split("|")
+        try {
+          const order = await getOrder(orderId)
+          if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
+            errorCount++
+            continue
+          }
+
+          const productIndex = order.products.findIndex((p) => p.id === productId)
+          if (productIndex === -1) {
+            errorCount++
+            continue
+          }
+
+          const current = order.products[productIndex]
+          if (resolveManufacturingRowStatus(current.manufacturingStatus) !== "debe_fabricar") {
+            continue
+          }
+
+          const updatedProducts = [...order.products]
+          updatedProducts[productIndex] = buildProductQueuedForManufacturing(
+            current,
+            providerId,
+            providerName,
+            notes,
+          )
+
+          await updateOrder(order.id, { products: updatedProducts })
+          successCount++
+        } catch (error) {
+          console.error(`Error actualizando producto ${productId}:`, error)
           errorCount++
-          continue
         }
-
-        const productIndex = order.products.findIndex((p) => p.id === productId)
-        if (productIndex === -1) {
-          errorCount++
-          continue
-        }
-
-        const current = order.products[productIndex]
-        if (resolveManufacturingRowStatus(current.manufacturingStatus) !== "debe_fabricar") {
-          continue
-        }
-
-        const updatedProducts = [...order.products]
-        updatedProducts[productIndex] = buildProductQueuedForManufacturing(
-          current,
-          providerId,
-          providerName,
-          notes,
-        )
-
-        await updateOrder(order.id, { products: updatedProducts })
-        successCount++
-      } catch (error) {
-        console.error(`Error actualizando producto ${productId}:`, error)
-        errorCount++
       }
-    }
 
-    const loadedOrders = await getOrders()
-    setOrders(loadedOrders)
-    setSelectedProducts(new Set())
-    setBulkManufactureDialogOpen(false)
-    setBulkSelectedProvider(null)
+      const loadedOrders = await getOrders()
+      setOrders(loadedOrders)
+      setSelectedProducts(new Set())
+      setBulkManufactureDialogOpen(false)
+      setBulkSelectedProvider(null)
 
-    if (errorCount === 0) {
-      toast.success(`${successCount} producto(s) enviado(s) a Por fabricar`)
-    } else {
-      toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      if (errorCount === 0) {
+        toast.success(`${successCount} producto(s) enviado(s) a ${REPORTE_FABRICACION_LABEL}`)
+      } else {
+        toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      }
+    } finally {
+      endProcessing()
     }
   }
 
@@ -1017,115 +1099,131 @@ export default function FabricacionPage() {
       return
     }
 
+    if (!beginProcessing(selectedKeys.length)) return
     let successCount = 0
     let errorCount = 0
 
-    for (const key of selectedKeys) {
-      const [orderId, productId] = key.split("|")
-      try {
-        const order = await getOrder(orderId)
-        if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
+    try {
+      for (let i = 0; i < selectedKeys.length; i++) {
+        const key = selectedKeys[i]
+        reportProcessingProgress(i + 1, selectedKeys.length)
+        const [orderId, productId] = key.split("|")
+        try {
+          const order = await getOrder(orderId)
+          if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
+            errorCount++
+            continue
+          }
+
+          const productIndex = order.products.findIndex((p) => p.id === productId)
+          if (productIndex === -1) {
+            errorCount++
+            continue
+          }
+
+          const current = order.products[productIndex]
+          if (resolveManufacturingRowStatus(current.manufacturingStatus) !== "por_fabricar") {
+            continue
+          }
+
+          const updatedProducts = [...order.products]
+          updatedProducts[productIndex] = buildProductStartingManufacturing(current, {
+            providerId: opts.providerId,
+            providerName: opts.providerName,
+            notes: opts.notes,
+          })
+
+          await updateOrder(order.id, { products: updatedProducts })
+          successCount++
+        } catch (error) {
+          console.error(`Error actualizando producto ${productId}:`, error)
           errorCount++
-          continue
         }
-
-        const productIndex = order.products.findIndex((p) => p.id === productId)
-        if (productIndex === -1) {
-          errorCount++
-          continue
-        }
-
-        const current = order.products[productIndex]
-        if (resolveManufacturingRowStatus(current.manufacturingStatus) !== "por_fabricar") {
-          continue
-        }
-
-        const updatedProducts = [...order.products]
-        updatedProducts[productIndex] = buildProductStartingManufacturing(current, {
-          providerId: opts.providerId,
-          providerName: opts.providerName,
-          notes: opts.notes,
-        })
-
-        await updateOrder(order.id, { products: updatedProducts })
-        successCount++
-      } catch (error) {
-        console.error(`Error actualizando producto ${productId}:`, error)
-        errorCount++
       }
-    }
 
-    const loadedOrders = await getOrders()
-    setOrders(loadedOrders)
-    setSelectedProducts(new Set())
-    setBulkManufactureDialogOpen(false)
-    setBulkSelectedProvider(null)
+      const loadedOrders = await getOrders()
+      setOrders(loadedOrders)
+      setSelectedProducts(new Set())
+      setBulkManufactureDialogOpen(false)
+      setBulkSelectedProvider(null)
 
-    if (errorCount === 0) {
-      toast.success(`${successCount} producto(s) en fabricación`)
-    } else {
-      toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      if (errorCount === 0) {
+        toast.success(`${successCount} producto(s) en fabricación`)
+      } else {
+        toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      }
+    } finally {
+      endProcessing()
     }
   }
 
   const executeBulkStartManufactureWithExistingProviders = async (
     selectedKeys: string[],
   ) => {
+    if (selectedKeys.length === 0) return
+
+    if (!beginProcessing(selectedKeys.length)) return
     let successCount = 0
     let errorCount = 0
 
-    for (const key of selectedKeys) {
-      const [orderId, productId] = key.split("|")
-      try {
-        const order = await getOrder(orderId)
-        if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
+    try {
+      for (let i = 0; i < selectedKeys.length; i++) {
+        const key = selectedKeys[i]
+        reportProcessingProgress(i + 1, selectedKeys.length)
+        const [orderId, productId] = key.split("|")
+        try {
+          const order = await getOrder(orderId)
+          if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
+            errorCount++
+            continue
+          }
+
+          const productIndex = order.products.findIndex((p) => p.id === productId)
+          if (productIndex === -1) {
+            errorCount++
+            continue
+          }
+
+          const current = order.products[productIndex]
+          if (resolveManufacturingRowStatus(current.manufacturingStatus) !== "por_fabricar") {
+            continue
+          }
+
+          const providerId = current.manufacturingProviderId?.trim()
+          const providerName = current.manufacturingProviderName?.trim()
+          if (!providerId || !providerName) {
+            continue
+          }
+
+          const updatedProducts = [...order.products]
+          updatedProducts[productIndex] = buildProductStartingManufacturing(current, {
+            providerId,
+            providerName,
+          })
+
+          await updateOrder(order.id, { products: updatedProducts })
+          successCount++
+        } catch (error) {
+          console.error(`Error actualizando producto ${productId}:`, error)
           errorCount++
-          continue
         }
-
-        const productIndex = order.products.findIndex((p) => p.id === productId)
-        if (productIndex === -1) {
-          errorCount++
-          continue
-        }
-
-        const current = order.products[productIndex]
-        if (resolveManufacturingRowStatus(current.manufacturingStatus) !== "por_fabricar") {
-          continue
-        }
-
-        const providerId = current.manufacturingProviderId?.trim()
-        const providerName = current.manufacturingProviderName?.trim()
-        if (!providerId || !providerName) {
-          continue
-        }
-
-        const updatedProducts = [...order.products]
-        updatedProducts[productIndex] = buildProductStartingManufacturing(current, {
-          providerId,
-          providerName,
-        })
-
-        await updateOrder(order.id, { products: updatedProducts })
-        successCount++
-      } catch (error) {
-        console.error(`Error actualizando producto ${productId}:`, error)
-        errorCount++
       }
-    }
 
-    const loadedOrders = await getOrders()
-    setOrders(loadedOrders)
-    setSelectedProducts(new Set())
+      const loadedOrders = await getOrders()
+      setOrders(loadedOrders)
+      setSelectedProducts(new Set())
 
-    if (successCount === 0 && errorCount === 0) {
-      return
-    }
+      if (successCount === 0 && errorCount === 0) {
+        return
+      }
 
-    if (errorCount === 0) {
-      toast.success(`${successCount} producto(s) en fabricación`)
-    } else {
-      toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      if (errorCount === 0) {
+        toast.success(`${successCount} producto(s) en fabricación`)
+      } else {
+        toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      }
+    } finally {
+      endProcessing()
     }
   }
 
@@ -1161,60 +1259,65 @@ export default function FabricacionPage() {
   // Ejecutar acción masiva de "marcar como fabricado"
   const executeBulkMarkAsFabricated = async () => {
     const selectedKeys = Array.from(selectedProducts)
+    setBulkFabricatedDialogOpen(false)
+    if (!beginProcessing(selectedKeys.length)) return
     let successCount = 0
     let errorCount = 0
 
-    for (const key of selectedKeys) {
-      const [orderId, productId] = key.split('|')
-      try {
-        const order = await getOrder(orderId)
-        if (!order) {
+    try {
+      for (let i = 0; i < selectedKeys.length; i++) {
+        const key = selectedKeys[i]
+        reportProcessingProgress(i + 1, selectedKeys.length)
+        const [orderId, productId] = key.split("|")
+        try {
+          const order = await getOrder(orderId)
+          if (!order) {
+            errorCount++
+            continue
+          }
+          if (!isSistemaApartadoReadyForNormalFlow(order)) {
+            continue
+          }
+
+          const productIndex = order.products.findIndex((p) => p.id === productId)
+          if (productIndex === -1) {
+            errorCount++
+            continue
+          }
+
+          if (order.products[productIndex].manufacturingStatus !== "fabricando") {
+            continue
+          }
+
+          const updatedProduct = {
+            ...order.products[productIndex],
+            manufacturingStatus: "almacen_no_fabricado" as const,
+            logisticStatus: "En Almacén",
+            manufacturingCompletedAt: new Date().toISOString(),
+          }
+
+          const updatedProducts = [...order.products]
+          updatedProducts[productIndex] = updatedProduct
+
+          await updateOrder(order.id, { products: updatedProducts })
+          successCount++
+        } catch (error) {
+          console.error(`Error actualizando producto ${productId}:`, error)
           errorCount++
-          continue
         }
-        if (!isSistemaApartadoReadyForNormalFlow(order)) {
-          continue
-        }
-
-        const productIndex = order.products.findIndex(p => p.id === productId)
-        if (productIndex === -1) {
-          errorCount++
-          continue
-        }
-
-        // Solo actualizar productos que estén en "fabricando"
-        if (order.products[productIndex].manufacturingStatus !== "fabricando") {
-          continue
-        }
-
-        const updatedProduct = {
-          ...order.products[productIndex],
-          manufacturingStatus: "almacen_no_fabricado" as const,
-          logisticStatus: "En Almacén", // Sincronizar estado logístico
-          manufacturingCompletedAt: new Date().toISOString(),
-        }
-
-        const updatedProducts = [...order.products]
-        updatedProducts[productIndex] = updatedProduct
-
-        await updateOrder(order.id, { products: updatedProducts })
-        successCount++
-      } catch (error) {
-        console.error(`Error actualizando producto ${productId}:`, error)
-        errorCount++
       }
-    }
 
-    // Refrescar
-    const loadedOrders = await getOrders()
-    setOrders(loadedOrders)
-    setSelectedProducts(new Set())
-    setBulkFabricatedDialogOpen(false)
+      const loadedOrders = await getOrders()
+      setOrders(loadedOrders)
+      setSelectedProducts(new Set())
 
-    if (errorCount === 0) {
-      toast.success(`${successCount} producto(s) marcado(s) como fabricado(s)`)
-    } else {
-      toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      if (errorCount === 0) {
+        toast.success(`${successCount} producto(s) marcado(s) como fabricado(s)`)
+      } else {
+        toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      }
+    } finally {
+      endProcessing()
     }
   }
 
@@ -1268,6 +1371,7 @@ export default function FabricacionPage() {
 
   // Manejar click en "Reiniciar Fabricación" (masivo)
   const handleBulkRefabrication = () => {
+    if (isProcessing) return
     if (selectedProducts.size === 0) {
       toast.error("Por favor selecciona al menos un producto")
       return
@@ -1291,13 +1395,19 @@ export default function FabricacionPage() {
     refabricationReason?: string,
   ) => {
     const mode = bulkProviderDialogModeRef.current
-    if (bulkIsRefabrication || mode === "refabrication") {
-      return executeBulkRefabrication(providerId, providerName, notes, refabricationReason)
+    const wasRefabrication = bulkIsRefabrication || mode === "refabrication"
+    setBulkManufactureDialogOpen(false)
+    setBulkIsRefabrication(false)
+
+    if (wasRefabrication) {
+      void executeBulkRefabrication(providerId, providerName, notes, refabricationReason)
+      return
     }
     if (mode === "queue") {
-      return executeBulkSendToQueue(providerId, providerName, notes)
+      void executeBulkSendToQueue(providerId, providerName, notes)
+      return
     }
-    return executeBulkStartManufacture(providerId, providerName, notes)
+    void executeBulkStartManufacture(providerId, providerName, notes)
   }
 
   // Ejecutar acción masiva de refabricación
@@ -1308,85 +1418,89 @@ export default function FabricacionPage() {
     }
 
     const selectedKeys = getSelectedProductsForRefabrication()
+    if (!beginProcessing(selectedKeys.length)) return
     let successCount = 0
     let errorCount = 0
 
-    for (const key of selectedKeys) {
-      const [orderId, productId] = key.split('|')
-      try {
-        const order = await getOrder(orderId)
-        if (!order) {
+    try {
+      for (let i = 0; i < selectedKeys.length; i++) {
+        const key = selectedKeys[i]
+        reportProcessingProgress(i + 1, selectedKeys.length)
+        const [orderId, productId] = key.split("|")
+        try {
+          const order = await getOrder(orderId)
+          if (!order) {
+            errorCount++
+            continue
+          }
+          if (!isSistemaApartadoReadyForNormalFlow(order)) {
+            continue
+          }
+
+          const productIndex = order.products.findIndex((p) => p.id === productId)
+          if (productIndex === -1) {
+            errorCount++
+            continue
+          }
+
+          const currentProduct = order.products[productIndex]
+
+          if (
+            currentProduct.manufacturingStatus !== "almacen_no_fabricado" &&
+            (currentProduct.manufacturingStatus as string) !== "fabricado"
+          ) {
+            continue
+          }
+
+          const historyRecord = {
+            reason: refabricationReason,
+            date: new Date().toISOString(),
+            previousProviderId: currentProduct.manufacturingProviderId,
+            previousProviderName: currentProduct.manufacturingProviderName,
+            newProviderId: providerId,
+            newProviderName: providerName,
+          }
+
+          const updatedProduct: OrderProduct = {
+            ...currentProduct,
+            availabilityStatus: "no_disponible" as const,
+            manufacturingStatus: "fabricando" as const,
+            manufacturingProviderId: providerId,
+            manufacturingProviderName: providerName,
+            manufacturingStartedAt: new Date().toISOString(),
+            manufacturingNotes: notes,
+            logisticStatus: "Fabricándose",
+            manufacturingCompletedAt: undefined,
+            refabricationReason: refabricationReason,
+            refabricatedAt: new Date().toISOString(),
+            refabricationHistory: [
+              ...(currentProduct.refabricationHistory || []),
+              historyRecord,
+            ],
+          }
+
+          const updatedProducts = [...order.products]
+          updatedProducts[productIndex] = updatedProduct
+
+          await updateOrder(order.id, { products: updatedProducts })
+          successCount++
+        } catch (error) {
+          console.error(`Error refabricando producto ${productId}:`, error)
           errorCount++
-          continue
         }
-        if (!isSistemaApartadoReadyForNormalFlow(order)) {
-          continue
-        }
-
-        const productIndex = order.products.findIndex(p => p.id === productId)
-        if (productIndex === -1) {
-          errorCount++
-          continue
-        }
-
-        const currentProduct = order.products[productIndex]
-
-        // Solo actualizar productos que estén en almacén
-        if (currentProduct.manufacturingStatus !== "almacen_no_fabricado" &&
-            (currentProduct.manufacturingStatus as string) !== "fabricado") {
-          continue
-        }
-
-        // Agregar al historial de refabricaciones
-        const historyRecord = {
-          reason: refabricationReason,
-          date: new Date().toISOString(),
-          previousProviderId: currentProduct.manufacturingProviderId,
-          previousProviderName: currentProduct.manufacturingProviderName,
-          newProviderId: providerId,
-          newProviderName: providerName,
-        }
-
-        const updatedProduct: OrderProduct = {
-          ...currentProduct,
-          availabilityStatus: "no_disponible" as const,
-          manufacturingStatus: "fabricando" as const,
-          manufacturingProviderId: providerId,
-          manufacturingProviderName: providerName,
-          manufacturingStartedAt: new Date().toISOString(),
-          manufacturingNotes: notes,
-          logisticStatus: "Fabricándose", // Sincronizar estado logístico
-          manufacturingCompletedAt: undefined,
-          refabricationReason: refabricationReason,
-          refabricatedAt: new Date().toISOString(),
-          refabricationHistory: [
-            ...(currentProduct.refabricationHistory || []),
-            historyRecord,
-          ],
-        }
-
-        const updatedProducts = [...order.products]
-        updatedProducts[productIndex] = updatedProduct
-
-        await updateOrder(order.id, { products: updatedProducts })
-        successCount++
-      } catch (error) {
-        console.error(`Error refabricando producto ${productId}:`, error)
-        errorCount++
       }
-    }
 
-    // Refrescar
-    const loadedOrders = await getOrders()
-    setOrders(loadedOrders)
-    setSelectedProducts(new Set())
-    setBulkManufactureDialogOpen(false)
-    setBulkIsRefabrication(false)
+      const loadedOrders = await getOrders()
+      setOrders(loadedOrders)
+      setSelectedProducts(new Set())
 
-    if (errorCount === 0) {
-      toast.success(`${successCount} producto(s) reiniciado(s) a fabricación`)
-    } else {
-      toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      if (errorCount === 0) {
+        toast.success(`${successCount} producto(s) reiniciado(s) a fabricación`)
+      } else {
+        toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
+      }
+    } finally {
+      endProcessing()
     }
   }
 
@@ -1421,6 +1535,19 @@ export default function FabricacionPage() {
               </div>
             </div>
 
+            {isProcessing && (
+              <div
+                className="mb-4 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+                role="status"
+                aria-live="polite"
+              >
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                {processingProgress
+                  ? `Procesando ${processingProgress.current} de ${processingProgress.total}...`
+                  : "Procesando..."}
+              </div>
+            )}
+
             {/* Filtros */}
             <Card className="mb-6">
               <CardContent className="pt-6">
@@ -1441,14 +1568,18 @@ export default function FabricacionPage() {
                       <span className="text-sm font-medium">Filtros:</span>
                     </div>
 
-                    <Select value={filterStatus} onValueChange={(v: any) => setFilterStatus(v)}>
+                    <Select
+                      value={filterStatus}
+                      onValueChange={(v: typeof filterStatus) => setFilterStatus(v)}
+                      disabled={isProcessing}
+                    >
                       <SelectTrigger className="w-full sm:w-56">
                         <SelectValue placeholder="Todos los estados" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todos los estados</SelectItem>
                         <SelectItem value="needs_fabrication">Debe Fabricar</SelectItem>
-                        <SelectItem value="ready_for_batch">Por Fabricar</SelectItem>
+                        <SelectItem value="ready_for_batch">{REPORTE_FABRICACION_LABEL}</SelectItem>
                         <SelectItem value="fabricating">Fabricando</SelectItem>
                         <SelectItem value="warehouse">En almacén</SelectItem>
                       </SelectContent>
@@ -1502,6 +1633,7 @@ export default function FabricacionPage() {
                       getSelectedProductsForManufacture().length > 0 && (
                       <Button
                         onClick={handleBulkManufacture}
+                        disabled={isProcessing}
                         className="bg-orange-600 hover:bg-orange-700"
                       >
                         <Hammer className="w-4 h-4 mr-2" />
@@ -1512,6 +1644,7 @@ export default function FabricacionPage() {
                       getSelectedProductsForStartManufacturing().length > 0 && (
                       <Button
                         onClick={handleBulkStartManufacturing}
+                        disabled={isProcessing}
                         className="bg-amber-600 hover:bg-amber-700"
                       >
                         <Hammer className="w-4 h-4 mr-2" />
@@ -1522,6 +1655,7 @@ export default function FabricacionPage() {
                       getSelectedProductsForFabricated().length > 0 && (
                       <Button
                         onClick={handleBulkMarkAsFabricated}
+                        disabled={isProcessing}
                         variant="outline"
                       >
                         <CheckCircle2 className="w-4 h-4 mr-2" />
@@ -1533,17 +1667,19 @@ export default function FabricacionPage() {
                       getSelectedProductsForFabricated().length > 0 && (
                       <Button
                         onClick={handleBulkRevertToPorFabricarClick}
+                        disabled={isProcessing}
                         variant="outline"
                         className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/30"
                       >
                         <RotateCcw className="w-4 h-4 mr-2" />
-                        Devolver a por fabricar ({getSelectedProductsForFabricated().length})
+                        Devolver a {REPORTE_FABRICACION_LABEL} ({getSelectedProductsForFabricated().length})
                       </Button>
                     )}
                     {(filterStatus === "all" || filterStatus === "warehouse") &&
                       getSelectedProductsForRefabrication().length > 0 && (
                       <Button
                         onClick={handleBulkRefabrication}
+                        disabled={isProcessing}
                         variant="destructive"
                       >
                         <RotateCcw className="w-4 h-4 mr-2" />
@@ -1552,6 +1688,7 @@ export default function FabricacionPage() {
                     )}
                     <Button
                       variant="ghost"
+                      disabled={isProcessing}
                       onClick={() => setSelectedProducts(new Set())}
                     >
                       Limpiar Selección
@@ -1633,7 +1770,8 @@ export default function FabricacionPage() {
                                                   ? "indeterminate"
                                                   : false
                                               }
-                                              onCheckedChange={(checked) => {
+                                              disabled={isProcessing}
+                                              onCheckedChange={() => {
                                                 handleToggleSelectOrder(orderId)
                                               }}
                                               onClick={(e) => e.stopPropagation()}
@@ -1694,7 +1832,7 @@ export default function FabricacionPage() {
                                               {statusCount.por_fabricar > 0 && (
                                                 <Badge className="bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200">
                                                   <Package className="w-3 h-3 mr-1" />
-                                                  {statusCount.por_fabricar} Por Fabricar
+                                                  {statusCount.por_fabricar} {REPORTE_FABRICACION_LABEL}
                                                 </Badge>
                                               )}
                                               {statusCount.fabricando > 0 && (
@@ -1775,6 +1913,7 @@ export default function FabricacionPage() {
                                       <Checkbox
                                         checked={allSelected}
                                         onCheckedChange={handleSelectAll}
+                                        disabled={isProcessing}
                                         aria-label="Seleccionar todos"
                                       />
                                     </TableHead>
@@ -1796,6 +1935,7 @@ export default function FabricacionPage() {
                                             <Checkbox
                                               checked={selectedProducts.has(`${row.orderId}|${row.product.id}`)}
                                               onCheckedChange={() => handleToggleSelect(row.orderId, row.product.id)}
+                                              disabled={isProcessing}
                                               aria-label={`Seleccionar ${row.product.name}`}
                                             />
                                           </TableCell>
@@ -1824,6 +1964,7 @@ export default function FabricacionPage() {
                                               {row.status === "debe_fabricar" && (
                                                 <Button
                                                   size="sm"
+                                                  disabled={isProcessing}
                                                   onClick={(e) => {
                                                     e.stopPropagation()
                                                     handleSendToQueueClick(row.orderId, row.product)
@@ -1836,6 +1977,7 @@ export default function FabricacionPage() {
                                               {row.status === "por_fabricar" && (
                                                 <Button
                                                   size="sm"
+                                                  disabled={isProcessing}
                                                   onClick={(e) => {
                                                     e.stopPropagation()
                                                     handleStartManufacturingClick(
@@ -1853,6 +1995,7 @@ export default function FabricacionPage() {
                                                   <Button
                                                     size="sm"
                                                     variant="outline"
+                                                    disabled={isProcessing}
                                                     onClick={(e) => {
                                                       e.stopPropagation()
                                                       handleMarkAsFabricated(row.orderId, row.product.id)
@@ -1864,6 +2007,7 @@ export default function FabricacionPage() {
                                                     <Button
                                                       size="sm"
                                                       variant="outline"
+                                                      disabled={isProcessing}
                                                       className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/30"
                                                       onClick={(e) => {
                                                         e.stopPropagation()
@@ -1874,7 +2018,7 @@ export default function FabricacionPage() {
                                                       }}
                                                     >
                                                       <RotateCcw className="w-4 h-4 mr-1" />
-                                                      Por fabricar
+                                                      {REPORTE_FABRICACION_LABEL}
                                                     </Button>
                                                   )}
                                                 </>
@@ -1883,6 +2027,7 @@ export default function FabricacionPage() {
                                                 <Button
                                                   size="sm"
                                                   variant="destructive"
+                                                  disabled={isProcessing}
                                                   onClick={(e) => {
                                                     e.stopPropagation()
                                                     handleRefabricationClick(row.orderId, row.product)
@@ -1937,18 +2082,21 @@ export default function FabricacionPage() {
       <SelectProviderDialog
         open={selectProviderDialogOpen}
         onOpenChange={(open) => {
+          if (isProcessing && !open) return
           setSelectProviderDialogOpen(open)
         }}
         product={selectedProduct?.product || null}
         orderId={selectedProduct?.orderId || ""}
         onConfirm={handleProviderDialogConfirm}
         mode={providerDialogMode}
+        isSubmitting={isProcessing}
       />
 
       {/* Modal de selección de proveedor (masivo) */}
       <SelectProviderDialog
         open={bulkManufactureDialogOpen}
         onOpenChange={(open) => {
+          if (isProcessing && !open) return
           setBulkManufactureDialogOpen(open)
           if (!open) setBulkIsRefabrication(false)
         }}
@@ -1956,10 +2104,17 @@ export default function FabricacionPage() {
         orderId=""
         onConfirm={handleBulkProviderDialogConfirm}
         mode={bulkIsRefabrication ? "refabrication" : bulkProviderDialogMode}
+        isSubmitting={isProcessing}
       />
 
       {/* Dialog de confirmación para marcar como En almacén (masivo) */}
-      <AlertDialog open={bulkFabricatedDialogOpen} onOpenChange={setBulkFabricatedDialogOpen}>
+      <AlertDialog
+        open={bulkFabricatedDialogOpen}
+        onOpenChange={(open) => {
+          if (isProcessing && !open) return
+          setBulkFabricatedDialogOpen(open)
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Marcar como En almacén?</AlertDialogTitle>
@@ -1977,6 +2132,7 @@ export default function FabricacionPage() {
             </AlertDialogCancel>
             <AlertDialogAction 
               onClick={executeBulkMarkAsFabricated}
+              disabled={isProcessing}
               className="bg-blue-600 hover:bg-blue-700"
             >
               En almacén
@@ -1994,9 +2150,9 @@ export default function FabricacionPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Devolver a Por fabricar?</AlertDialogTitle>
+            <AlertDialogTitle>¿Devolver a {REPORTE_FABRICACION_LABEL}?</AlertDialogTitle>
             <AlertDialogDescription>
-              El producto volverá a la cola de Por fabricar. El proveedor asignado
+              El producto volverá a la cola de {REPORTE_FABRICACION_LABEL}. El proveedor asignado
               se mantiene.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -2004,6 +2160,7 @@ export default function FabricacionPage() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               className="bg-orange-600 hover:bg-orange-700"
+              disabled={isProcessing}
               onClick={handleConfirmIndividualRevert}
             >
               Confirmar
@@ -2012,14 +2169,20 @@ export default function FabricacionPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={bulkRevertDialogOpen} onOpenChange={setBulkRevertDialogOpen}>
+      <AlertDialog
+        open={bulkRevertDialogOpen}
+        onOpenChange={(open) => {
+          if (isProcessing && !open) return
+          setBulkRevertDialogOpen(open)
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Devolver a Por fabricar?</AlertDialogTitle>
+            <AlertDialogTitle>¿Devolver a {REPORTE_FABRICACION_LABEL}?</AlertDialogTitle>
             <AlertDialogDescription>
               ¿Estás seguro de que deseas devolver{" "}
-              {getSelectedProductsForFabricated().length} producto(s) a Por
-              fabricar? El proveedor asignado se mantiene en cada línea.
+              {getSelectedProductsForFabricated().length} producto(s) a{" "}
+              {REPORTE_FABRICACION_LABEL}? El proveedor asignado se mantiene en cada línea.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2028,6 +2191,7 @@ export default function FabricacionPage() {
             </AlertDialogCancel>
             <AlertDialogAction
               className="bg-orange-600 hover:bg-orange-700"
+              disabled={isProcessing}
               onClick={executeBulkRevertToPorFabricar}
             >
               Confirmar
