@@ -85,6 +85,96 @@ public class OrderRepository : IOrderRepository
         return (orders, (int)totalCount);
     }
 
+    public async Task<(IEnumerable<Order> Orders, int TotalCount)> GetFilteredPagedAsync(
+        int page,
+        int pageSize,
+        OrderListFilter listFilter,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null)
+    {
+        var fb = Builders<Order>.Filter;
+        var filters = new List<FilterDefinition<Order>>();
+
+        // Excluir reservas (misma lógica que SearchHeaderAsync)
+        filters.Add(fb.Nin(o => o.Type, new[] { "Reservation", "PendingConfirmation" }));
+        filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^RES-", "i"))));
+        filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^PCF-", "i"))));
+
+        // Presupuestos convertidos
+        filters.Add(fb.Not(fb.And(
+            fb.Eq(o => o.Type, "Budget"),
+            fb.Regex(o => o.Status, new BsonRegularExpression("^convertido$", "i")))));
+
+        if (!listFilter.IncludeBudgets)
+        {
+            filters.Add(fb.Ne(o => o.Type, "Budget"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.Search))
+        {
+            var escaped = Regex.Escape(listFilter.Search.Trim());
+            var regex = new BsonRegularExpression(escaped, "i");
+            filters.Add(fb.Or(
+                fb.Regex(o => o.OrderNumber, regex),
+                fb.Regex(o => o.ClientName, regex),
+                fb.Regex(o => o.VendorName, regex)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
+        {
+            var trimmed = listFilter.ClientSearch.Trim();
+            var escaped = Regex.Escape(trimmed);
+            var nameRegex = new BsonRegularExpression(escaped, "i");
+            var clientOr = new List<FilterDefinition<Order>>
+            {
+                fb.Regex(o => o.ClientName, nameRegex),
+            };
+            if (listFilter.MatchingClientIds is { Count: > 0 })
+            {
+                clientOr.Add(fb.In(o => o.ClientId, listFilter.MatchingClientIds));
+            }
+            filters.Add(fb.Or(clientOr));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.Vendor))
+        {
+            filters.Add(fb.Eq(o => o.VendorName, listFilter.Vendor.Trim()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.Status))
+        {
+            filters.Add(fb.Eq(o => o.Status, listFilter.Status.Trim()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.SaleType))
+        {
+            filters.Add(fb.Eq(o => o.SaleType, listFilter.SaleType.Trim()));
+        }
+
+        if (listFilter.DateFrom.HasValue)
+        {
+            filters.Add(fb.Gte(o => o.CreatedAt, listFilter.DateFrom.Value.Date));
+        }
+
+        if (listFilter.DateTo.HasValue)
+        {
+            var end = listFilter.DateTo.Value.Date.AddDays(1).AddTicks(-1);
+            filters.Add(fb.Lte(o => o.CreatedAt, end));
+        }
+
+        var filter = CombineFilters(fb.And(filters), onlineSellerTeamIds);
+
+        var totalCount = await _collection.CountDocumentsAsync(filter);
+        var skip = (page - 1) * pageSize;
+
+        var orders = await _collection.Find(filter)
+            .SortByDescending(o => o.CreatedAt)
+            .Skip(skip)
+            .Limit(pageSize)
+            .ToListAsync();
+
+        return (orders, (int)totalCount);
+    }
+
     public async Task<IEnumerable<Order>> GetByClientIdAsync(
         string clientId,
         IReadOnlyCollection<string>? onlineSellerTeamIds = null)

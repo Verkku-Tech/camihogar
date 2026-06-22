@@ -91,12 +91,36 @@ public class OrdersController : ControllerBase
     public async Task<ActionResult<PagedOrdersResponseDto>> GetOrdersPaged(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
-        [FromQuery] DateTime? since = null)
+        [FromQuery] DateTime? since = null,
+        [FromQuery] string? search = null,
+        [FromQuery] string? clientSearch = null,
+        [FromQuery] string? vendor = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? saleType = null,
+        [FromQuery] DateTime? dateFrom = null,
+        [FromQuery] DateTime? dateTo = null,
+        [FromQuery] bool includeBudgets = true)
     {
         try
         {
+            var listFilter = new OrderListFilterDto
+            {
+                Search = search,
+                ClientSearch = clientSearch,
+                Vendor = vendor,
+                Status = status,
+                SaleType = saleType,
+                DateFrom = dateFrom,
+                DateTo = dateTo,
+                IncludeBudgets = includeBudgets,
+            };
+
             var result = await _orderService.GetOrdersPagedAsync(
-                page, pageSize, since, GetCallerRole(User));
+                page,
+                pageSize,
+                listFilter.HasActiveFilters ? null : since,
+                GetCallerRole(User),
+                listFilter.HasActiveFilters ? listFilter : null);
             return Ok(result);
         }
         catch (Exception ex)

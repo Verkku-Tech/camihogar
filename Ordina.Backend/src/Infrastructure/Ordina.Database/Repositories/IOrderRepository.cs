@@ -20,6 +20,13 @@ public interface IOrderRepository
         int pageSize,
         DateTime? since = null,
         IReadOnlyCollection<string>? onlineSellerTeamIds = null);
+
+    /// <summary>Listado paginado con filtros de búsqueda (ignora sincronización incremental).</summary>
+    Task<(IEnumerable<Order> Orders, int TotalCount)> GetFilteredPagedAsync(
+        int page,
+        int pageSize,
+        OrderListFilter listFilter,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null);
     
     Task<IEnumerable<Order>> GetByClientIdAsync(
         string clientId,

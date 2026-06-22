@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card } from "@/components/ui/card"
 import { Search, Phone, Mail, Plus, ChevronLeft, ChevronRight } from "lucide-react"
 import { getClients, clientFromBackendDto, type Client } from "@/lib/storage"
+import { filterClientsLocal } from "@/lib/order-client-search"
 import { apiClient, type ClientResponseDto } from "@/lib/api-client"
 import { CreateClientDialog } from "@/components/clients/create-client-dialog"
 import { toast } from "sonner"
@@ -29,20 +30,6 @@ interface ClientLookupDialogProps {
 
 function filterActiveClients(clients: Client[]): Client[] {
   return clients.filter((c) => c.estado === "activo")
-}
-
-function filterClientsLocal(clients: Client[], q: string): Client[] {
-  const term = q.trim().toLowerCase()
-  if (!term) return clients
-  return clients.filter(
-    (client) =>
-      client.nombreRazonSocial.toLowerCase().includes(term) ||
-      (client.apodo && client.apodo.toLowerCase().includes(term)) ||
-      (client.email && client.email.toLowerCase().includes(term)) ||
-      (client.telefono && client.telefono.includes(q.trim())) ||
-      (client.telefono2 && client.telefono2.includes(q.trim())) ||
-      client.rutId.toLowerCase().includes(term),
-  )
 }
 
 export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: ClientLookupDialogProps) {

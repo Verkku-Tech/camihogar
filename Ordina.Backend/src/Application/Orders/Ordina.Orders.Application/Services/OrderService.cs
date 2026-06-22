@@ -200,7 +200,8 @@ public class OrderService : IOrderService
         int page = 1,
         int pageSize = 50,
         DateTime? since = null,
-        string? callerRole = null)
+        string? callerRole = null,
+        OrderListFilterDto? listFilter = null)
     {
         try
         {
@@ -210,6 +211,44 @@ public class OrderService : IOrderService
             if (pageSize > 100) pageSize = 100; // Límite máximo para evitar sobrecarga
 
             var teamFilter = await ResolveTeamFilterAsync(callerRole);
+
+            if (listFilter?.HasActiveFilters == true)
+            {
+                var repoFilter = new OrderListFilter
+                {
+                    Search = listFilter.Search,
+                    ClientSearch = listFilter.ClientSearch,
+                    Vendor = listFilter.Vendor,
+                    Status = listFilter.Status,
+                    SaleType = listFilter.SaleType,
+                    DateFrom = listFilter.DateFrom,
+                    DateTo = listFilter.DateTo,
+                    IncludeBudgets = listFilter.IncludeBudgets,
+                };
+
+                if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
+                {
+                    repoFilter.MatchingClientIds = await _clientRepository.FindIdsBySearchAsync(
+                        listFilter.ClientSearch.Trim(),
+                        500);
+                }
+
+                var (filtered, filteredTotal) = await _orderRepository.GetFilteredPagedAsync(
+                    page,
+                    pageSize,
+                    repoFilter,
+                    teamFilter);
+
+                return new PagedOrdersResponseDto
+                {
+                    Orders = filtered.Select(MapToDto),
+                    Page = page,
+                    PageSize = pageSize,
+                    TotalCount = filteredTotal,
+                    ServerTimestamp = DateTime.UtcNow,
+                };
+            }
+
             var (orders, totalCount) = await _orderRepository.GetPagedAsync(
                 page, pageSize, since, teamFilter);
 

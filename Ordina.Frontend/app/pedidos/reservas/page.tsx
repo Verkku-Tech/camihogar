@@ -35,10 +35,8 @@ import {
 import { toast } from "sonner";
 import {
   getReservations,
-  getClients,
   deleteOrder,
   type Order,
-  type Client,
 } from "@/lib/storage";
 import {
   AlertDialog,
@@ -50,7 +48,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { buildClientFilterHaystack, digitsOnly } from "@/lib/order-client-search";
 import { getActiveExchangeRates } from "@/lib/currency-utils";
 import {
   commercialRatesToExchangeRatesInput,
@@ -58,6 +55,7 @@ import {
 } from "@/lib/order-currency-display";
 import { useAuth } from "@/contexts/auth-context";
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility";
+import { useClientSearchIds } from "@/hooks/use-client-search-ids";
 import { usePagination } from "@/hooks/use-pagination";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { EditOrderDialog } from "@/components/orders/edit-order-dialog";
@@ -104,7 +102,11 @@ export default function ReservasPage() {
   const [dateTo, setDateTo] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [clientById, setClientById] = useState<Map<string, Client>>(new Map());
+  const {
+    matchingClientIds,
+    isLoading: clientSearchLoading,
+    isTruncated: clientSearchTruncated,
+  } = useClientSearchIds(searchTerm);
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({});
   const [reservationToConfirm, setReservationToConfirm] = useState<Order | null>(
     null,
@@ -141,22 +143,6 @@ export default function ReservasPage() {
   }, [loadReservations]);
 
   useEffect(() => {
-    const loadClients = async () => {
-      try {
-        const list = await getClients();
-        const map = new Map<string, Client>();
-        for (const c of list) {
-          map.set(c.id, c);
-        }
-        setClientById(map);
-      } catch (e) {
-        console.error("Error cargando clientes para filtro:", e);
-      }
-    };
-    void loadClients();
-  }, []);
-
-  useEffect(() => {
     const updateTotals = async () => {
       if (reservations.length === 0) {
         setOrderTotals({});
@@ -188,25 +174,19 @@ export default function ReservasPage() {
     }
 
     const q = searchTerm.trim().toLowerCase();
-    const qDigits = digitsOnly(searchTerm);
 
     return reservations.filter((order) => {
       if (onlineSellerFilter && !isTeamOrder(order)) return false;
 
       const on = (order.orderNumber ?? "").toLowerCase();
       const vendor = reservationOnlineVendor(order).toLowerCase();
-      const haystack = buildClientFilterHaystack(
-        order.clientName,
-        clientById.get(order.clientId),
-      ).toLowerCase();
-      const haystackDigits = digitsOnly(haystack);
 
       const matchesSearch =
         q === "" ||
         on.includes(q) ||
-        haystack.includes(q) ||
         vendor.includes(q) ||
-        (qDigits !== "" && haystackDigits.includes(qDigits));
+        matchingClientIds?.has(order.clientId) ||
+        order.clientName.toLowerCase().includes(q);
 
       const matchesDate = matchesLocalDateRange(
         order.createdAt,
@@ -219,7 +199,7 @@ export default function ReservasPage() {
   }, [
     reservations,
     searchTerm,
-    clientById,
+    matchingClientIds,
     dateFrom,
     dateTo,
     onlineSellerFilter,
@@ -294,10 +274,18 @@ export default function ReservasPage() {
                     placeholder="Buscar por #reserva, cliente, teléfono, CI o vendedor..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9"
+                    className="w-full pl-9 pr-9"
                     aria-label="Buscar reservas"
                   />
+                  {clientSearchLoading && (
+                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground pointer-events-none" />
+                  )}
                 </div>
+                {clientSearchTruncated && (
+                  <span className="text-xs text-amber-600 dark:text-amber-400">
+                    Más de 100 coincidencias de cliente; refina la búsqueda
+                  </span>
+                )}
                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto">
                   <div className="flex w-full items-center gap-2 sm:w-auto">
                     <Label

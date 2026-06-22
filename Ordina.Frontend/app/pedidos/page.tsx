@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Search, Plus, Eye, Edit, Trash2, X } from "lucide-react";
+import { Search, Plus, Eye, Edit, Trash2, X, Loader2 } from "lucide-react";
 import { OrderPdfRowAction } from "@/components/orders/order-pdf-row-action";
 import {
   Select,
@@ -48,15 +48,11 @@ import {
   deleteOrder,
   deleteBudget,
   getUnifiedOrders,
-  getClients,
+  orderDtoToUnifiedOrder,
   type UnifiedOrder,
   type Order,
-  type Client,
 } from "@/lib/storage";
-import {
-  buildClientFilterHaystack,
-  digitsOnly,
-} from "@/lib/order-client-search";
+import { apiClient } from "@/lib/api-client";
 import { getActiveExchangeRates } from "@/lib/currency-utils";
 import {
   commercialRatesToExchangeRatesInput,
@@ -80,6 +76,7 @@ import {
   getOrderPendingTotal,
 } from "@/lib/order-sa";
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility";
+import { useClientSearchIds } from "@/hooks/use-client-search-ids";
 import { toLocalDateKey } from "@/lib/date-utils";
 
 const getStatusColor = (status: string) => {
@@ -143,39 +140,140 @@ export default function PedidosPage() {
     Record<string, string>
   >({});
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [clientById, setClientById] = useState<Map<string, Client>>(new Map());
+  const {
+    matchingClientIds,
+    isLoading: clientSearchLoading,
+    isTruncated: clientSearchTruncated,
+  } = useClientSearchIds(clientSearch);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [debouncedClientSearch, setDebouncedClientSearch] = useState("");
+  const [serverOrders, setServerOrders] = useState<UnifiedOrder[]>([]);
+  const [serverTotalCount, setServerTotalCount] = useState(0);
+  const [serverPage, setServerPage] = useState(1);
+  const offlineFilterToastShown = useRef(false);
+
+  const hasListFilters = useMemo(() => {
+    return (
+      searchTerm.trim() !== "" ||
+      clientSearch.trim() !== "" ||
+      filters.vendor !== "all" ||
+      filters.status !== "all" ||
+      filters.saleType !== "all" ||
+      dateFrom !== "" ||
+      dateTo !== ""
+    );
+  }, [searchTerm, clientSearch, filters, dateFrom, dateTo]);
+
+  const isBrowserOnline =
+    typeof navigator !== "undefined" ? navigator.onLine : true;
+  const useServerMode = hasListFilters && isBrowserOnline;
 
   useEffect(() => {
-    const loadClients = async () => {
-      try {
-        const list = await getClients();
-        const map = new Map<string, Client>();
-        for (const c of list) {
-          map.set(c.id, c);
-        }
-        setClientById(map);
-      } catch (e) {
-        console.error("Error cargando clientes para filtro:", e);
-      }
-    };
-    void loadClients();
-  }, []);
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedClientSearch(clientSearch), 400);
+    return () => clearTimeout(timer);
+  }, [clientSearch]);
+
+  useEffect(() => {
+    setServerPage(1);
+  }, [
+    debouncedSearchTerm,
+    debouncedClientSearch,
+    filters,
+    dateFrom,
+    dateTo,
+    itemsPerPage,
+  ]);
+
+  useEffect(() => {
+    if (!hasListFilters || isBrowserOnline) return;
+    if (offlineFilterToastShown.current) return;
+    offlineFilterToastShown.current = true;
+    toast.info("Sin conexión: los filtros se aplican solo sobre datos locales.");
+  }, [hasListFilters, isBrowserOnline]);
+
+  useEffect(() => {
+    if (hasListFilters && isBrowserOnline) {
+      offlineFilterToastShown.current = false;
+    }
+  }, [hasListFilters, isBrowserOnline]);
+
+  const loadServerFilteredOrders = useCallback(async () => {
+    if (!useServerMode) return;
+
+    let rangeFrom = dateFrom;
+    let rangeTo = dateTo;
+    if (rangeFrom && rangeTo && rangeFrom > rangeTo) {
+      [rangeFrom, rangeTo] = [rangeTo, rangeFrom];
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await apiClient.getOrdersPaged(
+        serverPage,
+        itemsPerPage,
+        undefined,
+        {
+          search: debouncedSearchTerm.trim() || undefined,
+          clientSearch: debouncedClientSearch.trim() || undefined,
+          vendor: filters.vendor !== "all" ? filters.vendor : undefined,
+          status: filters.status !== "all" ? filters.status : undefined,
+          saleType: filters.saleType !== "all" ? filters.saleType : undefined,
+          dateFrom: rangeFrom || undefined,
+          dateTo: rangeTo || undefined,
+          includeBudgets: true,
+        },
+      );
+      setServerOrders(
+        (response.orders ?? []).map((dto) => orderDtoToUnifiedOrder(dto)),
+      );
+      setServerTotalCount(response.totalCount ?? 0);
+    } catch (error) {
+      console.error("Error loading filtered orders:", error);
+      toast.error("No se pudieron cargar los pedidos filtrados.");
+      setServerOrders([]);
+      setServerTotalCount(0);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [
+    useServerMode,
+    debouncedSearchTerm,
+    debouncedClientSearch,
+    filters,
+    dateFrom,
+    dateTo,
+    serverPage,
+    itemsPerPage,
+  ]);
+
+  useEffect(() => {
+    void loadServerFilteredOrders();
+  }, [loadServerFilteredOrders]);
 
   useEffect(() => {
     const loadOrders = async () => {
       try {
-        setIsLoading(true);
+        if (!useServerMode) {
+          setIsLoading(true);
+        }
         const loadedOrders = await getUnifiedOrders();
         setOrders(loadedOrders);
       } catch (error) {
         console.error("Error loading orders:", error);
       } finally {
-        setIsLoading(false);
+        if (!useServerMode) {
+          setIsLoading(false);
+        }
       }
     };
 
-    loadOrders();
-  }, []);
+    void loadOrders();
+  }, [useServerMode]);
 
   // Totales: misma lógica que detalle del pedido (baseCurrency USD vs legacy Bs)
   useEffect(() => {
@@ -268,70 +366,90 @@ export default function PedidosPage() {
     [rangeFrom, rangeTo] = [rangeTo, rangeFrom];
   }
 
-  const filteredOrders = orders.filter((order) => {
-    if (onlineSellerFilter && !isTeamOrder(order)) return false;
+  const filteredOrdersLocal = useMemo(() => {
+    return orders.filter((order) => {
+      if (onlineSellerFilter && !isTeamOrder(order)) return false;
 
-    // Filtro de búsqueda general (existente)
-    const on = (order.orderNumber ?? "").toLowerCase();
-    const matchesSearch =
-      on.includes(searchTerm.toLowerCase()) ||
-      order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.vendorName.toLowerCase().includes(searchTerm.toLowerCase());
+      const on = (order.orderNumber ?? "").toLowerCase();
+      const matchesSearch =
+        on.includes(searchTerm.toLowerCase()) ||
+        order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.vendorName.toLowerCase().includes(searchTerm.toLowerCase());
 
-    // Filtros por columna
-    const matchesVendor =
-      filters.vendor === "all" || order.vendorName === filters.vendor;
-    const matchesStatus =
-      filters.status === "all" || order.status === filters.status;
-    // Presupuestos unificados suelen no tener saleType; no coinciden con un tipo concreto.
-    const matchesSaleType =
-      filters.saleType === "all" ||
-      (order.saleType !== undefined && order.saleType === filters.saleType);
+      const matchesVendor =
+        filters.vendor === "all" || order.vendorName === filters.vendor;
+      const matchesStatus =
+        filters.status === "all" || order.status === filters.status;
+      const matchesSaleType =
+        filters.saleType === "all" ||
+        (order.saleType !== undefined && order.saleType === filters.saleType);
 
-    const orderDay = toLocalDateKey(order.createdAt);
-    const matchesDateFrom = !rangeFrom || orderDay >= rangeFrom;
-    const matchesDateTo = !rangeTo || orderDay <= rangeTo;
+      const orderDay = toLocalDateKey(order.createdAt);
+      const matchesDateFrom = !rangeFrom || orderDay >= rangeFrom;
+      const matchesDateTo = !rangeTo || orderDay <= rangeTo;
 
-    const q = clientSearch.trim().toLowerCase();
-    const haystack = buildClientFilterHaystack(
-      order.clientName,
-      clientById.get(order.clientId),
-    ).toLowerCase();
-    const matchesClient =
-      q === "" ||
-      haystack.includes(q) ||
-      (digitsOnly(clientSearch) !== "" &&
-        digitsOnly(haystack).includes(digitsOnly(clientSearch)));
+      const q = clientSearch.trim().toLowerCase();
+      const matchesClient =
+        q === "" ||
+        matchingClientIds?.has(order.clientId) ||
+        order.clientName.toLowerCase().includes(q);
 
-    const isConvertedBudget =
-      order.type === "budget" &&
-      order.status.trim().toLowerCase() === "convertido";
+      const isConvertedBudget =
+        order.type === "budget" &&
+        order.status.trim().toLowerCase() === "convertido";
 
-    return (
-      matchesSearch &&
-      matchesVendor &&
-      matchesStatus &&
-      matchesSaleType &&
-      matchesDateFrom &&
-      matchesDateTo &&
-      matchesClient &&
-      !isConvertedBudget
-    );
-  });
+      return (
+        matchesSearch &&
+        matchesVendor &&
+        matchesStatus &&
+        matchesSaleType &&
+        matchesDateFrom &&
+        matchesDateTo &&
+        matchesClient &&
+        !isConvertedBudget
+      );
+    });
+  }, [
+    orders,
+    searchTerm,
+    filters,
+    rangeFrom,
+    rangeTo,
+    clientSearch,
+    matchingClientIds,
+    onlineSellerFilter,
+    isTeamOrder,
+  ]);
 
-  // Paginación
   const {
-    currentPage,
-    totalPages,
-    paginatedData: paginatedOrders,
-    goToPage,
-    startIndex,
-    endIndex,
-    totalItems,
+    currentPage: localCurrentPage,
+    totalPages: localTotalPages,
+    paginatedData: localPaginatedOrders,
+    goToPage: localGoToPage,
+    startIndex: localStartIndex,
+    endIndex: localEndIndex,
+    totalItems: localTotalItems,
   } = usePagination({
-    data: filteredOrders,
+    data: filteredOrdersLocal,
     itemsPerPage,
   });
+
+  const serverTotalPages = Math.max(
+    1,
+    Math.ceil(serverTotalCount / itemsPerPage) || 1,
+  );
+  const serverStartIndex =
+    serverTotalCount === 0 ? 0 : (serverPage - 1) * itemsPerPage + 1;
+  const serverEndIndex = Math.min(serverPage * itemsPerPage, serverTotalCount);
+
+  const filteredOrders = useServerMode ? serverOrders : filteredOrdersLocal;
+  const paginatedOrders = useServerMode ? serverOrders : localPaginatedOrders;
+  const currentPage = useServerMode ? serverPage : localCurrentPage;
+  const totalPages = useServerMode ? serverTotalPages : localTotalPages;
+  const startIndex = useServerMode ? serverStartIndex : localStartIndex;
+  const endIndex = useServerMode ? serverEndIndex : localEndIndex;
+  const totalItems = useServerMode ? serverTotalCount : localTotalItems;
+  const goToPage = useServerMode ? setServerPage : localGoToPage;
 
   const handleDelete = async () => {
     if (!orderToDelete) return;
@@ -350,8 +468,12 @@ export default function PedidosPage() {
         await deleteBudget(orderToDelete.id);
       }
       // Refrescar la lista de pedidos
-      const loadedOrders = await getUnifiedOrders();
-      setOrders(loadedOrders);
+      if (useServerMode) {
+        await loadServerFilteredOrders();
+      } else {
+        const loadedOrders = await getUnifiedOrders();
+        setOrders(loadedOrders);
+      }
       setIsDeleteDialogOpen(false);
       setOrderToDelete(null);
       toast.success("Eliminado exitosamente");
@@ -463,10 +585,18 @@ export default function PedidosPage() {
                     placeholder="Cliente: nombre, teléfono, CI, apodo..."
                     value={clientSearch}
                     onChange={(e) => setClientSearch(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 pr-9"
                     aria-label="Filtrar por cliente: nombre, teléfono, CI o apodo"
                   />
+                  {clientSearchLoading && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground pointer-events-none" />
+                  )}
                 </div>
+                {clientSearchTruncated && (
+                  <span className="text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap">
+                    Más de 100 coincidencias; refina la búsqueda
+                  </span>
+                )}
 
                 <Select
                   value={filters.vendor}
@@ -587,9 +717,9 @@ export default function PedidosPage() {
                 <CardContent>
                   {isLoading ? (
                     <div className="text-center py-8">Cargando pedidos...</div>
-                  ) : filteredOrders.length === 0 ? (
+                  ) : totalItems === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
-                      {searchTerm
+                      {hasListFilters
                         ? "No se encontraron pedidos"
                         : "No hay pedidos registrados"}
                     </div>
@@ -678,9 +808,7 @@ export default function PedidosPage() {
                                       ? (order as Order)
                                       : undefined
                                   }
-                                  client={
-                                    clientById.get(order.clientId) ?? null
-                                  }
+                                  lazyLoad
                                 />
                                 {canEditOrder(order) && (
                                   <Button
@@ -722,7 +850,7 @@ export default function PedidosPage() {
                   )}
 
                   {/* Paginación */}
-                  {!isLoading && filteredOrders.length > 0 && (
+                  {!isLoading && totalItems > 0 && (
                     <TablePagination
                       currentPage={currentPage}
                       totalPages={totalPages}

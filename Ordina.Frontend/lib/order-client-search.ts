@@ -60,3 +60,30 @@ export function buildClientFilterHaystack(
   addClientSearchFields(parts, client)
   return joinSearchParts(parts)
 }
+
+/** Filtra clientes en cache local (offline) por nombre, apodo, email, teléfono, CI. */
+export function filterClientsLocal(clients: Client[], q: string): Client[] {
+  const term = q.trim().toLowerCase()
+  if (!term) return clients
+  const qDigits = digitsOnly(q)
+  return clients.filter((client) => {
+    if (client.nombreRazonSocial.toLowerCase().includes(term)) return true
+    if (client.apodo?.toLowerCase().includes(term)) return true
+    if (client.email?.toLowerCase().includes(term)) return true
+    if (client.rutId.toLowerCase().includes(term)) return true
+    if (client.telefono?.includes(q.trim())) return true
+    if (client.telefono2?.includes(q.trim())) return true
+    if (qDigits !== "") {
+      const hayDigits = [
+        client.telefono,
+        client.telefono2,
+        client.rutId,
+      ]
+        .filter(Boolean)
+        .map((s) => digitsOnly(s!))
+        .join("")
+      if (hayDigits.includes(qDigits)) return true
+    }
+    return false
+  })
+}
