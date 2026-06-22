@@ -103,6 +103,27 @@ public static class IndexManager
                 new CreateIndexOptions { Name = "idx_order_createdAt" }
             )
         );
+
+        // Listado filtrado: cliente + fecha
+        collection.Indexes.CreateOne(
+            new CreateIndexModel<Order>(
+                Builders<Order>.IndexKeys
+                    .Ascending(x => x.ClientId)
+                    .Descending(x => x.CreatedAt),
+                new CreateIndexOptions { Name = "idx_order_clientId_createdAt" }
+            )
+        );
+
+        // Listado filtrado: vendedor + estado + fecha
+        collection.Indexes.CreateOne(
+            new CreateIndexModel<Order>(
+                Builders<Order>.IndexKeys
+                    .Ascending(x => x.VendorName)
+                    .Ascending(x => x.Status)
+                    .Descending(x => x.CreatedAt),
+                new CreateIndexOptions { Name = "idx_order_vendor_status_createdAt" }
+            )
+        );
     }
 
     private static void CreateOrderAuditLogIndexes(IMongoCollection<OrderAuditLog> collection)
@@ -151,6 +172,14 @@ public static class IndexManager
             new CreateIndexModel<Client>(
                 Builders<Client>.IndexKeys.Ascending(x => x.Estado),
                 new CreateIndexOptions { Name = "idx_client_estado" }
+            )
+        );
+
+        // Búsqueda por teléfono en filtros de pedidos
+        collection.Indexes.CreateOne(
+            new CreateIndexModel<Client>(
+                Builders<Client>.IndexKeys.Ascending(x => x.Telefono),
+                new CreateIndexOptions { Name = "idx_client_telefono" }
             )
         );
     }

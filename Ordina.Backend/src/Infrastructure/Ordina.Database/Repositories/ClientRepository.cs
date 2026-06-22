@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Ordina.Database.Entities.Client;
@@ -56,14 +57,29 @@ public class ClientRepository : IClientRepository
             return Builders<Client>.Filter.Empty;
         }
 
-        var regex = new BsonRegularExpression(search.Trim(), "i");
-        return Builders<Client>.Filter.Or(
+        var trimmed = search.Trim();
+        var regex = new BsonRegularExpression(Regex.Escape(trimmed), "i");
+        var filters = new List<FilterDefinition<Client>>
+        {
             Builders<Client>.Filter.Regex(x => x.NombreRazonSocial, regex),
             Builders<Client>.Filter.Regex(x => x.RutId, regex),
             Builders<Client>.Filter.Regex(x => x.Apodo, regex),
             Builders<Client>.Filter.Regex(x => x.Telefono, regex),
             Builders<Client>.Filter.Regex(x => x.Telefono2, regex),
-            Builders<Client>.Filter.Regex(x => x.Email, regex));
+            Builders<Client>.Filter.Regex(x => x.Email, regex),
+        };
+
+        var digits = new string(trimmed.Where(char.IsDigit).ToArray());
+        if (digits.Length >= 3 && digits.Length == trimmed.Length)
+        {
+            var digitPattern = string.Join(@"\D*", digits.Select(c => Regex.Escape(c.ToString())));
+            var digitRegex = new BsonRegularExpression(digitPattern, "i");
+            filters.Add(Builders<Client>.Filter.Regex(x => x.RutId, digitRegex));
+            filters.Add(Builders<Client>.Filter.Regex(x => x.Telefono, digitRegex));
+            filters.Add(Builders<Client>.Filter.Regex(x => x.Telefono2, digitRegex));
+        }
+
+        return Builders<Client>.Filter.Or(filters);
     }
 
     public async Task<IEnumerable<Client>> GetAllAsync()

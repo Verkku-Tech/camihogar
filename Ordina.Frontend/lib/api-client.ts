@@ -1235,12 +1235,32 @@ export class ApiClient {
     page: number = 1,
     pageSize: number = 50,
     since?: string,
+    filters?: {
+      search?: string;
+      clientSearch?: string;
+      vendor?: string;
+      status?: string;
+      saleType?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      includeBudgets?: boolean;
+    },
   ) {
     const params = new URLSearchParams();
     params.append("page", page.toString());
     params.append("pageSize", pageSize.toString());
     if (since) {
       params.append("since", since);
+    }
+    if (filters?.search) params.append("search", filters.search);
+    if (filters?.clientSearch) params.append("clientSearch", filters.clientSearch);
+    if (filters?.vendor) params.append("vendor", filters.vendor);
+    if (filters?.status) params.append("status", filters.status);
+    if (filters?.saleType) params.append("saleType", filters.saleType);
+    if (filters?.dateFrom) params.append("dateFrom", filters.dateFrom);
+    if (filters?.dateTo) params.append("dateTo", filters.dateTo);
+    if (filters?.includeBudgets === false) {
+      params.append("includeBudgets", "false");
     }
     return this.request<PagedOrdersResponseDto>(
       `/api/Orders?${params.toString()}`,

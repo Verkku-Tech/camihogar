@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card } from "@/components/ui/card"
-import { Search, Phone, Mail, Plus } from "lucide-react"
-import { getClients, type Client } from "@/lib/storage"
-import { type ClientResponseDto } from "@/lib/api-client"
+import { Search, Phone, Mail, Plus, ChevronLeft, ChevronRight } from "lucide-react"
+import { getClients, clientFromBackendDto, type Client } from "@/lib/storage"
+import { filterClientsLocal } from "@/lib/order-client-search"
+import { apiClient, type ClientResponseDto } from "@/lib/api-client"
 import { CreateClientDialog } from "@/components/clients/create-client-dialog"
 import { toast } from "sonner"
 import { useNestedModalGuard } from "@/hooks/use-nested-modal-guard"
@@ -25,6 +26,10 @@ interface ClientLookupDialogProps {
     email?: string
     rutId?: string
   }) => void
+}
+
+function filterActiveClients(clients: Client[]): Client[] {
+  return clients.filter((c) => c.estado === "activo")
 }
 
 export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: ClientLookupDialogProps) {

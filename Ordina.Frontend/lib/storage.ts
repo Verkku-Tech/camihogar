@@ -4059,6 +4059,63 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
   }
 };
 
+/** Mapea un DTO del API al formato unificado de la lista de Pedidos (pedido o presupuesto). */
+export const orderDtoToUnifiedOrder = (dto: OrderResponseDto): UnifiedOrder => {
+  const order = orderFromBackendDto(dto);
+  const base = {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    clientId: order.clientId,
+    clientName: order.clientName,
+    vendorId: order.vendorId,
+    vendorName: order.vendorName,
+    referrerId: order.referrerId,
+    referrerName: order.referrerName,
+    postventaId: order.postventaId,
+    postventaName: order.postventaName,
+    products: order.products,
+    subtotal: order.subtotal,
+    taxAmount: order.taxAmount,
+    deliveryCost: order.deliveryCost,
+    total: order.total,
+    subtotalBeforeDiscounts: order.subtotalBeforeDiscounts,
+    productDiscountTotal: order.productDiscountTotal,
+    generalDiscountAmount: order.generalDiscountAmount,
+    generalDiscountType: order.generalDiscountType,
+    generalDiscountPercent: order.generalDiscountPercent,
+    deliveryAddress: order.deliveryAddress,
+    hasDelivery: order.hasDelivery,
+    status: order.status,
+    createdAt: order.createdAt,
+    observations: order.observations,
+    baseCurrency: order.baseCurrency,
+    exchangeRatesAtCreation: order.exchangeRatesAtCreation,
+  };
+
+  if (isBackendBudgetOrder(order)) {
+    return {
+      ...base,
+      updatedAt: order.createdAt,
+      type: "budget",
+    };
+  }
+
+  return {
+    ...base,
+    updatedAt: order.updatedAt,
+    type: "order",
+    paymentMethod: order.paymentMethod,
+    saleType: order.saleType,
+    deliveryType: order.deliveryType,
+    deliveryZone: order.deliveryZone,
+    deliveryServices: order.deliveryServices,
+    dispatchDate: order.dispatchDate,
+    completedAt: order.completedAt,
+    partialPayments: order.partialPayments,
+    mixedPayments: order.mixedPayments,
+  };
+};
+
 // ===== DASHBOARD METRICS =====
 
 /** Estados con nota de despacho / venta cerrada (flujo actual + legacy en BD). */
