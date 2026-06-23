@@ -151,6 +151,11 @@ export default function PedidosPage() {
   const [serverTotalCount, setServerTotalCount] = useState(0);
   const [serverPage, setServerPage] = useState(1);
   const offlineFilterToastShown = useRef(false);
+  const serverFetchGenerationRef = useRef(0);
+
+  const textFiltersSettled =
+    searchTerm === debouncedSearchTerm &&
+    clientSearch === debouncedClientSearch;
 
   const hasListFilters = useMemo(() => {
     return (
@@ -204,12 +209,15 @@ export default function PedidosPage() {
 
   const loadServerFilteredOrders = useCallback(async () => {
     if (!useServerMode) return;
+    if (!textFiltersSettled) return;
 
     let rangeFrom = dateFrom;
     let rangeTo = dateTo;
     if (rangeFrom && rangeTo && rangeFrom > rangeTo) {
       [rangeFrom, rangeTo] = [rangeTo, rangeFrom];
     }
+
+    const generation = ++serverFetchGenerationRef.current;
 
     try {
       setIsLoading(true);
@@ -228,20 +236,25 @@ export default function PedidosPage() {
           includeBudgets: true,
         },
       );
+      if (generation !== serverFetchGenerationRef.current) return;
       setServerOrders(
         (response.orders ?? []).map((dto) => orderDtoToUnifiedOrder(dto)),
       );
       setServerTotalCount(response.totalCount ?? 0);
     } catch (error) {
+      if (generation !== serverFetchGenerationRef.current) return;
       console.error("Error loading filtered orders:", error);
       toast.error("No se pudieron cargar los pedidos filtrados.");
       setServerOrders([]);
       setServerTotalCount(0);
     } finally {
-      setIsLoading(false);
+      if (generation === serverFetchGenerationRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [
     useServerMode,
+    textFiltersSettled,
     debouncedSearchTerm,
     debouncedClientSearch,
     filters,
@@ -442,13 +455,30 @@ export default function PedidosPage() {
     serverTotalCount === 0 ? 0 : (serverPage - 1) * itemsPerPage + 1;
   const serverEndIndex = Math.min(serverPage * itemsPerPage, serverTotalCount);
 
-  const filteredOrders = useServerMode ? serverOrders : filteredOrdersLocal;
-  const paginatedOrders = useServerMode ? serverOrders : localPaginatedOrders;
+  const serverResultsPending = useServerMode && !textFiltersSettled;
+  const showTableLoading = isLoading || serverResultsPending;
+  const paginatedOrders = serverResultsPending
+    ? []
+    : useServerMode
+      ? serverOrders
+      : localPaginatedOrders;
   const currentPage = useServerMode ? serverPage : localCurrentPage;
   const totalPages = useServerMode ? serverTotalPages : localTotalPages;
-  const startIndex = useServerMode ? serverStartIndex : localStartIndex;
-  const endIndex = useServerMode ? serverEndIndex : localEndIndex;
-  const totalItems = useServerMode ? serverTotalCount : localTotalItems;
+  const startIndex = serverResultsPending
+    ? 0
+    : useServerMode
+      ? serverStartIndex
+      : localStartIndex;
+  const endIndex = serverResultsPending
+    ? 0
+    : useServerMode
+      ? serverEndIndex
+      : localEndIndex;
+  const totalItems = serverResultsPending
+    ? 0
+    : useServerMode
+      ? serverTotalCount
+      : localTotalItems;
   const goToPage = useServerMode ? setServerPage : localGoToPage;
 
   const handleDelete = async () => {
@@ -715,7 +745,7 @@ export default function PedidosPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {isLoading ? (
+                  {showTableLoading ? (
                     <div className="text-center py-8">Cargando pedidos...</div>
                   ) : totalItems === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
@@ -850,7 +880,7 @@ export default function PedidosPage() {
                   )}
 
                   {/* Paginación */}
-                  {!isLoading && totalItems > 0 && (
+                  {!showTableLoading && totalItems > 0 && (
                     <TablePagination
                       currentPage={currentPage}
                       totalPages={totalPages}
