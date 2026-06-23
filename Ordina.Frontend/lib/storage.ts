@@ -6089,47 +6089,58 @@ export const deleteUser = async (id: string): Promise<void> => {
 // ===== VENDORS STORAGE (IndexedDB) =====
 // Ahora obtenemos vendedores y referidos desde los usuarios según su rol
 
+function normalizeUserRole(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+/** Usuarios que pueden figurar como vendedor en un pedido/presupuesto. */
+export function isOrderVendorRole(role: string | undefined): boolean {
+  const raw = (role ?? "").trim();
+  if (!raw) return false;
+  const r = normalizeUserRole(raw);
+  return (
+    raw === "Store Seller" ||
+    raw === "Online Seller" ||
+    raw === "Supervisor" ||
+    r === "vendedor de tienda" ||
+    r === "vendedor online" ||
+    r === "supervisor"
+  );
+}
+
+function orderVendorDisplayRole(role: string): string {
+  const raw = role.trim();
+  const r = normalizeUserRole(raw);
+  if (raw === "Store Seller" || r === "vendedor de tienda") {
+    return "Vendedor de tienda";
+  }
+  if (raw === "Online Seller" || r === "vendedor online") {
+    return "Vendedor Online";
+  }
+  if (raw === "Supervisor" || r === "supervisor") {
+    return "Supervisor";
+  }
+  return raw;
+}
+
 /**
- * Obtiene vendedores desde usuarios con rol "Store Seller" o "Vendedor de tienda"
- * y los convierte al formato Vendor para mantener compatibilidad
+ * Obtiene vendedores desde usuarios activos con rol Store Seller, Online Seller o Supervisor.
+ * Los convierte al formato Vendor para mantener compatibilidad.
  */
 export const getVendors = async (): Promise<Vendor[]> => {
   try {
-    // Obtener todos los usuarios
     const users = await getUsers();
 
-    // Filtrar usuarios con rol de vendedor de tienda u online (activos)
-    // Normalizar rol (trim + comparación insensible a mayúsculas para etiquetas en español)
-    const vendorUsers = users.filter((user) => {
-      if (user.status !== "active") return false;
-      const raw = ((user.role as string) || "").trim();
-      if (!raw) return false;
-      const r = raw.toLowerCase();
-      return (
-        raw === "Store Seller" ||
-        raw === "Online Seller" ||
-        r === "vendedor de tienda" ||
-        r === "vendedor online"
-      );
-    });
+    const vendorUsers = users.filter(
+      (user) => user.status === "active" && isOrderVendorRole(user.role),
+    );
 
-    // Convertir usuarios a formato Vendor
-    const vendors: Vendor[] = vendorUsers.map((user) => {
-      const raw = ((user.role as string) || "").trim();
-      const rl = raw.toLowerCase();
-      const displayRole =
-        raw === "Store Seller" || rl === "vendedor de tienda"
-          ? "Vendedor de tienda"
-          : raw === "Online Seller" || rl === "vendedor online"
-            ? "Vendedor Online"
-            : (user.role as string);
-      return {
-        id: user.id,
-        name: user.name,
-        role: displayRole,
-        type: "vendor" as const,
-      };
-    });
+    const vendors: Vendor[] = vendorUsers.map((user) => ({
+      id: user.id,
+      name: user.name,
+      role: orderVendorDisplayRole(user.role as string),
+      type: "vendor" as const,
+    }));
 
     return vendors;
   } catch (error) {
@@ -6938,26 +6949,14 @@ export const getPurchaseType = (order: Order): string => {
 
 export const getVendor = async (id: string): Promise<Vendor | undefined> => {
   try {
-    // Buscar en usuarios primero
     const user = await getUser(id);
-    if (user && user.status === "active") {
-      // Verificar si es vendedor o referido
-      const isVendor = user.role === "Store Seller";
-      const isReferrer = user.role === "Online Seller";
-
-      if (isVendor || isReferrer) {
-        return {
-          id: user.id,
-          name: user.name,
-          role:
-            user.role === "Store Seller"
-              ? "Vendedor de tienda"
-              : user.role === "Online Seller"
-                ? "Vendedor Online"
-                : user.role,
-          type: isVendor ? "vendor" : "referrer",
-        };
-      }
+    if (user && user.status === "active" && isOrderVendorRole(user.role)) {
+      return {
+        id: user.id,
+        name: user.name,
+        role: orderVendorDisplayRole(user.role as string),
+        type: "vendor",
+      };
     }
     return undefined;
   } catch (error) {

@@ -180,7 +180,7 @@ export function OrderPdfRowAction({
     );
   }
 
-  if (!dataReady && orderProp) {
+  if (!dataReady && orderProp && !lazyLoad) {
     return (
       <Button
         variant="ghost"
