@@ -1,4 +1,5 @@
 export const DISPATCH_SEND_TO_ROUTE = "dispatch.send_to_route";
+export const DISPATCH_CONFIRM_DELIVERY = "dispatch.confirm_delivery";
 
 export interface AssignableUserPermission {
   id: string;
@@ -7,6 +8,7 @@ export interface AssignableUserPermission {
 
 export const ASSIGNABLE_USER_PERMISSIONS: AssignableUserPermission[] = [
   { id: DISPATCH_SEND_TO_ROUTE, label: "Pasar pedido a ruta" },
+  { id: DISPATCH_CONFIRM_DELIVERY, label: "Confirmar entrega (Entregar)" },
 ];
 
 export function getAssignablePermissionLabel(permissionId: string): string {

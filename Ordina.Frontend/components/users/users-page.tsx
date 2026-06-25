@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,6 +66,7 @@ import { getStores, type Store } from "@/lib/storage";
 import { AssignablePermissionsPicker } from "@/components/users/assignable-permissions-picker";
 import {
   ASSIGNABLE_USER_PERMISSIONS,
+  DISPATCH_CONFIRM_DELIVERY,
   type AssignableUserPermission,
 } from "@/lib/user-extra-permissions";
 
@@ -175,6 +176,13 @@ export function UsersPage() {
     status: "Activo" as "Activo" | "Inactivo",
     storeId: "",
   });
+
+  const visibleAssignablePermissions = useMemo(() => {
+    if (formData.role === "Supervisor") return assignablePermissions;
+    return assignablePermissions.filter(
+      (p) => p.id !== DISPATCH_CONFIRM_DELIVERY,
+    );
+  }, [assignablePermissions, formData.role]);
 
   useEffect(() => {
     getStores()
@@ -584,6 +592,11 @@ export function UsersPage() {
       role: value,
       storeId: isStoreSellerDisplayRole(value) ? prev.storeId : "",
     }));
+    if (value !== "Supervisor") {
+      setExtraPermissions((prev) =>
+        prev.filter((id) => id !== DISPATCH_CONFIRM_DELIVERY),
+      );
+    }
   };
 
   const renderExtraPermissionsSection = () => (
@@ -593,7 +606,7 @@ export function UsersPage() {
         Se suman al rol del usuario. No reemplazan los permisos existentes.
       </p>
       <AssignablePermissionsPicker
-        permissions={assignablePermissions}
+        permissions={visibleAssignablePermissions}
         selected={extraPermissions}
         onChange={setExtraPermissions}
       />

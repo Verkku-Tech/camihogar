@@ -471,8 +471,9 @@ public class OrdersController : ControllerBase
             var callerRole = User.FindFirstValue(ClaimTypes.Role);
             var hasDispatchUpdate = UserHasPermission(User, "dispatch.update");
             var hasDispatchSendToRoute = UserHasPermission(User, "dispatch.send_to_route");
+            var hasDispatchConfirmDelivery = UserHasPermission(User, "dispatch.confirm_delivery");
             var order = await _orderService.UpdateOrderAsync(
-                id, updateDto, userId, userName, callerRole, hasDispatchUpdate, hasDispatchSendToRoute);
+                id, updateDto, userId, userName, callerRole, hasDispatchUpdate, hasDispatchSendToRoute, hasDispatchConfirmDelivery);
             return Ok(order);
         }
         catch (UnauthorizedAccessException uaex)
