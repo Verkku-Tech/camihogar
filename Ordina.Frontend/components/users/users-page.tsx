@@ -66,7 +66,8 @@ import { getStores, type Store } from "@/lib/storage";
 import { AssignablePermissionsPicker } from "@/components/users/assignable-permissions-picker";
 import {
   ASSIGNABLE_USER_PERMISSIONS,
-  DISPATCH_CONFIRM_DELIVERY,
+  filterExtraPermissionsForDisplayRole,
+  getAssignablePermissionsForDisplayRole,
   type AssignableUserPermission,
 } from "@/lib/user-extra-permissions";
 
@@ -177,12 +178,14 @@ export function UsersPage() {
     storeId: "",
   });
 
-  const visibleAssignablePermissions = useMemo(() => {
-    if (formData.role === "Supervisor") return assignablePermissions;
-    return assignablePermissions.filter(
-      (p) => p.id !== DISPATCH_CONFIRM_DELIVERY,
-    );
-  }, [assignablePermissions, formData.role]);
+  const visibleAssignablePermissions = useMemo(
+    () =>
+      getAssignablePermissionsForDisplayRole(
+        assignablePermissions,
+        formData.role,
+      ),
+    [assignablePermissions, formData.role],
+  );
 
   useEffect(() => {
     getStores()
@@ -567,7 +570,12 @@ export function UsersPage() {
       status: user.status,
       storeId: user.storeId || "",
     });
-    setExtraPermissions(user.extraPermissions ?? []);
+    setExtraPermissions(
+      filterExtraPermissionsForDisplayRole(
+        user.extraPermissions ?? [],
+        user.role,
+      ),
+    );
     setIsEditDialogOpen(true);
   };
 
@@ -592,11 +600,9 @@ export function UsersPage() {
       role: value,
       storeId: isStoreSellerDisplayRole(value) ? prev.storeId : "",
     }));
-    if (value !== "Supervisor") {
-      setExtraPermissions((prev) =>
-        prev.filter((id) => id !== DISPATCH_CONFIRM_DELIVERY),
-      );
-    }
+    setExtraPermissions((prev) =>
+      filterExtraPermissionsForDisplayRole(prev, value),
+    );
   };
 
   const renderExtraPermissionsSection = () => (
