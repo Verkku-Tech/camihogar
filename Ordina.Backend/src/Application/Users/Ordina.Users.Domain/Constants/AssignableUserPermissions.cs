@@ -10,6 +10,7 @@ public static class AssignableUserPermissions
     private static readonly AssignablePermission[] All =
     [
         new(Permissions.Dispatch.SendToRoute, "Pasar pedido a ruta"),
+        new(Permissions.Dispatch.ConfirmDelivery, "Confirmar entrega (Entregar)"),
     ];
 
     public static IReadOnlyList<AssignablePermission> GetAll() => All;

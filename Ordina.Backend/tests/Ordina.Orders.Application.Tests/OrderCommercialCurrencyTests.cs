@@ -205,4 +205,50 @@ public class OrderCommercialCurrencyTests
 
         Assert.True(OrderCommercialCurrency.IsCasheaOrder(order));
     }
+
+    [Fact]
+    public void ValidateCasheaRequiresPartialInStorePayment_WhenFullInStore_Throws()
+    {
+        var order = UsdOrder(661.40m);
+        order.PaymentCondition = "cashea";
+        order.PartialPayments = new List<PartialPayment>
+        {
+            new()
+            {
+                Amount = 661.40m,
+                Method = "Tarjeta de débito",
+                PaymentDetails = new PaymentDetails
+                {
+                    OriginalAmount = 661.40m,
+                    OriginalCurrency = "USD",
+                },
+            },
+        };
+
+        var ex = Assert.Throws<ArgumentException>(() =>
+            OrderCommercialCurrency.ValidateCasheaRequiresPartialInStorePayment(order));
+        Assert.Contains("Todo Pago", ex.Message);
+    }
+
+    [Fact]
+    public void ValidateCasheaRequiresPartialInStorePayment_WhenPartialInStore_DoesNotThrow()
+    {
+        var order = UsdOrder(661.40m);
+        order.PaymentCondition = "cashea";
+        order.PartialPayments = new List<PartialPayment>
+        {
+            new()
+            {
+                Amount = 200m,
+                Method = "Efectivo",
+                PaymentDetails = new PaymentDetails
+                {
+                    OriginalAmount = 200m,
+                    OriginalCurrency = "USD",
+                },
+            },
+        };
+
+        OrderCommercialCurrency.ValidateCasheaRequiresPartialInStorePayment(order);
+    }
 }

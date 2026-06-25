@@ -46,6 +46,7 @@ import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
   casheaInStorePaymentsExceedTotal,
+  getCasheaFullPaymentBlockMessage,
   getCasheaTotalDueBs,
 } from "@/lib/order-payments";
 import { useNestedModalGuard } from "@/hooks/use-nested-modal-guard";
@@ -751,6 +752,22 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             );
             return;
           }
+          const casheaFullMsg = getCasheaFullPaymentBlockMessage(
+            orderForm.payments,
+            {
+              totalDueUsd: Math.max(
+                0,
+                orderForm.total - orderForm.appliedStoreCreditUsd,
+              ),
+              useUsdTotals: true,
+              order: paymentCtx,
+              usdRate: orderForm.exchangeRates.USD?.rate,
+            },
+          );
+          if (casheaFullMsg) {
+            toast.error(casheaFullMsg);
+            return;
+          }
         }
       }
 
@@ -892,6 +909,24 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           0,
           orderForm.total - orderForm.appliedStoreCreditUsd,
         );
+        const casheaFullMsg = getCasheaFullPaymentBlockMessage(
+          orderForm.payments,
+          {
+            totalDueUsd: dueUsd,
+            useUsdTotals: true,
+            usdRate: orderForm.exchangeRates.USD?.rate,
+            order: {
+              baseCurrency: ORDER_BASE_CURRENCY,
+              exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+                orderForm.exchangeRates,
+              ),
+            },
+          },
+        );
+        if (casheaFullMsg) {
+          toast.error(casheaFullMsg);
+          return;
+        }
         paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, {
           orderTotalBs: getCasheaTotalDueBs({
             totalDueUsd: dueUsd,

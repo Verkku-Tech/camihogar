@@ -187,6 +187,65 @@ public static class OrderCommercialCurrency
     }
 
     /// <summary>
+    /// Cashea exige cobro inicial parcial; si el total queda cubierto en tienda, debe usarse Todo Pago.
+    /// </summary>
+    public static void ValidateCasheaRequiresPartialInStorePayment(Order order)
+    {
+        if (!string.Equals(order.PaymentCondition?.Trim(), "cashea", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var (payments, _) = GetActivePaymentsForReport(order);
+        var inStore = payments.Where(p => !IsCasheaFinancingStub(p)).ToList();
+        if (inStore.Count == 0)
+        {
+            throw new ArgumentException(
+                "Cashea requiere al menos un pago inicial en tienda.",
+                nameof(order.PaymentCondition));
+        }
+
+        var creditUsd = order.AppliedStoreCreditUsd;
+        if (IsUsdBaseOrder(order))
+        {
+            var totalDue = Math.Max(0m, order.Total - creditUsd);
+            var inStoreUsd = inStore.Sum(p => PaymentToUsd(p, order));
+            if (inStoreUsd <= 0)
+            {
+                throw new ArgumentException(
+                    "Cashea: el pago inicial en tienda debe ser mayor a 0.",
+                    nameof(order.PaymentCondition));
+            }
+
+            if (inStoreUsd >= totalDue - PaymentBalanceEpsilonUsd)
+            {
+                throw new ArgumentException(
+                    "Cashea requiere un pago inicial parcial. Si el cliente pagó el total, use Todo Pago.",
+                    nameof(order.PaymentCondition));
+            }
+
+            return;
+        }
+
+        var creditBs = creditUsd > 0 && order.ExchangeRatesAtCreation?.Usd?.Rate is > 0
+            ? creditUsd * order.ExchangeRatesAtCreation.Usd.Rate
+            : 0m;
+        var totalDueBs = Math.Max(0m, order.Total - creditBs);
+        var inStoreBs = inStore.Sum(p => p.Amount);
+        if (inStoreBs <= 0)
+        {
+            throw new ArgumentException(
+                "Cashea: el pago inicial en tienda debe ser mayor a 0.",
+                nameof(order.PaymentCondition));
+        }
+
+        if (inStoreBs >= totalDueBs - PaymentBalanceEpsilonBs)
+        {
+            throw new ArgumentException(
+                "Cashea requiere un pago inicial parcial. Si el cliente pagó el total, use Todo Pago.",
+                nameof(order.PaymentCondition));
+        }
+    }
+
+    /// <summary>
     /// Saldo pendiente comercial en USD para visualización y reportes.
     /// Cashea cubierto (inicial + financiación) se reporta como 0 sin alterar SumPaymentsToUsd.
     /// </summary>

@@ -423,6 +423,20 @@ public class UserService : IUserService
         IEnumerable<string>? requested)
     {
         var normalized = AssignableUserPermissions.Normalize(requested);
+        if (normalized.Contains(Permissions.Dispatch.ConfirmDelivery, StringComparer.Ordinal)
+            && !string.Equals(roleName, "Supervisor", StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "El permiso Confirmar entrega solo puede asignarse a usuarios con rol Supervisor.");
+        }
+
+        if (normalized.Contains(Permissions.Dispatch.SendToRoute, StringComparer.Ordinal)
+            && !string.Equals(roleName, "Store Seller", StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "El permiso Pasar pedido a ruta solo puede asignarse a usuarios con rol Store Seller.");
+        }
+
         var rolePermissions = await GetRolePermissionsAsync(roleName);
         return AssignableUserPermissions.SubtractRolePermissions(normalized, rolePermissions);
     }

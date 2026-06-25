@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,6 +66,8 @@ import { getStores, type Store } from "@/lib/storage";
 import { AssignablePermissionsPicker } from "@/components/users/assignable-permissions-picker";
 import {
   ASSIGNABLE_USER_PERMISSIONS,
+  filterExtraPermissionsForDisplayRole,
+  getAssignablePermissionsForDisplayRole,
   type AssignableUserPermission,
 } from "@/lib/user-extra-permissions";
 
@@ -175,6 +177,15 @@ export function UsersPage() {
     status: "Activo" as "Activo" | "Inactivo",
     storeId: "",
   });
+
+  const visibleAssignablePermissions = useMemo(
+    () =>
+      getAssignablePermissionsForDisplayRole(
+        assignablePermissions,
+        formData.role,
+      ),
+    [assignablePermissions, formData.role],
+  );
 
   useEffect(() => {
     getStores()
@@ -559,7 +570,12 @@ export function UsersPage() {
       status: user.status,
       storeId: user.storeId || "",
     });
-    setExtraPermissions(user.extraPermissions ?? []);
+    setExtraPermissions(
+      filterExtraPermissionsForDisplayRole(
+        user.extraPermissions ?? [],
+        user.role,
+      ),
+    );
     setIsEditDialogOpen(true);
   };
 
@@ -584,6 +600,9 @@ export function UsersPage() {
       role: value,
       storeId: isStoreSellerDisplayRole(value) ? prev.storeId : "",
     }));
+    setExtraPermissions((prev) =>
+      filterExtraPermissionsForDisplayRole(prev, value),
+    );
   };
 
   const renderExtraPermissionsSection = () => (
@@ -593,7 +612,7 @@ export function UsersPage() {
         Se suman al rol del usuario. No reemplazan los permisos existentes.
       </p>
       <AssignablePermissionsPicker
-        permissions={assignablePermissions}
+        permissions={visibleAssignablePermissions}
         selected={extraPermissions}
         onChange={setExtraPermissions}
       />

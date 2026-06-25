@@ -153,12 +153,115 @@ public class OrderService : IOrderService
         return anyChange;
     }
 
+    /// <summary>
+    /// True si todos los cambios de despacho marcan productos como entregados (DESPACHADO / Completado).
+    /// </summary>
+    private static bool IsDeliverOnlyDispatchChange(Order existing, UpdateOrderDto dto)
+    {
+        if (dto.Products == null) return false;
+
+        var anyChange = false;
+        foreach (var p in dto.Products)
+        {
+            var ex = existing.Products.FirstOrDefault(x => x.Id == p.Id);
+            if (ex == null) continue;
+
+            var locChanged = !string.Equals(
+                NormalizeDispatchField(ex.LocationStatus),
+                NormalizeDispatchField(p.LocationStatus),
+                StringComparison.OrdinalIgnoreCase);
+            var logChanged = !string.Equals(
+                NormalizeDispatchField(ex.LogisticStatus),
+                NormalizeDispatchField(p.LogisticStatus),
+                StringComparison.OrdinalIgnoreCase);
+            var exDel = ex.DeliveredAt.HasValue;
+            var dtoDel = p.DeliveredAt.HasValue;
+            var delChanged = exDel != dtoDel
+                || (exDel && dtoDel && ex.DeliveredAt!.Value != p.DeliveredAt!.Value);
+
+            if (!locChanged && !logChanged && !delChanged) continue;
+
+            anyChange = true;
+
+            var newLoc = NormalizeDispatchField(p.LocationStatus);
+            var newLog = NormalizeDispatchField(p.LogisticStatus);
+
+            var isRoute =
+                string.Equals(newLoc, "EN DESPACHO", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(newLog, "En Ruta", StringComparison.OrdinalIgnoreCase);
+            var isDeliver =
+                string.Equals(newLoc, "DESPACHADO", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(newLog, "Completado", StringComparison.OrdinalIgnoreCase);
+            var isReturn =
+                string.Equals(newLoc, "EN TIENDA", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(newLog, "En Almacén", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(newLog, "En Almacen", StringComparison.OrdinalIgnoreCase);
+
+            if (isRoute || isReturn) return false;
+            if (!isDeliver) return false;
+        }
+
+        return anyChange;
+    }
+
+    /// <summary>
+    /// True si todos los cambios de despacho devuelven productos a almacén/tienda.
+    /// </summary>
+    private static bool IsReturnOnlyDispatchChange(Order existing, UpdateOrderDto dto)
+    {
+        if (dto.Products == null) return false;
+
+        var anyChange = false;
+        foreach (var p in dto.Products)
+        {
+            var ex = existing.Products.FirstOrDefault(x => x.Id == p.Id);
+            if (ex == null) continue;
+
+            var locChanged = !string.Equals(
+                NormalizeDispatchField(ex.LocationStatus),
+                NormalizeDispatchField(p.LocationStatus),
+                StringComparison.OrdinalIgnoreCase);
+            var logChanged = !string.Equals(
+                NormalizeDispatchField(ex.LogisticStatus),
+                NormalizeDispatchField(p.LogisticStatus),
+                StringComparison.OrdinalIgnoreCase);
+            var exDel = ex.DeliveredAt.HasValue;
+            var dtoDel = p.DeliveredAt.HasValue;
+            var delChanged = exDel != dtoDel
+                || (exDel && dtoDel && ex.DeliveredAt!.Value != p.DeliveredAt!.Value);
+
+            if (!locChanged && !logChanged && !delChanged) continue;
+
+            anyChange = true;
+
+            var newLoc = NormalizeDispatchField(p.LocationStatus);
+            var newLog = NormalizeDispatchField(p.LogisticStatus);
+
+            var isRoute =
+                string.Equals(newLoc, "EN DESPACHO", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(newLog, "En Ruta", StringComparison.OrdinalIgnoreCase);
+            var isDeliver =
+                string.Equals(newLoc, "DESPACHADO", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(newLog, "Completado", StringComparison.OrdinalIgnoreCase);
+            var isReturn =
+                string.Equals(newLoc, "EN TIENDA", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(newLog, "En Almacén", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(newLog, "En Almacen", StringComparison.OrdinalIgnoreCase);
+
+            if (isRoute || isDeliver) return false;
+            if (!isReturn) return false;
+        }
+
+        return anyChange;
+    }
+
     private static void EnsureDispatchLogisticsAuthorized(
         Order existing,
         UpdateOrderDto updateDto,
         string? callerRole,
         bool callerHasDispatchUpdate,
-        bool callerHasDispatchSendToRoute)
+        bool callerHasDispatchSendToRoute,
+        bool callerHasDispatchConfirmDelivery)
     {
         if (!DispatchLogisticsWouldChange(existing, updateDto)) return;
 
@@ -172,6 +275,21 @@ public class OrderService : IOrderService
 
             throw new UnauthorizedAccessException(
                 "No autorizado a enviar productos a ruta. Se requiere permiso exclusivo o de despacho.");
+        }
+
+        if (IsDeliverOnlyDispatchChange(existing, updateDto))
+        {
+            if (callerHasDispatchConfirmDelivery)
+                return;
+
+            throw new UnauthorizedAccessException(
+                "No autorizado a confirmar entrega. Se requiere permiso exclusivo de entrega o rol de administrador.");
+        }
+
+        if (IsReturnOnlyDispatchChange(existing, updateDto))
+        {
+            throw new UnauthorizedAccessException(
+                "No autorizado a devolver productos a almacén. Solo administradores pueden realizar esta acción.");
         }
 
         if (!callerHasDispatchUpdate)
@@ -546,6 +664,9 @@ public class OrderService : IOrderService
 
             NormalizeGeneralDiscountFields(order);
 
+            if (requiresPayment)
+                OrderCommercialCurrency.ValidateCasheaRequiresPartialInStorePayment(order);
+
             RecalculateOrderStatus(order);
             var createdOrder = await CreateOrderAndAuditAsync(order, typeForCount, prefix, userId, userName);
 
@@ -701,6 +822,8 @@ public class OrderService : IOrderService
 
         newOrder.OrderNumber = await AllocateNextOrderNumberAsync("Order", "ORD-");
 
+        OrderCommercialCurrency.ValidateCasheaRequiresPartialInStorePayment(newOrder);
+
         RecalculateOrderStatus(newOrder);
         var created = await CreateOrderAndAuditAsync(newOrder, "Order", "ORD-", userId, userName);
 
@@ -807,6 +930,8 @@ public class OrderService : IOrderService
 
         newOrder.OrderNumber = await AllocateNextOrderNumberAsync("Order", "ORD-");
 
+        OrderCommercialCurrency.ValidateCasheaRequiresPartialInStorePayment(newOrder);
+
         RecalculateOrderStatus(newOrder);
         var created = await CreateOrderAndAuditAsync(newOrder, "Order", "ORD-", userId, userName);
 
@@ -826,7 +951,8 @@ public class OrderService : IOrderService
         string userName,
         string? callerRole = null,
         bool callerHasDispatchUpdate = false,
-        bool callerHasDispatchSendToRoute = false)
+        bool callerHasDispatchSendToRoute = false,
+        bool callerHasDispatchConfirmDelivery = false)
     {
         try
         {
@@ -848,7 +974,8 @@ public class OrderService : IOrderService
                 updateDto,
                 callerRole,
                 callerHasDispatchUpdate,
-                callerHasDispatchSendToRoute);
+                callerHasDispatchSendToRoute,
+                callerHasDispatchConfirmDelivery);
 
             var oldSnapshot = OrderDeepClone.Clone(existingOrder);
             var previousAppliedStoreCreditUsd = existingOrder.AppliedStoreCreditUsd;
@@ -948,6 +1075,8 @@ public class OrderService : IOrderService
                 existingOrder.AppliedStoreCreditUsd = Math.Round(updateDto.AppliedStoreCreditUsd.Value, 2, MidpointRounding.AwayFromZero);
 
             existingOrder.UpdatedAt = DateTime.UtcNow;
+
+            OrderCommercialCurrency.ValidateCasheaRequiresPartialInStorePayment(existingOrder);
 
             RecalculateOrderStatus(existingOrder);
             await _clientCreditService.SyncAppliedCreditAfterOrderUpdateAsync(

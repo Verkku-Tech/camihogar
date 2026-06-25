@@ -24,7 +24,21 @@ import { Search, Eye, Truck, CheckCircle, PackageCheck, RotateCcw, Download } fr
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { OrderGroupCollapsible } from "@/components/orders/order-group-collapsible"
 import { toast } from "sonner"
-import { getUnifiedOrders, getCategories, updateOrder, type UnifiedOrder, type OrderProduct, type Category, type AttributeValue } from "@/lib/storage"
+import {
+  getUnifiedOrders,
+  getCategories,
+  getProducts,
+  updateOrder,
+  type UnifiedOrder,
+  type OrderProduct,
+  type Category,
+  type Product,
+} from "@/lib/storage"
+import {
+  formatOrderProductDescription,
+  getOrderProductAttributePairs,
+  type OrderProductDescriptionContext,
+} from "@/lib/order-product-description"
 import { isSistemaApartado } from "@/lib/order-sa"
 import { useCurrency } from "@/contexts/currency-context"
 import { getActiveExchangeRates } from "@/lib/currency-utils"
@@ -38,7 +52,7 @@ import type { Currency } from "@/lib/currency-utils"
 import type { ExchangeRatesInput } from "@/lib/order-line-pricing"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
-import { DISPATCH_SEND_TO_ROUTE } from "@/lib/user-extra-permissions"
+import { DISPATCH_SEND_TO_ROUTE, DISPATCH_CONFIRM_DELIVERY } from "@/lib/user-extra-permissions"
 import { DELIVERY_TYPES, DELIVERY_ZONES } from "@/components/orders/new-order-dialog"
 import {
   Select,
@@ -265,10 +279,12 @@ export default function DespachosPage() {
     user?.role === "Super Administrator" ||
     user?.role === "Administrator"
   const hasSendToRoute = hasPermission(DISPATCH_SEND_TO_ROUTE)
+  const hasConfirmDelivery = hasPermission(DISPATCH_CONFIRM_DELIVERY)
   const canSendToRoute = isAdmin || isOnlineSeller || hasSendToRoute
   const canOnlyDispatchToRoute =
     isOnlineSeller || (hasSendToRoute && !isAdmin)
-  const canDeliverOrReturn = isAdmin
+  const canDeliver = isAdmin || hasConfirmDelivery
+  const canReturn = isAdmin
   const onlineSellerUserId = isOnlineSeller ? user?.id?.trim() ?? "" : ""
   const { exchangeRates } = useCurrency()
   const router = useRouter()
@@ -280,9 +296,17 @@ export default function DespachosPage() {
   const [deliveredDateTo, setDeliveredDateTo] = useState("")
   const [activeTab, setActiveTab] = useState<TabType>("por_despachar")
   const canMutateCurrentTab =
-    activeTab === "por_despachar" ? canSendToRoute : canDeliverOrReturn
-  const canPerformDispatchAction = (action: ActionType) =>
-    action === "to_dispatch" ? canSendToRoute : canDeliverOrReturn
+    activeTab === "por_despachar"
+      ? canSendToRoute
+      : activeTab === "en_despacho"
+        ? canDeliver || canReturn
+        : false
+  const canPerformDispatchAction = (action: ActionType) => {
+    if (action === "to_dispatch") return canSendToRoute
+    if (action === "to_delivered") return canDeliver
+    if (action === "to_store") return canReturn
+    return false
+  }
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -298,8 +322,14 @@ export default function DespachosPage() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [itemsPerPage, setItemsPerPage] = useState(10)
   const [categories, setCategories] = useState<Category[]>([])
+  const [allProducts, setAllProducts] = useState<Product[]>([])
   /** Importe total del pedido formateado (pestaña despachados, filas paginadas). */
   const [orderTotalLabels, setOrderTotalLabels] = useState<Record<string, string>>({})
+
+  const productDescriptionCtx = useMemo(
+    (): OrderProductDescriptionContext => ({ categories, allProducts }),
+    [categories, allProducts],
+  )
 
   const toggleOrderExpanded = (orderId: string) => {
     setExpandedOrders((prev) => {
@@ -350,15 +380,19 @@ export default function DespachosPage() {
   )
 
   useEffect(() => {
-    const loadCategories = async () => {
+    const loadCatalog = async () => {
       try {
-        const loaded = await getCategories()
-        setCategories(loaded)
+        const [loadedCategories, loadedProducts] = await Promise.all([
+          getCategories(),
+          getProducts(),
+        ])
+        setCategories(loadedCategories)
+        setAllProducts(loadedProducts)
       } catch (error) {
-        console.error("Error loading categories:", error)
+        console.error("Error loading catalog for product descriptions:", error)
       }
     }
-    loadCategories()
+    void loadCatalog()
   }, [])
 
   // Limpiar selecciones y filtro de fecha al cambiar de pestaña
@@ -370,77 +404,6 @@ export default function DespachosPage() {
       setDeliveredDateTo("")
     }
   }, [activeTab])
-
-  const getCategoryForProduct = (productCategory: string) =>
-    categories.find(c => c.name === productCategory)
-
-  const getValueLabel = (value: string | AttributeValue): string => {
-    if (typeof value === "string") return value
-    return (value as AttributeValue).label || (value as AttributeValue).id || String(value)
-  }
-
-  const getAttributeValueLabel = (
-    selectedValue: unknown,
-    categoryAttribute: Category["attributes"][0] | undefined
-  ): string => {
-    if (!categoryAttribute) return String(selectedValue)
-    if (categoryAttribute.valueType === "Number") {
-      return selectedValue !== undefined && selectedValue !== null && selectedValue !== ""
-        ? String(selectedValue)
-        : ""
-    }
-    if (!categoryAttribute.values || categoryAttribute.values.length === 0) {
-      return String(selectedValue)
-    }
-    if (Array.isArray(selectedValue)) {
-      const labels: string[] = []
-      selectedValue.forEach((valStr) => {
-        const attributeValue = categoryAttribute.values!.find(
-          (val: string | AttributeValue) => {
-            if (typeof val === "string") return val === valStr
-            return (val as AttributeValue).id === valStr || (val as AttributeValue).label === valStr
-          }
-        )
-        if (attributeValue) {
-          labels.push(getValueLabel(attributeValue as string | AttributeValue))
-        } else {
-          labels.push(String(valStr))
-        }
-      })
-      return labels.join(", ")
-    }
-    const selectedValueStr = String(selectedValue ?? "")
-    if (selectedValueStr) {
-      const attributeValue = categoryAttribute.values.find(
-        (val: string | AttributeValue) => {
-          if (typeof val === "string") return val === selectedValueStr
-          return (val as AttributeValue).id === selectedValueStr || (val as AttributeValue).label === selectedValueStr
-        }
-      )
-      if (attributeValue) return getValueLabel(attributeValue as string | AttributeValue)
-    }
-    return String(selectedValue)
-  }
-
-  const getProductAttributePairs = (product: OrderProduct): { key: string; value: string }[] => {
-    const category = getCategoryForProduct(product.category)
-    if (!product.attributes || Object.keys(product.attributes).length === 0) return []
-    const pairs: { key: string; value: string }[] = []
-    for (const [key, value] of Object.entries(product.attributes)) {
-      if (key.includes("_") && key.split("_").length === 2) continue
-      const categoryAttribute = category?.attributes?.find(
-        attr => attr.id?.toString() === key || attr.title === key
-      )
-      const valueLabel = getAttributeValueLabel(value, categoryAttribute)
-      if (valueLabel && valueLabel.trim() !== "") {
-        pairs.push({
-          key: categoryAttribute?.title || key,
-          value: valueLabel.trim()
-        })
-      }
-    }
-    return pairs
-  }
 
   useEffect(() => {
     const updateTotals = async () => {
@@ -540,7 +503,7 @@ export default function DespachosPage() {
           order.orderNumber,
           order.clientName,
           order.vendorName ?? "",
-          product.name,
+          formatOrderProductDescription(product, productDescriptionCtx),
           String(product.quantity),
           precioVenta,
           deliveryZoneLabel(order.deliveryZone),
@@ -571,7 +534,7 @@ export default function DespachosPage() {
       console.error("Error exportando CSV de despachados:", error)
       toast.error("No se pudo generar el CSV")
     }
-  }, [deliveredRows, exchangeRates])
+  }, [deliveredRows, exchangeRates, productDescriptionCtx])
 
   // Paginación: por pedido (almacén / en ruta) o por fila entregada (despachados)
   const ordersPagination = usePagination({
@@ -694,13 +657,19 @@ export default function DespachosPage() {
     router.push(`/pedidos/${order.orderNumber}`)
   }
 
+  const getDispatchPermissionError = (action: ActionType): string => {
+    if (action === "to_dispatch") {
+      return "No tienes permiso para enviar productos a ruta."
+    }
+    if (action === "to_delivered") {
+      return "No tienes permiso para confirmar entrega."
+    }
+    return "Solo administradores pueden devolver productos a almacén."
+  }
+
   const handleActionClick = (order: UnifiedOrder, action: ActionType) => {
     if (!canPerformDispatchAction(action)) {
-      toast.error(
-        action === "to_dispatch"
-          ? "No tienes permiso para enviar productos a ruta."
-          : "Solo administradores pueden entregar o devolver productos.",
-      )
+      toast.error(getDispatchPermissionError(action))
       return
     }
     if (!canOnlineSellerActOnOrder(order)) {
@@ -720,11 +689,7 @@ export default function DespachosPage() {
 
   const handleBulkActionClick = (action: ActionType) => {
     if (!canPerformDispatchAction(action)) {
-      toast.error(
-        action === "to_dispatch"
-          ? "No tienes permiso para enviar productos a ruta."
-          : "Solo administradores pueden entregar o devolver productos.",
-      )
+      toast.error(getDispatchPermissionError(action))
       return
     }
     if (canOnlyDispatchToRoute && action !== "to_dispatch") {
@@ -1059,16 +1024,20 @@ export default function DespachosPage() {
                         <Truck className="mr-2 h-4 w-4" /> Despachar Seleccionados ({selectedOrders.size})
                       </Button>
                     )}
-                    {canDeliverOrReturn &&
+                    {(canDeliver || canReturn) &&
                       selectedOrders.size > 0 &&
                       activeTab === "en_despacho" && (
                       <div className="flex gap-2 w-full sm:w-auto mt-4 sm:mt-0">
-                        <Button onClick={() => handleBulkActionClick("to_delivered")} className="bg-green-600 hover:bg-green-700">
-                          <CheckCircle className="mr-2 h-4 w-4" /> Entregar ({selectedOrders.size})
-                        </Button>
-                        <Button variant="outline" onClick={() => handleBulkActionClick("to_store")}>
-                          <RotateCcw className="mr-2 h-4 w-4" /> Devolver
-                        </Button>
+                        {canDeliver && (
+                          <Button onClick={() => handleBulkActionClick("to_delivered")} className="bg-green-600 hover:bg-green-700">
+                            <CheckCircle className="mr-2 h-4 w-4" /> Entregar ({selectedOrders.size})
+                          </Button>
+                        )}
+                        {canReturn && (
+                          <Button variant="outline" onClick={() => handleBulkActionClick("to_store")}>
+                            <RotateCcw className="mr-2 h-4 w-4" /> Devolver
+                          </Button>
+                        )}
                       </div>
                     )}
                     </div>
@@ -1102,6 +1071,10 @@ export default function DespachosPage() {
                             <TableBody>
                               {paginatedDeliveredRows.map(({ order, product }) => {
                                 const lineKey = `${order.id}|${product.id}`
+                                const productDescription = formatOrderProductDescription(
+                                  product,
+                                  productDescriptionCtx,
+                                )
                                 return (
                                   <TableRow key={lineKey}>
                                     <TableCell className="font-medium whitespace-nowrap">
@@ -1124,9 +1097,10 @@ export default function DespachosPage() {
                                         <HoverCardTrigger asChild>
                                           <button
                                             type="button"
-                                            className="text-left font-medium hover:underline underline-offset-2"
+                                            className="text-left font-medium hover:underline underline-offset-2 max-w-[min(420px,70vw)] truncate block"
+                                            title={productDescription}
                                           >
-                                            {product.name}
+                                            {productDescription}
                                           </button>
                                         </HoverCardTrigger>
                                         <HoverCardContent
@@ -1134,7 +1108,10 @@ export default function DespachosPage() {
                                           align="start"
                                         >
                                           <AttributesGrid
-                                            pairs={getProductAttributePairs(product)}
+                                            pairs={getOrderProductAttributePairs(
+                                              product,
+                                              productDescriptionCtx,
+                                            )}
                                             productName={product.name}
                                           />
                                         </HoverCardContent>
@@ -1281,16 +1258,19 @@ export default function DespachosPage() {
                                   )}
                                   {activeTab === "en_despacho" &&
                                     activeProducts.length > 0 &&
-                                    canDeliverOrReturn && (
-                                    <>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
-                                        onClick={(e) => { e.stopPropagation(); handleActionClick(order, "to_delivered") }}
-                                      >
-                                        <CheckCircle className="w-3 h-3 mr-1" /> Entregar
-                                      </Button>
+                                    canDeliver && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
+                                      onClick={(e) => { e.stopPropagation(); handleActionClick(order, "to_delivered") }}
+                                    >
+                                      <CheckCircle className="w-3 h-3 mr-1" /> Entregar
+                                    </Button>
+                                  )}
+                                  {activeTab === "en_despacho" &&
+                                    activeProducts.length > 0 &&
+                                    canReturn && (
                                       <Button
                                         variant="ghost"
                                         size="sm"
@@ -1299,7 +1279,6 @@ export default function DespachosPage() {
                                       >
                                         <RotateCcw className="w-3 h-3 mr-1" />
                                       </Button>
-                                    </>
                                   )}
                                 </>
                               }
@@ -1375,7 +1354,10 @@ export default function DespachosPage() {
                                         </HoverCardTrigger>
                                         <HoverCardContent className="min-w-[480px] max-w-[min(640px,95vw)] w-max" align="start">
                                           <AttributesGrid
-                                            pairs={getProductAttributePairs(product)}
+                                            pairs={getOrderProductAttributePairs(
+                                              product,
+                                              productDescriptionCtx,
+                                            )}
                                             productName={product.name}
                                           />
                                         </HoverCardContent>

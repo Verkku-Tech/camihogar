@@ -54,6 +54,7 @@ import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
   casheaInStorePaymentsExceedTotal,
+  getCasheaFullPaymentBlockMessage,
   getCasheaTotalDueBs,
 } from "@/lib/order-payments";
 import { tryComputeOverpaymentUsd } from "@/lib/order-store-credit-usd";
@@ -544,6 +545,31 @@ export function EditOrderDialog({
           );
           return;
         }
+        const casheaFullMsg = getCasheaFullPaymentBlockMessage(
+          orderForm.payments,
+          {
+            totalDueUsd: Math.max(
+              0,
+              orderForm.total - orderForm.appliedStoreCreditUsd,
+            ),
+            totalDueBsLegacy: Math.max(
+              0,
+              orderForm.total - orderForm.appliedCreditBsApprox,
+            ),
+            useUsdTotals,
+            order: {
+              baseCurrency: orderForm.formBaseCurrency,
+              exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+                orderForm.commercialExchangeRates,
+              ),
+            },
+            usdRate: orderForm.commercialExchangeRates.USD?.rate,
+          },
+        );
+        if (casheaFullMsg) {
+          toast.error(casheaFullMsg);
+          return;
+        }
       }
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
@@ -876,6 +902,31 @@ export function EditOrderDialog({
             );
             return;
           }
+          const casheaFullMsg = getCasheaFullPaymentBlockMessage(
+            orderForm.payments,
+            {
+              totalDueUsd: Math.max(
+                0,
+                orderForm.total - orderForm.appliedStoreCreditUsd,
+              ),
+              totalDueBsLegacy: Math.max(
+                0,
+                orderForm.total - orderForm.appliedCreditBsApprox,
+              ),
+              useUsdTotals,
+              order: {
+                baseCurrency: orderForm.formBaseCurrency,
+                exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+                  orderForm.commercialExchangeRates,
+                ),
+              },
+              usdRate: orderForm.commercialExchangeRates.USD?.rate,
+            },
+          );
+          if (casheaFullMsg) {
+            toast.error(casheaFullMsg);
+            return;
+          }
         }
       }
 
@@ -1018,6 +1069,31 @@ export function EditOrderDialog({
         const useUsdTotals = isUsdBaseOrder({
           baseCurrency: orderForm.formBaseCurrency,
         });
+        const casheaFullMsg = getCasheaFullPaymentBlockMessage(
+          orderForm.payments,
+          {
+            totalDueUsd: Math.max(
+              0,
+              orderForm.total - orderForm.appliedStoreCreditUsd,
+            ),
+            totalDueBsLegacy: Math.max(
+              0,
+              orderForm.total - orderForm.appliedCreditBsApprox,
+            ),
+            useUsdTotals,
+            order: {
+              baseCurrency: orderForm.formBaseCurrency,
+              exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+                orderForm.commercialExchangeRates,
+              ),
+            },
+            usdRate: orderForm.commercialExchangeRates.USD?.rate,
+          },
+        );
+        if (casheaFullMsg) {
+          toast.error(casheaFullMsg);
+          return;
+        }
         paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, {
           orderTotalBs: getCasheaTotalDueBs({
             totalDueUsd: Math.max(

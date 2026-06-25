@@ -3917,6 +3917,7 @@ export interface UnifiedOrder {
   expiresAt?: string; // Solo para presupuestos
   validForDays?: number; // Solo para presupuestos
   paymentMethod?: string; // Solo para pedidos
+  paymentCondition?: Order["paymentCondition"];
   saleType?:
     | "delivery_express"
     | "encargo"
@@ -4000,6 +4001,7 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       exchangeRatesAtCreation: order.exchangeRatesAtCreation,
       type: "order",
       paymentMethod: order.paymentMethod,
+      paymentCondition: order.paymentCondition,
       saleType: order.saleType,
       deliveryType: order.deliveryType,
       deliveryZone: order.deliveryZone,
@@ -4105,6 +4107,7 @@ export const orderDtoToUnifiedOrder = (dto: OrderResponseDto): UnifiedOrder => {
     updatedAt: order.updatedAt,
     type: "order",
     paymentMethod: order.paymentMethod,
+    paymentCondition: order.paymentCondition,
     saleType: order.saleType,
     deliveryType: order.deliveryType,
     deliveryZone: order.deliveryZone,
