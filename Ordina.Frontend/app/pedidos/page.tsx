@@ -48,6 +48,7 @@ import {
   deleteOrder,
   deleteBudget,
   getUnifiedOrders,
+  getOrderByOrderNumberPreferBackend,
   orderDtoToUnifiedOrder,
   type UnifiedOrder,
   type Order,
@@ -129,7 +130,7 @@ export default function PedidosPage() {
   const [dateTo, setDateTo] = useState("");
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
   const [isEditOrderOpen, setIsEditOrderOpen] = useState(false);
-  const [orderToEdit, setOrderToEdit] = useState<UnifiedOrder | null>(null);
+  const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
   const [editMode, setEditMode] = useState<"full" | "payments">("full");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -526,23 +527,28 @@ export default function PedidosPage() {
   const canConvertBudget = hasPermission("budgets.convert_to_order");
   const canEditOrderPaymentsOnly = hasPermission("orders.payments.manage");
 
-  const handleEdit = (order: UnifiedOrder) => {
-    if (order.type === "budget" && (canConvertBudget || canEditOrderFull)) {
-      setOrderToEdit(order);
-      setEditMode("full");
+  const handleEdit = async (row: UnifiedOrder) => {
+    const openEdit = (orderForEdit: Order) => {
+      setOrderToEdit(orderForEdit);
       setIsEditOrderOpen(true);
+    };
+
+    if (row.type === "budget" && (canConvertBudget || canEditOrderFull)) {
+      setEditMode("full");
+      const full = await getOrderByOrderNumberPreferBackend(row.orderNumber);
+      openEdit(full ?? ({ ...row, paymentMethod: row.paymentMethod ?? "" } as Order));
       return;
     }
-    if (order.type === "order" && canEditOrderFull) {
-      setOrderToEdit(order);
+    if (row.type === "order" && canEditOrderFull) {
       setEditMode("full");
-      setIsEditOrderOpen(true);
+      const full = await getOrderByOrderNumberPreferBackend(row.orderNumber);
+      openEdit(full ?? ({ ...row, paymentMethod: row.paymentMethod ?? "" } as Order));
       return;
     }
-    if (canEditOrderPaymentsOnly && order.type === "order") {
-      setOrderToEdit(order);
+    if (canEditOrderPaymentsOnly && row.type === "order") {
       setEditMode("payments");
-      setIsEditOrderOpen(true);
+      const full = await getOrderByOrderNumberPreferBackend(row.orderNumber);
+      openEdit(full ?? ({ ...row, paymentMethod: row.paymentMethod ?? "" } as Order));
       return;
     }
     toast.error("Acceso denegado", {
@@ -920,7 +926,7 @@ export default function PedidosPage() {
             handleOrderCreated();
           }
         }}
-        order={orderToEdit as any}
+        order={orderToEdit}
         mode={editMode}
       />
 
