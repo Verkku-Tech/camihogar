@@ -1045,9 +1045,10 @@ export function Step3OrderDetails({
                 </div>
                 {orderForm.paymentCondition === "cashea" && (
                   <p className="text-sm text-muted-foreground">
-                    Cashea: registre un único pago inicial en tienda. Al guardar
-                    el pedido, el saldo restante se registrará como financiación
-                    Cashea.
+                    Cashea: el pago inicial en tienda debe ser menor al total
+                    del pedido. Al guardar, el saldo restante se registrará como
+                    financiación Cashea. Si el cliente pagó el total, use Todo
+                    Pago.
                   </p>
                 )}
 

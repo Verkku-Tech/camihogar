@@ -587,7 +587,7 @@ export function useEditOrderForm(
       });
 
       // 4. Estados adicionales
-      setPaymentCondition(initialOrder.paymentCondition || "todo_pago");
+      setPaymentCondition(initialOrder.paymentCondition ?? "");
       setSaleType(initialOrder.saleType || "entrega");
       setDeliveryType(initialOrder.deliveryType || "");
       setDeliveryZone(initialOrder.deliveryZone || "");
@@ -1193,10 +1193,14 @@ export function useEditOrderForm(
         ? formUsesUsdTotals
           ? casheaInStorePayments.length >= 1 &&
             casheaPaidSumUsd > 0 &&
-            casheaPaidSumUsd <= casheaCapUsd
+            casheaPaidSumUsd <
+              Math.max(0, totalUsd - appliedStoreCreditUsd) -
+                PAYMENT_BALANCE_EPSILON_USD
           : casheaInStorePayments.length >= 1 &&
             casheaPaidSumBs > 0 &&
-            casheaPaidSumBs <= casheaCapBs
+            casheaPaidSumBs <
+              Math.max(0, total - appliedCreditBsApprox) -
+                PAYMENT_BALANCE_EPSILON_BS
         : formUsesUsdTotals
           ? Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_USD
           : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;

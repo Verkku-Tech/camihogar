@@ -42,6 +42,7 @@ import {
   normalizePaymentsForSave,
   buildCasheaPaymentsForSave,
   casheaInStorePaymentsExceedTotal,
+  getCasheaFullPaymentBlockMessage,
   getCasheaTotalDueBs,
 } from "@/lib/order-payments";
 import {
@@ -353,6 +354,19 @@ export function ConfirmOrderDialog({
         );
         return false;
       }
+      const casheaFullMsg = getCasheaFullPaymentBlockMessage(payments, {
+        totalDueUsd: total,
+        useUsdTotals: true,
+        order: {
+          baseCurrency: ORDER_BASE_CURRENCY,
+          exchangeRatesAtCreation: exchangeRatesAtCreation ?? undefined,
+        },
+        usdRate,
+      });
+      if (casheaFullMsg) {
+        toast.error(casheaFullMsg);
+        return false;
+      }
     }
     return true;
   };
@@ -381,6 +395,19 @@ export function ConfirmOrderDialog({
       const usdRate =
         exchangeRatesAtCreation?.USD?.rate ??
         exchangeRatesAtCreation?.usd?.rate;
+      const casheaFullMsg = getCasheaFullPaymentBlockMessage(payments, {
+        totalDueUsd: total,
+        useUsdTotals: true,
+        order: {
+          baseCurrency: formBaseCurrency,
+          exchangeRatesAtCreation: exchangeRatesAtCreation ?? undefined,
+        },
+        usdRate,
+      });
+      if (casheaFullMsg) {
+        toast.error(casheaFullMsg);
+        return;
+      }
       paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, {
         orderTotalBs: getCasheaTotalDueBs({
           totalDueUsd: total,

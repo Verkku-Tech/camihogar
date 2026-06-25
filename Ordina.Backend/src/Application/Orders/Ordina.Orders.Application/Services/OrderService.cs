@@ -664,6 +664,9 @@ public class OrderService : IOrderService
 
             NormalizeGeneralDiscountFields(order);
 
+            if (requiresPayment)
+                OrderCommercialCurrency.ValidateCasheaRequiresPartialInStorePayment(order);
+
             RecalculateOrderStatus(order);
             var createdOrder = await CreateOrderAndAuditAsync(order, typeForCount, prefix, userId, userName);
 
@@ -819,6 +822,8 @@ public class OrderService : IOrderService
 
         newOrder.OrderNumber = await AllocateNextOrderNumberAsync("Order", "ORD-");
 
+        OrderCommercialCurrency.ValidateCasheaRequiresPartialInStorePayment(newOrder);
+
         RecalculateOrderStatus(newOrder);
         var created = await CreateOrderAndAuditAsync(newOrder, "Order", "ORD-", userId, userName);
 
@@ -924,6 +929,8 @@ public class OrderService : IOrderService
         };
 
         newOrder.OrderNumber = await AllocateNextOrderNumberAsync("Order", "ORD-");
+
+        OrderCommercialCurrency.ValidateCasheaRequiresPartialInStorePayment(newOrder);
 
         RecalculateOrderStatus(newOrder);
         var created = await CreateOrderAndAuditAsync(newOrder, "Order", "ORD-", userId, userName);
@@ -1068,6 +1075,8 @@ public class OrderService : IOrderService
                 existingOrder.AppliedStoreCreditUsd = Math.Round(updateDto.AppliedStoreCreditUsd.Value, 2, MidpointRounding.AwayFromZero);
 
             existingOrder.UpdatedAt = DateTime.UtcNow;
+
+            OrderCommercialCurrency.ValidateCasheaRequiresPartialInStorePayment(existingOrder);
 
             RecalculateOrderStatus(existingOrder);
             await _clientCreditService.SyncAppliedCreditAfterOrderUpdateAsync(

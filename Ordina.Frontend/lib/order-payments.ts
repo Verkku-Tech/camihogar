@@ -17,6 +17,10 @@ export const PAYMENT_BALANCE_EPSILON_USD = 0.01;
 /** Tolerancia al cerrar Cashea comercialmente (redondeo Bs↔USD en stub/reserva). */
 export const CASHEA_COMMERCIAL_SETTLEMENT_EPSILON_USD = 0.5;
 
+/** Mensaje cuando Cashea se usa con cobro que cubre el total del pedido. */
+export const CASHEA_REQUIRES_PARTIAL_PAYMENT_MESSAGE =
+  "Cashea requiere un pago inicial parcial. Si el cliente pagó el total, seleccione Todo Pago.";
+
 /** Líneas guardadas en pedido Cashea: el stub sintético tiene este método. */
 export const CASHEA_FINANCED_METHOD_LABEL = "Cashea (financiación)";
 
@@ -519,6 +523,51 @@ export function casheaInStorePaymentsExceedTotal(
     }) + PAYMENT_BALANCE_EPSILON_BS;
   const paidBs = inStore.reduce((s, p) => s + (p.amount || 0), 0);
   return paidBs > capBs;
+}
+
+/** true si los cobros en tienda cubren el total (Cashea debe ser inicial parcial). */
+export function casheaInStorePaymentsCoverFullTotal(
+  payments: PartialPayment[],
+  options: {
+    totalDueUsd: number;
+    totalDueBsLegacy?: number;
+    useUsdTotals: boolean;
+    order?: PaymentOrderContext | null;
+    usdRate?: number | null;
+  },
+): boolean {
+  const inStore = casheaInStorePayments(payments);
+  if (inStore.length === 0) return false;
+
+  if (options.useUsdTotals) {
+    const paidUsd = sumPaymentsToUsd(inStore, options.order);
+    const capUsd = Math.max(0, options.totalDueUsd);
+    return paidUsd >= capUsd - PAYMENT_BALANCE_EPSILON_USD;
+  }
+
+  const capBs =
+    getCasheaTotalDueBs({
+      totalDueUsd: options.totalDueUsd,
+      totalDueBsLegacy: options.totalDueBsLegacy,
+      useUsdTotals: false,
+    });
+  const paidBs = inStore.reduce((s, p) => s + (p.amount || 0), 0);
+  return paidBs >= capBs - PAYMENT_BALANCE_EPSILON_BS;
+}
+
+/** Mensaje de bloqueo si Cashea cubre el total; null si el inicial es parcial válido. */
+export function getCasheaFullPaymentBlockMessage(
+  payments: PartialPayment[],
+  options: {
+    totalDueUsd: number;
+    totalDueBsLegacy?: number;
+    useUsdTotals: boolean;
+    order?: PaymentOrderContext | null;
+    usdRate?: number | null;
+  },
+): string | null {
+  if (!casheaInStorePaymentsCoverFullTotal(payments, options)) return null;
+  return CASHEA_REQUIRES_PARTIAL_PAYMENT_MESSAGE;
 }
 
 /** Suma solo lo cobrado en tienda (excluye la porción financiada automática en Cashea). */

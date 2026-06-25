@@ -677,8 +677,7 @@ export function useOrderForm(
       }
       if (d.formData && typeof d.formData === "object")
         setFormData((prev) => ({ ...prev, ...(d.formData as OrderFormData) }));
-      if (typeof d.paymentCondition === "string")
-        setPaymentCondition(d.paymentCondition as typeof paymentCondition);
+      // No restaurar paymentCondition desde borrador: forzar selección explícita
       if (typeof d.saleType === "string")
         setSaleType(d.saleType as typeof saleType);
       if (typeof d.deliveryType === "string")
@@ -1158,7 +1157,9 @@ export function useOrderForm(
       : paymentCondition === "cashea"
         ? casheaInStorePayments.length >= 1 &&
           casheaPaidSumUsd > 0 &&
-          casheaPaidSumUsd <= casheaCapUsd
+          casheaPaidSumUsd <
+            Math.max(0, totalUsd - appliedStoreCreditUsd) -
+              PAYMENT_BALANCE_EPSILON_USD
         : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_USD;
 
   const isDraftGateBlocking = useMemo(
