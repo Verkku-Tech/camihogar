@@ -430,6 +430,13 @@ public class UserService : IUserService
                 "El permiso Confirmar entrega solo puede asignarse a usuarios con rol Supervisor.");
         }
 
+        if (normalized.Contains(Permissions.Dispatch.SendToRoute, StringComparer.Ordinal)
+            && !string.Equals(roleName, "Store Seller", StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "El permiso Pasar pedido a ruta solo puede asignarse a usuarios con rol Store Seller.");
+        }
+
         var rolePermissions = await GetRolePermissionsAsync(roleName);
         return AssignableUserPermissions.SubtractRolePermissions(normalized, rolePermissions);
     }
