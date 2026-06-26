@@ -30,11 +30,80 @@ public static partial class AuditLabelFormatter
     [GeneratedRegex(@"^producto\[(.+)\](?:\.(.+))?$", RegexOptions.IgnoreCase)]
     private static partial Regex ProductFieldRegex();
 
+    [GeneratedRegex(@"(?:^|;\s*)Método=([^;]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex PaymentMethodRegex();
+
     [GeneratedRegex(@"(?:^|;\s*)Monto=([^;]+)", RegexOptions.IgnoreCase)]
     private static partial Regex PaymentAmountRegex();
 
-    [GeneratedRegex(@"(?:^|;\s*)Método=([^;]+)", RegexOptions.IgnoreCase)]
-    private static partial Regex PaymentMethodRegex();
+    [GeneratedRegex(@"(?:^|;\s*)Moneda=([^;]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex PaymentCurrencyRegex();
+
+    public static (decimal Amount, string Currency) GetOriginalPaymentDisplay(PartialPayment payment)
+    {
+        var det = payment.PaymentDetails;
+
+        if (string.Equals(payment.Method, "Efectivo", StringComparison.OrdinalIgnoreCase)
+            && det?.CashReceived is > 0)
+        {
+            return (det.CashReceived.Value, (det.CashCurrency ?? "Bs").Trim());
+        }
+
+        if (det?.OriginalAmount is not null)
+        {
+            return (det.OriginalAmount.Value, (det.OriginalCurrency ?? "Bs").Trim());
+        }
+
+        if (det?.CashReceived is > 0)
+        {
+            return (det.CashReceived.Value, (det.CashCurrency ?? "Bs").Trim());
+        }
+
+        return (payment.Amount, "Bs");
+    }
+
+    public static string FormatPaymentShort(string method, decimal amount, string currency)
+    {
+        var cur = (currency ?? "Bs").Trim();
+        var rounded = Math.Round(amount, 2, MidpointRounding.AwayFromZero);
+        var formatted = rounded.ToString("N2", CultureInfo.GetCultureInfo("es-VE"));
+
+        return cur.ToUpperInvariant() switch
+        {
+            "USD" => $"{method} ${formatted}",
+            "EUR" => $"{method} €{formatted}",
+            _ => $"{method} Bs. {formatted}",
+        };
+    }
+
+    private static string? ExtractSemicolonField(string raw, string label)
+    {
+        var pattern = $@"(?:^|;\s*){Regex.Escape(label)}=([^;]+)";
+        var match = Regex.Match(raw, pattern, RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[1].Value.Trim() : null;
+    }
+
+    private static (string? Amount, string? Currency) ResolvePaymentDisplayFromRaw(string rawValue)
+    {
+        var currency = ExtractSemicolonField(rawValue, "Moneda");
+        var amountStr = ExtractSemicolonField(rawValue, "Monto");
+
+        if (!string.IsNullOrEmpty(currency) && !string.IsNullOrEmpty(amountStr))
+            return (amountStr, currency);
+
+        var origCurr = ExtractSemicolonField(rawValue, "Orig curr");
+        var origAmt = ExtractSemicolonField(rawValue, "Orig amt");
+        var cashCurr = ExtractSemicolonField(rawValue, "Cash curr");
+        var cashAmt = ExtractSemicolonField(rawValue, "CashReceived");
+
+        if (!string.IsNullOrEmpty(origCurr) && !string.IsNullOrEmpty(origAmt))
+            return (origAmt, origCurr);
+
+        if (!string.IsNullOrEmpty(cashCurr) && !string.IsNullOrEmpty(cashAmt))
+            return (cashAmt, cashCurr);
+
+        return (amountStr, currency ?? "Bs");
+    }
 
     public static string FormatField(string field)
     {
@@ -138,14 +207,20 @@ public static partial class AuditLabelFormatter
         if (string.IsNullOrWhiteSpace(rawValue))
             return "—";
 
-        var amountMatch = PaymentAmountRegex().Match(rawValue);
         var methodMatch = PaymentMethodRegex().Match(rawValue);
-        if (!amountMatch.Success && !methodMatch.Success)
+        if (!methodMatch.Success && !PaymentAmountRegex().IsMatch(rawValue))
             return rawValue.Length > 120 ? rawValue[..120] + "…" : rawValue;
 
-        var amount = amountMatch.Success ? amountMatch.Groups[1].Value.Trim() : "?";
         var method = methodMatch.Success ? methodMatch.Groups[1].Value.Trim() : "?";
-        return $"{method} ${amount}";
+        var (amountStr, currency) = ResolvePaymentDisplayFromRaw(rawValue);
+
+        if (string.IsNullOrEmpty(amountStr)
+            || !decimal.TryParse(amountStr, NumberStyles.Float, CultureInfo.InvariantCulture, out var amount))
+        {
+            return methodMatch.Success ? method : rawValue[..Math.Min(120, rawValue.Length)];
+        }
+
+        return FormatPaymentShort(method, amount, currency ?? "Bs");
     }
 
     public static string AttributesFingerprint(Dictionary<string, object>? attrs)
