@@ -52,6 +52,7 @@ import {
   isUsdBaseOrder,
 } from "@/lib/order-line-pricing";
 import { resolveCatalogProductForOrderLine } from "@/lib/order-product-confirm-map";
+import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels";
 import {
   commercialRatesToExchangeRatesInput,
   formatDualCurrencyAmounts,
@@ -2044,7 +2045,7 @@ export default function OrderDetailPage() {
                                         product.manufacturingStatus ===
                                         "por_fabricar"
                                       ) {
-                                        badgeText = "Por fabricar";
+                                        badgeText = REPORTE_FABRICACION_LABEL;
                                         badgeVariant = "secondary";
                                         badgeClassName =
                                           "text-sm bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200";
