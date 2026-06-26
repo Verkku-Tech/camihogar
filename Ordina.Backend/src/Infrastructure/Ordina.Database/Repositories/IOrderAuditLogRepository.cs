@@ -13,5 +13,6 @@ public interface IOrderAuditLogRepository
         string? orderNumber,
         string? action,
         DateTime? fromUtc,
-        DateTime? toUtc);
+        DateTime? toUtc,
+        bool sortAscending = false);
 }

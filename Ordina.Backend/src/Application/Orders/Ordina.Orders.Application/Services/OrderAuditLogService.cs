@@ -19,6 +19,10 @@ public class OrderAuditLogService : IOrderAuditLogService
     public const string ActionDeleted = "deleted";
     public const string ActionPaymentConciliated = "payment_conciliated";
     public const string ActionItemValidated = "item_validated";
+    public const string ActionManufacturingQueued = AuditManufacturingInference.ActionManufacturingQueued;
+    public const string ActionManufacturingStarted = AuditManufacturingInference.ActionManufacturingStarted;
+    public const string ActionManufacturingCompleted = AuditManufacturingInference.ActionManufacturingCompleted;
+    public const string ActionManufacturingReverted = AuditManufacturingInference.ActionManufacturingReverted;
 
     private readonly IOrderAuditLogRepository _repository;
     private readonly ILogger<OrderAuditLogService> _logger;
@@ -64,18 +68,18 @@ public class OrderAuditLogService : IOrderAuditLogService
                 return;
             }
 
-            var summary = $"Actualizó el pedido {newOrder.OrderNumber} ({changes.Count} cambio(s))";
-            var statusChange = changes.FirstOrDefault(c => c.Field == nameof(Order.Status));
-            if (statusChange != null)
-            {
-                summary += $" — estado: {statusChange.OldValue} → {statusChange.NewValue}";
-            }
+            var manufacturingEvents = AuditManufacturingInference.InferFromChanges(changes);
+            var summary = AuditManufacturingInference.BuildSemanticSummary(
+                newOrder.OrderNumber ?? string.Empty,
+                changes,
+                manufacturingEvents);
+            var action = AuditManufacturingInference.ResolveAction(manufacturingEvents);
 
             var log = new OrderAuditLog
             {
                 OrderId = newOrder.Id,
-                OrderNumber = newOrder.OrderNumber,
-                Action = ActionUpdated,
+                OrderNumber = newOrder.OrderNumber ?? string.Empty,
+                Action = action,
                 UserId = userId,
                 UserName = userName,
                 Summary = summary,
@@ -113,12 +117,22 @@ public class OrderAuditLogService : IOrderAuditLogService
         }
     }
 
-    public async Task LogItemValidatedAsync(Order order, string itemId, string userId, string userName)
+    public async Task LogItemValidatedAsync(
+        Order order,
+        string itemId,
+        string userId,
+        string userName,
+        string? previousLogisticStatus = null)
     {
         try
         {
             var product = order.Products.FirstOrDefault(p => p.Id == itemId);
             var productName = product?.Name ?? itemId;
+            var oldStatus = previousLogisticStatus ?? "Generado";
+            var newStatus = product?.LogisticStatus ?? "Validado";
+            var oldLabel = AuditLabelFormatter.FormatValue("logisticStatus", oldStatus);
+            var newLabel = AuditLabelFormatter.FormatValue("logisticStatus", newStatus);
+
             var log = new OrderAuditLog
             {
                 OrderId = order.Id,
@@ -126,14 +140,14 @@ public class OrderAuditLogService : IOrderAuditLogService
                 Action = ActionItemValidated,
                 UserId = userId,
                 UserName = userName,
-                Summary = $"Validó ítem en pedido {order.OrderNumber}: {productName}",
+                Summary = $"Validó ítem en pedido {order.OrderNumber}: {productName} ({oldLabel} → {newLabel})",
                 Changes = new List<AuditChange>
                 {
                     new()
                     {
-                        Field = "product.logisticStatus",
-                        OldValue = "(previo)",
-                        NewValue = "Validado"
+                        Field = $"producto[{productName}].logisticStatus",
+                        OldValue = oldStatus,
+                        NewValue = newStatus
                     }
                 },
                 Timestamp = DateTime.UtcNow
@@ -205,13 +219,14 @@ public class OrderAuditLogService : IOrderAuditLogService
         string? orderNumber,
         string? action,
         DateTime? fromUtc,
-        DateTime? toUtc)
+        DateTime? toUtc,
+        bool sortAscending = false)
     {
         var orderForFilter = string.IsNullOrWhiteSpace(orderNumber)
             ? null
             : OrderNumberNormalizer.Normalize(orderNumber);
         var (items, total) = await _repository.GetPagedAsync(
-            page, pageSize, userId, orderForFilter, action, fromUtc, toUtc);
+            page, pageSize, userId, orderForFilter, action, fromUtc, toUtc, sortAscending);
         var totalPages = (int)Math.Ceiling(total / (double)Math.Max(1, pageSize));
 
         return new PagedAuditLogsResponseDto
@@ -264,12 +279,7 @@ public class OrderAuditLogService : IOrderAuditLogService
         UserId = e.UserId,
         UserName = e.UserName,
         Summary = e.Summary,
-        Changes = e.Changes.Select(c => new AuditChangeDto
-        {
-            Field = c.Field,
-            OldValue = c.OldValue,
-            NewValue = c.NewValue
-        }).ToList(),
+        Changes = e.Changes.Select(c => AuditLabelFormatter.EnrichChangeDto(c)).ToList(),
         Timestamp = e.Timestamp
     };
 
@@ -420,33 +430,55 @@ public class OrderAuditLogService : IOrderAuditLogService
                 });
             }
 
-            if (!string.Equals(op.LogisticStatus, np.LogisticStatus, StringComparison.Ordinal))
+            var logisticChanged = !string.Equals(op.LogisticStatus, np.LogisticStatus, StringComparison.Ordinal);
+            var manufacturingChanged = !string.Equals(
+                op.ManufacturingStatus,
+                np.ManufacturingStatus,
+                StringComparison.OrdinalIgnoreCase);
+            var locationChanged = !string.Equals(
+                op.LocationStatus,
+                np.LocationStatus,
+                StringComparison.OrdinalIgnoreCase);
+
+            if (logisticChanged && manufacturingChanged)
             {
                 changes.Add(new AuditChange
                 {
-                    Field = $"producto[{label}].logisticStatus",
-                    OldValue = op.LogisticStatus ?? "(sin estado)",
-                    NewValue = np.LogisticStatus ?? "(sin estado)"
+                    Field = $"producto[{label}].fabricacion",
+                    OldValue = $"{op.LogisticStatus ?? "(sin estado)"} / {op.ManufacturingStatus ?? "(sin estado)"}",
+                    NewValue = $"{np.LogisticStatus ?? "(sin estado)"} / {np.ManufacturingStatus ?? "(sin estado)"}"
                 });
             }
+            else
+            {
+                if (logisticChanged)
+                {
+                    changes.Add(new AuditChange
+                    {
+                        Field = $"producto[{label}].logisticStatus",
+                        OldValue = op.LogisticStatus ?? "(sin estado)",
+                        NewValue = np.LogisticStatus ?? "(sin estado)"
+                    });
+                }
 
-            if (!string.Equals(op.LocationStatus, np.LocationStatus, StringComparison.OrdinalIgnoreCase))
+                if (manufacturingChanged)
+                {
+                    changes.Add(new AuditChange
+                    {
+                        Field = $"producto[{label}].manufacturingStatus",
+                        OldValue = op.ManufacturingStatus ?? "(sin estado)",
+                        NewValue = np.ManufacturingStatus ?? "(sin estado)"
+                    });
+                }
+            }
+
+            if (locationChanged)
             {
                 changes.Add(new AuditChange
                 {
                     Field = $"producto[{label}].locationStatus",
                     OldValue = op.LocationStatus ?? "(sin estado)",
                     NewValue = np.LocationStatus ?? "(sin estado)"
-                });
-            }
-
-            if (!string.Equals(op.ManufacturingStatus, np.ManufacturingStatus, StringComparison.OrdinalIgnoreCase))
-            {
-                changes.Add(new AuditChange
-                {
-                    Field = $"producto[{label}].manufacturingStatus",
-                    OldValue = op.ManufacturingStatus ?? "(sin estado)",
-                    NewValue = np.ManufacturingStatus ?? "(sin estado)"
                 });
             }
         }

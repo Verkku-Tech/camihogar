@@ -11,7 +11,12 @@ public interface IOrderAuditLogService
 
     Task LogOrderDeletedAsync(Order order, string userId, string userName);
 
-    Task LogItemValidatedAsync(Order order, string itemId, string userId, string userName);
+    Task LogItemValidatedAsync(
+        Order order,
+        string itemId,
+        string userId,
+        string userName,
+        string? previousLogisticStatus = null);
 
     Task LogPaymentsConciliatedAsync(
         Order orderBefore,
@@ -27,5 +32,6 @@ public interface IOrderAuditLogService
         string? orderNumber,
         string? action,
         DateTime? fromUtc,
-        DateTime? toUtc);
+        DateTime? toUtc,
+        bool sortAscending = false);
 }

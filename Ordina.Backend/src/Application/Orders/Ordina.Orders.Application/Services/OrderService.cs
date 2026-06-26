@@ -1116,13 +1116,19 @@ public class OrderService : IOrderService
                 throw new KeyNotFoundException($"Producto con ID {itemId} no encontrado en el pedido");
             }
 
+            var previousLogisticStatus = product.LogisticStatus ?? "Generado";
             product.LogisticStatus = "Validado";
 
             existingOrder.UpdatedAt = DateTime.UtcNow;
 
             RecalculateOrderStatus(existingOrder);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
-            await _auditLogService.LogItemValidatedAsync(updatedOrder, itemId, userId, userName);
+            await _auditLogService.LogItemValidatedAsync(
+                updatedOrder,
+                itemId,
+                userId,
+                userName,
+                previousLogisticStatus);
             return MapToDto(updatedOrder);
         }
         catch (Exception ex)
