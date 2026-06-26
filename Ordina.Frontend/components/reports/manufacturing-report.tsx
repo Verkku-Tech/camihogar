@@ -13,7 +13,11 @@ import { getProviders, getOrders, type Provider, type Order, type OrderProduct }
 import { isReservationOrder } from "@/lib/order-document-types"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels"
+import {
+  getManufacturingStatusLabel,
+  normalizeManufacturingStatusLabel,
+  REPORTE_FABRICACION_LABEL,
+} from "@/lib/manufacturing-labels"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
@@ -353,20 +357,8 @@ export function ManufacturingReport() {
     }
   }
 
-  const getStatusLabel = (status: ManufacturingStatus): string => {
-    switch (status) {
-      case "debe_fabricar":
-        return "Debe fabricar"
-      case "por_fabricar":
-        return REPORTE_FABRICACION_LABEL
-      case "fabricando":
-        return "Fabricando"
-      case "almacen_no_fabricado":
-        return "En almacén"
-      default:
-        return status
-    }
-  }
+  const getStatusLabel = (status: ManufacturingStatus): string =>
+    getManufacturingStatusLabel(status)
 
   // Función para filtrar productos según el estado y filtros aplicados
   // (Ya no se usa para la vista previa, solo para el combobox de números de pedido)
@@ -755,7 +747,7 @@ export function ManufacturingReport() {
                         <TableCell className="font-medium text-green-600">{row.pedido}</TableCell>
                         <TableCell className="text-sm">
                           <Badge variant="secondary">
-                            {row.estado}
+                            {normalizeManufacturingStatusLabel(row.estado)}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm">{row.cliente}</TableCell>
