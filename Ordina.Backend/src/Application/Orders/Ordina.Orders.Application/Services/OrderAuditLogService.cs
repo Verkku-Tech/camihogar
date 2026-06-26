@@ -306,7 +306,22 @@ public class OrderAuditLogService : IOrderAuditLogService
         AddIfChanged(nameof(Order.Total), D(oldOrder.Total), D(newOrder.Total));
         AddIfChanged(nameof(Order.PaymentType), oldOrder.PaymentType, newOrder.PaymentType);
         AddIfChanged(nameof(Order.PaymentMethod), oldOrder.PaymentMethod, newOrder.PaymentMethod);
+        AddIfChanged(nameof(Order.PaymentCondition), oldOrder.PaymentCondition, newOrder.PaymentCondition);
+        AddIfChanged(nameof(Order.AppliedStoreCreditUsd), D(oldOrder.AppliedStoreCreditUsd), D(newOrder.AppliedStoreCreditUsd));
         AddIfChanged(nameof(Order.Observations), oldOrder.Observations, newOrder.Observations);
+        AddIfChanged(nameof(Order.DispatchObservations), oldOrder.DispatchObservations, newOrder.DispatchObservations);
+        AddIfChanged(
+            nameof(Order.ProductDiscountTotal),
+            FormatNullableDecimal(oldOrder.ProductDiscountTotal),
+            FormatNullableDecimal(newOrder.ProductDiscountTotal));
+        AddIfChanged(
+            "generalDiscount",
+            AuditLabelFormatter.FormatGeneralDiscount(oldOrder),
+            AuditLabelFormatter.FormatGeneralDiscount(newOrder));
+        AddIfChanged(
+            nameof(Order.ProductMarkups),
+            AuditLabelFormatter.FormatProductMarkups(oldOrder.ProductMarkups),
+            AuditLabelFormatter.FormatProductMarkups(newOrder.ProductMarkups));
         AddIfChanged(nameof(Order.SaleType), oldOrder.SaleType, newOrder.SaleType);
         AddIfChanged(nameof(Order.DeliveryType), oldOrder.DeliveryType, newOrder.DeliveryType);
         AddIfChanged(nameof(Order.DeliveryZone), oldOrder.DeliveryZone, newOrder.DeliveryZone);
@@ -326,6 +341,9 @@ public class OrderAuditLogService : IOrderAuditLogService
     }
 
     private static string D(decimal v) => v.ToString(CultureInfo.InvariantCulture);
+
+    private static string? FormatNullableDecimal(decimal? v) =>
+        v.HasValue ? D(v.Value) : null;
 
     private static void DiffPartialPayments(
         List<AuditChange> changes,
@@ -479,6 +497,63 @@ public class OrderAuditLogService : IOrderAuditLogService
                     Field = $"producto[{label}].locationStatus",
                     OldValue = op.LocationStatus ?? "(sin estado)",
                     NewValue = np.LocationStatus ?? "(sin estado)"
+                });
+            }
+
+            if (!string.Equals(op.Name, np.Name, StringComparison.Ordinal))
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].nombre",
+                    OldValue = op.Name,
+                    NewValue = np.Name
+                });
+            }
+
+            var priceChanged = op.Price != np.Price
+                || !string.Equals(op.PriceCurrency, np.PriceCurrency, StringComparison.OrdinalIgnoreCase)
+                || op.Total != np.Total;
+            if (priceChanged)
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].precio",
+                    OldValue = AuditLabelFormatter.FormatProductPriceLine(op),
+                    NewValue = AuditLabelFormatter.FormatProductPriceLine(np)
+                });
+            }
+
+            var oldDiscount = op.Discount?.ToString(CultureInfo.InvariantCulture) ?? "0";
+            var newDiscount = np.Discount?.ToString(CultureInfo.InvariantCulture) ?? "0";
+            if (oldDiscount != newDiscount)
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].descuento",
+                    OldValue = oldDiscount,
+                    NewValue = newDiscount
+                });
+            }
+
+            if (!string.Equals(op.Observations, np.Observations, StringComparison.Ordinal))
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].observaciones",
+                    OldValue = op.Observations ?? "(vacío)",
+                    NewValue = np.Observations ?? "(vacío)"
+                });
+            }
+
+            var oldAttrs = AuditLabelFormatter.AttributesFingerprint(op.Attributes);
+            var newAttrs = AuditLabelFormatter.AttributesFingerprint(np.Attributes);
+            if (!string.Equals(oldAttrs, newAttrs, StringComparison.Ordinal))
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].atributos",
+                    OldValue = string.IsNullOrEmpty(oldAttrs) ? "(sin atributos)" : oldAttrs,
+                    NewValue = string.IsNullOrEmpty(newAttrs) ? "(sin atributos)" : newAttrs
                 });
             }
         }
