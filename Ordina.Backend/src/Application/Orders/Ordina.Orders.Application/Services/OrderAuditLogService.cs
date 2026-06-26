@@ -270,18 +270,29 @@ public class OrderAuditLogService : IOrderAuditLogService
         return "?";
     }
 
-    private static OrderAuditLogDto MapToDto(OrderAuditLog e) => new()
+    private static OrderAuditLogDto MapToDto(OrderAuditLog e)
     {
-        Id = e.Id,
-        OrderId = e.OrderId,
-        OrderNumber = e.OrderNumber,
-        Action = e.Action,
-        UserId = e.UserId,
-        UserName = e.UserName,
-        Summary = e.Summary,
-        Changes = e.Changes.Select(c => AuditLabelFormatter.EnrichChangeDto(c)).ToList(),
-        Timestamp = e.Timestamp
-    };
+        var rawChanges = e.Changes ?? new List<AuditChange>();
+        var summary = rawChanges.Count > 0
+            ? AuditManufacturingInference.BuildSemanticSummary(
+                e.OrderNumber ?? string.Empty,
+                rawChanges,
+                AuditManufacturingInference.InferFromChanges(rawChanges))
+            : e.Summary;
+
+        return new OrderAuditLogDto
+        {
+            Id = e.Id,
+            OrderId = e.OrderId,
+            OrderNumber = e.OrderNumber,
+            Action = e.Action,
+            UserId = e.UserId,
+            UserName = e.UserName,
+            Summary = summary,
+            Changes = rawChanges.Select(c => AuditLabelFormatter.EnrichChangeDto(c)).ToList(),
+            Timestamp = e.Timestamp
+        };
+    }
 
     internal static List<AuditChange> BuildOrderDiff(Order oldOrder, Order newOrder)
     {

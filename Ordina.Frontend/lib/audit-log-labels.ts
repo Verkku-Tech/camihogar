@@ -236,6 +236,82 @@ export function getSummaryPreview(log: OrderAuditLogDto): string | null {
   return `${field}: ${getDisplayOldValue(first)} → ${getDisplayNewValue(first)}`;
 }
 
+/** Resumen legible recalculado desde los cambios (corrige montos/monedas en logs históricos). */
+export function getDisplaySummary(log: OrderAuditLogDto): string {
+  if (!log.changes?.length) return log.summary;
+
+  const parts: string[] = [];
+
+  for (const c of log.changes.filter((ch) => ch.field.includes(".fabricacion"))) {
+    const name = extractProductName(c.field);
+    if (name) {
+      parts.push(
+        `Fabricación ${name}: ${getDisplayOldValue(c)} → ${getDisplayNewValue(c)}`,
+      );
+    }
+  }
+
+  const paymentCondition = log.changes.find((c) => c.field === "PaymentCondition");
+  if (paymentCondition) {
+    parts.push(
+      `Condición de pago: ${getDisplayOldValue(paymentCondition)} → ${getDisplayNewValue(paymentCondition)}`,
+    );
+  }
+
+  for (const c of log.changes.filter(
+    (ch) => ch.field === "mixedPayments[+]" || ch.field === "partialPayments[+]",
+  )) {
+    parts.push(`Agregó pago: ${getDisplayNewValue(c)}`);
+  }
+
+  for (const c of log.changes.filter(
+    (ch) => ch.field === "mixedPayments[-]" || ch.field === "partialPayments[-]",
+  )) {
+    parts.push(`Eliminó pago: ${getDisplayOldValue(c)}`);
+  }
+
+  const storeCredit = log.changes.find((c) => c.field === "AppliedStoreCreditUsd");
+  if (storeCredit) {
+    parts.push(
+      `Crédito de tienda: $${storeCredit.oldValue ?? "0"} → $${storeCredit.newValue ?? "0"}`,
+    );
+  }
+
+  const status = log.changes.find((c) => c.field === "Status");
+  if (status) {
+    parts.push(
+      `Estado del pedido: ${getDisplayOldValue(status)} → ${getDisplayNewValue(status)}`,
+    );
+  }
+
+  if (parts.length > 0) return parts.join(" — ");
+
+  if (log.changes.some((c) => c.field.startsWith("conciliación."))) {
+    return `Conciliación de pagos en pedido ${log.orderNumber}`;
+  }
+
+  const priceChange = log.changes.find((c) => c.field.includes(".precio"));
+  if (priceChange && log.changes.length === 1) {
+    const name = extractProductName(priceChange.field) ?? "producto";
+    return `Precio ${name}: ${getDisplayOldValue(priceChange)} → ${getDisplayNewValue(priceChange)}`;
+  }
+
+  if (log.changes.length === 1) {
+    const c = log.changes[0];
+    return `Actualizó ${getDisplayField(c)}: ${getDisplayOldValue(c)} → ${getDisplayNewValue(c)}`;
+  }
+
+  const preview = log.changes
+    .slice(0, 2)
+    .map(
+      (c) =>
+        `${getDisplayField(c)}: ${getDisplayOldValue(c)} → ${getDisplayNewValue(c)}`,
+    )
+    .join("; ");
+  const suffix = log.changes.length > 2 ? ` y ${log.changes.length - 2} más` : "";
+  return `Actualizó el pedido ${log.orderNumber} (${preview}${suffix})`;
+}
+
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
   created: "Creado",
   updated: "Actualizado",

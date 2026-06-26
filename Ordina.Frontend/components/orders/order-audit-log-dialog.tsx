@@ -48,6 +48,7 @@ import {
   getDisplayNewValue,
   getDisplayOldValue,
   getSummaryPreview,
+  getDisplaySummary,
   groupChangesByProduct,
 } from "@/lib/audit-log-labels";
 
@@ -388,7 +389,7 @@ export function OrderAuditLogDialog({
                         {" · "}
                         {log.userName}
                       </div>
-                      <div className="text-sm font-medium mt-0.5">{log.summary}</div>
+                      <div className="text-sm font-medium mt-0.5">{getDisplaySummary(log)}</div>
                       <div className="text-xs text-muted-foreground mt-0.5">
                         {formatAction(log.action)}
                       </div>
@@ -453,7 +454,7 @@ export function OrderAuditLogDialog({
                           {formatAction(log.action)}
                         </TableCell>
                         <TableCell className="max-w-[320px] text-sm align-top break-words">
-                          <div>{log.summary}</div>
+                          <div>{getDisplaySummary(log)}</div>
                           {preview && (
                             <div className="text-xs text-muted-foreground mt-1">
                               {preview}
@@ -511,7 +512,9 @@ export function OrderAuditLogDialog({
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalle de cambios</DialogTitle>
-            <DialogDescription>{detailLog?.summary}</DialogDescription>
+            <DialogDescription>
+              {detailLog ? getDisplaySummary(detailLog) : null}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm">
             {detailGroups.map((group) => (

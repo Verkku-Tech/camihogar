@@ -212,19 +212,19 @@ public static class AuditManufacturingInference
             parts.Add($"Condición de pago: {oldLabel} → {newLabel}");
         }
 
-        var paymentAdded = changes.FirstOrDefault(c =>
+        var paymentAdded = changes.Where(c =>
             c.Field is "mixedPayments[+]" or "partialPayments[+]");
-        if (paymentAdded != null)
+        foreach (var added in paymentAdded)
         {
-            var detail = AuditLabelFormatter.FormatPaymentListValueForDisplay(paymentAdded.NewValue);
+            var detail = AuditLabelFormatter.FormatPaymentListValueForDisplay(added.NewValue);
             parts.Add($"Agregó pago: {detail}");
         }
 
-        var paymentRemoved = changes.FirstOrDefault(c =>
+        var paymentRemoved = changes.Where(c =>
             c.Field is "mixedPayments[-]" or "partialPayments[-]");
-        if (paymentRemoved != null)
+        foreach (var removed in paymentRemoved)
         {
-            var detail = AuditLabelFormatter.FormatPaymentListValueForDisplay(paymentRemoved.OldValue);
+            var detail = AuditLabelFormatter.FormatPaymentListValueForDisplay(removed.OldValue);
             parts.Add($"Eliminó pago: {detail}");
         }
 
