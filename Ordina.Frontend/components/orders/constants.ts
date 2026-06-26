@@ -5,6 +5,7 @@ export const ACTIVE_ORDER_STATUSES: readonly OrderStatusOption[] = [
   { value: "Presupuesto", label: "Presupuesto" },
   { value: "Generado", label: "Generado" },
   { value: "Validado", label: "Validado" },
+  { value: "Reporte de fabricación", label: "Reporte de fabricación" },
   { value: "Fabricándose", label: "Fabricándose" },
   { value: "En Almacén", label: "En Almacén" },
   { value: "En Ruta", label: "En Ruta" },
