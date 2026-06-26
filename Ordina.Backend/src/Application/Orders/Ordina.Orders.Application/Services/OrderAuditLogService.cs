@@ -616,9 +616,11 @@ public class OrderAuditLogService : IOrderAuditLogService
 
     private static string FormatPartialPaymentFull(PartialPayment p)
     {
+        var (amount, currency) = AuditLabelFormatter.GetOriginalPaymentDisplay(p);
         var sb = new StringBuilder();
         sb.Append("Id=").Append(p.Id).Append("; ");
-        sb.Append("Monto=").Append(p.Amount.ToString(CultureInfo.InvariantCulture)).Append("; ");
+        sb.Append("Monto=").Append(Math.Round(amount, 2, MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture)).Append("; ");
+        sb.Append("Moneda=").Append(currency).Append("; ");
         sb.Append("Método=").Append(p.Method).Append("; ");
         sb.Append("Fecha=").Append(p.Date.ToString("o", CultureInfo.InvariantCulture)).Append("; ");
         sb.Append("Detalle: ").Append(FormatPaymentDetailsFull(p.PaymentDetails));

@@ -1,4 +1,5 @@
 import type { AuditChangeDto, OrderAuditLogDto } from "@/lib/api-client";
+import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels";
 
 const PAYMENT_CONDITION_LABELS: Record<string, string> = {
@@ -63,15 +64,68 @@ const FIELD_LABELS: Record<string, string> = {
 
 const PRODUCT_FIELD_REGEX = /^producto\[(.+)\](?:\.(.+))?$/i;
 
+function extractSemicolonField(raw: string, label: string): string | null {
+  const re = new RegExp(`(?:^|;\\s*)${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}=([^;]+)`, "i");
+  const m = raw.match(re);
+  return m ? m[1].trim() : null;
+}
+
+function normalizePaymentCurrency(currency: string): Currency {
+  const cur = currency.trim().toUpperCase();
+  if (cur === "USD") return "USD";
+  if (cur === "EUR") return "EUR";
+  return "Bs";
+}
+
+function resolvePaymentDisplayFromRaw(raw: string): {
+  amountStr: string | null;
+  currency: string;
+} {
+  const explicitCurrency = extractSemicolonField(raw, "Moneda");
+  const explicitAmount = extractSemicolonField(raw, "Monto");
+
+  if (explicitCurrency && explicitAmount) {
+    return { amountStr: explicitAmount, currency: explicitCurrency };
+  }
+
+  const origCurr = extractSemicolonField(raw, "Orig curr");
+  const origAmt = extractSemicolonField(raw, "Orig amt");
+  const cashCurr = extractSemicolonField(raw, "Cash curr");
+  const cashAmt = extractSemicolonField(raw, "CashReceived");
+
+  if (origCurr && origAmt) {
+    return { amountStr: origAmt, currency: origCurr };
+  }
+  if (cashCurr && cashAmt) {
+    return { amountStr: cashAmt, currency: cashCurr };
+  }
+
+  return { amountStr: explicitAmount, currency: explicitCurrency ?? "Bs" };
+}
+
+function formatPaymentShort(
+  method: string,
+  amount: number,
+  currency: string,
+): string {
+  const rounded = Math.round(amount * 100) / 100;
+  return `${method} ${formatCurrency(rounded, normalizePaymentCurrency(currency))}`;
+}
+
 function formatPaymentListValueForDisplay(raw: string): string {
-  const amountMatch = raw.match(/(?:^|;\s*)Monto=([^;]+)/i);
-  const methodMatch = raw.match(/(?:^|;\s*)Método=([^;]+)/i);
-  if (!amountMatch && !methodMatch) {
+  const method = extractSemicolonField(raw, "Método") ?? "?";
+  const { amountStr, currency } = resolvePaymentDisplayFromRaw(raw);
+
+  if (!amountStr) {
     return raw.length > 120 ? `${raw.slice(0, 120)}…` : raw;
   }
-  const amount = amountMatch?.[1]?.trim() ?? "?";
-  const method = methodMatch?.[1]?.trim() ?? "?";
-  return `${method} $${amount}`;
+
+  const amount = parseFloat(amountStr);
+  if (Number.isNaN(amount)) {
+    return `${method} ${amountStr}`;
+  }
+
+  return formatPaymentShort(method, amount, currency);
 }
 
 export function formatAuditField(field: string): string {
