@@ -1,6 +1,14 @@
 import type { AuditChangeDto, OrderAuditLogDto } from "@/lib/api-client";
 import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels";
 
+const PAYMENT_CONDITION_LABELS: Record<string, string> = {
+  cashea: "Cashea",
+  pagara_en_tienda: "Pagará en Tienda",
+  pago_a_entrega: "Pago a la entrega",
+  pago_parcial: "Pago Parcial",
+  todo_pago: "Todo Pago",
+};
+
 const VALUE_LABELS: Record<string, string> = {
   debe_fabricar: "Debe fabricar",
   por_fabricar: REPORTE_FABRICACION_LABEL,
@@ -18,23 +26,63 @@ const VALUE_LABELS: Record<string, string> = {
   "(sin estado)": "(sin estado)",
   "(previo)": "(previo)",
   "(eliminado)": "(eliminado)",
+  "(ninguno)": "(ninguno)",
+  "(sin descuento)": "(sin descuento)",
+  "(sin condición)": "(sin condición)",
+  "(vacío)": "(vacío)",
+  "(sin atributos)": "(sin atributos)",
 };
 
 const FIELD_LABELS: Record<string, string> = {
   Status: "Estado del pedido",
+  PaymentCondition: "Condición de pago",
+  AppliedStoreCreditUsd: "Crédito de tienda (USD)",
+  DispatchObservations: "Observaciones de despacho",
+  ProductMarkups: "Sobreprecios",
+  ProductDiscountTotal: "Descuento en productos",
+  generalDiscount: "Descuento general",
   paymentDetails: "Detalle de pago",
   partialPayments: "Pagos parciales",
   mixedPayments: "Pagos mixtos",
+  "mixedPayments[+]": "Pago agregado",
+  "partialPayments[+]": "Pago agregado",
+  "mixedPayments[-]": "Pago eliminado",
+  "partialPayments[-]": "Pago eliminado",
   logisticStatus: "Estado logístico",
   manufacturingStatus: "Estado de fabricación",
   locationStatus: "Ubicación",
   cantidad: "Cantidad",
   fabricacion: "Fabricación",
+  nombre: "Nombre",
+  precio: "Precio",
+  total: "Total línea",
+  descuento: "Descuento",
+  observaciones: "Observaciones",
+  atributos: "Atributos",
 };
 
 const PRODUCT_FIELD_REGEX = /^producto\[(.+)\](?:\.(.+))?$/i;
 
+function formatPaymentListValueForDisplay(raw: string): string {
+  const amountMatch = raw.match(/(?:^|;\s*)Monto=([^;]+)/i);
+  const methodMatch = raw.match(/(?:^|;\s*)Método=([^;]+)/i);
+  if (!amountMatch && !methodMatch) {
+    return raw.length > 120 ? `${raw.slice(0, 120)}…` : raw;
+  }
+  const amount = amountMatch?.[1]?.trim() ?? "?";
+  const method = methodMatch?.[1]?.trim() ?? "?";
+  return `${method} $${amount}`;
+}
+
 export function formatAuditField(field: string): string {
+  if (field in FIELD_LABELS) return FIELD_LABELS[field];
+  if (
+    field.startsWith("mixedPayments[") ||
+    field.startsWith("partialPayments[")
+  ) {
+    return "Pago modificado";
+  }
+
   const match = field.trim().match(PRODUCT_FIELD_REGEX);
   if (match) {
     const suffix = match[2] ?? "";
@@ -50,6 +98,18 @@ export function formatAuditField(field: string): string {
 
 export function formatAuditValue(field: string, value?: string | null): string {
   if (value == null || value === "") return "—";
+
+  if (field === "PaymentCondition") {
+    return PAYMENT_CONDITION_LABELS[value.trim()] ?? value;
+  }
+
+  if (
+    field.startsWith("mixedPayments") ||
+    field.startsWith("partialPayments")
+  ) {
+    return formatPaymentListValueForDisplay(value);
+  }
+
   if (value.includes(" / ")) {
     const [a, b] = value.split(" / ", 2);
     return `${formatAuditSingleValue(a)} / ${formatAuditSingleValue(b)}`;
@@ -59,6 +119,9 @@ export function formatAuditValue(field: string, value?: string | null): string {
 
 function formatAuditSingleValue(value: string): string {
   const key = value.trim().toLowerCase();
+  if (PAYMENT_CONDITION_LABELS[value.trim()]) {
+    return PAYMENT_CONDITION_LABELS[value.trim()];
+  }
   return VALUE_LABELS[key] ?? value;
 }
 

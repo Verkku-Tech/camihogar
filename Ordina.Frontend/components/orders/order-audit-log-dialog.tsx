@@ -532,12 +532,6 @@ export function OrderAuditLogDialog({
                           {getDisplayNewValue(c)}
                         </span>
                       </div>
-                      <p
-                        className="text-xs text-muted-foreground/80 truncate"
-                        title={`${c.field}: ${c.oldValue ?? "—"} → ${c.newValue ?? "—"}`}
-                      >
-                        Técnico: {c.field}
-                      </p>
                     </li>
                   ))}
                 </ul>

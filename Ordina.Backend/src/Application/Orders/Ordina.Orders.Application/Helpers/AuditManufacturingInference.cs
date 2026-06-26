@@ -1,4 +1,5 @@
 using Ordina.Database.Entities.Audit;
+using Ordina.Database.Entities.Order;
 
 namespace Ordina.Orders.Application.Helpers;
 
@@ -202,8 +203,41 @@ public static class AuditManufacturingInference
             parts.AddRange(FormatEventList(manufacturingEvents.Select(e => e.SummaryLine)));
         }
 
+        var paymentConditionChange = changes.FirstOrDefault(c =>
+            c.Field is nameof(Order.PaymentCondition));
+        if (paymentConditionChange != null)
+        {
+            var oldLabel = AuditLabelFormatter.FormatPaymentCondition(paymentConditionChange.OldValue);
+            var newLabel = AuditLabelFormatter.FormatPaymentCondition(paymentConditionChange.NewValue);
+            parts.Add($"Condición de pago: {oldLabel} → {newLabel}");
+        }
+
+        var paymentAdded = changes.FirstOrDefault(c =>
+            c.Field is "mixedPayments[+]" or "partialPayments[+]");
+        if (paymentAdded != null)
+        {
+            var detail = AuditLabelFormatter.FormatPaymentListValueForDisplay(paymentAdded.NewValue);
+            parts.Add($"Agregó pago: {detail}");
+        }
+
+        var paymentRemoved = changes.FirstOrDefault(c =>
+            c.Field is "mixedPayments[-]" or "partialPayments[-]");
+        if (paymentRemoved != null)
+        {
+            var detail = AuditLabelFormatter.FormatPaymentListValueForDisplay(paymentRemoved.OldValue);
+            parts.Add($"Eliminó pago: {detail}");
+        }
+
+        var storeCreditChange = changes.FirstOrDefault(c =>
+            c.Field is nameof(Order.AppliedStoreCreditUsd));
+        if (storeCreditChange != null)
+        {
+            parts.Add(
+                $"Crédito de tienda: ${storeCreditChange.OldValue ?? "0"} → ${storeCreditChange.NewValue ?? "0"}");
+        }
+
         var statusChange = changes.FirstOrDefault(c =>
-            c.Field is nameof(Database.Entities.Order.Order.Status) or "Status");
+            c.Field is nameof(Order.Status) or "Status");
         if (statusChange != null)
         {
             var oldLabel = AuditLabelFormatter.FormatValue(statusChange.Field, statusChange.OldValue);
@@ -216,6 +250,13 @@ public static class AuditManufacturingInference
 
         if (changes.Any(c => c.Field.StartsWith("conciliación.", StringComparison.OrdinalIgnoreCase)))
             return $"Conciliación de pagos en pedido {orderNumber}";
+
+        var priceChange = changes.FirstOrDefault(c => c.Field.Contains(".precio", StringComparison.OrdinalIgnoreCase));
+        if (priceChange != null && changes.Count == 1)
+        {
+            var productName = AuditLabelFormatter.ExtractProductName(priceChange.Field) ?? "producto";
+            return $"Precio {productName}: {priceChange.OldValue} → {priceChange.NewValue}";
+        }
 
         if (changes.Count == 1)
         {
