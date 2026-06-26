@@ -23,6 +23,7 @@ import {
   isOnlineSellerRole,
 } from "@/lib/order-online-seller-visibility"
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
+import { getOrderStatusBadgeLabel } from "@/components/orders/constants"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
 
@@ -315,7 +316,12 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
                   <TableCell className="text-muted-foreground">{formatDate(order.createdAt)}</TableCell>
                   <TableCell className="text-green-600 font-medium">{order.clientName}</TableCell>
                   <TableCell>
-                    <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+                    <Badge
+                      className={`${getStatusColor(order.status)} whitespace-nowrap`}
+                      title={order.status}
+                    >
+                      {getOrderStatusBadgeLabel(order.status, "compact")}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     {isGenerated(order) && canValidateOrders ? (

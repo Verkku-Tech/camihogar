@@ -50,7 +50,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { BUDGET_STATUSES, ORDER_STATUSES } from "../orders/constants";
+import { BUDGET_STATUSES, getOrderStatusBadgeLabel, ORDER_STATUSES } from "../orders/constants";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { usePagination } from "@/hooks/use-pagination";
@@ -443,8 +443,11 @@ export function ClientOrdersHistoryDialog({
                         </TableCell>
                         <TableCell>{formatDate(order.createdAt)}</TableCell>
                         <TableCell>
-                          <Badge className={getStatusColor(order.status)}>
-                            {order.status}
+                          <Badge
+                            className={`${getStatusColor(order.status)} whitespace-nowrap`}
+                            title={order.status}
+                          >
+                            {getOrderStatusBadgeLabel(order.status, "compact")}
                           </Badge>
                         </TableCell>
                         <TableCell>

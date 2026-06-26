@@ -68,6 +68,7 @@ import { usePagination } from "@/hooks/use-pagination";
 import { TablePagination } from "@/components/ui/table-pagination";
 import {
   buildOrderStatusFilterOptions,
+  getOrderStatusBadgeLabel,
   PURCHASE_TYPES,
 } from "@/components/orders/constants";
 import {
@@ -813,8 +814,11 @@ export default function PedidosPage() {
                                 `Bs.${getOrderPendingTotal(order).toFixed(2)}`}
                             </TableCell>
                             <TableCell>
-                              <Badge className={getStatusColor(order.status)}>
-                                {order.status}
+                              <Badge
+                                className={`${getStatusColor(order.status)} whitespace-nowrap`}
+                                title={order.status}
+                              >
+                                {getOrderStatusBadgeLabel(order.status, "compact")}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-muted-foreground max-w-[200px]">
