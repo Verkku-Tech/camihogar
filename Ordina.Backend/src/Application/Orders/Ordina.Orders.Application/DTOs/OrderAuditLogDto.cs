@@ -5,6 +5,11 @@ public class AuditChangeDto
     public string Field { get; set; } = string.Empty;
     public string? OldValue { get; set; }
     public string? NewValue { get; set; }
+    public string? DisplayField { get; set; }
+    public string? DisplayOldValue { get; set; }
+    public string? DisplayNewValue { get; set; }
+    public string? ProductName { get; set; }
+    public string? Category { get; set; }
 }
 
 public class OrderAuditLogDto

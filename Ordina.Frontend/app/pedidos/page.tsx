@@ -68,6 +68,7 @@ import { usePagination } from "@/hooks/use-pagination";
 import { TablePagination } from "@/components/ui/table-pagination";
 import {
   buildOrderStatusFilterOptions,
+  getOrderStatusBadgeLabel,
   PURCHASE_TYPES,
 } from "@/components/orders/constants";
 import {
@@ -86,6 +87,8 @@ const getStatusColor = (status: string) => {
       return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300";
     case "Validado":
       return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300";
+    case "Reporte de fabricación":
+      return "bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200";
     case "Por Fabricar":
       return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
     case "En Fabricación":
@@ -811,8 +814,11 @@ export default function PedidosPage() {
                                 `Bs.${getOrderPendingTotal(order).toFixed(2)}`}
                             </TableCell>
                             <TableCell>
-                              <Badge className={getStatusColor(order.status)}>
-                                {order.status}
+                              <Badge
+                                className={`${getStatusColor(order.status)} whitespace-nowrap`}
+                                title={order.status}
+                              >
+                                {getOrderStatusBadgeLabel(order.status, "compact")}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-muted-foreground max-w-[200px]">

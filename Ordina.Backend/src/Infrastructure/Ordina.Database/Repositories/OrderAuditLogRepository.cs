@@ -26,7 +26,8 @@ public class OrderAuditLogRepository : IOrderAuditLogRepository
         string? orderNumber,
         string? action,
         DateTime? fromUtc,
-        DateTime? toUtc)
+        DateTime? toUtc,
+        bool sortAscending = false)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -60,9 +61,13 @@ public class OrderAuditLogRepository : IOrderAuditLogRepository
 
         var totalCount = await _collection.CountDocumentsAsync(filter);
 
+        var sort = sortAscending
+            ? Builders<OrderAuditLog>.Sort.Ascending(x => x.Timestamp)
+            : Builders<OrderAuditLog>.Sort.Descending(x => x.Timestamp);
+
         var items = await _collection
             .Find(filter)
-            .SortByDescending(x => x.Timestamp)
+            .Sort(sort)
             .Skip((page - 1) * pageSize)
             .Limit(pageSize)
             .ToListAsync();

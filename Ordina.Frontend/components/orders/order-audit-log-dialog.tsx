@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -33,8 +33,24 @@ import {
   type UserResponseDto,
 } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Factory,
+  Loader2,
+  Package,
+  RotateCcw,
+} from "lucide-react";
 import { normalizeOrderNumberForAuditFilter } from "@/lib/order-audit-filter";
+import {
+  formatAuditAction,
+  getDisplayField,
+  getDisplayNewValue,
+  getDisplayOldValue,
+  getSummaryPreview,
+  getDisplaySummary,
+  groupChangesByProduct,
+} from "@/lib/audit-log-labels";
 
 type AppliedAuditFilters = {
   userId: string;
@@ -59,10 +75,31 @@ const ACTION_OPTIONS = [
   { value: "deleted", label: "Eliminado" },
   { value: "payment_conciliated", label: "Conciliación pagos" },
   { value: "item_validated", label: "Ítem validado" },
+  { value: "manufacturing_queued", label: "Enviado a reporte de fabricación" },
+  { value: "manufacturing_started", label: "Inició fabricación" },
+  { value: "manufacturing_completed", label: "Completó fabricación" },
+  { value: "manufacturing_reverted", label: "Devuelto a reporte de fabricación" },
 ];
 
 function formatAction(a: string) {
-  return ACTION_OPTIONS.find((o) => o.value === a)?.label ?? a;
+  return ACTION_OPTIONS.find((o) => o.value === a)?.label ?? formatAuditAction(a);
+}
+
+function AuditActionIcon({ action }: { action: string }) {
+  switch (action) {
+    case "manufacturing_started":
+      return <Factory className="h-4 w-4 shrink-0 text-orange-600" />;
+    case "manufacturing_completed":
+      return <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />;
+    case "manufacturing_queued":
+      return <Package className="h-4 w-4 shrink-0 text-amber-600" />;
+    case "manufacturing_reverted":
+      return <RotateCcw className="h-4 w-4 shrink-0 text-amber-700" />;
+    case "item_validated":
+      return <CheckCircle2 className="h-4 w-4 shrink-0 text-indigo-600" />;
+    default:
+      return <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />;
+  }
 }
 
 export interface OrderAuditLogDialogProps {
@@ -71,6 +108,7 @@ export interface OrderAuditLogDialogProps {
 }
 
 const PAGE_SIZE = 10;
+const TIMELINE_PAGE_SIZE = 100;
 
 export function OrderAuditLogDialog({
   open,
@@ -78,8 +116,10 @@ export function OrderAuditLogDialog({
 }: OrderAuditLogDialogProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [users, setUsers] = useState<UserResponseDto[]>([]);
   const [logs, setLogs] = useState<OrderAuditLogDto[]>([]);
+  const [timelineLogs, setTimelineLogs] = useState<OrderAuditLogDto[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -90,11 +130,12 @@ export function OrderAuditLogDialog({
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
 
-  /** Valores con los que se hizo la última búsqueda; solo se actualizan con «Aplicar» o al abrir el diálogo. */
   const [appliedFilters, setAppliedFilters] =
     useState<AppliedAuditFilters>(defaultApplied);
 
   const [detailLog, setDetailLog] = useState<OrderAuditLogDto | null>(null);
+
+  const showTimeline = appliedFilters.orderNumber.trim().length > 0;
 
   const loadUsers = useCallback(async () => {
     try {
@@ -120,7 +161,38 @@ export function OrderAuditLogDialog({
     setFilterAction(defaultApplied.action);
     setFilterFrom(defaultApplied.from);
     setFilterTo(defaultApplied.to);
+    setTimelineLogs([]);
   }, [open]);
+
+  const buildQueryParams = useCallback(
+    (opts: { page: number; pageSize: number; sortAscending?: boolean }) => {
+      const orderQuery = appliedFilters.orderNumber.trim()
+        ? normalizeOrderNumberForAuditFilter(appliedFilters.orderNumber)
+        : "";
+
+      return {
+        page: opts.page,
+        pageSize: opts.pageSize,
+        userId:
+          appliedFilters.userId && appliedFilters.userId !== "__all__"
+            ? appliedFilters.userId
+            : undefined,
+        orderNumber: orderQuery || undefined,
+        action:
+          appliedFilters.action && appliedFilters.action !== "__all__"
+            ? appliedFilters.action
+            : undefined,
+        from: appliedFilters.from
+          ? new Date(appliedFilters.from).toISOString()
+          : undefined,
+        to: appliedFilters.to
+          ? new Date(appliedFilters.to).toISOString()
+          : undefined,
+        sortAscending: opts.sortAscending,
+      };
+    },
+    [appliedFilters],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -129,29 +201,9 @@ export function OrderAuditLogDialog({
     (async () => {
       setLoading(true);
       try {
-        const orderQuery = appliedFilters.orderNumber.trim()
-          ? normalizeOrderNumberForAuditFilter(appliedFilters.orderNumber)
-          : "";
-
-        const res = await apiClient.getOrderAuditLogs({
-          page,
-          pageSize: PAGE_SIZE,
-          userId:
-            appliedFilters.userId && appliedFilters.userId !== "__all__"
-              ? appliedFilters.userId
-              : undefined,
-          orderNumber: orderQuery || undefined,
-          action:
-            appliedFilters.action && appliedFilters.action !== "__all__"
-              ? appliedFilters.action
-              : undefined,
-          from: appliedFilters.from
-            ? new Date(appliedFilters.from).toISOString()
-            : undefined,
-          to: appliedFilters.to
-            ? new Date(appliedFilters.to).toISOString()
-            : undefined,
-        });
+        const res = await apiClient.getOrderAuditLogs(
+          buildQueryParams({ page, pageSize: PAGE_SIZE }),
+        );
         if (!cancelled) {
           setLogs(res.items);
           setTotalPages(Math.max(1, res.totalPages));
@@ -172,7 +224,44 @@ export function OrderAuditLogDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, page, appliedFilters]);
+  }, [open, page, buildQueryParams]);
+
+  useEffect(() => {
+    if (!open || !showTimeline) {
+      setTimelineLogs([]);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setTimelineLoading(true);
+      try {
+        const res = await apiClient.getOrderAuditLogs(
+          buildQueryParams({
+            page: 1,
+            pageSize: TIMELINE_PAGE_SIZE,
+            sortAscending: true,
+          }),
+        );
+        if (!cancelled) {
+          setTimelineLogs(res.items);
+        }
+      } catch {
+        if (!cancelled) setTimelineLogs([]);
+      } finally {
+        if (!cancelled) setTimelineLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, showTimeline, buildQueryParams]);
+
+  const detailGroups = useMemo(
+    () => groupChangesByProduct(detailLog?.changes ?? []),
+    [detailLog],
+  );
 
   const handleApplyFilters = () => {
     const normOrder = filterOrderNumber.trim()
@@ -274,6 +363,48 @@ export function OrderAuditLogDialog({
             </div>
           </div>
 
+          {showTimeline && (
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">
+                  Secuencia del pedido {appliedFilters.orderNumber}
+                </h3>
+                {timelineLoading && (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+              {timelineLogs.length === 0 && !timelineLoading ? (
+                <p className="text-sm text-muted-foreground">
+                  No hay eventos para este pedido.
+                </p>
+              ) : (
+                <ol className="space-y-0 border-l-2 border-primary/30 ml-2 pl-4">
+                  {timelineLogs.map((log) => (
+                    <li key={`tl-${log.id}`} className="relative pb-4 last:pb-0">
+                      <span className="absolute -left-[1.35rem] top-1 flex h-5 w-5 items-center justify-center rounded-full bg-background border-2 border-primary/40">
+                        <AuditActionIcon action={log.action} />
+                      </span>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(log.timestamp).toLocaleString()}
+                        {" · "}
+                        {log.userName}
+                      </div>
+                      <div className="text-sm font-medium mt-0.5">{getDisplaySummary(log)}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {formatAction(log.action)}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {totalCount > TIMELINE_PAGE_SIZE && (
+                <p className="text-xs text-muted-foreground">
+                  Mostrando los primeros {TIMELINE_PAGE_SIZE} eventos en orden cronológico.
+                </p>
+              )}
+            </div>
+          )}
+
           {loading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -298,44 +429,52 @@ export function OrderAuditLogDialog({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="whitespace-nowrap text-xs align-top">
-                        {new Date(log.timestamp).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-sm align-top">{log.userName}</TableCell>
-                      <TableCell className="align-top">
-                        <button
-                          type="button"
-                          className="text-primary underline font-medium text-left"
-                          onClick={() =>
-                            router.push(
-                              `/pedidos/${encodeURIComponent(log.orderNumber)}`,
-                            )
-                          }
-                        >
-                          {log.orderNumber}
-                        </button>
-                      </TableCell>
-                      <TableCell className="text-sm align-top">
-                        {formatAction(log.action)}
-                      </TableCell>
-                      <TableCell className="max-w-[240px] text-sm align-top break-words">
-                        {log.summary}
-                      </TableCell>
-                      <TableCell className="align-top">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDetailLog(log)}
-                          disabled={!log.changes?.length}
-                        >
-                          Detalle
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  logs.map((log) => {
+                    const preview = getSummaryPreview(log);
+                    return (
+                      <TableRow key={log.id}>
+                        <TableCell className="whitespace-nowrap text-xs align-top">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-sm align-top">{log.userName}</TableCell>
+                        <TableCell className="align-top">
+                          <button
+                            type="button"
+                            className="text-primary underline font-medium text-left"
+                            onClick={() =>
+                              router.push(
+                                `/pedidos/${encodeURIComponent(log.orderNumber)}`,
+                              )
+                            }
+                          >
+                            {log.orderNumber}
+                          </button>
+                        </TableCell>
+                        <TableCell className="text-sm align-top">
+                          {formatAction(log.action)}
+                        </TableCell>
+                        <TableCell className="max-w-[320px] text-sm align-top break-words">
+                          <div>{getDisplaySummary(log)}</div>
+                          {preview && (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {preview}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDetailLog(log)}
+                            disabled={!log.changes?.length}
+                          >
+                            Detalle
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -373,19 +512,35 @@ export function OrderAuditLogDialog({
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalle de cambios</DialogTitle>
-            <DialogDescription>{detailLog?.summary}</DialogDescription>
+            <DialogDescription>
+              {detailLog ? getDisplaySummary(detailLog) : null}
+            </DialogDescription>
           </DialogHeader>
-          <ul className="space-y-2 text-sm">
-            {detailLog?.changes?.map((c, i) => (
-              <li key={i} className="border-b pb-2 last:border-0">
-                <span className="font-medium">{c.field}</span>
-                <div className="text-muted-foreground mt-1 break-words space-y-1">
-                  <div>Antes: {c.oldValue ?? "—"}</div>
-                  <div>Después: {c.newValue ?? "—"}</div>
-                </div>
-              </li>
+          <div className="space-y-4 text-sm">
+            {detailGroups.map((group) => (
+              <div key={group.key} className="rounded-md border p-3 space-y-2">
+                <p className="font-semibold">
+                  {group.productName
+                    ? `Producto: ${group.productName}`
+                    : "Pedido"}
+                </p>
+                <ul className="space-y-2">
+                  {group.changes.map((c, i) => (
+                    <li key={`${group.key}-${i}`} className="space-y-1">
+                      <div className="font-medium">{getDisplayField(c)}</div>
+                      <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                        <span>{getDisplayOldValue(c)}</span>
+                        <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+                        <span className="text-foreground font-medium">
+                          {getDisplayNewValue(c)}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </DialogContent>
       </Dialog>
     </>

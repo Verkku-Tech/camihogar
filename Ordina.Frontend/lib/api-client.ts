@@ -1446,6 +1446,7 @@ export class ApiClient {
       action?: string;
       from?: string;
       to?: string;
+      sortAscending?: boolean;
     } = {},
   ) {
     const sp = new URLSearchParams();
@@ -1456,6 +1457,9 @@ export class ApiClient {
     if (params.action) sp.set("action", params.action);
     if (params.from) sp.set("from", params.from);
     if (params.to) sp.set("to", params.to);
+    if (params.sortAscending != null) {
+      sp.set("sortAscending", String(params.sortAscending));
+    }
     const q = sp.toString();
     return this.request<PagedAuditLogsResponseDto>(
       `/api/Orders/audit-logs${q ? `?${q}` : ""}`,
@@ -2425,6 +2429,11 @@ export interface AuditChangeDto {
   field: string;
   oldValue?: string | null;
   newValue?: string | null;
+  displayField?: string | null;
+  displayOldValue?: string | null;
+  displayNewValue?: string | null;
+  productName?: string | null;
+  category?: string | null;
 }
 
 /** Entrada de log de auditoría de pedidos */

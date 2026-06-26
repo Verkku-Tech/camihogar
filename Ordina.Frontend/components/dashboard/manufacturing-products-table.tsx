@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { getOrders, Order, OrderProduct } from "@/lib/storage"
+import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels"
 import { Clock, Package, Eye } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
@@ -92,7 +93,7 @@ export function ManufacturingProductsTable() {
         return (
           <Badge className="bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200">
             <Package className="w-3 h-3 mr-1" />
-            Por Fabricar
+            {REPORTE_FABRICACION_LABEL}
           </Badge>
         )
       case "fabricando":
@@ -152,7 +153,7 @@ export function ManufacturingProductsTable() {
             <Package className="w-12 h-12 mx-auto text-muted-foreground" />
             <p className="text-muted-foreground">No hay productos en fabricación</p>
             <p className="text-sm text-muted-foreground">
-              Los productos en Por fabricar o Fabricando aparecerán aquí
+              Los productos en {REPORTE_FABRICACION_LABEL} o Fabricando aparecerán aquí
             </p>
           </div>
         </CardContent>

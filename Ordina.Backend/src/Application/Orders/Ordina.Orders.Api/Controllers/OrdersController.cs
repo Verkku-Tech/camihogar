@@ -143,11 +143,13 @@ public class OrdersController : ControllerBase
         [FromQuery] string? orderNumber = null,
         [FromQuery] string? action = null,
         [FromQuery] DateTime? from = null,
-        [FromQuery] DateTime? to = null)
+        [FromQuery] DateTime? to = null,
+        [FromQuery] bool sortAscending = false)
     {
         try
         {
-            var result = await _auditLogService.GetPagedLogsAsync(page, pageSize, userId, orderNumber, action, from, to);
+            var result = await _auditLogService.GetPagedLogsAsync(
+                page, pageSize, userId, orderNumber, action, from, to, sortAscending);
             return Ok(result);
         }
         catch (Exception ex)

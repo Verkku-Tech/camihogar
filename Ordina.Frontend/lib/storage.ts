@@ -1915,6 +1915,7 @@ export interface Order {
     | "Presupuesto"
     | "Generado"
     | "Validado"
+    | "Reporte de fabricación"
     | "Fabricándose"
     | "En Almacén"
     | "En Ruta"
@@ -4134,6 +4135,7 @@ const DASHBOARD_COMPLETED_STATUSES = new Set([
 const DASHBOARD_PENDING_BALANCE_STATUSES = new Set([
   "Generado",
   "Validado",
+  "Reporte de fabricación",
   "Fabricándose",
   "En Almacén",
   "En Ruta",

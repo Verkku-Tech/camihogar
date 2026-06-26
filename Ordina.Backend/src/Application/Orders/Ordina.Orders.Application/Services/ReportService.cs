@@ -425,7 +425,7 @@ public class ReportService : IReportService
                     var estadoLabel = productStatus switch
                     {
                         "debe_fabricar" => "Debe fabricar",
-                        "por_fabricar" => "Por fabricar",
+                        "por_fabricar" => "Reporte de fabricación",
                         "fabricando" => "Fabricando",
                         "almacen_no_fabricado" => "En almacén",
                         "fabricado" => "En almacén", // legacy

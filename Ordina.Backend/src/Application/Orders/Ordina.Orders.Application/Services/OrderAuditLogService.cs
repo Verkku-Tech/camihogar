@@ -19,6 +19,10 @@ public class OrderAuditLogService : IOrderAuditLogService
     public const string ActionDeleted = "deleted";
     public const string ActionPaymentConciliated = "payment_conciliated";
     public const string ActionItemValidated = "item_validated";
+    public const string ActionManufacturingQueued = AuditManufacturingInference.ActionManufacturingQueued;
+    public const string ActionManufacturingStarted = AuditManufacturingInference.ActionManufacturingStarted;
+    public const string ActionManufacturingCompleted = AuditManufacturingInference.ActionManufacturingCompleted;
+    public const string ActionManufacturingReverted = AuditManufacturingInference.ActionManufacturingReverted;
 
     private readonly IOrderAuditLogRepository _repository;
     private readonly ILogger<OrderAuditLogService> _logger;
@@ -64,18 +68,18 @@ public class OrderAuditLogService : IOrderAuditLogService
                 return;
             }
 
-            var summary = $"Actualizó el pedido {newOrder.OrderNumber} ({changes.Count} cambio(s))";
-            var statusChange = changes.FirstOrDefault(c => c.Field == nameof(Order.Status));
-            if (statusChange != null)
-            {
-                summary += $" — estado: {statusChange.OldValue} → {statusChange.NewValue}";
-            }
+            var manufacturingEvents = AuditManufacturingInference.InferFromChanges(changes);
+            var summary = AuditManufacturingInference.BuildSemanticSummary(
+                newOrder.OrderNumber ?? string.Empty,
+                changes,
+                manufacturingEvents);
+            var action = AuditManufacturingInference.ResolveAction(manufacturingEvents);
 
             var log = new OrderAuditLog
             {
                 OrderId = newOrder.Id,
-                OrderNumber = newOrder.OrderNumber,
-                Action = ActionUpdated,
+                OrderNumber = newOrder.OrderNumber ?? string.Empty,
+                Action = action,
                 UserId = userId,
                 UserName = userName,
                 Summary = summary,
@@ -113,12 +117,22 @@ public class OrderAuditLogService : IOrderAuditLogService
         }
     }
 
-    public async Task LogItemValidatedAsync(Order order, string itemId, string userId, string userName)
+    public async Task LogItemValidatedAsync(
+        Order order,
+        string itemId,
+        string userId,
+        string userName,
+        string? previousLogisticStatus = null)
     {
         try
         {
             var product = order.Products.FirstOrDefault(p => p.Id == itemId);
             var productName = product?.Name ?? itemId;
+            var oldStatus = previousLogisticStatus ?? "Generado";
+            var newStatus = product?.LogisticStatus ?? "Validado";
+            var oldLabel = AuditLabelFormatter.FormatValue("logisticStatus", oldStatus);
+            var newLabel = AuditLabelFormatter.FormatValue("logisticStatus", newStatus);
+
             var log = new OrderAuditLog
             {
                 OrderId = order.Id,
@@ -126,14 +140,14 @@ public class OrderAuditLogService : IOrderAuditLogService
                 Action = ActionItemValidated,
                 UserId = userId,
                 UserName = userName,
-                Summary = $"Validó ítem en pedido {order.OrderNumber}: {productName}",
+                Summary = $"Validó ítem en pedido {order.OrderNumber}: {productName} ({oldLabel} → {newLabel})",
                 Changes = new List<AuditChange>
                 {
                     new()
                     {
-                        Field = "product.logisticStatus",
-                        OldValue = "(previo)",
-                        NewValue = "Validado"
+                        Field = $"producto[{productName}].logisticStatus",
+                        OldValue = oldStatus,
+                        NewValue = newStatus
                     }
                 },
                 Timestamp = DateTime.UtcNow
@@ -205,13 +219,14 @@ public class OrderAuditLogService : IOrderAuditLogService
         string? orderNumber,
         string? action,
         DateTime? fromUtc,
-        DateTime? toUtc)
+        DateTime? toUtc,
+        bool sortAscending = false)
     {
         var orderForFilter = string.IsNullOrWhiteSpace(orderNumber)
             ? null
             : OrderNumberNormalizer.Normalize(orderNumber);
         var (items, total) = await _repository.GetPagedAsync(
-            page, pageSize, userId, orderForFilter, action, fromUtc, toUtc);
+            page, pageSize, userId, orderForFilter, action, fromUtc, toUtc, sortAscending);
         var totalPages = (int)Math.Ceiling(total / (double)Math.Max(1, pageSize));
 
         return new PagedAuditLogsResponseDto
@@ -255,23 +270,29 @@ public class OrderAuditLogService : IOrderAuditLogService
         return "?";
     }
 
-    private static OrderAuditLogDto MapToDto(OrderAuditLog e) => new()
+    private static OrderAuditLogDto MapToDto(OrderAuditLog e)
     {
-        Id = e.Id,
-        OrderId = e.OrderId,
-        OrderNumber = e.OrderNumber,
-        Action = e.Action,
-        UserId = e.UserId,
-        UserName = e.UserName,
-        Summary = e.Summary,
-        Changes = e.Changes.Select(c => new AuditChangeDto
+        var rawChanges = e.Changes ?? new List<AuditChange>();
+        var summary = rawChanges.Count > 0
+            ? AuditManufacturingInference.BuildSemanticSummary(
+                e.OrderNumber ?? string.Empty,
+                rawChanges,
+                AuditManufacturingInference.InferFromChanges(rawChanges))
+            : e.Summary;
+
+        return new OrderAuditLogDto
         {
-            Field = c.Field,
-            OldValue = c.OldValue,
-            NewValue = c.NewValue
-        }).ToList(),
-        Timestamp = e.Timestamp
-    };
+            Id = e.Id,
+            OrderId = e.OrderId,
+            OrderNumber = e.OrderNumber,
+            Action = e.Action,
+            UserId = e.UserId,
+            UserName = e.UserName,
+            Summary = summary,
+            Changes = rawChanges.Select(c => AuditLabelFormatter.EnrichChangeDto(c)).ToList(),
+            Timestamp = e.Timestamp
+        };
+    }
 
     internal static List<AuditChange> BuildOrderDiff(Order oldOrder, Order newOrder)
     {
@@ -296,7 +317,22 @@ public class OrderAuditLogService : IOrderAuditLogService
         AddIfChanged(nameof(Order.Total), D(oldOrder.Total), D(newOrder.Total));
         AddIfChanged(nameof(Order.PaymentType), oldOrder.PaymentType, newOrder.PaymentType);
         AddIfChanged(nameof(Order.PaymentMethod), oldOrder.PaymentMethod, newOrder.PaymentMethod);
+        AddIfChanged(nameof(Order.PaymentCondition), oldOrder.PaymentCondition, newOrder.PaymentCondition);
+        AddIfChanged(nameof(Order.AppliedStoreCreditUsd), D(oldOrder.AppliedStoreCreditUsd), D(newOrder.AppliedStoreCreditUsd));
         AddIfChanged(nameof(Order.Observations), oldOrder.Observations, newOrder.Observations);
+        AddIfChanged(nameof(Order.DispatchObservations), oldOrder.DispatchObservations, newOrder.DispatchObservations);
+        AddIfChanged(
+            nameof(Order.ProductDiscountTotal),
+            FormatNullableDecimal(oldOrder.ProductDiscountTotal),
+            FormatNullableDecimal(newOrder.ProductDiscountTotal));
+        AddIfChanged(
+            "generalDiscount",
+            AuditLabelFormatter.FormatGeneralDiscount(oldOrder),
+            AuditLabelFormatter.FormatGeneralDiscount(newOrder));
+        AddIfChanged(
+            nameof(Order.ProductMarkups),
+            AuditLabelFormatter.FormatProductMarkups(oldOrder.ProductMarkups),
+            AuditLabelFormatter.FormatProductMarkups(newOrder.ProductMarkups));
         AddIfChanged(nameof(Order.SaleType), oldOrder.SaleType, newOrder.SaleType);
         AddIfChanged(nameof(Order.DeliveryType), oldOrder.DeliveryType, newOrder.DeliveryType);
         AddIfChanged(nameof(Order.DeliveryZone), oldOrder.DeliveryZone, newOrder.DeliveryZone);
@@ -316,6 +352,9 @@ public class OrderAuditLogService : IOrderAuditLogService
     }
 
     private static string D(decimal v) => v.ToString(CultureInfo.InvariantCulture);
+
+    private static string? FormatNullableDecimal(decimal? v) =>
+        v.HasValue ? D(v.Value) : null;
 
     private static void DiffPartialPayments(
         List<AuditChange> changes,
@@ -420,17 +459,49 @@ public class OrderAuditLogService : IOrderAuditLogService
                 });
             }
 
-            if (!string.Equals(op.LogisticStatus, np.LogisticStatus, StringComparison.Ordinal))
+            var logisticChanged = !string.Equals(op.LogisticStatus, np.LogisticStatus, StringComparison.Ordinal);
+            var manufacturingChanged = !string.Equals(
+                op.ManufacturingStatus,
+                np.ManufacturingStatus,
+                StringComparison.OrdinalIgnoreCase);
+            var locationChanged = !string.Equals(
+                op.LocationStatus,
+                np.LocationStatus,
+                StringComparison.OrdinalIgnoreCase);
+
+            if (logisticChanged && manufacturingChanged)
             {
                 changes.Add(new AuditChange
                 {
-                    Field = $"producto[{label}].logisticStatus",
-                    OldValue = op.LogisticStatus ?? "(sin estado)",
-                    NewValue = np.LogisticStatus ?? "(sin estado)"
+                    Field = $"producto[{label}].fabricacion",
+                    OldValue = $"{op.LogisticStatus ?? "(sin estado)"} / {op.ManufacturingStatus ?? "(sin estado)"}",
+                    NewValue = $"{np.LogisticStatus ?? "(sin estado)"} / {np.ManufacturingStatus ?? "(sin estado)"}"
                 });
             }
+            else
+            {
+                if (logisticChanged)
+                {
+                    changes.Add(new AuditChange
+                    {
+                        Field = $"producto[{label}].logisticStatus",
+                        OldValue = op.LogisticStatus ?? "(sin estado)",
+                        NewValue = np.LogisticStatus ?? "(sin estado)"
+                    });
+                }
 
-            if (!string.Equals(op.LocationStatus, np.LocationStatus, StringComparison.OrdinalIgnoreCase))
+                if (manufacturingChanged)
+                {
+                    changes.Add(new AuditChange
+                    {
+                        Field = $"producto[{label}].manufacturingStatus",
+                        OldValue = op.ManufacturingStatus ?? "(sin estado)",
+                        NewValue = np.ManufacturingStatus ?? "(sin estado)"
+                    });
+                }
+            }
+
+            if (locationChanged)
             {
                 changes.Add(new AuditChange
                 {
@@ -440,13 +511,60 @@ public class OrderAuditLogService : IOrderAuditLogService
                 });
             }
 
-            if (!string.Equals(op.ManufacturingStatus, np.ManufacturingStatus, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(op.Name, np.Name, StringComparison.Ordinal))
             {
                 changes.Add(new AuditChange
                 {
-                    Field = $"producto[{label}].manufacturingStatus",
-                    OldValue = op.ManufacturingStatus ?? "(sin estado)",
-                    NewValue = np.ManufacturingStatus ?? "(sin estado)"
+                    Field = $"producto[{label}].nombre",
+                    OldValue = op.Name,
+                    NewValue = np.Name
+                });
+            }
+
+            var priceChanged = op.Price != np.Price
+                || !string.Equals(op.PriceCurrency, np.PriceCurrency, StringComparison.OrdinalIgnoreCase)
+                || op.Total != np.Total;
+            if (priceChanged)
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].precio",
+                    OldValue = AuditLabelFormatter.FormatProductPriceLine(op),
+                    NewValue = AuditLabelFormatter.FormatProductPriceLine(np)
+                });
+            }
+
+            var oldDiscount = op.Discount?.ToString(CultureInfo.InvariantCulture) ?? "0";
+            var newDiscount = np.Discount?.ToString(CultureInfo.InvariantCulture) ?? "0";
+            if (oldDiscount != newDiscount)
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].descuento",
+                    OldValue = oldDiscount,
+                    NewValue = newDiscount
+                });
+            }
+
+            if (!string.Equals(op.Observations, np.Observations, StringComparison.Ordinal))
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].observaciones",
+                    OldValue = op.Observations ?? "(vacío)",
+                    NewValue = np.Observations ?? "(vacío)"
+                });
+            }
+
+            var oldAttrs = AuditLabelFormatter.AttributesFingerprint(op.Attributes);
+            var newAttrs = AuditLabelFormatter.AttributesFingerprint(np.Attributes);
+            if (!string.Equals(oldAttrs, newAttrs, StringComparison.Ordinal))
+            {
+                changes.Add(new AuditChange
+                {
+                    Field = $"producto[{label}].atributos",
+                    OldValue = string.IsNullOrEmpty(oldAttrs) ? "(sin atributos)" : oldAttrs,
+                    NewValue = string.IsNullOrEmpty(newAttrs) ? "(sin atributos)" : newAttrs
                 });
             }
         }
@@ -509,9 +627,11 @@ public class OrderAuditLogService : IOrderAuditLogService
 
     private static string FormatPartialPaymentFull(PartialPayment p)
     {
+        var (amount, currency) = AuditLabelFormatter.GetOriginalPaymentDisplay(p);
         var sb = new StringBuilder();
         sb.Append("Id=").Append(p.Id).Append("; ");
-        sb.Append("Monto=").Append(p.Amount.ToString(CultureInfo.InvariantCulture)).Append("; ");
+        sb.Append("Monto=").Append(Math.Round(amount, 2, MidpointRounding.AwayFromZero).ToString(CultureInfo.InvariantCulture)).Append("; ");
+        sb.Append("Moneda=").Append(currency).Append("; ");
         sb.Append("Método=").Append(p.Method).Append("; ");
         sb.Append("Fecha=").Append(p.Date.ToString("o", CultureInfo.InvariantCulture)).Append("; ");
         sb.Append("Detalle: ").Append(FormatPaymentDetailsFull(p.PaymentDetails));

@@ -52,6 +52,7 @@ import {
   isUsdBaseOrder,
 } from "@/lib/order-line-pricing";
 import { resolveCatalogProductForOrderLine } from "@/lib/order-product-confirm-map";
+import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels";
 import {
   commercialRatesToExchangeRatesInput,
   formatDualCurrencyAmounts,
@@ -483,6 +484,8 @@ function getStatusColor(status: string) {
       return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300";
     case "Validado":
       return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300";
+    case "Reporte de fabricación":
+      return "bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200";
     case "En Fabricación":
     case "Fabricación":
     case "Fabricándose":
@@ -2044,7 +2047,7 @@ export default function OrderDetailPage() {
                                         product.manufacturingStatus ===
                                         "por_fabricar"
                                       ) {
-                                        badgeText = "Por fabricar";
+                                        badgeText = REPORTE_FABRICACION_LABEL;
                                         badgeVariant = "secondary";
                                         badgeClassName =
                                           "text-sm bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200";

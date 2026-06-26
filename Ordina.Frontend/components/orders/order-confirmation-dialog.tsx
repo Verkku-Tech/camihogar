@@ -33,6 +33,7 @@ import {
   ChevronLeft,
   Loader2,
 } from "lucide-react";
+import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels";
 import type {
   OrderProduct,
   PartialPayment,
@@ -1089,7 +1090,7 @@ export function OrderConfirmationDialog({
                               badgeVariant = "secondary";
                               badgeClassName = "text-sm bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
                             } else if (product.manufacturingStatus === "por_fabricar") {
-                              badgeText = "Por fabricar";
+                              badgeText = REPORTE_FABRICACION_LABEL;
                               badgeVariant = "secondary";
                               badgeClassName = "text-sm bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200";
                             } else {

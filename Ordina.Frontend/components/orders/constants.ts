@@ -5,6 +5,7 @@ export const ACTIVE_ORDER_STATUSES: readonly OrderStatusOption[] = [
   { value: "Presupuesto", label: "Presupuesto" },
   { value: "Generado", label: "Generado" },
   { value: "Validado", label: "Validado" },
+  { value: "Reporte de fabricación", label: "Reporte de fabricación" },
   { value: "Fabricándose", label: "Fabricándose" },
   { value: "En Almacén", label: "En Almacén" },
   { value: "En Ruta", label: "En Ruta" },
@@ -54,6 +55,22 @@ export function buildOrderStatusFilterOptions(
 
 /** Alias de estados activos (filtros simples sin datos cargados). */
 export const ORDER_STATUSES = ACTIVE_ORDER_STATUSES;
+
+/** Etiquetas cortas para badges en tablas (el valor en BD/API no cambia). */
+const ORDER_STATUS_COMPACT_LABELS: Record<string, string> = {
+  "Reporte de fabricación": "Rep. fabricación",
+};
+
+/** Texto del badge de estado; en tablas usa forma compacta si aplica. */
+export function getOrderStatusBadgeLabel(
+  status: string,
+  variant: "default" | "compact" = "default",
+): string {
+  if (variant === "compact") {
+    return ORDER_STATUS_COMPACT_LABELS[status] ?? status;
+  }
+  return status;
+}
 
 export const BUDGET_STATUSES = [
   { value: "Presupuesto", label: "Presupuesto" },
