@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using Ordina.Providers.Application.Validation;
+
 namespace Ordina.Providers.Application.DTOs
 {
     public class CreateProviderDto
@@ -18,7 +20,7 @@ namespace Ordina.Providers.Application.DTOs
 
         public string? RazonSocial { get; set; }
 
-        [EmailAddress]
+        [OptionalEmailAddress]
         [StringLength(100)]
         public string? Email { get; set; }
 
