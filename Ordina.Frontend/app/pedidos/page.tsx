@@ -71,6 +71,7 @@ import {
   getOrderStatusBadgeLabel,
   PURCHASE_TYPES,
 } from "@/components/orders/constants";
+import { resolveDisplayOrderStatus } from "@/lib/order-status-aggregation";
 import {
   isSistemaApartado,
   isSaRowHighlight,
@@ -360,7 +361,10 @@ export default function PedidosPage() {
   ).sort();
 
   const statusFilterOptions = useMemo(
-    () => buildOrderStatusFilterOptions(orders.map((o) => o.status)),
+    () =>
+      buildOrderStatusFilterOptions(
+        orders.map((o) => resolveDisplayOrderStatus(o)),
+      ),
     [orders],
   );
 
@@ -382,8 +386,9 @@ export default function PedidosPage() {
 
       const matchesVendor =
         filters.vendor === "all" || order.vendorName === filters.vendor;
+      const displayStatus = resolveDisplayOrderStatus(order);
       const matchesStatus =
-        filters.status === "all" || order.status === filters.status;
+        filters.status === "all" || displayStatus === filters.status;
       const matchesSaleType =
         filters.saleType === "all" ||
         (order.saleType !== undefined && order.saleType === filters.saleType);
@@ -784,12 +789,21 @@ export default function PedidosPage() {
                                 `Bs.${getOrderPendingTotal(order).toFixed(2)}`}
                             </TableCell>
                             <TableCell>
-                              <Badge
-                                className={`${getStatusColor(order.status)} whitespace-nowrap`}
-                                title={order.status}
-                              >
-                                {getOrderStatusBadgeLabel(order.status, "compact")}
-                              </Badge>
+                              {(() => {
+                                const displayStatus =
+                                  resolveDisplayOrderStatus(order);
+                                return (
+                                  <Badge
+                                    className={`${getStatusColor(displayStatus)} whitespace-nowrap`}
+                                    title={displayStatus}
+                                  >
+                                    {getOrderStatusBadgeLabel(
+                                      displayStatus,
+                                      "compact",
+                                    )}
+                                  </Badge>
+                                );
+                              })()}
                             </TableCell>
                             <TableCell className="text-muted-foreground max-w-[200px]">
                               {purchaseTypeLabel(order.saleType) ?? "—"}
