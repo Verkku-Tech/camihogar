@@ -278,13 +278,22 @@ export default function DespachosPage() {
   const isAdmin =
     user?.role === "Super Administrator" ||
     user?.role === "Administrator"
+  const isSupervisor = user?.role === "Supervisor"
+  const canManageAllDispatch = isAdmin || isSupervisor
   const hasSendToRoute = hasPermission(DISPATCH_SEND_TO_ROUTE)
   const hasConfirmDelivery = hasPermission(DISPATCH_CONFIRM_DELIVERY)
-  const canSendToRoute = isAdmin || isOnlineSeller || hasSendToRoute
+  const hasDispatchUpdate = hasPermission("dispatch.update")
+  const canSendToRoute =
+    canManageAllDispatch ||
+    isOnlineSeller ||
+    hasSendToRoute ||
+    hasDispatchUpdate
   const canOnlyDispatchToRoute =
-    isOnlineSeller || (hasSendToRoute && !isAdmin)
-  const canDeliver = isAdmin || hasConfirmDelivery
-  const canReturn = isAdmin
+    !canManageAllDispatch && (isOnlineSeller || hasSendToRoute)
+  const canDeliver = canManageAllDispatch || hasConfirmDelivery
+  const canReturn = canManageAllDispatch
+  const routeOnlyPermissionMessage =
+    "Solo puedes pasar pedidos a ruta, no confirmar entrega ni devolver a almacén."
   const onlineSellerUserId = isOnlineSeller ? user?.id?.trim() ?? "" : ""
   const { exchangeRates } = useCurrency()
   const router = useRouter()
@@ -679,7 +688,7 @@ export default function DespachosPage() {
       return
     }
     if (canOnlyDispatchToRoute && action !== "to_dispatch") {
-      toast.error("Solo puedes enviar a ruta tus propios pedidos.")
+      toast.error(routeOnlyPermissionMessage)
       return
     }
     setOrderToActOn(order)
@@ -693,7 +702,7 @@ export default function DespachosPage() {
       return
     }
     if (canOnlyDispatchToRoute && action !== "to_dispatch") {
-      toast.error("Solo puedes enviar a ruta tus propios pedidos.")
+      toast.error(routeOnlyPermissionMessage)
       return
     }
     if (selectedOrders.size === 0) {
@@ -721,7 +730,7 @@ export default function DespachosPage() {
       return
     }
     if (canOnlyDispatchToRoute && actionType !== "to_dispatch") {
-      toast.error("Solo puedes enviar a ruta tus propios pedidos.")
+      toast.error(routeOnlyPermissionMessage)
       setIsActionDialogOpen(false)
       return
     }
@@ -805,7 +814,7 @@ export default function DespachosPage() {
     if (selectedOrders.size === 0 || !actionType) return
 
     if (canOnlyDispatchToRoute && actionType !== "to_dispatch") {
-      toast.error("Solo puedes enviar a ruta tus propios pedidos.")
+      toast.error(routeOnlyPermissionMessage)
       setIsBulkActionDialogOpen(false)
       return
     }

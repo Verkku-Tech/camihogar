@@ -73,6 +73,12 @@ public class OrderService : IOrderService
             || string.Equals(role, "Administrator", StringComparison.Ordinal);
     }
 
+    private static bool IsSupervisorRole(string? role) =>
+        string.Equals(role, "Supervisor", StringComparison.Ordinal);
+
+    private static bool CanManageAllDispatch(string? role) =>
+        IsAdministratorOrSuperAdministrator(role) || IsSupervisorRole(role);
+
     private static string NormalizeDispatchField(string? value) => (value ?? "").Trim();
 
     /// <summary>
@@ -265,7 +271,7 @@ public class OrderService : IOrderService
     {
         if (!DispatchLogisticsWouldChange(existing, updateDto)) return;
 
-        if (IsAdministratorOrSuperAdministrator(callerRole)) return;
+        if (CanManageAllDispatch(callerRole)) return;
 
         if (IsRouteOnlyDispatchChange(existing, updateDto))
         {
@@ -1447,76 +1453,7 @@ public class OrderService : IOrderService
         if (order.Products == null || !order.Products.Any())
             return;
 
-        bool hasGenerado = false;
-        bool hasValidado = false;
-        bool hasFabricandose = false;
-        bool hasReporteFabricacion = false;
-        bool hasEnAlmacen = false;
-        bool hasEnRuta = false;
-        bool allCompletado = true;
-
-        foreach (var product in order.Products)
-        {
-            var status = product.LogisticStatus ?? "Generado";
-            if (status != "Completado")
-                allCompletado = false;
-
-            var inFabricacion = IsFabricationLocation(product.LocationStatus);
-            var manufacturing = NormalizeManufacturingStatusForOrder(product.ManufacturingStatus);
-            var inManufacturingQueue = inFabricacion && manufacturing == "por_fabricar";
-            var inManufacturingActive = inFabricacion && manufacturing == "fabricando";
-
-            if (status == "Generado" || status == "Pendiente")
-                hasGenerado = true;
-            else if (status == "Fabricándose" || inManufacturingActive)
-                hasFabricandose = true;
-            else if (inManufacturingQueue)
-                hasReporteFabricacion = true;
-            else if (status == "Validado")
-                hasValidado = true;
-            else if (status == "En Almacén")
-                hasEnAlmacen = true;
-            else if (status == "En Ruta")
-                hasEnRuta = true;
-        }
-
-        if (allCompletado)
-            order.Status = "Completado";
-        else if (hasGenerado)
-            order.Status = "Generado";
-        else if (hasFabricandose)
-            order.Status = "Fabricándose";
-        else if (hasReporteFabricacion)
-            order.Status = "Reporte de fabricación";
-        else if (hasValidado)
-            order.Status = "Validado";
-        else if (hasEnAlmacen)
-            order.Status = "En Almacén";
-        else if (hasEnRuta)
-            order.Status = "En Ruta";
-        else
-            order.Status = "Generado";
-    }
-
-    private static bool IsFabricationLocation(string? locationStatus)
-    {
-        return string.Equals(locationStatus?.Trim(), "FABRICACION", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string NormalizeManufacturingStatusForOrder(string? status)
-    {
-        if (string.IsNullOrWhiteSpace(status))
-            return "debe_fabricar";
-
-        var normalized = status.Trim().ToLowerInvariant();
-        if (normalized == "fabricado")
-            return "almacen_no_fabricado";
-
-        return normalized switch
-        {
-            "debe_fabricar" or "por_fabricar" or "fabricando" or "almacen_no_fabricado" => normalized,
-            _ => "debe_fabricar",
-        };
+        order.Status = OrderStatusAggregation.CalculateFromProducts(order.Products);
     }
 
     private OrderProductDto MapProductToDto(OrderProduct product)

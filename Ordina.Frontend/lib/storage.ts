@@ -5066,17 +5066,20 @@ export const providerFromBackendDto = (dto: ProviderResponseDto): Provider => {
 
 export const providerToCreateDto = (
   provider: Omit<Provider, "id" | "fechaCreacion">,
-): CreateProviderDto => ({
-  rif: provider.rif,
-  nombre: provider.razonSocial, // El backend espera "nombre" y "razonSocial", usamos razonSocial para ambos
-  razonSocial: provider.razonSocial,
-  email: provider.email,
-  telefono: provider.telefono,
-  direccion: provider.direccion,
-  contacto: provider.contacto,
-  tipo: provider.tipo,
-  estado: provider.estado === "activo" ? "Activo" : "Inactivo", // Backend usa PascalCase
-});
+): CreateProviderDto => {
+  const email = provider.email?.trim();
+  return {
+    rif: provider.rif,
+    nombre: provider.razonSocial,
+    razonSocial: provider.razonSocial,
+    ...(email ? { email } : {}),
+    telefono: provider.telefono,
+    direccion: provider.direccion,
+    contacto: provider.contacto,
+    tipo: provider.tipo,
+    estado: provider.estado === "activo" ? "Activo" : "Inactivo",
+  };
+};
 
 export const providerToUpdateDto = (
   updates: Partial<Provider>,
@@ -5087,7 +5090,10 @@ export const providerToUpdateDto = (
     dto.razonSocial = updates.razonSocial;
     dto.nombre = updates.razonSocial; // Mantener ambos campos sincronizados
   }
-  if (updates.email !== undefined) dto.email = updates.email;
+  if (updates.email !== undefined) {
+    const email = updates.email.trim();
+    if (email) dto.email = email;
+  }
   if (updates.telefono !== undefined) dto.telefono = updates.telefono;
   if (updates.direccion !== undefined) dto.direccion = updates.direccion;
   if (updates.contacto !== undefined) dto.contacto = updates.contacto;

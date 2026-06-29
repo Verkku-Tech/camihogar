@@ -35,6 +35,7 @@ import {
 } from "@/lib/storage";
 import { PAYMENT_CONDITIONS } from "@/components/orders/new-order-dialog";
 import { isReservationOrder } from "@/lib/order-document-types";
+import { resolveDisplayOrderStatus } from "@/lib/order-status-aggregation";
 import {
   getDeliveryTypeLabel,
   getSaleTypeLabel,
@@ -1651,8 +1652,8 @@ export default function OrderDetailPage() {
                           Validar
                         </Button>
                       )}
-                    <Badge className={getStatusColor(order.status)}>
-                      {order.status}
+                    <Badge className={getStatusColor(resolveDisplayOrderStatus(order))}>
+                      {resolveDisplayOrderStatus(order)}
                     </Badge>
                   </div>
                 </div>
@@ -1810,8 +1811,8 @@ export default function OrderDetailPage() {
                         Validar Pedido
                       </Button>
                     )}
-                  <Badge className={getStatusColor(order.status)}>
-                    {order.status}
+                  <Badge className={getStatusColor(resolveDisplayOrderStatus(order))}>
+                    {resolveDisplayOrderStatus(order)}
                   </Badge>
                 </div>
               </div>

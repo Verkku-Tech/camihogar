@@ -1,6 +1,9 @@
+# pnpm fijado (monorepo packageManager). Evita que corepack resuelva pnpm@11+ incompatible con Node 20.
+
 # Stage 1: Dependencies
 FROM node:20-alpine AS deps
-RUN corepack enable && corepack prepare pnpm@latest --activate
+ARG PNPM_VERSION=9.12.2
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 WORKDIR /app
 
 # Copiar archivos de dependencias
@@ -13,7 +16,8 @@ RUN pnpm install
 
 # Stage 2: Builder
 FROM node:20-alpine AS builder
-RUN corepack enable && corepack prepare pnpm@latest --activate
+ARG PNPM_VERSION=9.12.2
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 WORKDIR /app
 
 # Versión de la app (inyectada en build para PWA y NEXT_PUBLIC_APP_VERSION)
