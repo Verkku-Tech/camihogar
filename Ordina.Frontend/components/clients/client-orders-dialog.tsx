@@ -51,6 +51,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BUDGET_STATUSES, getOrderStatusBadgeLabel, ORDER_STATUSES } from "../orders/constants";
+import { resolveDisplayOrderStatus } from "@/lib/order-status-aggregation";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { usePagination } from "@/hooks/use-pagination";
@@ -145,7 +146,7 @@ function applyHistoryFilters(
     })
     .filter((s) => {
       if (status === "all") return true;
-      return s.status === status;
+      return resolveDisplayOrderStatus(s) === status;
     })
     .filter((d) => {
       if (documentType === ORDER_TYPE_RESERVATION) {
@@ -443,12 +444,21 @@ export function ClientOrdersHistoryDialog({
                         </TableCell>
                         <TableCell>{formatDate(order.createdAt)}</TableCell>
                         <TableCell>
-                          <Badge
-                            className={`${getStatusColor(order.status)} whitespace-nowrap`}
-                            title={order.status}
-                          >
-                            {getOrderStatusBadgeLabel(order.status, "compact")}
-                          </Badge>
+                          {(() => {
+                            const displayStatus =
+                              resolveDisplayOrderStatus(order);
+                            return (
+                              <Badge
+                                className={`${getStatusColor(displayStatus)} whitespace-nowrap`}
+                                title={displayStatus}
+                              >
+                                {getOrderStatusBadgeLabel(
+                                  displayStatus,
+                                  "compact",
+                                )}
+                              </Badge>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>
                           <Badge
