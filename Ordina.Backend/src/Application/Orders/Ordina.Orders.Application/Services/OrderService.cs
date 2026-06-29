@@ -73,6 +73,12 @@ public class OrderService : IOrderService
             || string.Equals(role, "Administrator", StringComparison.Ordinal);
     }
 
+    private static bool IsSupervisorRole(string? role) =>
+        string.Equals(role, "Supervisor", StringComparison.Ordinal);
+
+    private static bool CanManageAllDispatch(string? role) =>
+        IsAdministratorOrSuperAdministrator(role) || IsSupervisorRole(role);
+
     private static string NormalizeDispatchField(string? value) => (value ?? "").Trim();
 
     /// <summary>
@@ -265,7 +271,7 @@ public class OrderService : IOrderService
     {
         if (!DispatchLogisticsWouldChange(existing, updateDto)) return;
 
-        if (IsAdministratorOrSuperAdministrator(callerRole)) return;
+        if (CanManageAllDispatch(callerRole)) return;
 
         if (IsRouteOnlyDispatchChange(existing, updateDto))
         {

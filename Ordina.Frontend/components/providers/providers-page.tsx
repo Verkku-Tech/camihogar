@@ -43,6 +43,32 @@ const tipoOptions = [
   { value: "productos-terminados", label: "Productos Terminados" },
 ]
 
+const EMAIL_FORMAT_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function isValidOptionalEmail(email: string): boolean {
+  const trimmed = email.trim()
+  if (!trimmed) return true
+  return EMAIL_FORMAT_REGEX.test(trimmed)
+}
+
+function isProviderValidationError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes("email") ||
+    lower.includes("rif") ||
+    lower.includes("validation error") ||
+    lower.includes("is required") ||
+    lower.includes("400")
+  )
+}
+
+function getProviderValidationMessage(message: string): string {
+  if (/email/i.test(message)) {
+    return "Correo electrónico inválido. Déjelo vacío o use un formato válido (ej. contacto@empresa.com)."
+  }
+  return message
+}
+
 export type ProvidersDataSource = "backend" | "indexeddb" | "syncing"
 
 export function ProvidersPage() {
@@ -173,6 +199,13 @@ export function ProvidersPage() {
   })
 
   const handleCreateProvider = async () => {
+    if (!isValidOptionalEmail(formData.email)) {
+      toast.error(
+        "Correo electrónico inválido. Déjelo vacío o use un formato válido (ej. contacto@empresa.com).",
+      )
+      return
+    }
+
     // Validate RIF is not duplicated
     if (formData.rif.trim() !== "") {
       const rifExists = providers.some((p) => p.rif === formData.rif)
@@ -205,8 +238,8 @@ export function ProvidersPage() {
           return
         } catch (error: any) {
           const errorMessage = error?.message || "Error al crear el proveedor"
-          if (errorMessage.includes("RIF") || errorMessage.includes("email")) {
-            toast.error(errorMessage)
+          if (isProviderValidationError(errorMessage)) {
+            toast.error(getProviderValidationMessage(errorMessage))
             return
           }
           console.warn("Error creating provider in backend, saving locally:", error)
@@ -236,6 +269,13 @@ export function ProvidersPage() {
   const handleEditProvider = async () => {
     if (!selectedProvider) return
 
+    if (!isValidOptionalEmail(formData.email)) {
+      toast.error(
+        "Correo electrónico inválido. Déjelo vacío o use un formato válido (ej. contacto@empresa.com).",
+      )
+      return
+    }
+
     // Validate RIF is not duplicated (excluding current provider)
     if (formData.rif.trim() !== "") {
       const rifExists = providers.some((p) => p.rif === formData.rif && p.id !== selectedProvider.id)
@@ -264,8 +304,8 @@ export function ProvidersPage() {
           return
         } catch (error: any) {
           const errorMessage = error?.message || "Error al actualizar el proveedor"
-          if (errorMessage.includes("RIF") || errorMessage.includes("email")) {
-            toast.error(errorMessage)
+          if (isProviderValidationError(errorMessage)) {
+            toast.error(getProviderValidationMessage(errorMessage))
             return
           }
           console.warn("Error updating provider in backend, updating locally:", error)

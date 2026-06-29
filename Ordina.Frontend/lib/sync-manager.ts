@@ -56,7 +56,7 @@ class SyncManager {
   async getPendingOperations(): Promise<SyncOperation[]> {
     try {
       const all = await db.getAll<SyncOperation>('sync_queue')
-      return all.filter(op => op.status === 'pending' || op.status === 'failed')
+      return all.filter(op => op.status === 'pending')
     } catch (error) {
       console.error('Error getting pending operations:', error)
       return []
