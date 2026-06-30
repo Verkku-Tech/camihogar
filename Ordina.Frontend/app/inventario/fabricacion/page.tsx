@@ -105,9 +105,17 @@ export default function FabricacionPage() {
   const [bulkManufactureDialogOpen, setBulkManufactureDialogOpen] = useState(false)
   const [bulkFabricatedDialogOpen, setBulkFabricatedDialogOpen] = useState(false)
   const [bulkRevertDialogOpen, setBulkRevertDialogOpen] = useState(false)
+  const [bulkRevertToDebeFabricarDialogOpen, setBulkRevertToDebeFabricarDialogOpen] =
+    useState(false)
   const [individualRevertDialogOpen, setIndividualRevertDialogOpen] =
     useState(false)
+  const [individualRevertToDebeFabricarDialogOpen, setIndividualRevertToDebeFabricarDialogOpen] =
+    useState(false)
   const [revertTarget, setRevertTarget] = useState<{
+    orderId: string
+    productId: string
+  } | null>(null)
+  const [revertToDebeFabricarTarget, setRevertToDebeFabricarTarget] = useState<{
     orderId: string
     productId: string
   } | null>(null)
@@ -575,6 +583,18 @@ export default function FabricacionPage() {
         : current.logisticStatus,
   })
 
+  const buildProductRevertToDebeFabricar = (
+    current: OrderProduct,
+  ): OrderProduct => ({
+    ...current,
+    manufacturingStatus: "debe_fabricar",
+    manufacturingProviderId: undefined,
+    manufacturingProviderName: undefined,
+    manufacturingNotes: undefined,
+    manufacturingStartedAt: undefined,
+    manufacturingCompletedAt: undefined,
+  })
+
   const handleProviderDialogConfirm = async (
     providerId: string,
     providerName: string,
@@ -745,6 +765,35 @@ export default function FabricacionPage() {
     return true
   }
 
+  const revertProductToDebeFabricarInOrder = async (
+    orderId: string,
+    productId: string,
+  ): Promise<boolean> => {
+    const order = await getOrder(orderId)
+    if (!order) throw new Error("Pedido no encontrado")
+    if (!isSistemaApartadoReadyForNormalFlow(order)) {
+      toast.error(
+        "Sistema de Apartado: liquida el saldo en el pedido para continuar con la fabricación",
+      )
+      return false
+    }
+
+    const productIndex = order.products.findIndex((p) => p.id === productId)
+    if (productIndex === -1) throw new Error("Producto no encontrado")
+
+    const currentProduct = order.products[productIndex]
+    if (resolveManufacturingRowStatus(currentProduct.manufacturingStatus) !== "por_fabricar") {
+      throw new Error(`El producto debe estar en ${REPORTE_FABRICACION_LABEL}`)
+    }
+
+    const updatedProducts = [...order.products]
+    updatedProducts[productIndex] =
+      buildProductRevertToDebeFabricar(currentProduct)
+
+    await updateOrder(order.id, { products: updatedProducts })
+    return true
+  }
+
   const handleRevertToPorFabricarClick = (
     orderId: string,
     productId: string,
@@ -779,6 +828,43 @@ export default function FabricacionPage() {
       endProcessing()
       setIndividualRevertDialogOpen(false)
       setRevertTarget(null)
+    }
+  }
+
+  const handleRevertToDebeFabricarClick = (
+    orderId: string,
+    productId: string,
+  ) => {
+    if (isProcessing) return
+    setRevertToDebeFabricarTarget({ orderId, productId })
+    setIndividualRevertToDebeFabricarDialogOpen(true)
+  }
+
+  const handleConfirmIndividualRevertToDebeFabricar = async () => {
+    if (!revertToDebeFabricarTarget || isProcessing) return
+
+    if (!beginProcessing()) return
+    try {
+      const ok = await revertProductToDebeFabricarInOrder(
+        revertToDebeFabricarTarget.orderId,
+        revertToDebeFabricarTarget.productId,
+      )
+      if (!ok) return
+
+      const loadedOrders = await getOrders()
+      setOrders(loadedOrders)
+      toast.success("Producto devuelto a Debe fabricar")
+    } catch (error: unknown) {
+      console.error("Error reverting to debe fabricar:", error)
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error al devolver el producto a Debe fabricar"
+      toast.error(message)
+    } finally {
+      endProcessing()
+      setIndividualRevertToDebeFabricarDialogOpen(false)
+      setRevertToDebeFabricarTarget(null)
     }
   }
 
@@ -1321,6 +1407,55 @@ export default function FabricacionPage() {
     }
   }
 
+  const handleBulkRevertToDebeFabricarClick = () => {
+    if (isProcessing) return
+    if (getSelectedProductsForStartManufacturing().length === 0) {
+      toast.error(
+        `Solo se pueden devolver productos con estado '${REPORTE_FABRICACION_LABEL}'`,
+      )
+      return
+    }
+    setBulkRevertToDebeFabricarDialogOpen(true)
+  }
+
+  const executeBulkRevertToDebeFabricar = async () => {
+    const selectedKeys = getSelectedProductsForStartManufacturing()
+    if (!beginProcessing(selectedKeys.length)) return
+    let successCount = 0
+    let errorCount = 0
+
+    try {
+      for (let i = 0; i < selectedKeys.length; i++) {
+        const key = selectedKeys[i]
+        reportProcessingProgress(i + 1, selectedKeys.length)
+        const [orderId, productId] = key.split("|")
+        try {
+          const ok = await revertProductToDebeFabricarInOrder(orderId, productId)
+          if (ok) successCount++
+        } catch (error) {
+          console.error(`Error revirtiendo producto ${productId}:`, error)
+          errorCount++
+        }
+      }
+
+      const loadedOrders = await getOrders()
+      setOrders(loadedOrders)
+
+      if (successCount > 0) {
+        toast.success(
+          `${successCount} producto(s) devuelto(s) a Debe fabricar`,
+        )
+      }
+      if (errorCount > 0) {
+        toast.error(`${errorCount} producto(s) no se pudieron devolver`)
+      }
+      setBulkRevertToDebeFabricarDialogOpen(false)
+      setSelectedProducts(new Set())
+    } finally {
+      endProcessing()
+    }
+  }
+
   // Calcular si todos están seleccionados (solo los paginados)
   const allSelected = paginatedRows.length > 0 && selectedProducts.size === paginatedRows.length
   const someSelected = selectedProducts.size > 0 && selectedProducts.size < paginatedRows.length
@@ -1651,6 +1786,19 @@ export default function FabricacionPage() {
                         En fabricación ({getSelectedProductsForStartManufacturing().length})
                       </Button>
                     )}
+                    {isAdmin &&
+                      (filterStatus === "all" || filterStatus === "ready_for_batch") &&
+                      getSelectedProductsForStartManufacturing().length > 0 && (
+                      <Button
+                        onClick={handleBulkRevertToDebeFabricarClick}
+                        disabled={isProcessing}
+                        variant="outline"
+                        className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/30"
+                      >
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Devolver a Debe fabricar ({getSelectedProductsForStartManufacturing().length})
+                      </Button>
+                    )}
                     {(filterStatus === "all" || filterStatus === "fabricating") &&
                       getSelectedProductsForFabricated().length > 0 && (
                       <Button
@@ -1975,20 +2123,40 @@ export default function FabricacionPage() {
                                                 </Button>
                                               )}
                                               {row.status === "por_fabricar" && (
-                                                <Button
-                                                  size="sm"
-                                                  disabled={isProcessing}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation()
-                                                    handleStartManufacturingClick(
-                                                      row.orderId,
-                                                      row.product,
-                                                    )
-                                                  }}
-                                                >
-                                                  <Hammer className="w-4 h-4 mr-1" />
-                                                  En fabricación
-                                                </Button>
+                                                <>
+                                                  <Button
+                                                    size="sm"
+                                                    disabled={isProcessing}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      handleStartManufacturingClick(
+                                                        row.orderId,
+                                                        row.product,
+                                                      )
+                                                    }}
+                                                  >
+                                                    <Hammer className="w-4 h-4 mr-1" />
+                                                    En fabricación
+                                                  </Button>
+                                                  {isAdmin && (
+                                                    <Button
+                                                      size="sm"
+                                                      variant="outline"
+                                                      disabled={isProcessing}
+                                                      className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/30"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        handleRevertToDebeFabricarClick(
+                                                          row.orderId,
+                                                          row.product.id,
+                                                        )
+                                                      }}
+                                                    >
+                                                      <RotateCcw className="w-4 h-4 mr-1" />
+                                                      Debe fabricar
+                                                    </Button>
+                                                  )}
+                                                </>
                                               )}
                                               {row.status === "fabricando" && (
                                                 <>
@@ -2193,6 +2361,65 @@ export default function FabricacionPage() {
               className="bg-orange-600 hover:bg-orange-700"
               disabled={isProcessing}
               onClick={executeBulkRevertToPorFabricar}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={individualRevertToDebeFabricarDialogOpen}
+        onOpenChange={(open) => {
+          setIndividualRevertToDebeFabricarDialogOpen(open)
+          if (!open) setRevertToDebeFabricarTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Devolver a Debe fabricar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              El producto saldrá del {REPORTE_FABRICACION_LABEL} y volverá a Debe
+              fabricar. Se quitará el proveedor asignado en la cola.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-orange-600 hover:bg-orange-700"
+              disabled={isProcessing}
+              onClick={handleConfirmIndividualRevertToDebeFabricar}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={bulkRevertToDebeFabricarDialogOpen}
+        onOpenChange={(open) => {
+          if (isProcessing && !open) return
+          setBulkRevertToDebeFabricarDialogOpen(open)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Devolver a Debe fabricar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Estás seguro de que deseas devolver{" "}
+              {getSelectedProductsForStartManufacturing().length} producto(s) a Debe
+              fabricar? Se quitará el proveedor asignado en cada línea.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setBulkRevertToDebeFabricarDialogOpen(false)}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-orange-600 hover:bg-orange-700"
+              disabled={isProcessing}
+              onClick={executeBulkRevertToDebeFabricar}
             >
               Confirmar
             </AlertDialogAction>
