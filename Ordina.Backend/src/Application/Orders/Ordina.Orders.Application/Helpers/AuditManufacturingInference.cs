@@ -75,6 +75,15 @@ public static class AuditManufacturingInference
                 oldLogistic, newLogistic, oldM, newM);
         }
 
+        if (oldM == "por_fabricar" && newM == "debe_fabricar")
+        {
+            return new ManufacturingAuditEvent(
+                ManufacturingAuditEventKind.Reverted,
+                productName,
+                $"Devolvió a debe fabricar: {productName}",
+                oldLogistic, newLogistic, oldM, newM);
+        }
+
         if (string.Equals(oldLogistic, "Validado", StringComparison.Ordinal)
             && string.Equals(newLogistic, "Fabricándose", StringComparison.Ordinal)
             && newM == "fabricando")
