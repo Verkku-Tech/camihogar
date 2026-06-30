@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import https from "node:https";
 import * as cheerio from "cheerio";
 
+/** Evita que `next build` ejecute el scrape al BCV (falla/timeout en Docker/CI sin salida a bcv.org.ve). */
+export const dynamic = "force-dynamic";
+
 export type ScrappingExchangeRates = {
   dolar: number | null;
   euro: number | null;
@@ -63,6 +66,11 @@ function fetchHtml(url: string): Promise<string> {
     req.setTimeout(10_000, () => {
       req.destroy(new Error("Timeout al contactar BCV (10s)"));
     });
+    // Si DNS/TCP no responde, setTimeout del socket no dispara; cortar igual.
+    const hardTimeout = setTimeout(() => {
+      req.destroy(new Error("Timeout al contactar BCV (10s)"));
+    }, 10_000);
+    req.on("close", () => clearTimeout(hardTimeout));
   });
 }
 
