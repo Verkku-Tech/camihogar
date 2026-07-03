@@ -80,7 +80,7 @@ const permissionMap: Record<string, string | string[]> = {
   "despachos": "dispatch.read",
   "categorias": "products.read",
   "productos": "products.read",
-  "fabricacion": "inventory.movements.view",
+  "fabricacion": ["inventory.movements.view", "manufacturing.manage"],
   "usuarios": "users.read",
   "navegacion": "settings.system.manage",
   "tasas": "settings.currency.manage",

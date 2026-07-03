@@ -474,13 +474,24 @@ public class OrdersController : ControllerBase
             var hasDispatchUpdate = UserHasPermission(User, "dispatch.update");
             var hasDispatchSendToRoute = UserHasPermission(User, "dispatch.send_to_route");
             var hasDispatchConfirmDelivery = UserHasPermission(User, "dispatch.confirm_delivery");
+            var hasManufacturingManage = UserHasPermission(User, "manufacturing.manage");
+            var hasInventoryMovementsView = UserHasPermission(User, "inventory.movements.view");
             var order = await _orderService.UpdateOrderAsync(
-                id, updateDto, userId, userName, callerRole, hasDispatchUpdate, hasDispatchSendToRoute, hasDispatchConfirmDelivery);
+                id,
+                updateDto,
+                userId,
+                userName,
+                callerRole,
+                hasDispatchUpdate,
+                hasDispatchSendToRoute,
+                hasDispatchConfirmDelivery,
+                hasManufacturingManage,
+                hasInventoryMovementsView);
             return Ok(order);
         }
         catch (UnauthorizedAccessException uaex)
         {
-            _logger.LogWarning(uaex, "Actualización de pedido {OrderId} denegada por permisos de despacho", id);
+            _logger.LogWarning(uaex, "Actualización de pedido {OrderId} denegada por permisos", id);
             return Forbid();
         }
         catch (ArgumentException ex)
