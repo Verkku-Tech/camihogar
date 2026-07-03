@@ -305,6 +305,94 @@ public class OrderService : IOrderService
         }
     }
 
+    private static string NormalizeManufacturingField(string? value) => (value ?? "").Trim();
+
+    private static bool ManufacturingFieldsDiffer(OrderProduct existing, OrderProductDto incoming)
+    {
+        if (!string.Equals(
+                NormalizeManufacturingField(existing.ManufacturingStatus),
+                NormalizeManufacturingField(incoming.ManufacturingStatus),
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!string.Equals(
+                NormalizeManufacturingField(existing.ManufacturingProviderId),
+                NormalizeManufacturingField(incoming.ManufacturingProviderId),
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!string.Equals(
+                NormalizeManufacturingField(existing.ManufacturingProviderName),
+                NormalizeManufacturingField(incoming.ManufacturingProviderName),
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!string.Equals(
+                NormalizeManufacturingField(existing.ManufacturingNotes),
+                NormalizeManufacturingField(incoming.ManufacturingNotes),
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!string.Equals(
+                NormalizeManufacturingField(existing.AvailabilityStatus),
+                NormalizeManufacturingField(incoming.AvailabilityStatus),
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!string.Equals(
+                NormalizeManufacturingField(existing.RefabricationReason),
+                NormalizeManufacturingField(incoming.RefabricationReason),
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (existing.ManufacturingStartedAt != incoming.ManufacturingStartedAt)
+            return true;
+
+        if (existing.ManufacturingCompletedAt != incoming.ManufacturingCompletedAt)
+            return true;
+
+        if (existing.RefabricatedAt != incoming.RefabricatedAt)
+            return true;
+
+        var existingHistory = JsonSerializer.Serialize(existing.RefabricationHistory ?? []);
+        var incomingHistory = JsonSerializer.Serialize(incoming.RefabricationHistory ?? []);
+        if (!string.Equals(existingHistory, incomingHistory, StringComparison.Ordinal))
+            return true;
+
+        return false;
+    }
+
+    private static bool ManufacturingWouldChange(Order existing, UpdateOrderDto dto)
+    {
+        if (dto.Products == null) return false;
+
+        foreach (var p in dto.Products)
+        {
+            var ex = existing.Products.FirstOrDefault(x => x.Id == p.Id);
+            if (ex == null) continue;
+            if (ManufacturingFieldsDiffer(ex, p)) return true;
+        }
+
+        return false;
+    }
+
+    private static void EnsureManufacturingAuthorized(
+        Order existing,
+        UpdateOrderDto updateDto,
+        string? callerRole,
+        bool callerHasManufacturingManage,
+        bool callerHasInventoryMovementsView)
+    {
+        if (!ManufacturingWouldChange(existing, updateDto)) return;
+
+        if (IsAdministratorOrSuperAdministrator(callerRole)) return;
+        if (callerHasInventoryMovementsView) return;
+        if (callerHasManufacturingManage) return;
+
+        throw new UnauthorizedAccessException(
+            "No autorizado a modificar estados de fabricación. Se requiere permiso de fabricación.");
+    }
+
     public async Task<IEnumerable<OrderResponseDto>> GetAllOrdersAsync(string? callerRole = null)
     {
         try
@@ -958,7 +1046,9 @@ public class OrderService : IOrderService
         string? callerRole = null,
         bool callerHasDispatchUpdate = false,
         bool callerHasDispatchSendToRoute = false,
-        bool callerHasDispatchConfirmDelivery = false)
+        bool callerHasDispatchConfirmDelivery = false,
+        bool callerHasManufacturingManage = false,
+        bool callerHasInventoryMovementsView = false)
     {
         try
         {
@@ -982,6 +1072,13 @@ public class OrderService : IOrderService
                 callerHasDispatchUpdate,
                 callerHasDispatchSendToRoute,
                 callerHasDispatchConfirmDelivery);
+
+            EnsureManufacturingAuthorized(
+                existingOrder,
+                updateDto,
+                callerRole,
+                callerHasManufacturingManage,
+                callerHasInventoryMovementsView);
 
             var oldSnapshot = OrderDeepClone.Clone(existingOrder);
             var previousAppliedStoreCreditUsd = existingOrder.AppliedStoreCreditUsd;

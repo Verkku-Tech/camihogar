@@ -114,6 +114,12 @@ public static class Permissions
         public const string ViewStatistics = "dispatch.statistics.view";
     }
 
+    public static class Manufacturing
+    {
+        /// <summary>Gestionar el módulo operativo de fabricación (permiso individual por usuario).</summary>
+        public const string Manage = "manufacturing.manage";
+    }
+
     public static class Reports
     {
         public const string Dispatch = "reports.dispatch.view";
