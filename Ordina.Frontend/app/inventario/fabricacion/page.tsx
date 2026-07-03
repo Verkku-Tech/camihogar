@@ -49,6 +49,10 @@ import { isSistemaApartado, isSistemaApartadoReadyForNormalFlow } from "@/lib/or
 import { isReservationOrder } from "@/lib/order-document-types"
 import { useAuth } from "@/contexts/auth-context"
 import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels"
+import {
+  canAccessManufacturing,
+  MANUFACTURING_MANAGE,
+} from "@/lib/user-extra-permissions"
 
 // Tipo para productos agrupados por pedido
 interface ProductRow {
@@ -84,10 +88,13 @@ const MANUFACTURING_STATUS_ORDER: Record<ProductRow["status"], number> = {
 }
 
 export default function FabricacionPage() {
-  const { user } = useAuth()
+  const { user, hasPermission, isLoading: authLoading } = useAuth()
   const isAdmin =
     user?.role === "Super Administrator" ||
     user?.role === "Administrator"
+  const hasManufacturingAccess = canAccessManufacturing(hasPermission)
+  const canRevertManufacturing =
+    isAdmin || hasPermission(MANUFACTURING_MANAGE)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -199,6 +206,12 @@ export default function FabricacionPage() {
     }
     loadData()
   }, [])
+
+  useEffect(() => {
+    if (!authLoading && user && !hasManufacturingAccess) {
+      router.push("/")
+    }
+  }, [authLoading, user, hasManufacturingAccess, router])
 
   // Proveedores únicos (de productos en fabricación)
   const uniqueProviders = useMemo(() => {
@@ -1639,6 +1652,25 @@ export default function FabricacionPage() {
     }
   }
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+      </div>
+    )
+  }
+
+  if (!user || !hasManufacturingAccess) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Acceso Denegado</h1>
+          <p className="text-gray-600">No tienes permisos para acceder a esta página.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
@@ -1786,7 +1818,7 @@ export default function FabricacionPage() {
                         En fabricación ({getSelectedProductsForStartManufacturing().length})
                       </Button>
                     )}
-                    {isAdmin &&
+                    {canRevertManufacturing &&
                       (filterStatus === "all" || filterStatus === "ready_for_batch") &&
                       getSelectedProductsForStartManufacturing().length > 0 && (
                       <Button
@@ -1810,7 +1842,7 @@ export default function FabricacionPage() {
                         Marcar como Fabricado ({getSelectedProductsForFabricated().length})
                       </Button>
                     )}
-                    {isAdmin &&
+                    {canRevertManufacturing &&
                       (filterStatus === "all" || filterStatus === "fabricating") &&
                       getSelectedProductsForFabricated().length > 0 && (
                       <Button
@@ -2138,7 +2170,7 @@ export default function FabricacionPage() {
                                                     <Hammer className="w-4 h-4 mr-1" />
                                                     En fabricación
                                                   </Button>
-                                                  {isAdmin && (
+                                                  {canRevertManufacturing && (
                                                     <Button
                                                       size="sm"
                                                       variant="outline"
@@ -2171,7 +2203,7 @@ export default function FabricacionPage() {
                                                   >
                                                     En almacén
                                                   </Button>
-                                                  {isAdmin && (
+                                                  {canRevertManufacturing && (
                                                     <Button
                                                       size="sm"
                                                       variant="outline"

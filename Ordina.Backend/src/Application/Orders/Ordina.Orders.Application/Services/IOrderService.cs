@@ -46,7 +46,9 @@ public interface IOrderService
         string? callerRole = null,
         bool callerHasDispatchUpdate = false,
         bool callerHasDispatchSendToRoute = false,
-        bool callerHasDispatchConfirmDelivery = false);
+        bool callerHasDispatchConfirmDelivery = false,
+        bool callerHasManufacturingManage = false,
+        bool callerHasInventoryMovementsView = false);
     Task<OrderResponseDto> ValidateOrderItemAsync(string id, string itemId, string userId, string userName);
     Task<bool> DeleteOrderAsync(
         string id,

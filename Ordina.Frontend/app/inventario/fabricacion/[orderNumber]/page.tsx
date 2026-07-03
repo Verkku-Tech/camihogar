@@ -10,10 +10,14 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ArrowLeft, Package, User, Calendar, FileText } from "lucide-react"
 import { getOrders, getCategories, type Order, type Category, type AttributeValue } from "@/lib/storage"
+import { useAuth } from "@/contexts/auth-context"
+import { canAccessManufacturing } from "@/lib/user-extra-permissions"
 
 export default function FabricacionOrderDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const { user, hasPermission, isLoading: authLoading } = useAuth()
+  const hasManufacturingAccess = canAccessManufacturing(hasPermission)
   const orderNumber = params.orderNumber as string
 
   const [order, setOrder] = useState<Order | null>(null)
@@ -43,6 +47,31 @@ export default function FabricacionOrderDetailPage() {
       loadData()
     }
   }, [orderNumber])
+
+  useEffect(() => {
+    if (!authLoading && user && !hasManufacturingAccess) {
+      router.push("/")
+    }
+  }, [authLoading, user, hasManufacturingAccess, router])
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+      </div>
+    )
+  }
+
+  if (!user || !hasManufacturingAccess) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Acceso Denegado</h1>
+          <p className="text-gray-600">No tienes permisos para acceder a esta página.</p>
+        </div>
+      </div>
+    )
+  }
 
   if (loading) {
     return (

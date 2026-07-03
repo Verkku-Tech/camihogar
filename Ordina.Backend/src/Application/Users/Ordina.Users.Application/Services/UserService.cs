@@ -437,6 +437,13 @@ public class UserService : IUserService
                 "El permiso Pasar pedido a ruta solo puede asignarse a usuarios con rol Store Seller.");
         }
 
+        if (normalized.Contains(Permissions.Manufacturing.Manage, StringComparer.Ordinal)
+            && !string.Equals(roleName, "Store Seller", StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "El permiso Gestionar fabricación solo puede asignarse a usuarios con rol Store Seller.");
+        }
+
         var rolePermissions = await GetRolePermissionsAsync(roleName);
         return AssignableUserPermissions.SubtractRolePermissions(normalized, rolePermissions);
     }

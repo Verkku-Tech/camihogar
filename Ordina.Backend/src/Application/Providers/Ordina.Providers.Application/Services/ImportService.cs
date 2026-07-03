@@ -884,8 +884,9 @@ public class ImportService : IImportService
                 var tipoDato = attr.ValueType switch
                 {
                     "Select" => "seleccion",
-                    "MultipleSelect" => "seleccion_multiple",
+                    "Multiple select" => "seleccion_multiple",
                     "Product" => "producto",
+                    "Number" => "numerico",
                     _ => "seleccion"
                 };
 
