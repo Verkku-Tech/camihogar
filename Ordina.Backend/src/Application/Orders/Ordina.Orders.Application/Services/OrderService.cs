@@ -21,7 +21,6 @@ public class OrderService : IOrderService
     private readonly IOrderRepository _orderRepository;
     private readonly IClientRepository _clientRepository;
     private readonly IOrderAuditLogService _auditLogService;
-    private readonly IClientCreditService _clientCreditService;
     private readonly IAccessPinService _accessPinService;
     private readonly IOnlineSellerVisibilityService _onlineSellerVisibility;
     private readonly ILogger<OrderService> _logger;
@@ -30,7 +29,6 @@ public class OrderService : IOrderService
         IOrderRepository orderRepository,
         IClientRepository clientRepository,
         IOrderAuditLogService auditLogService,
-        IClientCreditService clientCreditService,
         IAccessPinService accessPinService,
         IOnlineSellerVisibilityService onlineSellerVisibility,
         ILogger<OrderService> logger)
@@ -38,7 +36,6 @@ public class OrderService : IOrderService
         _orderRepository = orderRepository;
         _clientRepository = clientRepository;
         _auditLogService = auditLogService;
-        _clientCreditService = clientCreditService;
         _accessPinService = accessPinService;
         _onlineSellerVisibility = onlineSellerVisibility;
         _logger = logger;
@@ -749,9 +746,7 @@ public class OrderService : IOrderService
                 BaseCurrency = string.IsNullOrWhiteSpace(createDto.BaseCurrency) ? null : createDto.BaseCurrency.Trim(),
                 Type = isReservation ? OrderDocumentTypes.Reservation : createDto.Type,
                 OriginalProducts = isReservation ? CloneOrderProducts(mappedProducts) : null,
-                AppliedStoreCreditUsd = requiresPayment && createDto.AppliedStoreCreditUsd is > 0
-                    ? Math.Round(createDto.AppliedStoreCreditUsd.Value, 2, MidpointRounding.AwayFromZero)
-                    : 0,
+                AppliedStoreCreditUsd = 0,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -763,11 +758,6 @@ public class OrderService : IOrderService
 
             RecalculateOrderStatus(order);
             var createdOrder = await CreateOrderAndAuditAsync(order, typeForCount, prefix, userId, userName);
-
-            if (requiresPayment && createdOrder.AppliedStoreCreditUsd > 0)
-            {
-                await _clientCreditService.DebitAppliedCreditForNewOrderAsync(createdOrder, userId, userName);
-            }
 
             return MapToDto(createdOrder);
         }
@@ -1081,7 +1071,6 @@ public class OrderService : IOrderService
                 callerHasInventoryMovementsView);
 
             var oldSnapshot = OrderDeepClone.Clone(existingOrder);
-            var previousAppliedStoreCreditUsd = existingOrder.AppliedStoreCreditUsd;
 
             // Actualizar campos si están presentes
             if (!string.IsNullOrEmpty(updateDto.ClientId))
@@ -1174,19 +1163,13 @@ public class OrderService : IOrderService
                 existingOrder.BaseCurrency = updateDto.BaseCurrency.Trim();
             if (!string.IsNullOrEmpty(updateDto.Type))
                 existingOrder.Type = updateDto.Type;
-            if (updateDto.AppliedStoreCreditUsd.HasValue)
-                existingOrder.AppliedStoreCreditUsd = Math.Round(updateDto.AppliedStoreCreditUsd.Value, 2, MidpointRounding.AwayFromZero);
 
+            existingOrder.AppliedStoreCreditUsd = 0;
             existingOrder.UpdatedAt = DateTime.UtcNow;
 
             OrderCommercialCurrency.ValidateCasheaRequiresPartialInStorePayment(existingOrder);
 
             RecalculateOrderStatus(existingOrder);
-            await _clientCreditService.SyncAppliedCreditAfterOrderUpdateAsync(
-                existingOrder,
-                previousAppliedStoreCreditUsd,
-                userId,
-                userName);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
             await _auditLogService.LogOrderUpdatedAsync(oldSnapshot, updatedOrder, userId, userName);
             return MapToDto(updatedOrder);
@@ -1496,7 +1479,6 @@ public class OrderService : IOrderService
             OriginalProducts = order.OriginalProducts?.Select(MapProductToDto).ToList(),
             SourceReservationVendorId = order.SourceReservationVendorId,
             SourceReservationVendorName = order.SourceReservationVendorName,
-            AppliedStoreCreditUsd = order.AppliedStoreCreditUsd,
         };
     }
 

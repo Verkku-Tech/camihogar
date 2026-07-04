@@ -318,7 +318,6 @@ public class OrderAuditLogService : IOrderAuditLogService
         AddIfChanged(nameof(Order.PaymentType), oldOrder.PaymentType, newOrder.PaymentType);
         AddIfChanged(nameof(Order.PaymentMethod), oldOrder.PaymentMethod, newOrder.PaymentMethod);
         AddIfChanged(nameof(Order.PaymentCondition), oldOrder.PaymentCondition, newOrder.PaymentCondition);
-        AddIfChanged(nameof(Order.AppliedStoreCreditUsd), D(oldOrder.AppliedStoreCreditUsd), D(newOrder.AppliedStoreCreditUsd));
         AddIfChanged(nameof(Order.Observations), oldOrder.Observations, newOrder.Observations);
         AddIfChanged(nameof(Order.DispatchObservations), oldOrder.DispatchObservations, newOrder.DispatchObservations);
         AddIfChanged(

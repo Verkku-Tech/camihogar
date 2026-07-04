@@ -51,7 +51,6 @@ import {
   getFrozenCommercialTotalsFromOrder,
   shouldFreezeCommercialTotals,
 } from "@/lib/order-currency-display";
-import { getBsPerUsdFromOrder } from "@/lib/order-store-credit-usd";
 import {
   getLineDiscountInBaseCurrency,
   getProductDiscountCurrencyForTotals,
@@ -244,13 +243,6 @@ export interface UseOrderFormReturn {
   remainingAmountUsd: number;
   isPaymentsValid: boolean;
 
-  appliedStoreCreditUsd: number;
-  setAppliedStoreCreditUsd: React.Dispatch<React.SetStateAction<number>>;
-  clientStoreCreditBalanceUsd: number | null;
-  refreshClientStoreCreditBalance: () => Promise<void>;
-  appliedCreditBsApprox: number;
-  maxApplicableStoreCreditUsd: number;
-
   // Formateados
   formattedProductPrices: Record<string, string>;
   formattedProductTotals: Record<string, string>;
@@ -393,9 +385,6 @@ export function useEditOrderForm(
     servicioArmado: { enabled: false, cost: 0, currency: "USD" },
   });
   const [payments, setPayments] = useState<PartialPayment[]>([]);
-  const [appliedStoreCreditUsd, setAppliedStoreCreditUsd] = useState(0);
-  const [clientStoreCreditBalanceUsd, setClientStoreCreditBalanceUsd] =
-    useState<number | null>(null);
   const [generalDiscount, setGeneralDiscount] = useState(0);
   const [generalDiscountType, setGeneralDiscountType] = useState<
     "monto" | "porcentaje"
@@ -633,7 +622,6 @@ export function useEditOrderForm(
           getActivePaymentsList(initialOrder),
         ),
       );
-      setAppliedStoreCreditUsd(initialOrder.appliedStoreCreditUsd ?? 0);
 
       // 7. Descuentos y observaciones
       if (
@@ -1017,7 +1005,7 @@ export function useEditOrderForm(
   );
   const total = frozenCommercialTotals?.total ?? totalComputed;
 
-  const orderSnapshotForCreditRates = useMemo(() => {
+  const orderExchangeRatesSnapshot = useMemo(() => {
     if (initialOrder && open) {
       const n = normalizeExchangeRatesAtCreation(
         initialOrder.exchangeRatesAtCreation,
@@ -1038,82 +1026,14 @@ export function useEditOrderForm(
     };
   }, [initialOrder, commercialExchangeRates, open]);
 
-  const bsPerUsdForStoreCredit = useMemo(() => {
-    try {
-      return getBsPerUsdFromOrder(orderSnapshotForCreditRates);
-    } catch {
-      return 0;
-    }
-  }, [orderSnapshotForCreditRates]);
-
-  const appliedCreditBsApprox = useMemo(() => {
-    if (bsPerUsdForStoreCredit <= 0 || appliedStoreCreditUsd <= 0) return 0;
-    return appliedStoreCreditUsd * bsPerUsdForStoreCredit;
-  }, [appliedStoreCreditUsd, bsPerUsdForStoreCredit]);
-
-  const maxApplicableStoreCreditUsd = useMemo(() => {
-    const bal = clientStoreCreditBalanceUsd ?? 0;
-    if (formUsesUsdTotals) {
-      const cap = Math.min(bal, total);
-      return Math.round(Math.max(0, cap) * 100) / 100;
-    }
-    if (bsPerUsdForStoreCredit <= 0) return 0;
-    const orderTotalUsd = total / bsPerUsdForStoreCredit;
-    const cap = Math.min(bal, orderTotalUsd);
-    return Math.round(Math.max(0, cap) * 100) / 100;
-  }, [
-    total,
-    bsPerUsdForStoreCredit,
-    clientStoreCreditBalanceUsd,
-    formUsesUsdTotals,
-  ]);
-
-  useEffect(() => {
-    if (!open || !selectedClient?.id) {
-      setClientStoreCreditBalanceUsd(null);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await apiClient.getClientStoreCreditBalanceUsd(
-          selectedClient.id,
-        );
-        if (!cancelled) setClientStoreCreditBalanceUsd(res.balanceUsd);
-      } catch {
-        if (!cancelled) setClientStoreCreditBalanceUsd(0);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, selectedClient?.id]);
-
-  useEffect(() => {
-    if (appliedStoreCreditUsd <= 0) return;
-    if (appliedStoreCreditUsd > maxApplicableStoreCreditUsd + 1e-9) {
-      setAppliedStoreCreditUsd(maxApplicableStoreCreditUsd);
-    }
-  }, [maxApplicableStoreCreditUsd, appliedStoreCreditUsd]);
-
-  const refreshClientStoreCreditBalance = useCallback(async () => {
-    const id = selectedClient?.id;
-    if (!id) return;
-    try {
-      const res = await apiClient.getClientStoreCreditBalanceUsd(id);
-      setClientStoreCreditBalanceUsd(res.balanceUsd);
-    } catch {
-      setClientStoreCreditBalanceUsd(0);
-    }
-  }, [selectedClient?.id]);
-
   const orderPaymentContext = useMemo(
     () => ({
       baseCurrency: formBaseCurrency,
-      exchangeRatesAtCreation: orderSnapshotForCreditRates.exchangeRatesAtCreation,
+      exchangeRatesAtCreation:
+        orderExchangeRatesSnapshot.exchangeRatesAtCreation,
       liveRates: liveRatesInput,
     }),
-    [formBaseCurrency, orderSnapshotForCreditRates, liveRatesInput],
+    [formBaseCurrency, orderExchangeRatesSnapshot, liveRatesInput],
   );
 
   const inStorePaymentsForDisplay = useMemo(
@@ -1149,10 +1069,8 @@ export function useEditOrderForm(
     (s, p) => s + (p.amount || 0),
     0,
   );
-  const casheaCapUsd =
-    total - appliedStoreCreditUsd + PAYMENT_BALANCE_EPSILON_USD;
-  const casheaCapBs =
-    total - appliedCreditBsApprox + PAYMENT_BALANCE_EPSILON_BS;
+  const casheaCapUsd = total + PAYMENT_BALANCE_EPSILON_USD;
+  const casheaCapBs = total + PAYMENT_BALANCE_EPSILON_BS;
   const remainingAmount = useMemo(
     () =>
       getOrderPendingTotal({
@@ -1161,16 +1079,9 @@ export function useEditOrderForm(
         exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
           commercialExchangeRates,
         ),
-        appliedStoreCreditUsd,
         partialPayments: payments,
       }),
-    [
-      total,
-      formBaseCurrency,
-      commercialExchangeRates,
-      appliedStoreCreditUsd,
-      payments,
-    ],
+    [total, formBaseCurrency, commercialExchangeRates, payments],
   );
 
   const totalUsd = useMemo(
@@ -1186,8 +1097,8 @@ export function useEditOrderForm(
   );
 
   const remainingAmountUsd = useMemo(
-    () => totalUsd - appliedStoreCreditUsd - totalPaidInUsd,
-    [totalUsd, appliedStoreCreditUsd, totalPaidInUsd],
+    () => totalUsd - totalPaidInUsd,
+    [totalUsd, totalPaidInUsd],
   );
   const isPaymentsValid =
     paymentCondition === "pago_a_entrega" ||
@@ -1198,13 +1109,11 @@ export function useEditOrderForm(
           ? casheaInStorePayments.length >= 1 &&
             casheaPaidSumUsd > 0 &&
             casheaPaidSumUsd <
-              Math.max(0, totalUsd - appliedStoreCreditUsd) -
-                PAYMENT_BALANCE_EPSILON_USD
+              Math.max(0, totalUsd) - PAYMENT_BALANCE_EPSILON_USD
           : casheaInStorePayments.length >= 1 &&
             casheaPaidSumBs > 0 &&
             casheaPaidSumBs <
-              Math.max(0, total - appliedCreditBsApprox) -
-                PAYMENT_BALANCE_EPSILON_BS
+              Math.max(0, total) - PAYMENT_BALANCE_EPSILON_BS
         : formUsesUsdTotals
           ? Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_USD
           : Math.abs(remainingAmount) < PAYMENT_BALANCE_EPSILON_BS;
@@ -1504,8 +1413,6 @@ export function useEditOrderForm(
     setProductMarkups({});
     setProductDiscountTypes({});
     setProductDiscountCurrencies({});
-    setAppliedStoreCreditUsd(0);
-    setClientStoreCreditBalanceUsd(null);
   }, [preferredCurrency]);
 
   const isLocationStatusSelected = (status?: string) =>
@@ -1702,12 +1609,6 @@ export function useEditOrderForm(
     remainingAmount,
     remainingAmountUsd,
     isPaymentsValid,
-    appliedStoreCreditUsd,
-    setAppliedStoreCreditUsd,
-    clientStoreCreditBalanceUsd,
-    refreshClientStoreCreditBalance,
-    appliedCreditBsApprox,
-    maxApplicableStoreCreditUsd,
     formattedProductPrices,
     formattedProductTotals,
     formattedProductFinalTotals,
