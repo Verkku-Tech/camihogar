@@ -166,6 +166,7 @@ export const paymentMethods = [
   "Banesco Panamá",
   "Binance",
   "Efectivo",
+  "Efectivo contra Entrega",
   "Facebank",
   "Mercantil Panamá",
   "Pago Móvil",
@@ -175,6 +176,21 @@ export const paymentMethods = [
   "Transferencia",
   "Zelle",
 ];
+
+/** Métodos que comparten el formulario de efectivo (cashReceived, moneda, etc.). Cada uno es un método distinto en BD. */
+export const PAYMENT_METHODS_USING_CASH_FORM = [
+  "Efectivo",
+  "Efectivo contra Entrega",
+] as const;
+
+export function paymentMethodUsesCashForm(
+  method: string | undefined | null,
+): boolean {
+  return (
+    !!method &&
+    (PAYMENT_METHODS_USING_CASH_FORM as readonly string[]).includes(method)
+  );
+}
 
 // Métodos de pago digitales en divisas (USD) que no requieren campo de moneda
 export const digitalPaymentMethods = [

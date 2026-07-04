@@ -13,6 +13,7 @@ import {
   paymentToUsd,
   sumPaymentBsEquivalentsForDisplay,
 } from "@/lib/order-payments";
+import { paymentMethodUsesCashForm } from "@/components/orders/constants";
 import {
   formatCurrency,
   normalizeExchangeRatesAtCreation,
@@ -149,7 +150,7 @@ function getOriginalPaymentAmountForPdf(
   );
   const eurRate = eurN?.EUR?.rate;
 
-  if (payment.method === "Efectivo" && payment.paymentDetails?.cashReceived) {
+  if (paymentMethodUsesCashForm(payment.method) && payment.paymentDetails?.cashReceived) {
     const c = (payment.paymentDetails.cashCurrency ||
       payment.currency ||
       "Bs") as Currency;

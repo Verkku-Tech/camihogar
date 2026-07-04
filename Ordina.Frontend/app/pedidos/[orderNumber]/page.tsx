@@ -39,6 +39,7 @@ import { resolveDisplayOrderStatus } from "@/lib/order-status-aggregation";
 import {
   getDeliveryTypeLabel,
   getSaleTypeLabel,
+  paymentMethodUsesCashForm,
 } from "@/components/orders/constants";
 import {
   formatCurrency,
@@ -113,7 +114,7 @@ const getOriginalPaymentAmount = (
   exchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } },
 ): { amount: number; currency: string } => {
   // Para Efectivo, el monto original está en cashReceived
-  if (payment.method === "Efectivo" && payment.paymentDetails?.cashReceived) {
+  if (paymentMethodUsesCashForm(payment.method) && payment.paymentDetails?.cashReceived) {
     return {
       amount: payment.paymentDetails.cashReceived,
       currency: payment.paymentDetails.cashCurrency || payment.currency || "Bs",
