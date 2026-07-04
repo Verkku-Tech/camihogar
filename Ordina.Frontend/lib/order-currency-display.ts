@@ -358,7 +358,10 @@ function lineSnapshotKey(p: OrderProduct): string {
   });
 }
 
-/** Si las líneas no cambiaron, congelar totales comerciales al guardar/mostrar. */
+/**
+ * Si las líneas no cambiaron, congelar subtotales de producto al guardar/mostrar.
+ * Delivery, IVA (checkbox) y descuento general se recalculan en vivo en edición.
+ */
 export function shouldFreezeCommercialTotals(
   initialOrder: Order | null | undefined,
   selectedProducts: OrderProduct[],

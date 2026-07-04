@@ -968,16 +968,12 @@ export function useEditOrderForm(
   const subtotalComputed = subtotalAfterProductDiscounts;
   const subtotal = frozenCommercialTotals?.subtotal ?? subtotalComputed;
 
-  const taxAmountComputed = taxEnabled ? subtotal * 0.16 : 0;
-  const taxAmount = frozenCommercialTotals?.taxAmount ?? taxAmountComputed;
+  const taxAmount = taxEnabled ? subtotal * 0.16 : 0;
 
   const totalBeforeGeneralDiscount = frozenCommercialTotals
     ? subtotal + taxAmount + deliveryCost
     : subtotal + taxAmount + productSurchargeTotal + deliveryCost;
   const generalDiscountAmount = useMemo(() => {
-    if (frozenCommercialTotals) {
-      return initialOrder?.generalDiscountAmount ?? 0;
-    }
     if (generalDiscountType === "porcentaje") {
       const p = Math.min(Math.max(generalDiscount, 0), 100);
       return (totalBeforeGeneralDiscount * p) / 100;
@@ -990,8 +986,6 @@ export function useEditOrderForm(
     );
     return Math.min(Math.max(inBase, 0), totalBeforeGeneralDiscount);
   }, [
-    frozenCommercialTotals,
-    initialOrder?.generalDiscountAmount,
     generalDiscountType,
     generalDiscount,
     generalDiscountCurrency,
@@ -999,11 +993,10 @@ export function useEditOrderForm(
     commercialRatesInput,
     totalBeforeGeneralDiscount,
   ]);
-  const totalComputed = Math.max(
+  const total = Math.max(
     totalBeforeGeneralDiscount - generalDiscountAmount,
     0,
   );
-  const total = frozenCommercialTotals?.total ?? totalComputed;
 
   const orderExchangeRatesSnapshot = useMemo(() => {
     if (initialOrder && open) {
