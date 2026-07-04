@@ -14,20 +14,17 @@ public class OrdersController : ControllerBase
 {
     private readonly IOrderService _orderService;
     private readonly IOrderAuditLogService _auditLogService;
-    private readonly IClientCreditService _clientCreditService;
     private readonly IOnlineSellerVisibilityService _onlineSellerVisibility;
     private readonly ILogger<OrdersController> _logger;
 
     public OrdersController(
         IOrderService orderService,
         IOrderAuditLogService auditLogService,
-        IClientCreditService clientCreditService,
         IOnlineSellerVisibilityService onlineSellerVisibility,
         ILogger<OrdersController> logger)
     {
         _orderService = orderService;
         _auditLogService = auditLogService;
-        _clientCreditService = clientCreditService;
         _onlineSellerVisibility = onlineSellerVisibility;
         _logger = logger;
     }
@@ -398,49 +395,6 @@ public class OrdersController : ControllerBase
         {
             _logger.LogError(ex, "Error al crear pedido");
             return StatusCode(500, new { message = "Error interno del servidor al crear el pedido" });
-        }
-    }
-
-    /// <summary>Saldo a favor del cliente en USD (suma del ledger).</summary>
-    [HttpGet("store-credit/clients/{clientId}/balance-usd")]
-    [Authorize]
-    [ProducesResponseType(typeof(ClientStoreCreditBalanceDto), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ClientStoreCreditBalanceDto>> GetClientStoreCreditBalanceUsd([FromRoute] string clientId)
-    {
-        if (string.IsNullOrWhiteSpace(clientId))
-            return BadRequest(new { message = "clientId requerido" });
-        var balance = await _clientCreditService.GetBalanceUsdAsync(clientId);
-        return Ok(new ClientStoreCreditBalanceDto { BalanceUsd = balance });
-    }
-
-    /// <summary>Acredita en USD el sobrepago del pedido (una vez por pedido).</summary>
-    [HttpPost("{orderId}/store-credit/overpayment")]
-    [Authorize]
-    [ProducesResponseType(typeof(RecordOverpaymentCreditResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<RecordOverpaymentCreditResponseDto>> RecordStoreCreditOverpayment(
-        [FromRoute] string orderId)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(orderId))
-                return BadRequest(new { message = "orderId requerido" });
-            var (userId, userName) = GetActor(User);
-            var result = await _clientCreditService.RecordOverpaymentCreditAsync(orderId, userId, userName);
-            return Ok(result);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error al registrar crédito por sobrepago {OrderId}", orderId);
-            return StatusCode(500, new { message = "Error interno al registrar saldo a favor" });
         }
     }
 

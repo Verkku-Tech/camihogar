@@ -167,20 +167,15 @@ public static class OrderCommercialCurrency
         if (inStore.Count == 0 || financed.Count == 0)
             return false;
 
-        var creditUsd = order.AppliedStoreCreditUsd;
-
         if (IsUsdBaseOrder(order))
         {
-            var totalDue = Math.Max(0m, order.Total - creditUsd);
+            var totalDue = order.Total;
             var inStoreUsd = inStore.Sum(p => PaymentToUsd(p, order));
             var financedUsd = financed.Sum(p => PaymentToUsd(p, order));
             return inStoreUsd + financedUsd >= totalDue - CasheaCommercialSettlementEpsilonUsd;
         }
 
-        var creditBs = creditUsd > 0 && order.ExchangeRatesAtCreation?.Usd?.Rate is > 0
-            ? creditUsd * order.ExchangeRatesAtCreation.Usd.Rate
-            : 0m;
-        var totalDueBs = Math.Max(0m, order.Total - creditBs);
+        var totalDueBs = order.Total;
         var inStoreBs = inStore.Sum(p => p.Amount);
         var financedBs = financed.Sum(p => p.Amount);
         return inStoreBs + financedBs >= totalDueBs - PaymentBalanceEpsilonBs;
@@ -203,10 +198,9 @@ public static class OrderCommercialCurrency
                 nameof(order.PaymentCondition));
         }
 
-        var creditUsd = order.AppliedStoreCreditUsd;
         if (IsUsdBaseOrder(order))
         {
-            var totalDue = Math.Max(0m, order.Total - creditUsd);
+            var totalDue = order.Total;
             var inStoreUsd = inStore.Sum(p => PaymentToUsd(p, order));
             if (inStoreUsd <= 0)
             {
@@ -225,10 +219,7 @@ public static class OrderCommercialCurrency
             return;
         }
 
-        var creditBs = creditUsd > 0 && order.ExchangeRatesAtCreation?.Usd?.Rate is > 0
-            ? creditUsd * order.ExchangeRatesAtCreation.Usd.Rate
-            : 0m;
-        var totalDueBs = Math.Max(0m, order.Total - creditBs);
+        var totalDueBs = order.Total;
         var inStoreBs = inStore.Sum(p => p.Amount);
         if (inStoreBs <= 0)
         {
@@ -260,8 +251,7 @@ public static class OrderCommercialCurrency
 
         var totalUsd = GetOrderTotalUsd(order, usdRate);
         var paidUsd = SumPaymentsToUsd(order);
-        var credit = order.AppliedStoreCreditUsd;
-        return Math.Max(0m, totalUsd - credit - paidUsd);
+        return Math.Max(0m, totalUsd - paidUsd);
     }
 
     private static decimal? GetCasheaPendingAfterFinancing(Order order)
@@ -275,20 +265,16 @@ public static class OrderCommercialCurrency
             return null;
 
         var inStore = payments.Where(p => !IsCasheaFinancingStub(p)).ToList();
-        var creditUsd = order.AppliedStoreCreditUsd;
 
         if (IsUsdBaseOrder(order))
         {
-            var totalDue = Math.Max(0m, order.Total - creditUsd);
+            var totalDue = order.Total;
             var inStoreUsd = inStore.Sum(p => PaymentToUsd(p, order));
             var financedUsd = financed.Sum(p => PaymentToUsd(p, order));
             return Math.Max(0m, totalDue - inStoreUsd - financedUsd);
         }
 
-        var creditBs = creditUsd > 0 && order.ExchangeRatesAtCreation?.Usd?.Rate is > 0
-            ? creditUsd * order.ExchangeRatesAtCreation.Usd.Rate
-            : 0m;
-        var totalDueBs = Math.Max(0m, order.Total - creditBs);
+        var totalDueBs = order.Total;
         var inStoreBs = inStore.Sum(p => p.Amount);
         var financedBs = financed.Sum(p => p.Amount);
         return Math.Max(0m, totalDueBs - inStoreBs - financedBs);

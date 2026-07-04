@@ -57,7 +57,6 @@ import {
   getCasheaFullPaymentBlockMessage,
   getCasheaTotalDueBs,
 } from "@/lib/order-payments";
-import { tryComputeOverpaymentUsd } from "@/lib/order-store-credit-usd";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
 import { usePinSession } from "@/hooks/use-pin-session";
@@ -220,33 +219,15 @@ export function EditOrderDialog({
   );
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
-  const [overpaymentPrompt, setOverpaymentPrompt] = useState<{
-    orderId: string;
-    amountUsd: number;
-  } | null>(null);
 
   const nestedModalOpen =
     isRemoveProductOpen ||
     isProductEditOpen ||
     isClientLookupOpen ||
     isProductSelectionOpen ||
-    isConfirmationOpen ||
-    overpaymentPrompt !== null;
+    isConfirmationOpen;
 
   const { preventClose, closeNested } = useNestedModalGuard(nestedModalOpen);
-
-  const offerOverpaymentPromptOrReload = (saved: Order) => {
-    if (typeof navigator === "undefined" || !navigator.onLine) {
-      window.location.reload();
-      return;
-    }
-    const excess = tryComputeOverpaymentUsd(saved);
-    if (excess != null && excess > 0) {
-      setOverpaymentPrompt({ orderId: saved.id, amountUsd: excess });
-      return;
-    }
-    window.location.reload();
-  };
 
   // Handlers de productos
   const handleEditProduct = (product: OrderProduct) => {
@@ -524,11 +505,11 @@ export function EditOrderDialog({
           casheaInStorePaymentsExceedTotal(orderForm.payments, {
             totalDueUsd: Math.max(
               0,
-              orderForm.total - orderForm.appliedStoreCreditUsd,
+              orderForm.total,
             ),
             totalDueBsLegacy: Math.max(
               0,
-              orderForm.total - orderForm.appliedCreditBsApprox,
+              orderForm.total,
             ),
             useUsdTotals,
             order: {
@@ -550,11 +531,11 @@ export function EditOrderDialog({
           {
             totalDueUsd: Math.max(
               0,
-              orderForm.total - orderForm.appliedStoreCreditUsd,
+              orderForm.total,
             ),
             totalDueBsLegacy: Math.max(
               0,
-              orderForm.total - orderForm.appliedCreditBsApprox,
+              orderForm.total,
             ),
             useUsdTotals,
             order: {
@@ -581,11 +562,11 @@ export function EditOrderDialog({
           orderTotalBs: getCasheaTotalDueBs({
             totalDueUsd: Math.max(
               0,
-              orderForm.total - orderForm.appliedStoreCreditUsd,
+              orderForm.total,
             ),
             totalDueBsLegacy: Math.max(
               0,
-              orderForm.total - orderForm.appliedCreditBsApprox,
+              orderForm.total,
             ),
             useUsdTotals,
             usdRate: orderForm.commercialExchangeRates.USD?.rate,
@@ -593,7 +574,7 @@ export function EditOrderDialog({
           useUsdTotals,
           totalDueUsd: Math.max(
             0,
-            orderForm.total - orderForm.appliedStoreCreditUsd,
+            orderForm.total,
           ),
           usdRate: orderForm.commercialExchangeRates.USD?.rate,
           order: {
@@ -615,15 +596,11 @@ export function EditOrderDialog({
               : (paymentsNorm[0]?.method ?? order.paymentMethod ?? ""),
         paymentDetails: !multi ? paymentsNorm[0]?.paymentDetails : undefined,
         mixedPayments: multi ? paymentsNorm : [],
-        ...(orderForm.appliedStoreCreditUsd !==
-        (order.appliedStoreCreditUsd ?? 0)
-          ? { appliedStoreCreditUsd: orderForm.appliedStoreCreditUsd }
-          : {}),
       });
       toast.success("Pagos actualizados correctamente");
       onOpenChange(false);
       orderForm.resetForm();
-      offerOverpaymentPromptOrReload(synced);
+      window.location.reload();
     } catch (error) {
       console.error("Error updating payments:", error);
       toast.error("Error al guardar los pagos. Por favor intenta nuevamente.");
@@ -881,11 +858,11 @@ export function EditOrderDialog({
             casheaInStorePaymentsExceedTotal(orderForm.payments, {
               totalDueUsd: Math.max(
                 0,
-                orderForm.total - orderForm.appliedStoreCreditUsd,
+                orderForm.total,
               ),
               totalDueBsLegacy: Math.max(
                 0,
-                orderForm.total - orderForm.appliedCreditBsApprox,
+                orderForm.total,
               ),
               useUsdTotals,
               order: {
@@ -907,11 +884,11 @@ export function EditOrderDialog({
             {
               totalDueUsd: Math.max(
                 0,
-                orderForm.total - orderForm.appliedStoreCreditUsd,
+                orderForm.total,
               ),
               totalDueBsLegacy: Math.max(
                 0,
-                orderForm.total - orderForm.appliedCreditBsApprox,
+                orderForm.total,
               ),
               useUsdTotals,
               order: {
@@ -1042,10 +1019,6 @@ export function EditOrderDialog({
           : buildExchangeRatesAtCreationPayload(
               orderForm.commercialExchangeRates,
             ),
-        appliedStoreCreditUsd:
-          orderForm.appliedStoreCreditUsd > 0
-            ? orderForm.appliedStoreCreditUsd
-            : undefined,
       };
 
       setPendingOrderData(orderDataForConfirmation);
@@ -1074,11 +1047,11 @@ export function EditOrderDialog({
           {
             totalDueUsd: Math.max(
               0,
-              orderForm.total - orderForm.appliedStoreCreditUsd,
+              orderForm.total,
             ),
             totalDueBsLegacy: Math.max(
               0,
-              orderForm.total - orderForm.appliedCreditBsApprox,
+              orderForm.total,
             ),
             useUsdTotals,
             order: {
@@ -1098,11 +1071,11 @@ export function EditOrderDialog({
           orderTotalBs: getCasheaTotalDueBs({
             totalDueUsd: Math.max(
               0,
-              orderForm.total - orderForm.appliedStoreCreditUsd,
+              orderForm.total,
             ),
             totalDueBsLegacy: Math.max(
               0,
-              orderForm.total - orderForm.appliedCreditBsApprox,
+              orderForm.total,
             ),
             useUsdTotals,
             usdRate: orderForm.commercialExchangeRates.USD?.rate,
@@ -1110,7 +1083,7 @@ export function EditOrderDialog({
           useUsdTotals,
           totalDueUsd: Math.max(
             0,
-            orderForm.total - orderForm.appliedStoreCreditUsd,
+            orderForm.total,
           ),
           usdRate: orderForm.commercialExchangeRates.USD?.rate,
           order: {
@@ -1270,7 +1243,7 @@ export function EditOrderDialog({
         orderForm.resetForm();
         setPendingOrderData(null);
         onConfirmed?.(created.orderNumber);
-        offerOverpaymentPromptOrReload(createdOrder);
+        window.location.reload();
         return;
       }
 
@@ -1412,11 +1385,6 @@ export function EditOrderDialog({
           order,
           orderForm.commercialExchangeRates,
         ),
-        ...(orderForm.paymentCondition !== "pago_a_entrega" &&
-        orderForm.paymentCondition !== "pagara_en_tienda" &&
-        orderForm.appliedStoreCreditUsd > 0
-          ? { appliedStoreCreditUsd: orderForm.appliedStoreCreditUsd }
-          : {}),
       };
 
       if (isEditingBudget) {
@@ -1430,7 +1398,7 @@ export function EditOrderDialog({
         );
         orderForm.resetForm();
         setPendingOrderData(null);
-        offerOverpaymentPromptOrReload(orderFromBackendDto(created));
+        window.location.reload();
       } else {
         const synced = await updateOrder(order.id, {
           ...orderData,
@@ -1441,7 +1409,7 @@ export function EditOrderDialog({
         toast.success("Pedido actualizado exitosamente");
         orderForm.resetForm();
         setPendingOrderData(null);
-        offerOverpaymentPromptOrReload(synced);
+        window.location.reload();
       }
     } catch (error) {
       console.error("Error updating order:", error);
@@ -1670,59 +1638,6 @@ export function EditOrderDialog({
           isBudgetConversion={isEditingBudget}
         />
       )}
-
-      <AlertDialog
-        open={overpaymentPrompt !== null}
-        onOpenChange={(next) => {
-          if (!next) {
-            setOverpaymentPrompt(null);
-            window.location.reload();
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Sobrepago detectado</AlertDialogTitle>
-            <AlertDialogDescription>
-              Hay un excedente de USD {overpaymentPrompt?.amountUsd.toFixed(2)}{" "}
-              respecto al total del pedido. ¿Registrar ese monto como saldo a
-              favor del cliente?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setOverpaymentPrompt(null);
-                window.location.reload();
-              }}
-            >
-              No registrar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                if (!overpaymentPrompt) return;
-                try {
-                  await apiClient.recordStoreCreditOverpayment(
-                    overpaymentPrompt.orderId,
-                  );
-                  toast.success("Saldo a favor registrado (USD).");
-                } catch (e: unknown) {
-                  const msg =
-                    e instanceof Error
-                      ? e.message
-                      : "No se pudo registrar el crédito.";
-                  toast.error(msg);
-                } finally {
-                  setOverpaymentPrompt(null);
-                  window.location.reload();
-                }
-              }}
-            >
-              Registrar saldo a favor
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

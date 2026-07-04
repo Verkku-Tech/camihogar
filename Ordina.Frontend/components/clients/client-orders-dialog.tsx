@@ -183,9 +183,6 @@ export function ClientOrdersHistoryDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [filterDate, setFilterDate] = useState("");
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [storeCreditBalanceUsd, setStoreCreditBalanceUsd] = useState<
-    number | null
-  >(null);
   const [reservationToConfirm, setReservationToConfirm] =
     useState<Order | null>(null);
   const [orderTotalsUsd, setOrderTotalsUsd] = useState<Record<string, string>>(
@@ -290,25 +287,6 @@ export function ClientOrdersHistoryDialog({
   ]);
 
   useEffect(() => {
-    if (!open || !client?.id) {
-      setStoreCreditBalanceUsd(null);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await apiClient.getClientStoreCreditBalanceUsd(client.id);
-        if (!cancelled) setStoreCreditBalanceUsd(res.balanceUsd);
-      } catch {
-        if (!cancelled) setStoreCreditBalanceUsd(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, client?.id]);
-
-  useEffect(() => {
     if (orders.length === 0) {
       setOrderTotalsUsd({});
       return;
@@ -337,14 +315,6 @@ export function ClientOrdersHistoryDialog({
         <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
-            {storeCreditBalanceUsd != null && storeCreditBalanceUsd > 0 && (
-              <p className="text-sm text-muted-foreground">
-                Saldo a favor:{" "}
-                <span className="font-medium text-foreground">
-                  USD {storeCreditBalanceUsd.toFixed(2)}
-                </span>
-              </p>
-            )}
           </DialogHeader>
 
           <div className="flex gap-2">

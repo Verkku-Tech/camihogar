@@ -1395,19 +1395,6 @@ export class ApiClient {
     });
   }
 
-  async getClientStoreCreditBalanceUsd(clientId: string) {
-    return this.request<ClientStoreCreditBalanceDto>(
-      `/api/Orders/store-credit/clients/${encodeURIComponent(clientId)}/balance-usd`,
-    );
-  }
-
-  async recordStoreCreditOverpayment(orderId: string) {
-    return this.request<RecordOverpaymentCreditResponseDto>(
-      `/api/Orders/${encodeURIComponent(orderId)}/store-credit/overpayment`,
-      { method: "POST" },
-    );
-  }
-
   async deleteOrder(id: string) {
     return this.request<void>(`/api/Orders/${id}`, {
       method: "DELETE",
@@ -2252,17 +2239,6 @@ export interface PartialPaymentDto {
   paymentDetails?: PaymentDetailsDto;
 }
 
-/** Saldo a favor del cliente (ledger, USD). */
-export interface ClientStoreCreditBalanceDto {
-  balanceUsd: number;
-}
-
-/** Respuesta al registrar sobrepago como crédito. */
-export interface RecordOverpaymentCreditResponseDto {
-  amountCreditedUsd: number;
-  newBalanceUsd: number;
-}
-
 export interface OrderSearchResultDto {
   orderId: string;
   orderNumber: string;
@@ -2345,8 +2321,6 @@ export interface OrderResponseDto {
   originalProducts?: OrderProductDto[];
   sourceReservationVendorId?: string;
   sourceReservationVendorName?: string;
-  /** Crédito de tienda aplicado a este pedido (USD). */
-  appliedStoreCreditUsd?: number;
 }
 
 /** Convertir un presupuesto (Budget) en pedido ORD. */
@@ -2536,8 +2510,6 @@ export interface CreateOrderDto {
   };
   baseCurrency?: "Bs" | "USD" | "EUR";
   type?: string;
-  /** Crédito de tienda a aplicar al crear el pedido (USD). */
-  appliedStoreCreditUsd?: number;
 }
 
 export interface UpdateOrderDto {
@@ -2599,8 +2571,6 @@ export interface UpdateOrderDto {
     eur?: { rate: number; effectiveDate: string } | null;
   };
   type?: string;
-  /** Crédito de tienda aplicado (USD); enviar al cambiar el monto aplicado. */
-  appliedStoreCreditUsd?: number;
 }
 
 // ===== ACCOUNTS DTOs =====

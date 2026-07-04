@@ -386,7 +386,6 @@ interface OrderConfirmationDialogProps {
     observations?: string;
     baseCurrency?: Currency;
     exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
-    appliedStoreCreditUsd?: number;
   };
   /** Textos del diálogo al convertir un presupuesto en pedido ORD. */
   isBudgetConversion?: boolean;
@@ -1050,9 +1049,8 @@ export function OrderConfirmationDialog({
           baseCurrency,
           exchangeRatesAtCreation: orderData.exchangeRatesAtCreation,
         });
-        const creditUsdConfirmation = orderData.appliedStoreCreditUsd ?? 0;
         const displayedRemainingConfirmationUsd =
-          totalUsdConfirmation - creditUsdConfirmation - displayedPaidConfirmation;
+          totalUsdConfirmation - displayedPaidConfirmation;
         return (
           <Card>
             <CardHeader>
@@ -1352,9 +1350,8 @@ export function OrderConfirmationDialog({
                       displayedRemainingConfirmationUsd <
                         -PAYMENT_BALANCE_EPSILON_USD && (
                         <p className="text-xs text-blue-600 dark:text-blue-400 text-center mt-2">
-                          El cliente pagó de más. Monto informativo; al
-                          confirmar podrá registrar el excedente como saldo a
-                          favor.
+                          El cliente pagó de más respecto al total del pedido.
+                          Ajuste el total o los abonos si corresponde.
                         </p>
                       )}
                   </CardContent>
