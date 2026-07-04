@@ -104,9 +104,9 @@ function resolveCommercialTotalsFieldsForUpdate(
       productDiscountTotal:
         snap.productDiscountTotal > 0 ? snap.productDiscountTotal : undefined,
       subtotal: snap.subtotal,
-      taxAmount: snap.taxAmount,
-      deliveryCost: existingOrder.deliveryCost ?? orderForm.deliveryCost,
-      total: snap.total,
+      taxAmount: orderForm.taxAmount,
+      deliveryCost: orderForm.deliveryCost,
+      total: orderForm.total,
     };
   }
   return {
