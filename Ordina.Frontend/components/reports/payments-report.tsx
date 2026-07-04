@@ -18,7 +18,7 @@ import { apiClient } from "@/lib/api-client"
 import { useAuth } from "@/contexts/auth-context"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { digitalPaymentMethods } from "@/components/orders/constants"
+import { digitalPaymentMethods, paymentMethodUsesCashForm } from "@/components/orders/constants"
 import {
   formatPaymentDateForDisplay,
   paymentDateToYyyyMmDd,
@@ -93,6 +93,7 @@ const PAYMENT_METHODS = [
   "Banesco Panamá",
   "Binance",
   "Efectivo",
+  "Efectivo contra Entrega",
   "Efectivo Bs",
   "Efectivo USD",
   "Efectivo EUR",
@@ -498,7 +499,7 @@ export function PaymentsReport() {
 
     // Para Efectivo, el monto original está en cashReceived
     if (
-      payment.method === "Efectivo" &&
+      paymentMethodUsesCashForm(payment.method) &&
       details &&
       detailsHasValues &&
       details.cashReceived != null &&
@@ -646,7 +647,7 @@ export function PaymentsReport() {
           let montoOriginal: number
           let monedaOriginal: string
           
-          if (order.paymentMethod === "Efectivo" && order.paymentDetails?.cashReceived) {
+          if (paymentMethodUsesCashForm(order.paymentMethod) && order.paymentDetails?.cashReceived) {
             // Para Efectivo, usar cashReceived y cashCurrency
             montoOriginal = order.paymentDetails.cashReceived
             monedaOriginal = order.paymentDetails.cashCurrency || order.baseCurrency || "Bs"
@@ -1262,7 +1263,7 @@ export function PaymentsReport() {
                       </TableCell>
                       <TableCell>
                         {row.montoBs == null ||
-                        (row.metodoPago === "Efectivo" &&
+                        (paymentMethodUsesCashForm(row.metodoPago) &&
                           row.monedaOriginal !== "Bs") ? (
                           <span className="text-muted-foreground text-xs">—</span>
                         ) : (

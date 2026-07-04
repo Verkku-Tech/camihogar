@@ -966,9 +966,8 @@ export function useEditOrderForm(
 
   const taxAmount = taxEnabled ? subtotal * 0.16 : 0;
 
-  const totalBeforeGeneralDiscount = frozenCommercialTotals
-    ? subtotal + taxAmount + deliveryCost
-    : subtotal + taxAmount + productSurchargeTotal + deliveryCost;
+  const totalBeforeGeneralDiscount =
+    subtotal + taxAmount + productSurchargeTotal + deliveryCost;
   const generalDiscountAmount = useMemo(() => {
     if (generalDiscountType === "porcentaje") {
       const p = Math.min(Math.max(generalDiscount, 0), 100);

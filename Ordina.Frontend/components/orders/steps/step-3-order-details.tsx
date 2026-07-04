@@ -58,6 +58,7 @@ import {
   digitalPaymentMethods,
   bsOnlyPaymentMethods,
   paymentMethodUsesOnlyOfficialBsRate,
+  paymentMethodUsesCashForm,
   efectivoCashExcludesManualBs,
   paymentMethodsRequiringReceivingAccount,
 } from "../constants";
@@ -1007,7 +1008,7 @@ export function Step3OrderDetails({
                               }
                             }
                             // Si se cambia a Efectivo, inicializar cashCurrency con la moneda del pago
-                            if (value === "Efectivo") {
+                            if (paymentMethodUsesCashForm(value)) {
                               const currentCurrency =
                                 payment.currency ||
                                 orderForm.getDefaultCurrencyFromSelection();
@@ -1732,6 +1733,7 @@ export function Step3OrderDetails({
                         "Tarjeta de débito",
                         "Tarjeta de Crédito",
                         "Efectivo",
+                        "Efectivo contra Entrega",
                       ].includes(payment.method) && (
                         <div className="space-y-3 pt-2 border-t">
                           <Label className="text-sm font-medium">
@@ -2310,10 +2312,10 @@ export function Step3OrderDetails({
                         </div>
                       )}
 
-                    {payment.method === "Efectivo" && (
+                    {paymentMethodUsesCashForm(payment.method) && (
                       <div className="space-y-3 pt-2 border-t">
                         <Label className="text-sm font-medium">
-                          Información de Pago en Efectivo
+                          Información de Pago en {payment.method}
                         </Label>
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="space-y-2">
@@ -2678,7 +2680,7 @@ export function Step3OrderDetails({
                         {/* Comprobante de Pago en Efectivo - Imágenes */}
                         <div className="space-y-2 pt-2 border-t">
                           <Label className="text-xs font-medium">
-                            Comprobante de Pago en Efectivo (Imágenes)
+                            Comprobante de Pago en {payment.method} (Imágenes)
                           </Label>
                           {updatePaymentImages && (
                             <ImageUploader

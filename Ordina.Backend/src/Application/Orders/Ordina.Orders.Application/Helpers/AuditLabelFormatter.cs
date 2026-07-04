@@ -39,11 +39,15 @@ public static partial class AuditLabelFormatter
     [GeneratedRegex(@"(?:^|;\s*)Moneda=([^;]+)", RegexOptions.IgnoreCase)]
     private static partial Regex PaymentCurrencyRegex();
 
+    private static bool UsesCashPaymentForm(string? method) =>
+        string.Equals(method, "Efectivo", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(method, "Efectivo contra Entrega", StringComparison.OrdinalIgnoreCase);
+
     public static (decimal Amount, string Currency) GetOriginalPaymentDisplay(PartialPayment payment)
     {
         var det = payment.PaymentDetails;
 
-        if (string.Equals(payment.Method, "Efectivo", StringComparison.OrdinalIgnoreCase)
+        if (UsesCashPaymentForm(payment.Method)
             && det?.CashReceived is > 0)
         {
             return (det.CashReceived.Value, (det.CashCurrency ?? "Bs").Trim());
