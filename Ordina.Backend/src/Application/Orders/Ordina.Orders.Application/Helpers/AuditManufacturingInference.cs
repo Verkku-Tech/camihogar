@@ -237,14 +237,6 @@ public static class AuditManufacturingInference
             parts.Add($"Eliminó pago: {detail}");
         }
 
-        var storeCreditChange = changes.FirstOrDefault(c =>
-            c.Field is nameof(Order.AppliedStoreCreditUsd));
-        if (storeCreditChange != null)
-        {
-            parts.Add(
-                $"Crédito de tienda: ${storeCreditChange.OldValue ?? "0"} → ${storeCreditChange.NewValue ?? "0"}");
-        }
-
         var statusChange = changes.FirstOrDefault(c =>
             c.Field is nameof(Order.Status) or "Status");
         if (statusChange != null)

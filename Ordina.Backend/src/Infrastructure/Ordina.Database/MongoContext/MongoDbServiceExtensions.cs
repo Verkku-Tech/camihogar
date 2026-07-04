@@ -35,7 +35,6 @@ public static class MongoDbServiceExtensions
         services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IOrderAuditLogRepository, OrderAuditLogRepository>();
         services.AddScoped<IClientRepository, ClientRepository>();
-        services.AddScoped<IClientCreditLedgerRepository, ClientCreditLedgerRepository>();
         services.AddScoped<IProviderRepository, ProviderRepository>();
         services.AddScoped<IStoreRepository, StoreRepository>();
         services.AddScoped<IUserRepository, UserRepository>();

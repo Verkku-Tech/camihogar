@@ -37,7 +37,6 @@ const VALUE_LABELS: Record<string, string> = {
 const FIELD_LABELS: Record<string, string> = {
   Status: "Estado del pedido",
   PaymentCondition: "Condición de pago",
-  AppliedStoreCreditUsd: "Crédito de tienda (USD)",
   DispatchObservations: "Observaciones de despacho",
   ProductMarkups: "Sobreprecios",
   ProductDiscountTotal: "Descuento en productos",
@@ -268,13 +267,6 @@ export function getDisplaySummary(log: OrderAuditLogDto): string {
     (ch) => ch.field === "mixedPayments[-]" || ch.field === "partialPayments[-]",
   )) {
     parts.push(`Eliminó pago: ${getDisplayOldValue(c)}`);
-  }
-
-  const storeCredit = log.changes.find((c) => c.field === "AppliedStoreCreditUsd");
-  if (storeCredit) {
-    parts.push(
-      `Crédito de tienda: $${storeCredit.oldValue ?? "0"} → $${storeCredit.newValue ?? "0"}`,
-    );
   }
 
   const status = log.changes.find((c) => c.field === "Status");

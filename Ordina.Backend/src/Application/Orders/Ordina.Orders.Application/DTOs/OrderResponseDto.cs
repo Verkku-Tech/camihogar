@@ -54,8 +54,5 @@ public class OrderResponseDto
 
     public string? SourceReservationVendorId { get; set; }
     public string? SourceReservationVendorName { get; set; }
-
-    /// <summary>USD de saldo a favor del cliente aplicados a este pedido.</summary>
-    public decimal AppliedStoreCreditUsd { get; set; }
 }
 

@@ -22,7 +22,6 @@ builder.Services.AddScoped<IOnlineSellerVisibilityService, OnlineSellerVisibilit
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IOrderAuditLogService, OrderAuditLogService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
-builder.Services.AddScoped<IClientCreditService, ClientCreditService>();
 builder.Services.AddScoped<IAccessPinService, AccessPinService>();
 
 builder.Services.AddHttpContextAccessor();

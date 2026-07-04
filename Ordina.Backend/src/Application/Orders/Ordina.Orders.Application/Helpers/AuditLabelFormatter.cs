@@ -144,7 +144,6 @@ public static partial class AuditLabelFormatter
         {
             nameof(Order.Status) or "Status" => "Estado del pedido",
             nameof(Order.PaymentCondition) => "Condición de pago",
-            nameof(Order.AppliedStoreCreditUsd) => "Crédito de tienda (USD)",
             nameof(Order.DispatchObservations) => "Observaciones de despacho",
             nameof(Order.ProductMarkups) => "Sobreprecios",
             nameof(Order.ProductDiscountTotal) => "Descuento en productos",

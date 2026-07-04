@@ -136,7 +136,6 @@ export type OrderPendingTotalInput = PartialMixedPaymentsSource & {
   total: number;
   baseCurrency?: Order["baseCurrency"];
   exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
-  appliedStoreCreditUsd?: number;
   /** Acepta DTO API (string) y Order tipado. */
   paymentCondition?: string;
   paymentMethod?: string;
@@ -174,10 +173,8 @@ export function isCasheaCommerciallySettled(
 
   if (inStore.length === 0 || financed.length === 0) return false;
 
-  const credit = order.appliedStoreCreditUsd ?? 0;
-
   if (isUsdBaseOrder(order)) {
-    const totalDue = Math.max(0, order.total - credit);
+    const totalDue = Math.max(0, order.total);
     const inStoreUsd = sumPaymentsToUsd(inStore, order);
     const financedUsd = financed.reduce(
       (sum, p) => sum + paymentToUsd(p, order),
@@ -189,15 +186,7 @@ export function isCasheaCommerciallySettled(
     );
   }
 
-  let creditBs = 0;
-  if (credit > 0 && order.exchangeRatesAtCreation) {
-    const rates = normalizeExchangeRatesAtCreation(
-      order.exchangeRatesAtCreation,
-    );
-    const rate = rates?.USD?.rate;
-    if (rate && rate > 0) creditBs = credit * rate;
-  }
-  const totalDue = Math.max(0, order.total - creditBs);
+  const totalDue = Math.max(0, order.total);
   const inStoreBs = sumPaymentsInStoreBs(inStore);
   const financedBs = financed.reduce((sum, p) => sum + (p.amount || 0), 0);
   return inStoreBs + financedBs >= totalDue - PAYMENT_BALANCE_EPSILON_BS;
@@ -213,10 +202,9 @@ function getCasheaPendingAfterFinancing(
   if (financed.length === 0) return null;
 
   const inStore = payments.filter((p) => !isCasheaFinancedPayment(p));
-  const credit = order.appliedStoreCreditUsd ?? 0;
 
   if (isUsdBaseOrder(order)) {
-    const totalDue = Math.max(0, order.total - credit);
+    const totalDue = Math.max(0, order.total);
     const inStoreUsd = sumPaymentsToUsd(inStore, order);
     const financedUsd = financed.reduce(
       (sum, p) => sum + paymentToUsd(p, order),
@@ -225,15 +213,7 @@ function getCasheaPendingAfterFinancing(
     return Math.max(0, totalDue - inStoreUsd - financedUsd);
   }
 
-  let creditBs = 0;
-  if (credit > 0 && order.exchangeRatesAtCreation) {
-    const rates = normalizeExchangeRatesAtCreation(
-      order.exchangeRatesAtCreation,
-    );
-    const rate = rates?.USD?.rate;
-    if (rate && rate > 0) creditBs = credit * rate;
-  }
-  const totalDue = Math.max(0, order.total - creditBs);
+  const totalDue = Math.max(0, order.total);
   const inStoreBs = sumPaymentsInStoreBs(inStore);
   const financedBs = financed.reduce((sum, p) => sum + (p.amount || 0), 0);
   return Math.max(0, totalDue - inStoreBs - financedBs);
@@ -253,20 +233,10 @@ export function getOrderPendingTotal(order: OrderPendingTotalInput): number {
   const payments = getActivePaymentsList(order);
   if (isUsdBaseOrder(order)) {
     const paidUsd = sumPaymentsToUsd(payments, order);
-    const credit = order.appliedStoreCreditUsd ?? 0;
-    return Math.max(0, order.total - credit - paidUsd);
+    return Math.max(0, order.total - paidUsd);
   }
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const creditUsd = order.appliedStoreCreditUsd ?? 0;
-  let creditBs = 0;
-  if (creditUsd > 0 && order.exchangeRatesAtCreation) {
-    const rates = normalizeExchangeRatesAtCreation(
-      order.exchangeRatesAtCreation,
-    );
-    const rate = rates?.USD?.rate;
-    if (rate && rate > 0) creditBs = creditUsd * rate;
-  }
-  return Math.max(0, order.total - totalPaid - creditBs);
+  return Math.max(0, order.total - totalPaid);
 }
 
 /** Misma regla que el detalle del pedido y el reporte backend: partial si existe, si no mixed */

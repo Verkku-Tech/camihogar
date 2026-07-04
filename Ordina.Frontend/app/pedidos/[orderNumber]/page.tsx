@@ -79,10 +79,7 @@ import {
   CASHEA_FINANCED_METHOD_LABEL,
   isCasheaOrder,
 } from "@/lib/order-payments";
-import {
-  appliedUsdToBs,
-  tryComputeOverpaymentUsd,
-} from "@/lib/order-store-credit-usd";
+import { tryComputeOverpaymentUsd } from "@/lib/order-overpayment";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
@@ -515,16 +512,6 @@ function getStatusColor(status: string) {
 
 /** Saldo residual por redondeo; alinear con validación de pagos del formulario (~0,01 Bs). */
 const PENDING_BALANCE_EPSILON_BS = 0.01;
-
-function appliedStoreCreditBsOnOrder(order: Order): number {
-  const usd = order.appliedStoreCreditUsd ?? 0;
-  if (usd <= 0) return 0;
-  try {
-    return appliedUsdToBs(usd, order);
-  } catch {
-    return 0;
-  }
-}
 
 export default function OrderDetailPage() {
   const params = useParams();
@@ -2887,14 +2874,6 @@ export default function OrderDetailPage() {
                           showCollectedBs
                         />
                       </div>
-                      {(order.appliedStoreCreditUsd ?? 0) > 0 && (
-                        <div className="flex justify-between text-sm text-muted-foreground">
-                          <span>Crédito de tienda aplicado (equiv. Bs):</span>
-                          <OrderCurrency
-                            amount={appliedStoreCreditBsOnOrder(order)}
-                          />
-                        </div>
-                      )}
 
                       {/* Mostrar saldo pendiente si existe (en USD cuando hay tasa, para ver cuánto debe) */}
                       {formattedPendingBalance &&
@@ -2935,8 +2914,7 @@ export default function OrderDetailPage() {
                               <div className="flex items-center gap-2">
                                 <DollarSign className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                                 <span className="font-semibold text-blue-700 dark:text-blue-300">
-                                  Excedente (cambio/vuelto a favor del
-                                  cliente):
+                                  Excedente (cambio/vuelto):
                                 </span>
                               </div>
                               <div className="text-right">

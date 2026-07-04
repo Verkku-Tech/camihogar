@@ -41,9 +41,6 @@ public class MongoDbContext
     public IMongoCollection<Client> Clients =>
         _database.GetCollection<Client>("clients");
 
-    public IMongoCollection<ClientCreditLedger> ClientCreditLedgers =>
-        _database.GetCollection<ClientCreditLedger>("clientCreditLedgers");
-
     public IMongoCollection<Provider> Providers =>
         _database.GetCollection<Provider>("providers");
 

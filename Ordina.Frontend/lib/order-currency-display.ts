@@ -255,13 +255,12 @@ export function getOrderPaidUsd(
   return sumPaymentsToUsd(getActivePaymentsList(order), order);
 }
 
-/** Saldo pendiente en USD comercial (total USD − crédito − pagado USD). */
+/** Saldo pendiente en USD comercial (total USD − pagado USD). */
 export function getOrderPendingUsd(
   order: PartialMixedPaymentsSource & {
     total: number;
     baseCurrency?: Currency;
     exchangeRatesAtCreation?: ExchangeRatesAtCreationRaw;
-    appliedStoreCreditUsd?: number;
     paymentCondition?: string;
     paymentMethod?: string;
   },
@@ -272,10 +271,9 @@ export function getOrderPendingUsd(
   if (isUsdBaseOrder(order)) {
     return getOrderPendingTotal(order);
   }
-  const credit = order.appliedStoreCreditUsd ?? 0;
   const totalUsd = getCommercialTotalUsd(order);
   const paidUsd = getOrderPaidUsd(order);
-  return Math.max(0, totalUsd - credit - paidUsd);
+  return Math.max(0, totalUsd - paidUsd);
 }
 
 /**
