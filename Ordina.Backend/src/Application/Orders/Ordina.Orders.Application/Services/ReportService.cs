@@ -488,6 +488,24 @@ public class ReportService : IReportService
         return FabricationLocationStatuses.Contains(locationStatus.Trim());
     }
 
+    /// <summary>
+    /// Metadatos UI de descuento por línea (persistidos en OrderProduct.Attributes por el frontend).
+    /// No son atributos de catálogo y no deben aparecer en reportes.
+    /// </summary>
+    private static readonly HashSet<string> InternalProductAttributeKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "discountUiType",
+        "discountUiCurrency",
+        "discountUiPercent",
+    };
+
+    private static bool IsInternalProductAttributeKey(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return true;
+        if (InternalProductAttributeKeys.Contains(key)) return true;
+        return key.StartsWith("discountUi", StringComparison.OrdinalIgnoreCase);
+    }
+
     // Método simplificado: ahora los valores ya son labels, solo necesitamos formatearlos
     private async Task<string> FormatProductDescriptionAsync(OrderProduct product)
     {
@@ -515,6 +533,9 @@ public class ReportService : IReportService
         {
             var attributeKey = kvp.Key;
             var attributeValue = kvp.Value;
+
+            if (IsInternalProductAttributeKey(attributeKey))
+                continue;
 
             // Ignorar atributos anidados de productos (formato: "attrId_productId")
             if (attributeKey.Contains("_") && attributeKey.Split('_').Length == 2)
@@ -719,6 +740,9 @@ public class ReportService : IReportService
                 var nestedStrings = new List<string>();
                 foreach (var nestedKvp in nestedAttributes)
                 {
+                    if (IsInternalProductAttributeKey(nestedKvp.Key))
+                        continue;
+
                     var nestedValue = FormatAttributeValue(nestedKvp.Value);
                     if (!string.IsNullOrWhiteSpace(nestedValue))
                     {
