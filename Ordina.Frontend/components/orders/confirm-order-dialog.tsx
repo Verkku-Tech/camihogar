@@ -729,6 +729,9 @@ export function ConfirmOrderDialog({
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="Efectivo">Efectivo</SelectItem>
+                              <SelectItem value="Efectivo contra Entrega">
+                                Efectivo contra Entrega
+                              </SelectItem>
                               <SelectItem value="Pago Móvil">
                                 Pago Móvil
                               </SelectItem>

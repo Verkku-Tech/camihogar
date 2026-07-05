@@ -8,7 +8,7 @@ import {
   normalizeExchangeRatesAtCreation,
   type ExchangeRatesAtCreationRaw,
 } from "@/lib/currency-utils";
-import { bsOnlyPaymentMethods } from "@/components/orders/constants";
+import { bsOnlyPaymentMethods, paymentMethodUsesCashForm } from "@/components/orders/constants";
 
 /** Misma tolerancia que en formularios de pedido para saldo y validación. */
 export const PAYMENT_BALANCE_EPSILON_BS = 0.1;
@@ -560,7 +560,7 @@ export function getPaymentCollectedBsAmount(
   ) {
     return det?.originalAmount ?? payment.amount ?? 0;
   }
-  if (payment.method === "Efectivo") {
+  if (paymentMethodUsesCashForm(payment.method)) {
     const cashCurrency = det?.cashCurrency ?? det?.originalCurrency;
     if (cashCurrency === "Bs") {
       return det?.cashReceived ?? det?.originalAmount ?? payment.amount ?? 0;
