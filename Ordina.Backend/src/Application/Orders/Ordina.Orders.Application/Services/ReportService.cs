@@ -851,7 +851,7 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 5, "Monto");
                 sl.SetCellValue(1, 6, "Moneda");
                 sl.SetCellValue(1, 7, "Monto en Bs");
-                sl.SetCellValue(1, 8, "Equiv. USD (tasa pedido)");
+                sl.SetCellValue(1, 8, "Equiv. USD (tasa cobro)");
                 sl.SetCellValue(1, 9, "Cuenta");
                 sl.SetCellValue(1, 10, "Referencia/Remitente");
                 sl.SetCellValue(1, 11, "Conciliado");
@@ -1048,7 +1048,11 @@ public class ReportService : IReportService
                     MontoOriginal = montoOriginal,
                     MonedaOriginal = monedaOriginal,
                     MontoBs = montoBs,
-                    MontoUsd = GetMontoUsdForBsPayment(order, monedaOriginal, montoBs),
+                    MontoUsd = GetMontoUsdForPaymentReportRow(
+                        order,
+                        order.PaymentDetails,
+                        monedaOriginal,
+                        montoBs),
                     Cuenta = cuenta,
                     Referencia = referencia,
                     OrderId = order.Id,
@@ -1227,7 +1231,11 @@ public class ReportService : IReportService
             MontoOriginal = montoOriginal,
             MonedaOriginal = monedaOriginal,
             MontoBs = montoBs,
-            MontoUsd = GetMontoUsdForBsPayment(order, monedaOriginal, montoBs),
+            MontoUsd = GetMontoUsdForPaymentReportRow(
+                order,
+                payment.PaymentDetails,
+                monedaOriginal,
+                montoBs),
             Cuenta = ResolveReportCuentaDisplay(monedaOriginal, cuentaRaw),
             Referencia = referencia,
             OrderId = order.Id,
@@ -1237,20 +1245,42 @@ public class ReportService : IReportService
         };
     }
 
-    /// <summary>Equivalente USD para filas en Bs usando la tasa del pedido (sin fallar si no hay tasa).</summary>
-    private decimal? GetMontoUsdForBsPayment(Order order, string monedaOriginal, decimal? montoBs)
+    /// <summary>
+    /// Equivalente USD para el reporte de pagos (alineado al detalle del pedido):
+    /// 1) originalAmount en USD si existe; 2) Bs ÷ exchangeRate del cobro; 3) Bs ÷ tasa del pedido (legacy).
+    /// </summary>
+    private decimal? GetMontoUsdForPaymentReportRow(
+        Order order,
+        PaymentDetails? paymentDetails,
+        string monedaOriginal,
+        decimal? montoBs)
     {
-        if (!string.Equals(monedaOriginal?.Trim(), "Bs", StringComparison.OrdinalIgnoreCase))
+        if (paymentDetails?.OriginalAmount is > 0 &&
+            string.Equals(paymentDetails.OriginalCurrency?.Trim(), "USD", StringComparison.OrdinalIgnoreCase))
+        {
+            return Math.Round(paymentDetails.OriginalAmount.Value, 2, MidpointRounding.AwayFromZero);
+        }
+
+        if (!IsBolivaresCurrency(monedaOriginal))
             return null;
+
         if (!montoBs.HasValue)
             return null;
 
+        if (paymentDetails?.ExchangeRate is > 0)
+        {
+            return Math.Round(
+                montoBs.Value / paymentDetails.ExchangeRate.Value,
+                2,
+                MidpointRounding.AwayFromZero);
+        }
+
         try
         {
-            var rate = GetUsdExchangeRate(order);
-            if (rate <= 0)
+            var orderRate = GetUsdExchangeRate(order);
+            if (orderRate <= 0)
                 return null;
-            return Math.Round(montoBs.Value / rate, 2, MidpointRounding.AwayFromZero);
+            return Math.Round(montoBs.Value / orderRate, 2, MidpointRounding.AwayFromZero);
         }
         catch
         {

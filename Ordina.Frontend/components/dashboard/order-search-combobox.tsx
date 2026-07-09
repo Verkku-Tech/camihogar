@@ -6,7 +6,7 @@ import { Search, Loader2 } from "lucide-react"
 import { getOrders, getClients, type Order, type Client } from "@/lib/storage"
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
 import { buildOrderSearchValue } from "@/lib/order-client-search"
-import { isReservationOrder } from "@/lib/order-document-types"
+import { isReservationOrder, isReservationType } from "@/lib/order-document-types"
 import { apiClient, type OrderSearchResultDto } from "@/lib/api-client"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
@@ -65,7 +65,6 @@ function filterOrdersOffline(
   if (q.length < 2) return []
 
   const filtered = orders.filter((order) => {
-    if (isReservationOrder(order)) return false
     if (onlineSellerFilter && !isTeamOrder(order)) return false
     const client = clientById.get(order.clientId)
     const haystack = buildOrderSearchValue(order, client).toLowerCase()
@@ -84,7 +83,11 @@ function filterOrdersOffline(
         id: order.id,
         orderNumber: order.orderNumber,
         clientName: order.clientName,
-        type: order.type === "Budget" ? "Budget" : "Order",
+        type: order.type === "Budget"
+          ? "Budget"
+          : isReservationOrder(order)
+            ? "Reservation"
+            : "Order",
         contactLine: clientContactLine(undefined, undefined, client),
       }
     })
@@ -181,8 +184,11 @@ export function OrderSearchCombobox() {
     router.push(`/pedidos/${orderNumber}`)
   }
 
-  const typeBadge = (type: string) =>
-    type === "Budget" ? "Presupuesto" : "Pedido"
+  const typeBadge = (type: string) => {
+    if (type === "Budget") return "Presupuesto"
+    if (type === "Reservation" || type === "PendingConfirmation") return "Reserva"
+    return "Pedido"
+  }
 
   return (
     <div className="relative hidden sm:block">
@@ -196,14 +202,14 @@ export function OrderSearchCombobox() {
           >
             <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate text-left">
-              {searchValue ? searchValue : "Buscar orden"}
+              {searchValue ? searchValue : "Buscar orden o reserva"}
             </span>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-80 p-0" align="start">
           <Command shouldFilter={false}>
             <CommandInput
-              placeholder="Buscar orden"
+              placeholder="Buscar orden o reserva"
               value={searchValue}
               onValueChange={setSearchValue}
             />
