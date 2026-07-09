@@ -128,7 +128,7 @@ export function MetricsCards({ metrics, isLoading = false }: MetricsCardsProps) 
   }> = [
     {
       title: "Total Ventas",
-      subtitle: "facturas generadas",
+      subtitle: "pedidos generados",
       value: metrics.completedOrders.toString(),
       change: metrics.completedOrdersChange,
       icon: TrendingUp,

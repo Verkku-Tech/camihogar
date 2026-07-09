@@ -598,11 +598,6 @@ public class OrderService : IOrderService
                 return;
             }
 
-            if (IsHeaderSearchExcluded(order))
-            {
-                return;
-            }
-
             merged.Add(order);
         }
 
@@ -651,10 +646,6 @@ public class OrderService : IOrderService
             .Select(o => MapSearchResult(o, clientCache.GetValueOrDefault(o.ClientId)))
             .ToList();
     }
-
-    private static bool IsHeaderSearchExcluded(Order order) =>
-        OrderDocumentTypes.IsReservationType(order.Type)
-        || OrderDocumentTypes.IsReservationOrderNumber(order.OrderNumber);
 
     private static OrderSearchResultDto MapSearchResult(Order order, Client? client)
     {

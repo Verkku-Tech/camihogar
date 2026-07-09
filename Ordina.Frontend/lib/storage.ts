@@ -4163,15 +4163,27 @@ function isDateInDashboardPeriod(
   return date >= periodStart && date <= periodEnd;
 }
 
-function orderCompletedInPeriod(
+/** Pedidos reales para KPIs de ventas (excluye presupuestos, reservas y cancelados). */
+function isDashboardSalesOrder(order: Order): boolean {
+  if (isBackendBudgetOrder(order) || isBackendReservationOrder(order)) {
+    return false;
+  }
+  if (order.status === "Cancelado") return false;
+  const t = (order.type || "order").trim().toLowerCase();
+  if (t !== "order") return false;
+  return true;
+}
+
+/** Pedido creado dentro del periodo del dashboard. */
+function orderCreatedInPeriod(
   order: Order,
   periodStart: Date,
   periodEnd: Date,
 ): boolean {
-  if (!isDashboardCompletedOrder(order)) return false;
-  const completionDate = getOrderCompletionDate(order);
-  if (!completionDate || Number.isNaN(completionDate.getTime())) return false;
-  return isDateInDashboardPeriod(completionDate, periodStart, periodEnd);
+  if (!isDashboardSalesOrder(order)) return false;
+  const created = new Date(order.createdAt);
+  if (Number.isNaN(created.getTime())) return false;
+  return isDateInDashboardPeriod(created, periodStart, periodEnd);
 }
 
 function getCommercialSubtotalUsd(order: Order): number {
@@ -4302,7 +4314,7 @@ export const calculateDashboardMetrics = async (
       break;
   }
 
-  // Período anterior (para variación de ventas completadas)
+  // Período anterior (para variación de ventas creadas en el periodo)
   const previousPeriodStart = new Date(periodStart);
   const previousPeriodEnd = new Date(periodStart);
   let periodDuration = now.getTime() - periodStart.getTime();
@@ -4311,29 +4323,29 @@ export const calculateDashboardMetrics = async (
   }
   previousPeriodStart.setTime(periodStart.getTime() - periodDuration);
 
-  const completedOrdersInPeriod = orders.filter((order) =>
-    orderCompletedInPeriod(order, periodStart, now),
+  const ordersCreatedInPeriod = orders.filter((order) =>
+    orderCreatedInPeriod(order, periodStart, now),
   );
 
-  const previousCompletedOrdersInPeriod = orders.filter((order) =>
-    orderCompletedInPeriod(order, previousPeriodStart, previousPeriodEnd),
+  const previousOrdersCreatedInPeriod = orders.filter((order) =>
+    orderCreatedInPeriod(order, previousPeriodStart, previousPeriodEnd),
   );
 
-  // 1. Total ventas (notas de despacho cerradas en el periodo)
-  const completedOrders = completedOrdersInPeriod.length;
-  const previousCompletedOrders = previousCompletedOrdersInPeriod.length;
+  // 1. Total ventas (pedidos generados en el periodo)
+  const completedOrders = ordersCreatedInPeriod.length;
+  const previousCompletedOrders = previousOrdersCreatedInPeriod.length;
   const completedOrdersChange = buildMetricChange(
     completedOrders,
     previousCompletedOrders,
     "higher_is_better",
   );
 
-  // 2. Total facturado (subtotal en USD comercial, pedidos completados en el periodo)
-  const totalInvoiced = completedOrdersInPeriod.reduce(
+  // 2. Total facturado (subtotal en USD comercial, pedidos creados en el periodo)
+  const totalInvoiced = ordersCreatedInPeriod.reduce(
     (sum, order) => sum + getCommercialSubtotalUsd(order),
     0,
   );
-  const previousTotalInvoiced = previousCompletedOrdersInPeriod.reduce(
+  const previousTotalInvoiced = previousOrdersCreatedInPeriod.reduce(
     (sum, order) => sum + getCommercialSubtotalUsd(order),
     0,
   );
@@ -4423,13 +4435,13 @@ export const calculateDashboardMetrics = async (
     );
   }, 0);
 
-  const completedOrdersTotalUsd = completedOrdersInPeriod.reduce(
+  const completedOrdersTotalUsd = ordersCreatedInPeriod.reduce(
     (sum, order) => sum + getCommercialTotalUsd(order),
     0,
   );
   const averageOrderValue =
     completedOrders > 0 ? completedOrdersTotalUsd / completedOrders : 0;
-  const previousCompletedOrdersTotalUsd = previousCompletedOrdersInPeriod.reduce(
+  const previousCompletedOrdersTotalUsd = previousOrdersCreatedInPeriod.reduce(
     (sum, order) => sum + getCommercialTotalUsd(order),
     0,
   );
