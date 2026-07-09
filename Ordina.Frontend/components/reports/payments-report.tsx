@@ -68,14 +68,25 @@ function computeReportMontoBs(
   return montoOriginal * (exchangeRate ?? 1)
 }
 
-/** USD equivalente para filas en Bs: tasa del abono, si no la del pedido al crear. */
+/** USD equivalente para el reporte (alineado al detalle del pedido y al backend). */
 function computeMontoUsdForBsPayment(
   order: Order,
   monedaOriginal: string,
   montoBs: number | null,
   paymentExchangeRate?: number | null,
+  originalAmount?: number | null,
+  originalCurrency?: string | null,
 ): number | undefined {
+  if (
+    originalAmount != null &&
+    originalAmount > 0 &&
+    (originalCurrency || "").trim().toUpperCase() === "USD"
+  ) {
+    return Math.round(originalAmount * 100) / 100
+  }
+
   if (monedaOriginal !== "Bs" || montoBs == null) return undefined
+
   const ex = order.exchangeRatesAtCreation as
     | { USD?: { rate: number }; usd?: { rate: number } }
     | undefined
@@ -603,6 +614,8 @@ export function PaymentsReport() {
                 monedaOriginal,
                 montoBs,
                 payment.paymentDetails?.exchangeRate,
+                payment.paymentDetails?.originalAmount,
+                payment.paymentDetails?.originalCurrency,
               ),
               referencia: referencia,
               cuenta: resolveReportCuentaDisplay(monedaOriginal, cuentaRaw),
@@ -678,6 +691,8 @@ export function PaymentsReport() {
               monedaOriginal,
               montoBs,
               order.paymentDetails?.exchangeRate,
+              order.paymentDetails?.originalAmount,
+              order.paymentDetails?.originalCurrency,
             ),
             referencia: referencia,
             cuenta: resolveReportCuentaDisplay(monedaOriginal, cuentaRaw),

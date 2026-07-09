@@ -43,7 +43,7 @@ public interface IOrderRepository
 
     Task<Order?> GetByOrderNumberAsync(string orderNumber);
 
-    /// <summary>Búsqueda para header: regex en número/cliente + clientIds coincidentes; excluye reservas.</summary>
+    /// <summary>Búsqueda para header: regex en número/cliente + clientIds coincidentes (incluye reservas RES-/PCF-).</summary>
     Task<IReadOnlyList<Order>> SearchHeaderAsync(
         string query,
         IReadOnlyCollection<string>? matchingClientIds,

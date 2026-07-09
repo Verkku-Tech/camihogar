@@ -235,10 +235,6 @@ public class OrderRepository : IOrderRepository
         }
 
         var fb = Builders<Order>.Filter;
-        var excludeReservations = fb.And(
-            fb.Nin(o => o.Type, new[] { "Reservation", "PendingConfirmation" }),
-            fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^RES-", "i"))),
-            fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^PCF-", "i"))));
 
         var escaped = Regex.Escape(query.Trim());
         var regex = new BsonRegularExpression(escaped, "i");
@@ -254,7 +250,7 @@ public class OrderRepository : IOrderRepository
             orFilters.Add(fb.In(o => o.ClientId, matchingClientIds));
         }
 
-        var searchFilter = fb.And(excludeReservations, fb.Or(orFilters));
+        var searchFilter = fb.Or(orFilters);
         var filter = CombineFilters(searchFilter, onlineSellerTeamIds);
 
         return await _collection.Find(filter)
