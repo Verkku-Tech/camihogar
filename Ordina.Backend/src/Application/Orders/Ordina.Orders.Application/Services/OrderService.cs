@@ -63,6 +63,106 @@ public class OrderService : IOrderService
                 "No autorizado a modificar pedidos de otros vendedores online.");
     }
 
+    private static readonly JsonSerializerOptions ConciliationCompareJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+    };
+
+    private static List<PartialPayment> GetActivePaymentsFromOrder(Order order)
+    {
+        if (order.PartialPayments is { Count: > 0 })
+            return order.PartialPayments;
+        if (order.MixedPayments is { Count: > 0 })
+            return order.MixedPayments;
+        return new List<PartialPayment>();
+    }
+
+    private static List<PartialPaymentDto> GetIncomingPaymentsFromUpdateDto(UpdateOrderDto dto)
+    {
+        if (dto.PartialPayments is { Count: > 0 })
+            return dto.PartialPayments;
+        if (dto.MixedPayments is { Count: > 0 })
+            return dto.MixedPayments;
+        if (dto.PartialPayments != null)
+            return dto.PartialPayments;
+        if (dto.MixedPayments != null)
+            return dto.MixedPayments;
+        return new List<PartialPaymentDto>();
+    }
+
+    private static bool UpdateDtoTouchesPayments(UpdateOrderDto dto) =>
+        dto.PartialPayments != null || dto.MixedPayments != null || dto.PaymentDetails != null;
+
+    private string BuildPaymentConciliationSnapshot(PartialPayment payment)
+    {
+        var dto = MapPartialPaymentToDto(payment);
+        if (dto.PaymentDetails != null)
+            dto.PaymentDetails.IsConciliated = false;
+        return JsonSerializer.Serialize(dto, ConciliationCompareJsonOptions);
+    }
+
+    private string BuildOrderPaymentDetailsConciliationSnapshot(PaymentDetails details)
+    {
+        var dto = MapPaymentDetailsToDto(details);
+        dto.IsConciliated = false;
+        return JsonSerializer.Serialize(dto, ConciliationCompareJsonOptions);
+    }
+
+    private void EnsureConciliatedPaymentsNotModified(
+        Order existing,
+        UpdateOrderDto updateDto,
+        bool callerHasOrdersUpdate)
+    {
+        if (callerHasOrdersUpdate)
+            return;
+
+        if (!UpdateDtoTouchesPayments(updateDto))
+            return;
+
+        var existingPayments = GetActivePaymentsFromOrder(existing);
+        if (existingPayments.Count == 0)
+        {
+            if (existing.PaymentDetails?.IsConciliated == true && updateDto.PaymentDetails != null)
+            {
+                var incomingDetails = MapPaymentDetailsFromDto(updateDto.PaymentDetails);
+                if (BuildOrderPaymentDetailsConciliationSnapshot(existing.PaymentDetails)
+                    != BuildOrderPaymentDetailsConciliationSnapshot(incomingDetails))
+                {
+                    throw new InvalidOperationException(
+                        "No se puede modificar un pago conciliado.");
+                }
+            }
+            return;
+        }
+
+        if (updateDto.PartialPayments == null && updateDto.MixedPayments == null)
+            return;
+
+        var incomingPayments = GetIncomingPaymentsFromUpdateDto(updateDto)
+            .Select(MapPartialPaymentFromDto)
+            .ToList();
+
+        foreach (var original in existingPayments)
+        {
+            if (original.PaymentDetails?.IsConciliated != true)
+                continue;
+
+            var next = incomingPayments.FirstOrDefault(p => p.Id == original.Id);
+            if (next == null)
+            {
+                throw new InvalidOperationException(
+                    "No se puede eliminar un pago ya conciliado.");
+            }
+
+            if (BuildPaymentConciliationSnapshot(original) != BuildPaymentConciliationSnapshot(next))
+            {
+                throw new InvalidOperationException(
+                    "No se puede modificar un pago conciliado.");
+            }
+        }
+    }
+
     private static bool IsAdministratorOrSuperAdministrator(string? role)
     {
         if (string.IsNullOrWhiteSpace(role)) return false;
@@ -1029,7 +1129,8 @@ public class OrderService : IOrderService
         bool callerHasDispatchSendToRoute = false,
         bool callerHasDispatchConfirmDelivery = false,
         bool callerHasManufacturingManage = false,
-        bool callerHasInventoryMovementsView = false)
+        bool callerHasInventoryMovementsView = false,
+        bool callerHasOrdersUpdate = false)
     {
         try
         {
@@ -1060,6 +1161,11 @@ public class OrderService : IOrderService
                 callerRole,
                 callerHasManufacturingManage,
                 callerHasInventoryMovementsView);
+
+            EnsureConciliatedPaymentsNotModified(
+                existingOrder,
+                updateDto,
+                callerHasOrdersUpdate);
 
             var oldSnapshot = OrderDeepClone.Clone(existingOrder);
 
