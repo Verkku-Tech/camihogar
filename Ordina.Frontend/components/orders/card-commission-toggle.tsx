@@ -14,6 +14,7 @@ interface CardCommissionToggleProps {
   amountBs: number;
   exchangeRate?: number;
   onAppliedChange: (applied: boolean) => void;
+  disabled?: boolean;
 }
 
 export function CardCommissionToggle({
@@ -21,6 +22,7 @@ export function CardCommissionToggle({
   amountBs,
   exchangeRate,
   onAppliedChange,
+  disabled = false,
 }: CardCommissionToggleProps) {
   const commissionBs = applied ? computeCardCommissionBs(amountBs) : 0;
   const commissionUsd =
@@ -34,6 +36,7 @@ export function CardCommissionToggle({
         <Checkbox
           id="card-commission-applied"
           checked={applied}
+          disabled={disabled}
           onCheckedChange={(checked) => onAppliedChange(checked === true)}
         />
         <div className="space-y-1 leading-none">

@@ -19,6 +19,7 @@ interface ImageUploaderProps {
   maxWidth?: number; // Ancho máximo de la imagen comprimida
   maxHeight?: number; // Alto máximo de la imagen comprimida
   isSensitive?: boolean; // Para comprobantes de pago
+  disabled?: boolean;
 }
 
 export function ImageUploader({ 
@@ -31,7 +32,8 @@ export function ImageUploader({
   compressionQuality = 0.7, // 70% de calidad (balance entre tamaño y calidad)
   maxWidth = 1920, // Máximo 1920px de ancho
   maxHeight = 1920, // Máximo 1920px de alto
-  isSensitive = false // Por defecto false, true para comprobantes
+  isSensitive = false, // Por defecto false, true para comprobantes
+  disabled = false,
 }: ImageUploaderProps) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -400,7 +402,7 @@ export function ImageUploader({
       'application/pdf': ['.pdf']
     },
     multiple: true,
-    disabled: uploading || images.length >= maxImages
+    disabled: disabled || uploading || images.length >= maxImages
   })
 
   const removeImage = (imageId: string) => {
@@ -421,7 +423,7 @@ export function ImageUploader({
         {...getRootProps()}
         className={cn(
           "relative border-2 border-dashed rounded-lg p-10 transition-colors flex flex-col items-center justify-center",
-          (uploading || images.length >= maxImages) 
+          (disabled || uploading || images.length >= maxImages) 
             ? "opacity-50 cursor-not-allowed" 
             : "cursor-pointer",
           isDragActive 
@@ -501,6 +503,7 @@ export function ImageUploader({
                     />
                   </div>
                 )}
+                {!disabled && (
                 <button
                   onClick={() => removeImage(image.id)}
                   className="absolute top-1 right-1 bg-destructive text-destructive-foreground p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
@@ -508,6 +511,7 @@ export function ImageUploader({
                 >
                   <X className="w-4 h-4" />
                 </button>
+                )}
                 <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1">
                   <div className="truncate flex items-center gap-1">
                     {isPDF && <FileText className="w-3 h-3" />}

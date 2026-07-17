@@ -81,6 +81,7 @@ import {
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility";
 import { useClientSearchIds } from "@/hooks/use-client-search-ids";
 import { toLocalDateKey } from "@/lib/date-utils";
+import { textIncludesForSearch } from "@/lib/text-search";
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -378,11 +379,10 @@ export default function PedidosPage() {
     return orders.filter((order) => {
       if (onlineSellerFilter && !isTeamOrder(order)) return false;
 
-      const on = (order.orderNumber ?? "").toLowerCase();
       const matchesSearch =
-        on.includes(searchTerm.toLowerCase()) ||
-        order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.vendorName.toLowerCase().includes(searchTerm.toLowerCase());
+        textIncludesForSearch(order.orderNumber ?? "", searchTerm) ||
+        textIncludesForSearch(order.clientName, searchTerm) ||
+        textIncludesForSearch(order.vendorName, searchTerm);
 
       const matchesVendor =
         filters.vendor === "all" || order.vendorName === filters.vendor;
@@ -397,11 +397,10 @@ export default function PedidosPage() {
       const matchesDateFrom = !rangeFrom || orderDay >= rangeFrom;
       const matchesDateTo = !rangeTo || orderDay <= rangeTo;
 
-      const q = clientSearch.trim().toLowerCase();
       const matchesClient =
-        q === "" ||
+        clientSearch.trim() === "" ||
         matchingClientIds?.has(order.clientId) ||
-        order.clientName.toLowerCase().includes(q);
+        textIncludesForSearch(order.clientName, clientSearch);
 
       const isConvertedBudget =
         order.type === "budget" &&

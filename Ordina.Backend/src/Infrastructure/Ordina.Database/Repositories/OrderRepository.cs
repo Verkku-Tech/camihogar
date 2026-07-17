@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Ordina.Database.Entities.Order;
+using Ordina.Database.Helpers;
 using Ordina.Database.MongoContext;
 
 namespace Ordina.Database.Repositories;
@@ -111,8 +112,7 @@ public class OrderRepository : IOrderRepository
 
         if (!string.IsNullOrWhiteSpace(listFilter.Search))
         {
-            var escaped = Regex.Escape(listFilter.Search.Trim());
-            var regex = new BsonRegularExpression(escaped, "i");
+            var regex = AccentInsensitiveRegex.ToBsonRegex(listFilter.Search.Trim());
             filters.Add(fb.Or(
                 fb.Regex(o => o.OrderNumber, regex),
                 fb.Regex(o => o.ClientName, regex),
@@ -122,8 +122,7 @@ public class OrderRepository : IOrderRepository
         if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
         {
             var trimmed = listFilter.ClientSearch.Trim();
-            var escaped = Regex.Escape(trimmed);
-            var nameRegex = new BsonRegularExpression(escaped, "i");
+            var nameRegex = AccentInsensitiveRegex.ToBsonRegex(trimmed);
             var clientOr = new List<FilterDefinition<Order>>
             {
                 fb.Regex(o => o.ClientName, nameRegex),
@@ -236,8 +235,7 @@ public class OrderRepository : IOrderRepository
 
         var fb = Builders<Order>.Filter;
 
-        var escaped = Regex.Escape(query.Trim());
-        var regex = new BsonRegularExpression(escaped, "i");
+        var regex = AccentInsensitiveRegex.ToBsonRegex(query.Trim());
 
         var orFilters = new List<FilterDefinition<Order>>
         {

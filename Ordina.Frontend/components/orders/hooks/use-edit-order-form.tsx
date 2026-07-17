@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useCurrency } from "@/contexts/currency-context";
 import { toast } from "sonner";
 import {
@@ -72,6 +72,64 @@ import {
   mergeDiscountUiIntoAttributes,
   readDiscountUiFromProduct,
 } from "@/lib/product-discount-ui";
+
+const DELIVERY_TOTAL_EPSILON = 1e-6;
+
+/**
+ * El total intermedio puede ser solo `deliveryCost` antes de hidratar líneas;
+ * capar el descuento ahí (p. ej. 71 → 11) corrompe el formulario.
+ */
+function areTotalsReadyForGeneralDiscountCap(
+  initialOrder: Order | null,
+  selectedProducts: OrderProduct[],
+  productSubtotalBase: number,
+  productSurchargeTotal: number,
+  totalBeforeGeneralDiscount: number,
+  deliveryCost: number,
+): boolean {
+  if (!initialOrder) return true;
+
+  const expectedLines = initialOrder.products?.length ?? 0;
+  if (expectedLines > 0 && selectedProducts.length !== expectedLines) {
+    return false;
+  }
+  if (
+    expectedLines > 0 &&
+    productSubtotalBase <= DELIVERY_TOTAL_EPSILON &&
+    productSurchargeTotal <= DELIVERY_TOTAL_EPSILON
+  ) {
+    return false;
+  }
+  return totalBeforeGeneralDiscount > deliveryCost + DELIVERY_TOTAL_EPSILON;
+}
+
+function resolveHydratedGeneralDiscountFromOrder(
+  order: Order,
+): { type: "monto" | "porcentaje"; value: number; currency: Currency } | null {
+  if (!order.generalDiscountAmount || order.generalDiscountAmount <= 0) {
+    return null;
+  }
+  const pct = order.generalDiscountPercent;
+  const pctValid =
+    order.generalDiscountType === "porcentaje" &&
+    pct != null &&
+    Number.isFinite(pct) &&
+    pct > 0 &&
+    pct <= 100;
+  if (pctValid) {
+    return { type: "porcentaje", value: pct, currency: getOrderBaseCurrency(order) };
+  }
+  const base = getOrderBaseCurrency(order);
+  return {
+    type: "monto",
+    value: normalizeMonetaryAmountFromLegacy(
+      order.generalDiscountAmount,
+      base,
+      commercialRatesToExchangeRatesInput(getCommercialRatesFromOrder(order)),
+    ),
+    currency: base,
+  };
+}
 
 export interface OrderFormData {
   vendor: string;
@@ -408,6 +466,7 @@ export function useEditOrderForm(
     }
     return currencies.find((c) => c !== "Bs") || preferredCurrency;
   });
+  const totalsReadyForDiscountCapRef = useRef(false);
 
   // Inicializar monedas seleccionadas
   const [selectedCurrencies, setSelectedCurrencies] = useState<Currency[]>(
@@ -620,33 +679,14 @@ export function useEditOrderForm(
       );
 
       // 7. Descuentos y observaciones
-      if (
-        initialOrder.generalDiscountAmount &&
-        initialOrder.generalDiscountAmount > 0
-      ) {
-        const pct = initialOrder.generalDiscountPercent;
-        const pctValid =
-          initialOrder.generalDiscountType === "porcentaje" &&
-          pct != null &&
-          Number.isFinite(pct) &&
-          pct > 0 &&
-          pct <= 100;
-        if (pctValid) {
-          setGeneralDiscountType("porcentaje");
-          setGeneralDiscount(pct);
-        } else {
-          const base = getOrderBaseCurrency(initialOrder);
-          setGeneralDiscountCurrency(base);
-          setGeneralDiscount(
-            normalizeMonetaryAmountFromLegacy(
-              initialOrder.generalDiscountAmount,
-              base,
-              commercialRatesToExchangeRatesInput(
-                getCommercialRatesFromOrder(initialOrder),
-              ),
-            ),
-          );
-          setGeneralDiscountType("monto");
+      const hydratedDiscount = resolveHydratedGeneralDiscountFromOrder(
+        initialOrder,
+      );
+      if (hydratedDiscount) {
+        setGeneralDiscountType(hydratedDiscount.type);
+        setGeneralDiscount(hydratedDiscount.value);
+        if (hydratedDiscount.type === "monto") {
+          setGeneralDiscountCurrency(hydratedDiscount.currency);
         }
       }
       setGeneralObservations(initialOrder.observations || "");
@@ -819,7 +859,6 @@ export function useEditOrderForm(
   }, [deliveryServices, formBaseCurrency, commercialRatesInput]);
 
   /** Evita duplicar envío si coexisten servicios y `order.deliveryCost` por datos inconsistentes. */
-  const DELIVERY_TOTAL_EPSILON = 1e-6;
   const deliveryCost = useMemo(() => {
     const fromServices = calculateDeliveryCost();
     if (fromServices > DELIVERY_TOTAL_EPSILON) return fromServices;
@@ -968,7 +1007,35 @@ export function useEditOrderForm(
 
   const totalBeforeGeneralDiscount =
     subtotal + taxAmount + productSurchargeTotal + deliveryCost;
+
+  const totalsReadyForGeneralDiscountCap = useMemo(
+    () =>
+      areTotalsReadyForGeneralDiscountCap(
+        initialOrder,
+        selectedProducts,
+        productSubtotalBase,
+        productSurchargeTotal,
+        totalBeforeGeneralDiscount,
+        deliveryCost,
+      ),
+    [
+      initialOrder,
+      selectedProducts,
+      productSubtotalBase,
+      productSurchargeTotal,
+      totalBeforeGeneralDiscount,
+      deliveryCost,
+    ],
+  );
+
   const generalDiscountAmount = useMemo(() => {
+    const persistedAmount = initialOrder?.generalDiscountAmount ?? 0;
+    if (
+      !totalsReadyForGeneralDiscountCap &&
+      persistedAmount > DELIVERY_TOTAL_EPSILON
+    ) {
+      return persistedAmount;
+    }
     if (generalDiscountType === "porcentaje") {
       const p = Math.min(Math.max(generalDiscount, 0), 100);
       return (totalBeforeGeneralDiscount * p) / 100;
@@ -981,6 +1048,8 @@ export function useEditOrderForm(
     );
     return Math.min(Math.max(inBase, 0), totalBeforeGeneralDiscount);
   }, [
+    totalsReadyForGeneralDiscountCap,
+    initialOrder?.generalDiscountAmount,
     generalDiscountType,
     generalDiscount,
     generalDiscountCurrency,
@@ -988,10 +1057,18 @@ export function useEditOrderForm(
     commercialRatesInput,
     totalBeforeGeneralDiscount,
   ]);
-  const total = Math.max(
-    totalBeforeGeneralDiscount - generalDiscountAmount,
-    0,
-  );
+
+  const total = useMemo(() => {
+    if (!totalsReadyForGeneralDiscountCap && initialOrder) {
+      return initialOrder.total;
+    }
+    return Math.max(totalBeforeGeneralDiscount - generalDiscountAmount, 0);
+  }, [
+    totalsReadyForGeneralDiscountCap,
+    initialOrder,
+    totalBeforeGeneralDiscount,
+    generalDiscountAmount,
+  ]);
 
   const orderExchangeRatesSnapshot = useMemo(() => {
     if (initialOrder && open) {
@@ -1515,6 +1592,9 @@ export function useEditOrderForm(
 
   // Limitar descuento general (Bs en monto; 0–100 en porcentaje)
   useEffect(() => {
+    if (!totalsReadyForGeneralDiscountCap) {
+      return;
+    }
     setGeneralDiscount((prev) => {
       const lo = Math.max(prev, 0);
       if (generalDiscountType === "porcentaje") {
@@ -1522,7 +1602,49 @@ export function useEditOrderForm(
       }
       return Math.min(lo, totalBeforeGeneralDiscount);
     });
-  }, [totalBeforeGeneralDiscount, generalDiscountType]);
+  }, [
+    totalBeforeGeneralDiscount,
+    generalDiscountType,
+    totalsReadyForGeneralDiscountCap,
+  ]);
+
+  // Restaurar descuento hidratado cuando el total deja de ser solo delivery
+  useEffect(() => {
+    if (!open) {
+      totalsReadyForDiscountCapRef.current = false;
+      return;
+    }
+    if (!totalsReadyForGeneralDiscountCap) {
+      totalsReadyForDiscountCapRef.current = false;
+      return;
+    }
+    if (totalsReadyForDiscountCapRef.current) {
+      return;
+    }
+    totalsReadyForDiscountCapRef.current = true;
+
+    if (!initialOrder || !commercialTotalsFrozen) {
+      return;
+    }
+
+    const hydratedDiscount = resolveHydratedGeneralDiscountFromOrder(
+      initialOrder,
+    );
+    if (!hydratedDiscount) {
+      return;
+    }
+
+    setGeneralDiscountType(hydratedDiscount.type);
+    setGeneralDiscount(hydratedDiscount.value);
+    if (hydratedDiscount.type === "monto") {
+      setGeneralDiscountCurrency(hydratedDiscount.currency);
+    }
+  }, [
+    open,
+    totalsReadyForGeneralDiscountCap,
+    initialOrder,
+    commercialTotalsFrozen,
+  ]);
 
   return {
     currentStep,

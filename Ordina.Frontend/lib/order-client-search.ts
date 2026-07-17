@@ -1,4 +1,5 @@
 import type { Client, Order } from "@/lib/storage"
+import { textIncludesForSearch } from "@/lib/text-search"
 
 /** Solo dígitos; alinea búsqueda con teléfonos y CI formateados. */
 export function digitsOnly(s: string): string {
@@ -63,16 +64,16 @@ export function buildClientFilterHaystack(
 
 /** Filtra clientes en cache local (offline) por nombre, apodo, email, teléfono, CI. */
 export function filterClientsLocal(clients: Client[], q: string): Client[] {
-  const term = q.trim().toLowerCase()
-  if (!term) return clients
+  const trimmed = q.trim()
+  if (!trimmed) return clients
   const qDigits = digitsOnly(q)
   return clients.filter((client) => {
-    if (client.nombreRazonSocial.toLowerCase().includes(term)) return true
-    if (client.apodo?.toLowerCase().includes(term)) return true
-    if (client.email?.toLowerCase().includes(term)) return true
-    if (client.rutId.toLowerCase().includes(term)) return true
-    if (client.telefono?.includes(q.trim())) return true
-    if (client.telefono2?.includes(q.trim())) return true
+    if (textIncludesForSearch(client.nombreRazonSocial, trimmed)) return true
+    if (client.apodo && textIncludesForSearch(client.apodo, trimmed)) return true
+    if (client.email && textIncludesForSearch(client.email, trimmed)) return true
+    if (textIncludesForSearch(client.rutId, trimmed)) return true
+    if (client.telefono?.includes(trimmed)) return true
+    if (client.telefono2?.includes(trimmed)) return true
     if (qDigits !== "") {
       const hayDigits = [
         client.telefono,

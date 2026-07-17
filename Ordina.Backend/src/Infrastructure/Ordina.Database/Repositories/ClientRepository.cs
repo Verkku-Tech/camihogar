@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Ordina.Database.Entities.Client;
+using Ordina.Database.Helpers;
 using Ordina.Database.MongoContext;
 
 namespace Ordina.Database.Repositories;
@@ -58,7 +59,7 @@ public class ClientRepository : IClientRepository
         }
 
         var trimmed = search.Trim();
-        var regex = new BsonRegularExpression(Regex.Escape(trimmed), "i");
+        var regex = AccentInsensitiveRegex.ToBsonRegex(trimmed);
         var filters = new List<FilterDefinition<Client>>
         {
             Builders<Client>.Filter.Regex(x => x.NombreRazonSocial, regex),
