@@ -29,7 +29,10 @@ import { DeliveryServiceCostInput } from "../delivery-service-cost-input";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import { toast } from "sonner";
 import { type PartialPayment, type ProductImage } from "@/lib/storage";
-import { PAYMENT_BALANCE_EPSILON_USD } from "@/lib/order-payments";
+import {
+  PAYMENT_BALANCE_EPSILON_USD,
+  isConciliatedPaymentLocked,
+} from "@/lib/order-payments";
 import {
   todayPaymentDateYyyyMmDd,
   validatePaymentDateNotFuture,
@@ -168,6 +171,8 @@ interface Step3OrderDetailsProps {
   paymentsOnly?: boolean;
   /** Si false, no se muestra eliminar línea de pago (p. ej. vendedores sin orders.delete). Por defecto true. */
   allowRemovePayment?: boolean;
+  /** Si true, admin (orders.update) puede editar pagos marcados como conciliados. */
+  canEditConciliatedPayments?: boolean;
 }
 
 export function Step3OrderDetails({
@@ -182,6 +187,7 @@ export function Step3OrderDetails({
   updatePaymentImages,
   paymentsOnly = false,
   allowRemovePayment = true,
+  canEditConciliatedPayments = false,
 }: Step3OrderDetailsProps) {
   const generalPctFocusedRef = useRef(false);
   const [generalPctDraft, setGeneralPctDraft] = useState("");
@@ -245,8 +251,10 @@ export function Step3OrderDetails({
     payment: PartialPayment,
     dateValue: string,
   ) => {
-    if (payment.paymentDetails?.isConciliated) {
-      toast.error("No se puede cambiar la fecha de un pago conciliado.");
+    if (
+      isConciliatedPaymentLocked(payment, canEditConciliatedPayments)
+    ) {
+      toast.error("No se puede modificar un pago conciliado.");
       return;
     }
     if (dateValue && !validatePaymentDateNotFuture(dateValue)) {
@@ -936,7 +944,12 @@ export function Step3OrderDetails({
                   </p>
                 )}
 
-                {orderForm.payments.map((payment) => (
+                {orderForm.payments.map((payment) => {
+                  const paymentLocked = isConciliatedPaymentLocked(
+                    payment,
+                    canEditConciliatedPayments,
+                  );
+                  return (
                   <fieldset
                     key={payment.id}
                     className="space-y-3 sm:space-y-4 p-3 sm:p-4 border rounded-lg min-w-0 border-border"
@@ -947,6 +960,7 @@ export function Step3OrderDetails({
                         <Label className="text-xs">Método</Label>
                         <Select
                           value={payment.method}
+                          disabled={paymentLocked}
                           onValueChange={(value) => {
                             updatePayment?.(payment.id, "method", value);
                             // Si se cambia a método digital (AirTM, Binance, Facebank, etc.), establecer automáticamente USD
@@ -1119,7 +1133,7 @@ export function Step3OrderDetails({
                         <Input
                           type="date"
                           value={paymentDateToInputValue(payment.date)}
-                          disabled={!!payment.paymentDetails?.isConciliated}
+                          disabled={paymentLocked}
                           onChange={(e) => {
                             void handlePaymentDateChange(
                               payment,
@@ -1189,6 +1203,7 @@ export function Step3OrderDetails({
                               id={`pagomovil-amount-${payment.id}`}
                               type="number"
                               step="0.01"
+                              disabled={paymentLocked}
                               value={payment.amount === 0 ? "" : payment.amount}
                               onChange={(e) => {
                                 const inputValue =
@@ -1225,6 +1240,7 @@ export function Step3OrderDetails({
                             </Label>
                             <Input
                               id={`pagomovil-reference-${payment.id}`}
+                              disabled={paymentLocked}
                               value={
                                 payment.paymentDetails?.pagomovilReference || ""
                               }
@@ -1246,6 +1262,7 @@ export function Step3OrderDetails({
                               Banco Receptor *
                             </Label>
                             <Select
+                              disabled={paymentLocked}
                               value={
                                 payment.paymentDetails?.accountId || undefined
                               }
@@ -1298,6 +1315,7 @@ export function Step3OrderDetails({
                           {updatePaymentImages && (
                             <ImageUploader
                               images={payment.images || []}
+                              disabled={paymentLocked}
                               onImagesChange={(images) =>
                                 updatePaymentImages(payment.id, images)
                               }
@@ -1339,6 +1357,7 @@ export function Step3OrderDetails({
                               id={`transferencia-amount-${payment.id}`}
                               type="number"
                               step="0.01"
+                              disabled={paymentLocked}
                               value={payment.amount === 0 ? "" : payment.amount}
                               onChange={(e) => {
                                 const inputValue =
@@ -1374,6 +1393,7 @@ export function Step3OrderDetails({
                               Banco Receptor *
                             </Label>
                             <Select
+                              disabled={paymentLocked}
                               value={
                                 payment.paymentDetails?.accountId || undefined
                               }
@@ -1425,6 +1445,7 @@ export function Step3OrderDetails({
                             </Label>
                             <Input
                               id={`transferencia-reference-${payment.id}`}
+                              disabled={paymentLocked}
                               value={
                                 payment.paymentDetails
                                   ?.transferenciaReference || ""
@@ -1449,6 +1470,7 @@ export function Step3OrderDetails({
                           {updatePaymentImages && (
                             <ImageUploader
                               images={payment.images || []}
+                              disabled={paymentLocked}
                               onImagesChange={(images) =>
                                 updatePaymentImages(payment.id, images)
                               }
@@ -1491,6 +1513,7 @@ export function Step3OrderDetails({
                               id={`tdd-amount-${payment.id}`}
                               type="number"
                               step="0.01"
+                              disabled={paymentLocked}
                               value={payment.amount === 0 ? "" : payment.amount}
                               onChange={(e) => {
                                 const inputValue =
@@ -1527,6 +1550,7 @@ export function Step3OrderDetails({
                               Banco *
                             </Label>
                             <Select
+                              disabled={paymentLocked}
                               value={payment.paymentDetails?.bank || undefined}
                               onValueChange={(value) => {
                                 updatePaymentDetails?.(
@@ -1566,6 +1590,7 @@ export function Step3OrderDetails({
                           {updatePaymentImages && (
                             <ImageUploader
                               images={payment.images || []}
+                              disabled={paymentLocked}
                               onImagesChange={(images) =>
                                 updatePaymentImages(payment.id, images)
                               }
@@ -1608,6 +1633,7 @@ export function Step3OrderDetails({
                               id={`tdc-amount-${payment.id}`}
                               type="number"
                               step="0.01"
+                              disabled={paymentLocked}
                               value={payment.amount === 0 ? "" : payment.amount}
                               onChange={(e) => {
                                 const inputValue =
@@ -1650,6 +1676,7 @@ export function Step3OrderDetails({
                               exchangeRate={
                                 payment.paymentDetails?.exchangeRate
                               }
+                              disabled={paymentLocked}
                               onAppliedChange={(applied) => {
                                 syncCardCommissionForPayment(
                                   payment.id,
@@ -1669,6 +1696,7 @@ export function Step3OrderDetails({
                               Banco *
                             </Label>
                             <Select
+                              disabled={paymentLocked}
                               value={payment.paymentDetails?.bank || undefined}
                               onValueChange={(value) => {
                                 updatePaymentDetails?.(
@@ -1708,6 +1736,7 @@ export function Step3OrderDetails({
                           {updatePaymentImages && (
                             <ImageUploader
                               images={payment.images || []}
+                              disabled={paymentLocked}
                               onImagesChange={(images) =>
                                 updatePaymentImages(payment.id, images)
                               }
@@ -1753,6 +1782,7 @@ export function Step3OrderDetails({
                                     Moneda *
                                   </Label>
                                   <Select
+                                    disabled={paymentLocked}
                                     value={
                                       payment.currency ||
                                       orderForm.getDefaultCurrencyFromSelection()
@@ -1911,6 +1941,7 @@ export function Step3OrderDetails({
                                         <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-md border">
                                           <Checkbox
                                             id={`custom-rate-${payment.id}`}
+                                            disabled={paymentLocked}
                                             checked={
                                               !!payment.paymentDetails
                                                 ?.useCustomRate
@@ -1993,6 +2024,7 @@ export function Step3OrderDetails({
                                           id={`${payment.method.toLowerCase().replace(/\s+/g, "-")}-amount-${payment.id}`}
                                           type="number"
                                           step="0.01"
+                                          disabled={paymentLocked}
                                           value={(() => {
                                             if (payment.amount === 0) return "";
                                             if (
@@ -2139,6 +2171,7 @@ export function Step3OrderDetails({
                                               id={`custom-bs-amount-${payment.id}`}
                                               type="number"
                                               step="0.01"
+                                              disabled={paymentLocked}
                                               value={
                                                 payment.amount === 0
                                                   ? ""
@@ -2196,6 +2229,7 @@ export function Step3OrderDetails({
                                   *
                                 </Label>
                                 <Select
+                                  disabled={paymentLocked}
                                   value={
                                     payment.paymentDetails?.accountId ||
                                     undefined
@@ -2274,6 +2308,7 @@ export function Step3OrderDetails({
                                 <Input
                                   id={`zelle-envia-${payment.id}`}
                                   type="text"
+                                  disabled={paymentLocked}
                                   value={payment.paymentDetails?.envia || ""}
                                   onChange={(e) =>
                                     updatePaymentDetails?.(
@@ -2295,6 +2330,7 @@ export function Step3OrderDetails({
                                 </Label>
                                 <ImageUploader
                                   images={payment.images || []}
+                                  disabled={paymentLocked}
                                   onImagesChange={(images) =>
                                     updatePaymentImages(payment.id, images)
                                   }
@@ -2326,6 +2362,7 @@ export function Step3OrderDetails({
                               Moneda *
                             </Label>
                             <Select
+                              disabled={paymentLocked}
                               value={
                                 payment.paymentDetails?.cashCurrency ||
                                 orderForm.getDefaultCurrencyFromSelection()
@@ -2419,6 +2456,7 @@ export function Step3OrderDetails({
                               type="number"
                               step="0.01"
                               min="0"
+                              disabled={paymentLocked}
                               value={payment.paymentDetails?.cashReceived || ""}
                               onChange={(e) => {
                                 const received =
@@ -2505,6 +2543,7 @@ export function Step3OrderDetails({
                                   id={`cash-custom-bs-${payment.id}`}
                                   type="number"
                                   step="0.01"
+                                  disabled={paymentLocked}
                                   value={
                                     payment.amount === 0 ? "" : payment.amount
                                   }
@@ -2542,6 +2581,7 @@ export function Step3OrderDetails({
                               <div className="flex items-center space-x-2 bg-muted/50 p-2 rounded-md border col-span-full">
                                 <Checkbox
                                   id={`cash-custom-rate-${payment.id}`}
+                                  disabled={paymentLocked}
                                   checked={
                                     !!payment.paymentDetails?.useCustomRate
                                   }
@@ -2685,6 +2725,7 @@ export function Step3OrderDetails({
                           {updatePaymentImages && (
                             <ImageUploader
                               images={payment.images || []}
+                              disabled={paymentLocked}
                               onImagesChange={(images) =>
                                 updatePaymentImages(payment.id, images)
                               }
@@ -2701,7 +2742,8 @@ export function Step3OrderDetails({
                       </div>
                     )}
                   </fieldset>
-                ))}
+                );
+                })}
 
                 {/* Tabla de resumen de pagos - Similar a la tabla de orderForm.totales */}
                 <div className="mt-4 overflow-x-auto">

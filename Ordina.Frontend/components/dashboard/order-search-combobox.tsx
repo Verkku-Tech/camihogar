@@ -6,6 +6,7 @@ import { Search, Loader2 } from "lucide-react"
 import { getOrders, getClients, type Order, type Client } from "@/lib/storage"
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
 import { buildOrderSearchValue } from "@/lib/order-client-search"
+import { textIncludesForSearch } from "@/lib/text-search"
 import { isReservationOrder, isReservationType } from "@/lib/order-document-types"
 import { apiClient, type OrderSearchResultDto } from "@/lib/api-client"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -61,14 +62,14 @@ function filterOrdersOffline(
   isTeamOrder: (order: Order) => boolean,
   limit: number,
 ): SearchRow[] {
-  const q = query.trim().toLowerCase()
+  const q = query.trim()
   if (q.length < 2) return []
 
   const filtered = orders.filter((order) => {
     if (onlineSellerFilter && !isTeamOrder(order)) return false
     const client = clientById.get(order.clientId)
-    const haystack = buildOrderSearchValue(order, client).toLowerCase()
-    return haystack.includes(q)
+    const haystack = buildOrderSearchValue(order, client)
+    return textIncludesForSearch(haystack, q)
   })
 
   return filtered

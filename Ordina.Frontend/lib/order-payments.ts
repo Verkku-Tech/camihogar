@@ -655,3 +655,71 @@ export function filterCasheaStubForEditForm(
       p.method !== CASHEA_FINANCED_METHOD_LABEL,
   );
 }
+
+/** Bloquea edición de un pago conciliado cuando el usuario no tiene orders.update. */
+export function isConciliatedPaymentLocked(
+  payment: PartialPayment,
+  canEditConciliated: boolean,
+): boolean {
+  return !!payment.paymentDetails?.isConciliated && !canEditConciliated;
+}
+
+function normalizePaymentDateForCompare(date: string | undefined): string {
+  if (!date) return "";
+  const s = String(date).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function paymentDetailsForConciliationCompare(
+  details: PartialPayment["paymentDetails"],
+) {
+  if (!details) return null;
+  const { isConciliated: _ignored, ...rest } = details;
+  return rest;
+}
+
+function paymentSnapshotForConciliationCompare(payment: PartialPayment): string {
+  return JSON.stringify({
+    amount: payment.amount,
+    method: payment.method,
+    date: normalizePaymentDateForCompare(payment.date),
+    currency: payment.currency ?? null,
+    images: payment.images ?? null,
+    paymentDetails: paymentDetailsForConciliationCompare(
+      payment.paymentDetails,
+    ),
+  });
+}
+
+/**
+ * Valida que pagos conciliados no hayan sido modificados ni eliminados.
+ * Retorna mensaje de error o null si es válido.
+ */
+export function getConciliatedPaymentModificationError(
+  originalPayments: PartialPayment[],
+  nextPayments: PartialPayment[],
+  canEditConciliated: boolean,
+): string | null {
+  if (canEditConciliated) return null;
+
+  for (const original of originalPayments) {
+    if (!original.paymentDetails?.isConciliated) continue;
+    const next = nextPayments.find((p) => p.id === original.id);
+    if (!next) {
+      return "No se puede eliminar un pago ya conciliado.";
+    }
+    if (
+      paymentSnapshotForConciliationCompare(original) !==
+      paymentSnapshotForConciliationCompare(next)
+    ) {
+      return "No se puede modificar un pago conciliado.";
+    }
+  }
+  return null;
+}

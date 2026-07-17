@@ -430,6 +430,7 @@ public class OrdersController : ControllerBase
             var hasDispatchConfirmDelivery = UserHasPermission(User, "dispatch.confirm_delivery");
             var hasManufacturingManage = UserHasPermission(User, "manufacturing.manage");
             var hasInventoryMovementsView = UserHasPermission(User, "inventory.movements.view");
+            var hasOrdersUpdate = UserHasPermission(User, "orders.update");
             var order = await _orderService.UpdateOrderAsync(
                 id,
                 updateDto,
@@ -440,7 +441,8 @@ public class OrdersController : ControllerBase
                 hasDispatchSendToRoute,
                 hasDispatchConfirmDelivery,
                 hasManufacturingManage,
-                hasInventoryMovementsView);
+                hasInventoryMovementsView,
+                hasOrdersUpdate);
             return Ok(order);
         }
         catch (UnauthorizedAccessException uaex)

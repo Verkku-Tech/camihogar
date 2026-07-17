@@ -56,6 +56,10 @@ import {
   casheaInStorePaymentsExceedTotal,
   getCasheaFullPaymentBlockMessage,
   getCasheaTotalDueBs,
+  getActivePaymentsList,
+  filterCasheaStubForEditForm,
+  isConciliatedPaymentLocked,
+  getConciliatedPaymentModificationError,
 } from "@/lib/order-payments";
 import { useCurrency } from "@/contexts/currency-context";
 import { useAuth } from "@/contexts/auth-context";
@@ -171,6 +175,7 @@ export function EditOrderDialog({
   const { preferredCurrency } = useCurrency();
   const { hasPermission, user } = useAuth();
   const allowRemovePayment = hasPermission("orders.delete");
+  const canEditConciliatedPayments = hasPermission("orders.update");
   const orderForm = useEditOrderForm(open, order);
   const isPaymentsOnly = mode === "payments";
   const isConfirmingReservation = mode === "confirm-reservation";
@@ -286,6 +291,14 @@ export function EditOrderDialog({
     field: keyof PartialPayment,
     value: string | number | Currency,
   ) => {
+    const payment = orderForm.payments.find((p) => p.id === id);
+    if (
+      payment &&
+      isConciliatedPaymentLocked(payment, canEditConciliatedPayments)
+    ) {
+      toast.error("No se puede modificar un pago conciliado.");
+      return;
+    }
     orderForm.setPayments((paymentsList) =>
       paymentsList.map((payment) =>
         payment.id === id ? { ...payment, [field]: value } : payment,
@@ -298,6 +311,14 @@ export function EditOrderDialog({
     field: string,
     value: string | number | boolean | undefined,
   ) => {
+    const payment = orderForm.payments.find((p) => p.id === id);
+    if (
+      payment &&
+      isConciliatedPaymentLocked(payment, canEditConciliatedPayments)
+    ) {
+      toast.error("No se puede modificar un pago conciliado.");
+      return;
+    }
     orderForm.setPayments((paymentsList) =>
       paymentsList.map((payment) => {
         if (payment.id === id) {
@@ -395,6 +416,20 @@ export function EditOrderDialog({
     orderForm.setPayments((paymentsList) =>
       paymentsList.filter((p) => p.id !== id),
     );
+  };
+
+  const validateConciliatedPaymentsUnchanged = (): boolean => {
+    if (!order) return true;
+    const err = getConciliatedPaymentModificationError(
+      filterCasheaStubForEditForm(order, getActivePaymentsList(order)),
+      orderForm.payments,
+      canEditConciliatedPayments,
+    );
+    if (err) {
+      toast.error(err);
+      return false;
+    }
+    return true;
   };
 
   // Guardar solo pagos (modo vendedor): actualiza únicamente los campos de pago del pedido
@@ -553,6 +588,10 @@ export function EditOrderDialog({
         }
       }
 
+      if (!validateConciliatedPaymentsUnchanged()) {
+        return;
+      }
+
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (paymentCondition === "cashea") {
         const useUsdTotals = isUsdBaseOrder({
@@ -608,6 +647,14 @@ export function EditOrderDialog({
   };
 
   const updatePaymentImages = (paymentId: string, images: ProductImage[]) => {
+    const payment = orderForm.payments.find((p) => p.id === paymentId);
+    if (
+      payment &&
+      isConciliatedPaymentLocked(payment, canEditConciliatedPayments)
+    ) {
+      toast.error("No se puede modificar un pago conciliado.");
+      return;
+    }
     orderForm.setPayments((paymentsList) =>
       paymentsList.map((payment) =>
         payment.id === paymentId
@@ -920,6 +967,10 @@ export function EditOrderDialog({
         return;
       }
 
+      if (!validateConciliatedPaymentsUnchanged()) {
+        return;
+      }
+
       if (!orderForm.saleType) {
         toast.error("Por favor selecciona el tipo de venta");
         return;
@@ -1036,6 +1087,10 @@ export function EditOrderDialog({
         (document.activeElement as HTMLElement | null)?.blur?.();
       }
       if (!pendingOrderData || !orderForm.selectedClient || !order) return;
+
+      if (!validateConciliatedPaymentsUnchanged()) {
+        return;
+      }
 
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (orderForm.paymentCondition === "cashea") {
@@ -1497,6 +1552,7 @@ export function EditOrderDialog({
               updatePaymentImages={updatePaymentImages}
               paymentsOnly={isPaymentsOnly}
               allowRemovePayment={allowRemovePayment}
+              canEditConciliatedPayments={canEditConciliatedPayments}
             />
           )}
 
