@@ -49,6 +49,7 @@ import {
   getDisplayOldValue,
   getSummaryPreview,
   getDisplaySummary,
+  filterRedundantCasheaPaymentAuditChanges,
   groupChangesByProduct,
 } from "@/lib/audit-log-labels";
 
@@ -259,7 +260,10 @@ export function OrderAuditLogDialog({
   }, [open, showTimeline, buildQueryParams]);
 
   const detailGroups = useMemo(
-    () => groupChangesByProduct(detailLog?.changes ?? []),
+    () =>
+      groupChangesByProduct(
+        filterRedundantCasheaPaymentAuditChanges(detailLog?.changes ?? []),
+      ),
     [detailLog],
   );
 

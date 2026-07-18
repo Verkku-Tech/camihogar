@@ -1,4 +1,5 @@
 using Ordina.Database.Entities.Order;
+using Ordina.Orders.Application.Helpers;
 
 namespace Ordina.Orders.Application;
 
@@ -143,9 +144,29 @@ public static class OrderCommercialCurrency
         return (new List<PartialPayment>(), string.Empty);
     }
 
-    private static bool IsCasheaFinancingStub(PartialPayment payment) =>
+    public static bool IsCasheaFinancingStub(PartialPayment payment) =>
         payment.PaymentDetails?.CasheaFinancedPortion == true
         || string.Equals(payment.Method, CasheaFinancedMethodLabel, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Stubs Cashea de financiación recreados con otro Id (p. ej. al guardar edición) son el mismo pago para auditoría.
+    /// </summary>
+    public static bool AreCasheaFinancingStubsEquivalent(PartialPayment a, PartialPayment b)
+    {
+        if (!IsCasheaFinancingStub(a) || !IsCasheaFinancingStub(b))
+            return false;
+
+        if (!string.Equals(a.Method?.Trim(), b.Method?.Trim(), StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var (amtA, curA) = AuditLabelFormatter.GetOriginalPaymentDisplay(a);
+        var (amtB, curB) = AuditLabelFormatter.GetOriginalPaymentDisplay(b);
+
+        if (!string.Equals(curA, curB, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return Math.Abs(amtA - amtB) <= 0.02m;
+    }
 
     public static bool IsCasheaOrder(Order order)
     {
