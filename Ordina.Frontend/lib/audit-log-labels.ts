@@ -1,5 +1,6 @@
 import type { AuditChangeDto, OrderAuditLogDto } from "@/lib/api-client";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
+import { getSaleTypeLabel } from "@/components/orders/constants";
 import { REPORTE_FABRICACION_LABEL } from "@/lib/manufacturing-labels";
 
 const PAYMENT_CONDITION_LABELS: Record<string, string> = {
@@ -37,6 +38,7 @@ const VALUE_LABELS: Record<string, string> = {
 const FIELD_LABELS: Record<string, string> = {
   Status: "Estado del pedido",
   PaymentCondition: "Condición de pago",
+  SaleType: "Tipo de venta",
   DispatchObservations: "Observaciones de despacho",
   ProductMarkups: "Sobreprecios",
   ProductDiscountTotal: "Descuento en productos",
@@ -156,6 +158,10 @@ export function formatAuditValue(field: string, value?: string | null): string {
     return PAYMENT_CONDITION_LABELS[value.trim()] ?? value;
   }
 
+  if (field === "SaleType") {
+    return getSaleTypeLabel(value) || value;
+  }
+
   if (
     field.startsWith("mixedPayments") ||
     field.startsWith("partialPayments")
@@ -226,6 +232,58 @@ export function isGenericAuditSummary(summary: string): boolean {
   return GENERIC_SUMMARY_REGEX.test(summary.trim());
 }
 
+const CASHEA_FINANCED_METHOD = "Cashea (financiación)";
+const PAYMENT_AMOUNT_EPSILON = 0.02;
+
+function isCasheaFinancingPaymentRaw(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const method = extractSemicolonField(raw, "Método");
+  return (
+    method === CASHEA_FINANCED_METHOD ||
+    /casheaFinancedPortion\s*=\s*true/i.test(raw)
+  );
+}
+
+function getPaymentAmountFromRaw(raw: string): number | null {
+  const { amountStr } = resolvePaymentDisplayFromRaw(raw);
+  if (!amountStr) return null;
+  const amount = parseFloat(amountStr);
+  return Number.isNaN(amount) ? null : amount;
+}
+
+/** Suprime +/- de stub Cashea financiación con mismo monto (IDs regenerados al guardar). */
+export function filterRedundantCasheaPaymentAuditChanges(
+  changes: AuditChangeDto[],
+): AuditChangeDto[] {
+  const added = changes.filter(
+    (c) => c.field === "mixedPayments[+]" || c.field === "partialPayments[+]",
+  );
+  const removed = changes.filter(
+    (c) => c.field === "mixedPayments[-]" || c.field === "partialPayments[-]",
+  );
+  const suppressed = new Set<AuditChangeDto>();
+
+  for (const r of removed) {
+    if (!isCasheaFinancingPaymentRaw(r.oldValue)) continue;
+    const removedAmount = getPaymentAmountFromRaw(r.oldValue!);
+    if (removedAmount == null) continue;
+
+    for (const a of added) {
+      if (suppressed.has(a)) continue;
+      if (!isCasheaFinancingPaymentRaw(a.newValue)) continue;
+      const addedAmount = getPaymentAmountFromRaw(a.newValue!);
+      if (addedAmount == null) continue;
+      if (Math.abs(removedAmount - addedAmount) <= PAYMENT_AMOUNT_EPSILON) {
+        suppressed.add(r);
+        suppressed.add(a);
+        break;
+      }
+    }
+  }
+
+  return changes.filter((c) => !suppressed.has(c));
+}
+
 export function getSummaryPreview(log: OrderAuditLogDto): string | null {
   if (!log.changes?.length) return null;
   if (!isGenericAuditSummary(log.summary)) return null;
@@ -239,9 +297,10 @@ export function getSummaryPreview(log: OrderAuditLogDto): string | null {
 export function getDisplaySummary(log: OrderAuditLogDto): string {
   if (!log.changes?.length) return log.summary;
 
+  const changes = filterRedundantCasheaPaymentAuditChanges(log.changes);
   const parts: string[] = [];
 
-  for (const c of log.changes.filter((ch) => ch.field.includes(".fabricacion"))) {
+  for (const c of changes.filter((ch) => ch.field.includes(".fabricacion"))) {
     const name = extractProductName(c.field);
     if (name) {
       parts.push(
@@ -250,26 +309,33 @@ export function getDisplaySummary(log: OrderAuditLogDto): string {
     }
   }
 
-  const paymentCondition = log.changes.find((c) => c.field === "PaymentCondition");
+  const paymentCondition = changes.find((c) => c.field === "PaymentCondition");
   if (paymentCondition) {
     parts.push(
       `Condición de pago: ${getDisplayOldValue(paymentCondition)} → ${getDisplayNewValue(paymentCondition)}`,
     );
   }
 
-  for (const c of log.changes.filter(
+  const saleType = changes.find((c) => c.field === "SaleType");
+  if (saleType) {
+    parts.push(
+      `Tipo de venta: ${getDisplayOldValue(saleType)} → ${getDisplayNewValue(saleType)}`,
+    );
+  }
+
+  for (const c of changes.filter(
     (ch) => ch.field === "mixedPayments[+]" || ch.field === "partialPayments[+]",
   )) {
     parts.push(`Agregó pago: ${getDisplayNewValue(c)}`);
   }
 
-  for (const c of log.changes.filter(
+  for (const c of changes.filter(
     (ch) => ch.field === "mixedPayments[-]" || ch.field === "partialPayments[-]",
   )) {
     parts.push(`Eliminó pago: ${getDisplayOldValue(c)}`);
   }
 
-  const status = log.changes.find((c) => c.field === "Status");
+  const status = changes.find((c) => c.field === "Status");
   if (status) {
     parts.push(
       `Estado del pedido: ${getDisplayOldValue(status)} → ${getDisplayNewValue(status)}`,
@@ -278,29 +344,29 @@ export function getDisplaySummary(log: OrderAuditLogDto): string {
 
   if (parts.length > 0) return parts.join(" — ");
 
-  if (log.changes.some((c) => c.field.startsWith("conciliación."))) {
+  if (changes.some((c) => c.field.startsWith("conciliación."))) {
     return `Conciliación de pagos en pedido ${log.orderNumber}`;
   }
 
-  const priceChange = log.changes.find((c) => c.field.includes(".precio"));
-  if (priceChange && log.changes.length === 1) {
+  const priceChange = changes.find((c) => c.field.includes(".precio"));
+  if (priceChange && changes.length === 1) {
     const name = extractProductName(priceChange.field) ?? "producto";
     return `Precio ${name}: ${getDisplayOldValue(priceChange)} → ${getDisplayNewValue(priceChange)}`;
   }
 
-  if (log.changes.length === 1) {
-    const c = log.changes[0];
+  if (changes.length === 1) {
+    const c = changes[0];
     return `Actualizó ${getDisplayField(c)}: ${getDisplayOldValue(c)} → ${getDisplayNewValue(c)}`;
   }
 
-  const preview = log.changes
+  const preview = changes
     .slice(0, 2)
     .map(
       (c) =>
         `${getDisplayField(c)}: ${getDisplayOldValue(c)} → ${getDisplayNewValue(c)}`,
     )
     .join("; ");
-  const suffix = log.changes.length > 2 ? ` y ${log.changes.length - 2} más` : "";
+  const suffix = changes.length > 2 ? ` y ${changes.length - 2} más` : "";
   return `Actualizó el pedido ${log.orderNumber} (${preview}${suffix})`;
 }
 
