@@ -367,8 +367,36 @@ public class OrderAuditLogService : IOrderAuditLogService
         var oldById = oldList.ToDictionary(p => p.Id, p => p);
         var newById = newList.ToDictionary(p => p.Id, p => p);
 
+        var suppressedIds = new HashSet<string>(StringComparer.Ordinal);
+        var removedIds = oldById.Keys.Except(newById.Keys).ToList();
+        var addedIds = newById.Keys.Except(oldById.Keys).ToList();
+
+        foreach (var oldId in removedIds)
+        {
+            var op = oldById[oldId];
+            if (!OrderCommercialCurrency.IsCasheaFinancingStub(op))
+                continue;
+
+            foreach (var newId in addedIds)
+            {
+                if (suppressedIds.Contains(newId))
+                    continue;
+
+                var np = newById[newId];
+                if (!OrderCommercialCurrency.AreCasheaFinancingStubsEquivalent(op, np))
+                    continue;
+
+                suppressedIds.Add(oldId);
+                suppressedIds.Add(newId);
+                break;
+            }
+        }
+
         foreach (var id in oldById.Keys.Union(newById.Keys))
         {
+            if (suppressedIds.Contains(id))
+                continue;
+
             oldById.TryGetValue(id, out var op);
             newById.TryGetValue(id, out var np);
 

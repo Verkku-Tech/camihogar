@@ -27,6 +27,18 @@ public static partial class AuditLabelFormatter
             ["todo_pago"] = "Todo Pago",
         };
 
+    private static readonly Dictionary<string, string> SaleTypeLabels =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["encargo"] = "Encargo",
+            ["encargo_entrega"] = "Encargo/Entrega",
+            ["entrega"] = "Entrega",
+            ["sistema_apartado"] = "SA (Sistema de Apartado)",
+            ["delivery_express"] = "Delivery Express",
+            ["retiro_almacen"] = "Retiro x Almacén",
+            ["retiro_tienda"] = "Retiro x Tienda",
+        };
+
     [GeneratedRegex(@"^producto\[(.+)\](?:\.(.+))?$", RegexOptions.IgnoreCase)]
     private static partial Regex ProductFieldRegex();
 
@@ -148,6 +160,7 @@ public static partial class AuditLabelFormatter
         {
             nameof(Order.Status) or "Status" => "Estado del pedido",
             nameof(Order.PaymentCondition) => "Condición de pago",
+            nameof(Order.SaleType) => "Tipo de venta",
             nameof(Order.DispatchObservations) => "Observaciones de despacho",
             nameof(Order.ProductMarkups) => "Sobreprecios",
             nameof(Order.ProductDiscountTotal) => "Descuento en productos",
@@ -169,6 +182,15 @@ public static partial class AuditLabelFormatter
 
         var key = code.Trim();
         return PaymentConditionLabels.TryGetValue(key, out var label) ? label : key;
+    }
+
+    public static string FormatSaleType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "(sin tipo)";
+
+        var key = value.Trim();
+        return SaleTypeLabels.TryGetValue(key, out var label) ? label : key;
     }
 
     public static string FormatGeneralDiscount(Order order)
@@ -249,6 +271,9 @@ public static partial class AuditLabelFormatter
 
         if (field is nameof(Order.PaymentCondition))
             return FormatPaymentCondition(value);
+
+        if (field is nameof(Order.SaleType))
+            return FormatSaleType(value);
 
         if (field.StartsWith("mixedPayments", StringComparison.OrdinalIgnoreCase)
             || field.StartsWith("partialPayments", StringComparison.OrdinalIgnoreCase))

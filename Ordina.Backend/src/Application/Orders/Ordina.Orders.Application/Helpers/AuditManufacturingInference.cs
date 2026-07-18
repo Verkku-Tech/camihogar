@@ -221,6 +221,15 @@ public static class AuditManufacturingInference
             parts.Add($"Condición de pago: {oldLabel} → {newLabel}");
         }
 
+        var saleTypeChange = changes.FirstOrDefault(c =>
+            c.Field is nameof(Order.SaleType));
+        if (saleTypeChange != null)
+        {
+            var oldLabel = AuditLabelFormatter.FormatSaleType(saleTypeChange.OldValue);
+            var newLabel = AuditLabelFormatter.FormatSaleType(saleTypeChange.NewValue);
+            parts.Add($"Tipo de venta: {oldLabel} → {newLabel}");
+        }
+
         var paymentAdded = changes.Where(c =>
             c.Field is "mixedPayments[+]" or "partialPayments[+]");
         foreach (var added in paymentAdded)
