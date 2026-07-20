@@ -151,6 +151,9 @@ export default function PedidosPage() {
   } = useClientSearchIds(clientSearch);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [debouncedClientSearch, setDebouncedClientSearch] = useState("");
+  const textFiltersSettled =
+    searchTerm === debouncedSearchTerm &&
+    clientSearch === debouncedClientSearch;
   const [serverOrders, setServerOrders] = useState<UnifiedOrder[]>([]);
   const [serverTotalCount, setServerTotalCount] = useState(0);
   const [serverPage, setServerPage] = useState(1);
@@ -208,6 +211,7 @@ export default function PedidosPage() {
 
   const loadServerFilteredOrders = useCallback(async () => {
     if (!useServerMode) return;
+    if (!textFiltersSettled) return;
 
     let rangeFrom = dateFrom;
     let rangeTo = dateTo;
@@ -246,6 +250,7 @@ export default function PedidosPage() {
     }
   }, [
     useServerMode,
+    textFiltersSettled,
     debouncedSearchTerm,
     debouncedClientSearch,
     filters,
@@ -471,8 +476,6 @@ export default function PedidosPage() {
     };
   }, [paginatedOrders]);
 
-  const filteredOrders = useServerMode ? serverOrders : filteredOrdersLocal;
-  const paginatedOrders = useServerMode ? serverOrders : localPaginatedOrders;
   const currentPage = useServerMode ? serverPage : localCurrentPage;
   const totalPages = useServerMode ? serverTotalPages : localTotalPages;
   const startIndex = useServerMode ? serverStartIndex : localStartIndex;
