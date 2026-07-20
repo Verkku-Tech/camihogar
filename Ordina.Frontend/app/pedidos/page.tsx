@@ -81,6 +81,8 @@ import { useClientSearchIds } from "@/hooks/use-client-search-ids";
 import { toLocalDateKey } from "@/lib/date-utils";
 import { textIncludesForSearch } from "@/lib/text-search";
 
+const EMPTY_ORDERS: UnifiedOrder[] = [];
+
 const getStatusColor = (status: string) => {
   switch (status) {
     case "Presupuesto":
@@ -419,11 +421,10 @@ export default function PedidosPage() {
 
   const serverResultsPending = useServerMode && !textFiltersSettled;
   const showTableLoading = isLoading || serverResultsPending;
-  const paginatedOrders = serverResultsPending
-    ? []
-    : useServerMode
-      ? serverOrders
-      : localPaginatedOrders;
+  const paginatedOrders = useMemo(() => {
+    if (serverResultsPending) return EMPTY_ORDERS;
+    return useServerMode ? serverOrders : localPaginatedOrders;
+  }, [serverResultsPending, useServerMode, serverOrders, localPaginatedOrders]);
 
   // Totales/saldo: calcular sobre las filas visibles (API en modo servidor, no IndexedDB ajeno)
   useEffect(() => {
@@ -432,8 +433,12 @@ export default function PedidosPage() {
     const updateTotals = async () => {
       if (paginatedOrders.length === 0) {
         if (!cancelled) {
-          setOrderTotals({});
-          setOrderPendingTotals({});
+          setOrderTotals((prev) =>
+            Object.keys(prev).length === 0 ? prev : {},
+          );
+          setOrderPendingTotals((prev) =>
+            Object.keys(prev).length === 0 ? prev : {},
+          );
         }
         return;
       }
