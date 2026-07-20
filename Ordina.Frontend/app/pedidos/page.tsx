@@ -58,7 +58,6 @@ import { getActiveExchangeRates } from "@/lib/currency-utils";
 import {
   commercialRatesToExchangeRatesInput,
   formatCommercialDualDisplay,
-  formatCurrencyWithUsdPrimaryFromOrder,
   getCommercialRatesFromOrder,
   getOrderPendingUsd,
 } from "@/lib/order-currency-display";
@@ -76,7 +75,6 @@ import {
   isSistemaApartado,
   isSaRowHighlight,
   purchaseTypeLabel,
-  getOrderPendingTotal,
 } from "@/lib/order-sa";
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility";
 import { useClientSearchIds } from "@/hooks/use-client-search-ids";
@@ -281,50 +279,6 @@ export default function PedidosPage() {
     void loadOrders();
   }, [useServerMode]);
 
-  // Totales: misma lógica que detalle del pedido (baseCurrency USD vs legacy Bs)
-  useEffect(() => {
-    const updateTotals = async () => {
-      if (orders.length === 0) {
-        setOrderTotals({});
-        setOrderPendingTotals({});
-        return;
-      }
-      const totals: Record<string, string> = {};
-      const pendingTotals: Record<string, string> = {};
-      const fallbackRates = await getActiveExchangeRates();
-      const live = commercialRatesToExchangeRatesInput({
-        USD: fallbackRates.USD,
-        EUR: fallbackRates.EUR,
-      });
-      for (const order of orders) {
-        const baseCurrency = getOrderBaseCurrency(order);
-        const commercial = commercialRatesToExchangeRatesInput(
-          getCommercialRatesFromOrder(order),
-        );
-        totals[order.id] = formatCommercialDualDisplay(
-          order.total,
-          baseCurrency,
-          {
-            commercialRates: commercial,
-            liveRates: live,
-          },
-        );
-
-        pendingTotals[order.id] = formatCommercialDualDisplay(
-          getOrderPendingUsd(order),
-          "USD",
-          {
-            commercialRates: commercial,
-            liveRates: live,
-          },
-        );
-      }
-      setOrderTotals(totals);
-      setOrderPendingTotals(pendingTotals);
-    };
-    void updateTotals();
-  }, [orders]);
-
   // const totals: Record<string, string> = {};
   // const pendingTotals: Record<string, string> = {};
   // const fallbackRates = await getActiveExchangeRates();
@@ -449,6 +403,73 @@ export default function PedidosPage() {
   const serverStartIndex =
     serverTotalCount === 0 ? 0 : (serverPage - 1) * itemsPerPage + 1;
   const serverEndIndex = Math.min(serverPage * itemsPerPage, serverTotalCount);
+
+  const serverResultsPending = useServerMode && !textFiltersSettled;
+  const showTableLoading = isLoading || serverResultsPending;
+  const paginatedOrders = serverResultsPending
+    ? []
+    : useServerMode
+      ? serverOrders
+      : localPaginatedOrders;
+
+  // Totales/saldo: calcular sobre las filas visibles (API en modo servidor, no IndexedDB ajeno)
+  useEffect(() => {
+    let cancelled = false;
+
+    const updateTotals = async () => {
+      if (paginatedOrders.length === 0) {
+        if (!cancelled) {
+          setOrderTotals({});
+          setOrderPendingTotals({});
+        }
+        return;
+      }
+
+      const totals: Record<string, string> = {};
+      const pendingTotals: Record<string, string> = {};
+      const fallbackRates = await getActiveExchangeRates();
+      if (cancelled) return;
+
+      const live = commercialRatesToExchangeRatesInput({
+        USD: fallbackRates.USD,
+        EUR: fallbackRates.EUR,
+      });
+
+      for (const order of paginatedOrders) {
+        const baseCurrency = getOrderBaseCurrency(order);
+        const commercial = commercialRatesToExchangeRatesInput(
+          getCommercialRatesFromOrder(order),
+        );
+        totals[order.id] = formatCommercialDualDisplay(
+          order.total,
+          baseCurrency,
+          {
+            commercialRates: commercial,
+            liveRates: live,
+          },
+        );
+
+        pendingTotals[order.id] = formatCommercialDualDisplay(
+          getOrderPendingUsd(order),
+          "USD",
+          {
+            commercialRates: commercial,
+            liveRates: live,
+          },
+        );
+      }
+
+      if (!cancelled) {
+        setOrderTotals(totals);
+        setOrderPendingTotals(pendingTotals);
+      }
+    };
+
+    void updateTotals();
+    return () => {
+      cancelled = true;
+    };
+  }, [paginatedOrders]);
 
   const filteredOrders = useServerMode ? serverOrders : filteredOrdersLocal;
   const paginatedOrders = useServerMode ? serverOrders : localPaginatedOrders;
@@ -743,8 +764,12 @@ export default function PedidosPage() {
                           <TableHead>N° Pedido</TableHead>
                           <TableHead>Cliente</TableHead>
                           <TableHead>Vendedor</TableHead>
-                          <TableHead>Total</TableHead>
-                          <TableHead>Saldo Pendiente</TableHead>
+                          <TableHead className="min-w-[9.5rem] whitespace-nowrap">
+                            Total
+                          </TableHead>
+                          <TableHead className="min-w-[9.5rem] whitespace-nowrap">
+                            Saldo Pendiente
+                          </TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead>Tipo</TableHead>
                           <TableHead>Método de Pago</TableHead>
@@ -779,13 +804,31 @@ export default function PedidosPage() {
                             </TableCell>
                             <TableCell>{order.clientName}</TableCell>
                             <TableCell>{order.vendorName}</TableCell>
-                            <TableCell>
+                            <TableCell className="min-w-[9.5rem] align-top whitespace-normal text-sm leading-snug">
                               {orderTotals[order.id] ||
-                                `Bs.${order.total.toFixed(2)}`}
+                                formatCommercialDualDisplay(
+                                  order.total,
+                                  getOrderBaseCurrency(order),
+                                  {
+                                    commercialRates:
+                                      commercialRatesToExchangeRatesInput(
+                                        getCommercialRatesFromOrder(order),
+                                      ),
+                                  },
+                                )}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="min-w-[9.5rem] align-top whitespace-normal text-sm leading-snug">
                               {orderPendingTotals[order.id] ||
-                                `Bs.${getOrderPendingTotal(order).toFixed(2)}`}
+                                formatCommercialDualDisplay(
+                                  getOrderPendingUsd(order),
+                                  "USD",
+                                  {
+                                    commercialRates:
+                                      commercialRatesToExchangeRatesInput(
+                                        getCommercialRatesFromOrder(order),
+                                      ),
+                                  },
+                                )}
                             </TableCell>
                             <TableCell>
                               {(() => {
