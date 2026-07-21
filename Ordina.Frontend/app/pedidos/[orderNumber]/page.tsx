@@ -814,6 +814,20 @@ export default function OrderDetailPage() {
     [order],
   );
 
+  const showGeneralDiscountLine = useMemo(() => {
+    if (!order?.generalDiscountAmount || order.generalDiscountAmount <= 0) {
+      return false;
+    }
+    const impliedDiscount =
+      (order.subtotal ?? 0) +
+      (order.taxAmount ?? 0) +
+      (order.deliveryCost ?? 0) -
+      (order.total ?? 0);
+    return (
+      Math.abs(impliedDiscount - order.generalDiscountAmount) < 0.05
+    );
+  }, [order]);
+
   const productSurchargeTotal = useMemo(() => {
     if (!order?.products?.length || categories.length === 0) return 0;
     const base = getOrderBaseCurrency(order);
@@ -832,6 +846,35 @@ export default function OrderDetailPage() {
       0,
     );
   }, [order, categories, allProducts]);
+
+  const COMMERCIAL_LINE_TOLERANCE = 0.05;
+
+  const showProductDiscountLine = useMemo(() => {
+    if (!order?.productDiscountTotal || order.productDiscountTotal <= 0) {
+      return false;
+    }
+    const before = order.subtotalBeforeDiscounts ?? order.subtotal ?? 0;
+    return (
+      Math.abs(before - order.productDiscountTotal - (order.subtotal ?? 0)) <
+      COMMERCIAL_LINE_TOLERANCE
+    );
+  }, [order]);
+
+  const showDeliveryLine = useMemo(() => {
+    if (!order?.deliveryCost || order.deliveryCost <= 0) {
+      return false;
+    }
+    const impliedDelivery =
+      (order.total ?? 0) -
+      (order.subtotal ?? 0) -
+      (order.taxAmount ?? 0) -
+      productSurchargeTotal +
+      (order.generalDiscountAmount ?? 0);
+    return (
+      Math.abs(impliedDelivery - order.deliveryCost) <
+      COMMERCIAL_LINE_TOLERANCE
+    );
+  }, [order, productSurchargeTotal]);
 
   const handleValidateOrder = async () => {
     if (!canValidateOrders) {
@@ -1108,9 +1151,9 @@ export default function OrderDetailPage() {
         order,
       );
 
-      if (order.productDiscountTotal && order.productDiscountTotal > 0) {
+      if (showProductDiscountLine) {
         totals.productDiscountTotal = formatOrderAmountWithOrderRateBs(
-          order.productDiscountTotal,
+          order.productDiscountTotal!,
           order,
         );
       }
@@ -1122,7 +1165,7 @@ export default function OrderDetailPage() {
         );
       }
 
-      if (order.deliveryCost > 0) {
+      if (showDeliveryLine) {
         totals.deliveryCost = formatOrderAmountWithOrderRateBs(
           order.deliveryCost,
           order,
@@ -1140,7 +1183,13 @@ export default function OrderDetailPage() {
     };
 
     formatTotals();
-  }, [order, localExchangeRates, productSurchargeTotal]);
+  }, [
+    order,
+    localExchangeRates,
+    productSurchargeTotal,
+    showProductDiscountLine,
+    showDeliveryLine,
+  ]);
 
   // Formatear pagos cuando cambia la moneda seleccionada
   useEffect(() => {
@@ -2504,8 +2553,7 @@ export default function OrderDetailPage() {
                         />
                       )}
                     </div>
-                    {order.productDiscountTotal &&
-                      order.productDiscountTotal > 0 && (
+                    {showProductDiscountLine && (
                         <div className="flex justify-between text-red-600">
                           <span>{individualDiscountsSummaryLabel}</span>
                           {formattedTotals.productDiscountTotal ? (
@@ -2513,7 +2561,7 @@ export default function OrderDetailPage() {
                               formatted={formattedTotals.productDiscountTotal}
                             />
                           ) : (
-                            <OrderCurrency amount={order.productDiscountTotal} />
+                            <OrderCurrency amount={order.productDiscountTotal!} />
                           )}
                         </div>
                       )}
@@ -2550,8 +2598,7 @@ export default function OrderDetailPage() {
                         )}
                       </div>
                     )}
-                    {order.generalDiscountAmount &&
-                      order.generalDiscountAmount > 0 && (
+                    {showGeneralDiscountLine && (
                         <div className="flex justify-between text-red-600">
                           <span>{generalDiscountSummaryLabel}</span>
                           {formattedTotals.generalDiscountAmount ? (
@@ -2559,11 +2606,13 @@ export default function OrderDetailPage() {
                               formatted={formattedTotals.generalDiscountAmount}
                             />
                           ) : (
-                            <OrderCurrency amount={order.generalDiscountAmount} />
+                            <OrderCurrency
+                              amount={order.generalDiscountAmount ?? 0}
+                            />
                           )}
                         </div>
                       )}
-                    {order.deliveryCost > 0 && (
+                    {showDeliveryLine && (
                       <DeliveryServicesSummaryLines
                         deliveryCost={order.deliveryCost}
                         deliveryServices={order.deliveryServices}

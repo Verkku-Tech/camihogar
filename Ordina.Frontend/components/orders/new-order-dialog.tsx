@@ -32,7 +32,9 @@ import {
   type ProductImage,
   type Account,
 } from "@/lib/storage";
-import { buildGeneralDiscountPersistPayload } from "@/lib/general-discount-meta";
+import { buildGeneralDiscountPersistPayload, resolveGeneralDiscountAmountForSave } from "@/lib/general-discount-meta";
+import { resolveOptionalAmountForSave } from "@/lib/order-commercial-persist";
+import { mapOrderProductForSave } from "@/lib/product-discount-ui";
 import { apiClient, type OrderResponseDto } from "@/lib/api-client";
 import {
   isActiveReservation,
@@ -367,26 +369,22 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               (r) => r.id === orderForm.formData.referrer,
             )?.name
           : undefined,
-        products: orderForm.selectedProducts.map((product) => ({
-          ...product,
-          discount:
-            product.discount && product.discount > 0
-              ? product.discount
-              : undefined,
-        })),
+        products: orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({ ...product }),
+        ),
         subtotalBeforeDiscounts: orderForm.productSubtotalBase,
-        productDiscountTotal:
-          orderForm.productDiscountTotal > 0
-            ? orderForm.productDiscountTotal
-            : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        productDiscountTotal: resolveOptionalAmountForSave(
+          orderForm.productDiscountTotal,
+        ),
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
-        deliveryCost: orderForm.deliveryCost,
+        deliveryCost: resolveOptionalAmountForSave(
+          orderForm.hasDelivery ? orderForm.deliveryCost : 0,
+        ),
         total: orderForm.total,
         hasDelivery: orderForm.hasDelivery,
         deliveryAddress: orderForm.hasDelivery
@@ -504,27 +502,25 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
         vendorName: onlineName,
         referrerId: user.id,
         referrerName: onlineName,
-        products: orderForm.selectedProducts.map((product) => ({
-          ...product,
-          discount:
-            product.discount && product.discount > 0
-              ? product.discount
-              : undefined,
-          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
-        })),
+        products: orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({
+            ...product,
+            locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+          }),
+        ),
         subtotalBeforeDiscounts: orderForm.productSubtotalBase,
-        productDiscountTotal:
-          orderForm.productDiscountTotal > 0
-            ? orderForm.productDiscountTotal
-            : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        productDiscountTotal: resolveOptionalAmountForSave(
+          orderForm.productDiscountTotal,
+        ),
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
-        deliveryCost: orderForm.deliveryCost,
+        deliveryCost: resolveOptionalAmountForSave(
+          orderForm.hasDelivery ? orderForm.deliveryCost : 0,
+        ),
         total: orderForm.total,
         paymentType: "directo",
         paymentMethod: "N/A",
@@ -809,30 +805,28 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               (r) => r.id === orderForm.formData.referrer,
             )?.name
           : undefined,
-        products: orderForm.selectedProducts.map((product) => ({
-          ...product,
-          discount:
-            product.discount && product.discount > 0
-              ? product.discount
-              : undefined,
-          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
-        })),
+        products: orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({
+            ...product,
+            locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+          }),
+        ),
         subtotal: orderForm.subtotal,
         productSurchargeTotal:
           orderForm.productSurchargeTotal > 0
             ? orderForm.productSurchargeTotal
             : undefined,
-        productDiscountTotal:
-          orderForm.productDiscountTotal > 0
-            ? orderForm.productDiscountTotal
-            : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        productDiscountTotal: resolveOptionalAmountForSave(
+          orderForm.productDiscountTotal,
+        ),
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         taxAmount: orderForm.taxAmount,
-        deliveryCost: orderForm.deliveryCost,
+        deliveryCost: resolveOptionalAmountForSave(
+          orderForm.hasDelivery ? orderForm.deliveryCost : 0,
+        ),
         total: orderForm.total,
         payments: orderForm.payments,
         paymentCondition: orderForm.paymentCondition,
@@ -952,27 +946,25 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
               (r) => r.id === orderForm.formData.referrer,
             )?.name
           : undefined,
-        products: orderForm.selectedProducts.map((product) => ({
-          ...product,
-          discount:
-            product.discount && product.discount > 0
-              ? product.discount
-              : undefined,
-          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
-        })),
+        products: orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({
+            ...product,
+            locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+          }),
+        ),
         subtotalBeforeDiscounts: orderForm.productSubtotalBase,
-        productDiscountTotal:
-          orderForm.productDiscountTotal > 0
-            ? orderForm.productDiscountTotal
-            : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        productDiscountTotal: resolveOptionalAmountForSave(
+          orderForm.productDiscountTotal,
+        ),
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
-        deliveryCost: orderForm.deliveryCost,
+        deliveryCost: resolveOptionalAmountForSave(
+          orderForm.hasDelivery ? orderForm.deliveryCost : 0,
+        ),
         total: orderForm.total,
         paymentType:
           orderForm.paymentCondition === "pago_a_entrega" ||

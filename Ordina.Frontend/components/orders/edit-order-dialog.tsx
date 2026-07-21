@@ -32,7 +32,11 @@ import {
   type ProductImage,
   type Account,
 } from "@/lib/storage";
-import { buildGeneralDiscountPersistPayload } from "@/lib/general-discount-meta";
+import { buildGeneralDiscountPersistPayload, resolveGeneralDiscountAmountForSave } from "@/lib/general-discount-meta";
+import {
+  resolveOptionalAmountForSave,
+} from "@/lib/order-commercial-persist";
+import { mapOrderProductForSave } from "@/lib/product-discount-ui";
 import {
   apiClient,
   type ConfirmOrderDto,
@@ -99,31 +103,59 @@ function resolveCommercialTotalsFieldsForUpdate(
     taxAmount: number;
     deliveryCost: number;
     total: number;
+    hasDelivery: boolean;
   },
 ) {
   if (orderForm.commercialTotalsFrozen) {
     const snap = getFrozenCommercialTotalsFromOrder(existingOrder);
     return {
       subtotalBeforeDiscounts: snap.productSubtotal,
-      productDiscountTotal:
-        snap.productDiscountTotal > 0 ? snap.productDiscountTotal : undefined,
+      productDiscountTotal: resolveOptionalAmountForSave(
+        orderForm.productDiscountTotal,
+      ),
       subtotal: snap.subtotal,
       taxAmount: orderForm.taxAmount,
-      deliveryCost: orderForm.deliveryCost,
+      deliveryCost: resolveOptionalAmountForSave(orderForm.deliveryCost),
       total: orderForm.total,
     };
   }
   return {
     subtotalBeforeDiscounts: orderForm.productSubtotalBase,
-    productDiscountTotal:
-      orderForm.productDiscountTotal > 0
-        ? orderForm.productDiscountTotal
-        : undefined,
+    productDiscountTotal: resolveOptionalAmountForSave(
+      orderForm.productDiscountTotal,
+    ),
     subtotal: orderForm.subtotal,
     taxAmount: orderForm.taxAmount,
-    deliveryCost: orderForm.deliveryCost,
+    deliveryCost: resolveOptionalAmountForSave(
+      orderForm.hasDelivery ? orderForm.deliveryCost : 0,
+    ),
     total: orderForm.total,
   };
+}
+
+const COMMERCIAL_TOTAL_TOLERANCE = 0.02;
+
+function validateCommercialTotalsBeforeSave(orderForm: {
+  total: number;
+  totalBeforeGeneralDiscount: number;
+  generalDiscountAmount: number;
+  hasDelivery?: boolean;
+  deliveryCost?: number;
+}): string | null {
+  const expected = Math.max(
+    orderForm.totalBeforeGeneralDiscount - orderForm.generalDiscountAmount,
+    0,
+  );
+  if (Math.abs(orderForm.total - expected) > COMMERCIAL_TOTAL_TOLERANCE) {
+    return "El total no coincide con los subtotales. Verifica que los precios hayan cargado antes de guardar.";
+  }
+  if (
+    orderForm.hasDelivery === false &&
+    (orderForm.deliveryCost ?? 0) > COMMERCIAL_TOTAL_TOLERANCE
+  ) {
+    return "El envío está desactivado pero el costo de entrega no es cero.";
+  }
+  return null;
 }
 
 interface EditOrderDialogProps {
@@ -692,26 +724,22 @@ export function EditOrderDialog({
               (r) => r.id === orderForm.formData.referrer,
             )?.name
           : undefined,
-        products: orderForm.selectedProducts.map((product) => ({
-          ...product,
-          discount:
-            product.discount && product.discount > 0
-              ? product.discount
-              : undefined,
-        })),
+        products: orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({ ...product }),
+        ),
         subtotalBeforeDiscounts: orderForm.productSubtotalBase,
-        productDiscountTotal:
-          orderForm.productDiscountTotal > 0
-            ? orderForm.productDiscountTotal
-            : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        productDiscountTotal: resolveOptionalAmountForSave(
+          orderForm.productDiscountTotal,
+        ),
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
-        deliveryCost: orderForm.deliveryCost,
+        deliveryCost: resolveOptionalAmountForSave(
+          orderForm.hasDelivery ? orderForm.deliveryCost : 0,
+        ),
         total: orderForm.total,
         hasDelivery: orderForm.hasDelivery,
         deliveryAddress: orderForm.hasDelivery
@@ -986,6 +1014,12 @@ export function EditOrderDialog({
         return;
       }
 
+      const totalsError = validateCommercialTotalsBeforeSave(orderForm);
+      if (totalsError) {
+        toast.error(totalsError);
+        return;
+      }
+
       // Preparar datos para confirmación
       const orderDataForConfirmation = {
         clientName: orderForm.selectedClient.name,
@@ -1002,26 +1036,24 @@ export function EditOrderDialog({
               (r) => r.id === orderForm.formData.referrer,
             )?.name
           : undefined,
-        products: orderForm.selectedProducts.map((product) => ({
-          ...product,
-          discount:
-            product.discount && product.discount > 0
-              ? product.discount
-              : undefined,
-          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
-        })),
+        products: orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({
+            ...product,
+            locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+          }),
+        ),
         subtotal: orderForm.subtotal,
-        productDiscountTotal:
-          orderForm.productDiscountTotal > 0
-            ? orderForm.productDiscountTotal
-            : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        productDiscountTotal: resolveOptionalAmountForSave(
+          orderForm.productDiscountTotal,
+        ),
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         taxAmount: orderForm.taxAmount,
-        deliveryCost: orderForm.deliveryCost,
+        deliveryCost: resolveOptionalAmountForSave(
+          orderForm.hasDelivery ? orderForm.deliveryCost : 0,
+        ),
         total: orderForm.total,
         payments: orderForm.payments,
         paymentCondition: orderForm.paymentCondition,
@@ -1092,6 +1124,12 @@ export function EditOrderDialog({
         return;
       }
 
+      const totalsError = validateCommercialTotalsBeforeSave(orderForm);
+      if (totalsError) {
+        toast.error(totalsError);
+        return;
+      }
+
       let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
       if (orderForm.paymentCondition === "cashea") {
         const useUsdTotals = isUsdBaseOrder({
@@ -1157,14 +1195,12 @@ export function EditOrderDialog({
           return;
         }
 
-        const productsPrepared = orderForm.selectedProducts.map((product) => ({
-          ...product,
-          discount:
-            product.discount && product.discount > 0
-              ? product.discount
-              : undefined,
-          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
-        }));
+        const productsPrepared = orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({
+            ...product,
+            locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+          }),
+        );
 
         const structureChanged = hasProductStructureChanges(
           baselineProductsRef.current,
@@ -1271,10 +1307,9 @@ export function EditOrderDialog({
           dispatchObservations:
             orderForm.dispatchObservations.trim() || undefined,
           ...resolveCommercialTotalsFieldsForUpdate(order, orderForm),
-          generalDiscountAmount:
-            orderForm.generalDiscountAmount > 0
-              ? orderForm.generalDiscountAmount
-              : undefined,
+          generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+            orderForm.generalDiscountAmount,
+          ),
           ...buildGeneralDiscountPersistPayload(orderForm),
           productMarkups: orderForm.productMarkups,
           createSupplierOrder: orderForm.createSupplierOrder,
@@ -1318,19 +1353,16 @@ export function EditOrderDialog({
               (r) => r.id === orderForm.formData.referrer,
             )?.name
           : undefined,
-        products: orderForm.selectedProducts.map((product) => ({
-          ...product,
-          discount:
-            product.discount && product.discount > 0
-              ? product.discount
-              : undefined,
-          locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
-        })),
+        products: orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({
+            ...product,
+            locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+          }),
+        ),
         ...resolveCommercialTotalsFieldsForUpdate(order, orderForm),
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         paymentType:
           orderForm.paymentCondition === "pago_a_entrega" ||

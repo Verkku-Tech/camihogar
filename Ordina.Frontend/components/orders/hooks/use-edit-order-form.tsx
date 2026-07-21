@@ -83,6 +83,7 @@ const DELIVERY_TOTAL_EPSILON = 1e-6;
  */
 function areTotalsReadyForGeneralDiscountCap(
   initialOrder: Order | null,
+  isFormHydrated: boolean,
   selectedProducts: OrderProduct[],
   productSubtotalBase: number,
   productSurchargeTotal: number,
@@ -90,13 +91,9 @@ function areTotalsReadyForGeneralDiscountCap(
   deliveryCost: number,
 ): boolean {
   if (!initialOrder) return true;
-
-  const expectedLines = initialOrder.products?.length ?? 0;
-  if (expectedLines > 0 && selectedProducts.length !== expectedLines) {
-    return false;
-  }
+  if (!isFormHydrated) return false;
   if (
-    expectedLines > 0 &&
+    selectedProducts.length > 0 &&
     productSubtotalBase <= DELIVERY_TOTAL_EPSILON &&
     productSurchargeTotal <= DELIVERY_TOTAL_EPSILON
   ) {
@@ -470,6 +467,15 @@ export function useEditOrderForm(
     return currencies.find((c) => c !== "Bs") || preferredCurrency;
   });
   const totalsReadyForDiscountCapRef = useRef(false);
+  const userTouchedGeneralDiscountRef = useRef(false);
+  const [isFormHydrated, setIsFormHydrated] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setIsFormHydrated(false);
+      userTouchedGeneralDiscountRef.current = false;
+    }
+  }, [open]);
 
   // Inicializar monedas seleccionadas
   const [selectedCurrencies, setSelectedCurrencies] = useState<Currency[]>(
@@ -749,6 +755,7 @@ export function useEditOrderForm(
       setProductDiscountCurrencies(newCurrencies);
 
       setCommercialExchangeRates(getCommercialRatesFromOrder(initialOrder));
+      setIsFormHydrated(true);
     }
   }, [initialOrder, open, preferredCurrency]);
 
@@ -865,9 +872,26 @@ export function useEditOrderForm(
   /** Evita duplicar envío si coexisten servicios y `order.deliveryCost` por datos inconsistentes. */
   const deliveryCost = useMemo(() => {
     const fromServices = calculateDeliveryCost();
-    if (fromServices > DELIVERY_TOTAL_EPSILON) return fromServices;
-    return initialOrder?.deliveryCost ?? 0;
-  }, [calculateDeliveryCost, initialOrder?.deliveryCost]);
+    const hasConfiguredServices =
+      deliveryServices.deliveryExpress?.enabled ||
+      deliveryServices.servicioAcarreo?.enabled ||
+      deliveryServices.servicioArmado?.enabled;
+
+    if (hasDelivery || hasConfiguredServices) {
+      return fromServices;
+    }
+
+    if (!initialOrder?.deliveryServices) {
+      return initialOrder?.deliveryCost ?? 0;
+    }
+    return 0;
+  }, [
+    calculateDeliveryCost,
+    deliveryServices,
+    hasDelivery,
+    initialOrder?.deliveryCost,
+    initialOrder?.deliveryServices,
+  ]);
 
   const getLinePricingOptions = useCallback(
     (product: OrderProduct) => ({
@@ -1016,6 +1040,7 @@ export function useEditOrderForm(
     () =>
       areTotalsReadyForGeneralDiscountCap(
         initialOrder,
+        isFormHydrated,
         selectedProducts,
         productSubtotalBase,
         productSurchargeTotal,
@@ -1024,6 +1049,7 @@ export function useEditOrderForm(
       ),
     [
       initialOrder,
+      isFormHydrated,
       selectedProducts,
       productSubtotalBase,
       productSurchargeTotal,
@@ -1035,7 +1061,7 @@ export function useEditOrderForm(
   const generalDiscountAmount = useMemo(() => {
     const persistedAmount = initialOrder?.generalDiscountAmount ?? 0;
     if (
-      !totalsReadyForGeneralDiscountCap &&
+      !isFormHydrated &&
       persistedAmount > DELIVERY_TOTAL_EPSILON
     ) {
       return persistedAmount;
@@ -1052,7 +1078,7 @@ export function useEditOrderForm(
     );
     return Math.min(Math.max(inBase, 0), totalBeforeGeneralDiscount);
   }, [
-    totalsReadyForGeneralDiscountCap,
+    isFormHydrated,
     initialOrder?.generalDiscountAmount,
     generalDiscountType,
     generalDiscount,
@@ -1378,6 +1404,7 @@ export function useEditOrderForm(
 
   const handleGeneralDiscountChange = useCallback(
     (value: number) => {
+      userTouchedGeneralDiscountRef.current = true;
       if (generalDiscountType === "porcentaje") {
         setGeneralDiscount(Math.max(0, Math.min(value, 100)));
         return;
@@ -1391,11 +1418,17 @@ export function useEditOrderForm(
 
   const handleGeneralDiscountTypeChange = useCallback(
     (type: "monto" | "porcentaje") => {
+      userTouchedGeneralDiscountRef.current = true;
       setGeneralDiscountType(type);
       setGeneralDiscount(0);
     },
     [],
   );
+
+  const setGeneralDiscountWithTouch = useCallback((discount: number) => {
+    userTouchedGeneralDiscountRef.current = true;
+    setGeneralDiscount(discount);
+  }, []);
 
   const step1SellerReady = !!(formData.vendor || formData.referrer);
 
@@ -1631,6 +1664,10 @@ export function useEditOrderForm(
       return;
     }
 
+    if (userTouchedGeneralDiscountRef.current) {
+      return;
+    }
+
     const hydratedDiscount = resolveHydratedGeneralDiscountFromOrder(
       initialOrder,
     );
@@ -1674,7 +1711,7 @@ export function useEditOrderForm(
     payments,
     setPayments,
     generalDiscount,
-    setGeneralDiscount,
+    setGeneralDiscount: setGeneralDiscountWithTouch,
     generalDiscountType,
     setGeneralDiscountType,
     generalDiscountCurrency,
