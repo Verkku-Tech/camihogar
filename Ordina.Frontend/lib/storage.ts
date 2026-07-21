@@ -3300,8 +3300,9 @@ export const updateOrder = async (
                 ? updatedOrder.taxAmount
                 : undefined,
             deliveryCost:
-              updatedOrder.deliveryCost !== existingOrder.deliveryCost
-                ? updatedOrder.deliveryCost
+              (updatedOrder.deliveryCost ?? 0) !==
+              (existingOrder.deliveryCost ?? 0)
+                ? (updatedOrder.deliveryCost ?? 0)
                 : undefined,
             total:
               updatedOrder.total !== existingOrder.total
@@ -3313,9 +3314,9 @@ export const updateOrder = async (
                 ? updatedOrder.subtotalBeforeDiscounts
                 : undefined,
             productDiscountTotal:
-              updatedOrder.productDiscountTotal !==
-              existingOrder.productDiscountTotal
-                ? updatedOrder.productDiscountTotal
+              (updatedOrder.productDiscountTotal ?? 0) !==
+              (existingOrder.productDiscountTotal ?? 0)
+                ? (updatedOrder.productDiscountTotal ?? 0)
                 : undefined,
             generalDiscountAmount:
               (updatedOrder.generalDiscountAmount ?? 0) !==

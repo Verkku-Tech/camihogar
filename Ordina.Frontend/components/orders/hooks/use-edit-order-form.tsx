@@ -467,11 +467,13 @@ export function useEditOrderForm(
     return currencies.find((c) => c !== "Bs") || preferredCurrency;
   });
   const totalsReadyForDiscountCapRef = useRef(false);
+  const userTouchedGeneralDiscountRef = useRef(false);
   const [isFormHydrated, setIsFormHydrated] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setIsFormHydrated(false);
+      userTouchedGeneralDiscountRef.current = false;
     }
   }, [open]);
 
@@ -870,9 +872,26 @@ export function useEditOrderForm(
   /** Evita duplicar envío si coexisten servicios y `order.deliveryCost` por datos inconsistentes. */
   const deliveryCost = useMemo(() => {
     const fromServices = calculateDeliveryCost();
-    if (fromServices > DELIVERY_TOTAL_EPSILON) return fromServices;
-    return initialOrder?.deliveryCost ?? 0;
-  }, [calculateDeliveryCost, initialOrder?.deliveryCost]);
+    const hasConfiguredServices =
+      deliveryServices.deliveryExpress?.enabled ||
+      deliveryServices.servicioAcarreo?.enabled ||
+      deliveryServices.servicioArmado?.enabled;
+
+    if (hasDelivery || hasConfiguredServices) {
+      return fromServices;
+    }
+
+    if (!initialOrder?.deliveryServices) {
+      return initialOrder?.deliveryCost ?? 0;
+    }
+    return 0;
+  }, [
+    calculateDeliveryCost,
+    deliveryServices,
+    hasDelivery,
+    initialOrder?.deliveryCost,
+    initialOrder?.deliveryServices,
+  ]);
 
   const getLinePricingOptions = useCallback(
     (product: OrderProduct) => ({
@@ -1385,6 +1404,7 @@ export function useEditOrderForm(
 
   const handleGeneralDiscountChange = useCallback(
     (value: number) => {
+      userTouchedGeneralDiscountRef.current = true;
       if (generalDiscountType === "porcentaje") {
         setGeneralDiscount(Math.max(0, Math.min(value, 100)));
         return;
@@ -1398,11 +1418,17 @@ export function useEditOrderForm(
 
   const handleGeneralDiscountTypeChange = useCallback(
     (type: "monto" | "porcentaje") => {
+      userTouchedGeneralDiscountRef.current = true;
       setGeneralDiscountType(type);
       setGeneralDiscount(0);
     },
     [],
   );
+
+  const setGeneralDiscountWithTouch = useCallback((discount: number) => {
+    userTouchedGeneralDiscountRef.current = true;
+    setGeneralDiscount(discount);
+  }, []);
 
   const step1SellerReady = !!(formData.vendor || formData.referrer);
 
@@ -1638,6 +1664,10 @@ export function useEditOrderForm(
       return;
     }
 
+    if (userTouchedGeneralDiscountRef.current) {
+      return;
+    }
+
     const hydratedDiscount = resolveHydratedGeneralDiscountFromOrder(
       initialOrder,
     );
@@ -1681,7 +1711,7 @@ export function useEditOrderForm(
     payments,
     setPayments,
     generalDiscount,
-    setGeneralDiscount,
+    setGeneralDiscount: setGeneralDiscountWithTouch,
     generalDiscountType,
     setGeneralDiscountType,
     generalDiscountCurrency,

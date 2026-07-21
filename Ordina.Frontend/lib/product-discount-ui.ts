@@ -83,6 +83,29 @@ export function mergeDiscountUiIntoAttributes(
   return base;
 }
 
+/** Línea de pedido lista para guardar: descuento 0 explícito y sin metadatos UI huérfanos. */
+export function mapOrderProductForSave<T extends {
+  discount?: number;
+  attributes?: ProductAttrs;
+}>(product: T): T {
+  const discount = product.discount ?? 0;
+  if (discount > 0) {
+    return { ...product, discount };
+  }
+  if (!product.attributes) {
+    return { ...product, discount: 0 };
+  }
+  const attrs = { ...product.attributes };
+  delete attrs[DISCOUNT_UI_TYPE_KEY];
+  delete attrs[DISCOUNT_UI_CURRENCY_KEY];
+  delete attrs[DISCOUNT_UI_PERCENT_KEY];
+  return {
+    ...product,
+    discount: 0,
+    attributes: Object.keys(attrs).length > 0 ? attrs : undefined,
+  };
+}
+
 /**
  * Si no hay `discountUiPercent` guardado, infiere el % a partir del monto y del subtotal
  * de línea antes del descuento (campo `product.total` en el flujo de pedido).

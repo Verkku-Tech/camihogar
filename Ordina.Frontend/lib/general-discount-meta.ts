@@ -1,8 +1,9 @@
 import type { DiscountUiType } from "@/lib/product-discount-ui";
+import { resolveOptionalAmountForSave } from "@/lib/order-commercial-persist";
 
 /** Valor a persistir: 0 explícito limpia descuento en backend e IndexedDB. */
 export function resolveGeneralDiscountAmountForSave(amount: number): number {
-  return amount > 0 ? amount : 0;
+  return resolveOptionalAmountForSave(amount);
 }
 
 /** Campos opcionales para persistir junto a `generalDiscountAmount` (Create/Update Order). */

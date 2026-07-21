@@ -52,8 +52,12 @@ import {
   getProductDiscountCurrencyForTotals,
   getOrderBaseCurrency,
 } from "@/lib/order-line-pricing";
-import { readDiscountUiFromProduct } from "@/lib/product-discount-ui";
+import {
+  readDiscountUiFromProduct,
+  mapOrderProductForSave,
+} from "@/lib/product-discount-ui";
 import { resolveGeneralDiscountAmountForSave } from "@/lib/general-discount-meta";
+import { resolveOptionalAmountForSave } from "@/lib/order-commercial-persist";
 import { normalizeExchangeRatesAtCreation } from "@/lib/currency-utils";
 import {
   applyOrderCurrencyMetadata,
@@ -447,7 +451,9 @@ export function ConfirmOrderDialog({
     const body: ConfirmOrderDto = {
       storeVendorId: user.id,
       storeVendorName: user.name || user.username,
-      products: mapOrderProductsToConfirmDto(products),
+      products: mapOrderProductsToConfirmDto(
+        products.map((p) => mapOrderProductForSave(p)),
+      ),
       paymentType,
       paymentMethod,
       paymentCondition: paymentCondition || undefined,
@@ -483,9 +489,15 @@ export function ConfirmOrderDialog({
       hasDelivery,
       deliveryServices: hasDelivery ? deliveryServices : undefined,
       observations: observations.trim() || undefined,
+      subtotalBeforeDiscounts: productSubtotalBase,
       subtotal,
       taxAmount,
-      deliveryCost,
+      productDiscountTotal: resolveOptionalAmountForSave(
+        productDiscountTotalComputed,
+      ),
+      deliveryCost: resolveOptionalAmountForSave(
+        hasDelivery ? deliveryCost : 0,
+      ),
       total,
       generalDiscountAmount: resolveGeneralDiscountAmountForSave(
         generalDiscountAmount,
