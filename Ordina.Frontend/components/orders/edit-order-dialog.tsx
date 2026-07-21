@@ -32,7 +32,7 @@ import {
   type ProductImage,
   type Account,
 } from "@/lib/storage";
-import { buildGeneralDiscountPersistPayload } from "@/lib/general-discount-meta";
+import { buildGeneralDiscountPersistPayload, resolveGeneralDiscountAmountForSave } from "@/lib/general-discount-meta";
 import {
   apiClient,
   type ConfirmOrderDto,
@@ -124,6 +124,23 @@ function resolveCommercialTotalsFieldsForUpdate(
     deliveryCost: orderForm.deliveryCost,
     total: orderForm.total,
   };
+}
+
+const COMMERCIAL_TOTAL_TOLERANCE = 0.02;
+
+function validateCommercialTotalsBeforeSave(orderForm: {
+  total: number;
+  totalBeforeGeneralDiscount: number;
+  generalDiscountAmount: number;
+}): string | null {
+  const expected = Math.max(
+    orderForm.totalBeforeGeneralDiscount - orderForm.generalDiscountAmount,
+    0,
+  );
+  if (Math.abs(orderForm.total - expected) > COMMERCIAL_TOTAL_TOLERANCE) {
+    return "El total no coincide con los subtotales. Verifica que los precios hayan cargado antes de guardar.";
+  }
+  return null;
 }
 
 interface EditOrderDialogProps {
@@ -704,10 +721,9 @@ export function EditOrderDialog({
           orderForm.productDiscountTotal > 0
             ? orderForm.productDiscountTotal
             : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
@@ -986,6 +1002,12 @@ export function EditOrderDialog({
         return;
       }
 
+      const totalsError = validateCommercialTotalsBeforeSave(orderForm);
+      if (totalsError) {
+        toast.error(totalsError);
+        return;
+      }
+
       // Preparar datos para confirmación
       const orderDataForConfirmation = {
         clientName: orderForm.selectedClient.name,
@@ -1015,10 +1037,9 @@ export function EditOrderDialog({
           orderForm.productDiscountTotal > 0
             ? orderForm.productDiscountTotal
             : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         taxAmount: orderForm.taxAmount,
         deliveryCost: orderForm.deliveryCost,
@@ -1089,6 +1110,12 @@ export function EditOrderDialog({
       if (!pendingOrderData || !orderForm.selectedClient || !order) return;
 
       if (!validateConciliatedPaymentsUnchanged()) {
+        return;
+      }
+
+      const totalsError = validateCommercialTotalsBeforeSave(orderForm);
+      if (totalsError) {
+        toast.error(totalsError);
         return;
       }
 
@@ -1271,10 +1298,9 @@ export function EditOrderDialog({
           dispatchObservations:
             orderForm.dispatchObservations.trim() || undefined,
           ...resolveCommercialTotalsFieldsForUpdate(order, orderForm),
-          generalDiscountAmount:
-            orderForm.generalDiscountAmount > 0
-              ? orderForm.generalDiscountAmount
-              : undefined,
+          generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+            orderForm.generalDiscountAmount,
+          ),
           ...buildGeneralDiscountPersistPayload(orderForm),
           productMarkups: orderForm.productMarkups,
           createSupplierOrder: orderForm.createSupplierOrder,
@@ -1327,10 +1353,9 @@ export function EditOrderDialog({
           locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
         })),
         ...resolveCommercialTotalsFieldsForUpdate(order, orderForm),
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         paymentType:
           orderForm.paymentCondition === "pago_a_entrega" ||

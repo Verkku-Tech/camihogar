@@ -814,6 +814,20 @@ export default function OrderDetailPage() {
     [order],
   );
 
+  const showGeneralDiscountLine = useMemo(() => {
+    if (!order?.generalDiscountAmount || order.generalDiscountAmount <= 0) {
+      return false;
+    }
+    const impliedDiscount =
+      (order.subtotal ?? 0) +
+      (order.taxAmount ?? 0) +
+      (order.deliveryCost ?? 0) -
+      (order.total ?? 0);
+    return (
+      Math.abs(impliedDiscount - order.generalDiscountAmount) < 0.05
+    );
+  }, [order]);
+
   const productSurchargeTotal = useMemo(() => {
     if (!order?.products?.length || categories.length === 0) return 0;
     const base = getOrderBaseCurrency(order);
@@ -2550,8 +2564,7 @@ export default function OrderDetailPage() {
                         )}
                       </div>
                     )}
-                    {order.generalDiscountAmount &&
-                      order.generalDiscountAmount > 0 && (
+                    {showGeneralDiscountLine && (
                         <div className="flex justify-between text-red-600">
                           <span>{generalDiscountSummaryLabel}</span>
                           {formattedTotals.generalDiscountAmount ? (
@@ -2559,7 +2572,9 @@ export default function OrderDetailPage() {
                               formatted={formattedTotals.generalDiscountAmount}
                             />
                           ) : (
-                            <OrderCurrency amount={order.generalDiscountAmount} />
+                            <OrderCurrency
+                              amount={order.generalDiscountAmount ?? 0}
+                            />
                           )}
                         </div>
                       )}

@@ -81,6 +81,7 @@ const DELIVERY_TOTAL_EPSILON = 1e-6;
  */
 function areTotalsReadyForGeneralDiscountCap(
   initialOrder: Order | null,
+  isFormHydrated: boolean,
   selectedProducts: OrderProduct[],
   productSubtotalBase: number,
   productSurchargeTotal: number,
@@ -88,13 +89,9 @@ function areTotalsReadyForGeneralDiscountCap(
   deliveryCost: number,
 ): boolean {
   if (!initialOrder) return true;
-
-  const expectedLines = initialOrder.products?.length ?? 0;
-  if (expectedLines > 0 && selectedProducts.length !== expectedLines) {
-    return false;
-  }
+  if (!isFormHydrated) return false;
   if (
-    expectedLines > 0 &&
+    selectedProducts.length > 0 &&
     productSubtotalBase <= DELIVERY_TOTAL_EPSILON &&
     productSurchargeTotal <= DELIVERY_TOTAL_EPSILON
   ) {
@@ -467,6 +464,13 @@ export function useEditOrderForm(
     return currencies.find((c) => c !== "Bs") || preferredCurrency;
   });
   const totalsReadyForDiscountCapRef = useRef(false);
+  const [isFormHydrated, setIsFormHydrated] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setIsFormHydrated(false);
+    }
+  }, [open]);
 
   // Inicializar monedas seleccionadas
   const [selectedCurrencies, setSelectedCurrencies] = useState<Currency[]>(
@@ -745,6 +749,7 @@ export function useEditOrderForm(
       setProductDiscountCurrencies(newCurrencies);
 
       setCommercialExchangeRates(getCommercialRatesFromOrder(initialOrder));
+      setIsFormHydrated(true);
     }
   }, [initialOrder, open, preferredCurrency]);
 
@@ -1012,6 +1017,7 @@ export function useEditOrderForm(
     () =>
       areTotalsReadyForGeneralDiscountCap(
         initialOrder,
+        isFormHydrated,
         selectedProducts,
         productSubtotalBase,
         productSurchargeTotal,
@@ -1020,6 +1026,7 @@ export function useEditOrderForm(
       ),
     [
       initialOrder,
+      isFormHydrated,
       selectedProducts,
       productSubtotalBase,
       productSurchargeTotal,
@@ -1031,7 +1038,7 @@ export function useEditOrderForm(
   const generalDiscountAmount = useMemo(() => {
     const persistedAmount = initialOrder?.generalDiscountAmount ?? 0;
     if (
-      !totalsReadyForGeneralDiscountCap &&
+      !isFormHydrated &&
       persistedAmount > DELIVERY_TOTAL_EPSILON
     ) {
       return persistedAmount;
@@ -1048,7 +1055,7 @@ export function useEditOrderForm(
     );
     return Math.min(Math.max(inBase, 0), totalBeforeGeneralDiscount);
   }, [
-    totalsReadyForGeneralDiscountCap,
+    isFormHydrated,
     initialOrder?.generalDiscountAmount,
     generalDiscountType,
     generalDiscount,
