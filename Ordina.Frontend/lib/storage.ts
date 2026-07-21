@@ -3318,9 +3318,9 @@ export const updateOrder = async (
                 ? updatedOrder.productDiscountTotal
                 : undefined,
             generalDiscountAmount:
-              updatedOrder.generalDiscountAmount !==
-              existingOrder.generalDiscountAmount
-                ? updatedOrder.generalDiscountAmount
+              (updatedOrder.generalDiscountAmount ?? 0) !==
+              (existingOrder.generalDiscountAmount ?? 0)
+                ? (updatedOrder.generalDiscountAmount ?? 0)
                 : undefined,
             generalDiscountType:
               updatedOrder.generalDiscountType !==

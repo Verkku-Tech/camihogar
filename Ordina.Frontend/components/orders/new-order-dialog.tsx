@@ -32,7 +32,7 @@ import {
   type ProductImage,
   type Account,
 } from "@/lib/storage";
-import { buildGeneralDiscountPersistPayload } from "@/lib/general-discount-meta";
+import { buildGeneralDiscountPersistPayload, resolveGeneralDiscountAmountForSave } from "@/lib/general-discount-meta";
 import { apiClient, type OrderResponseDto } from "@/lib/api-client";
 import {
   isActiveReservation,
@@ -379,10 +379,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           orderForm.productDiscountTotal > 0
             ? orderForm.productDiscountTotal
             : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
@@ -517,10 +516,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           orderForm.productDiscountTotal > 0
             ? orderForm.productDiscountTotal
             : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,
@@ -826,10 +824,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           orderForm.productDiscountTotal > 0
             ? orderForm.productDiscountTotal
             : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         taxAmount: orderForm.taxAmount,
         deliveryCost: orderForm.deliveryCost,
@@ -965,10 +962,9 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
           orderForm.productDiscountTotal > 0
             ? orderForm.productDiscountTotal
             : undefined,
-        generalDiscountAmount:
-          orderForm.generalDiscountAmount > 0
-            ? orderForm.generalDiscountAmount
-            : undefined,
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
         ...buildGeneralDiscountPersistPayload(orderForm),
         subtotal: orderForm.subtotal,
         taxAmount: orderForm.taxAmount,

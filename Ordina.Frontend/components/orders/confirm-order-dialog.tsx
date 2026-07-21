@@ -53,6 +53,7 @@ import {
   getOrderBaseCurrency,
 } from "@/lib/order-line-pricing";
 import { readDiscountUiFromProduct } from "@/lib/product-discount-ui";
+import { resolveGeneralDiscountAmountForSave } from "@/lib/general-discount-meta";
 import { normalizeExchangeRatesAtCreation } from "@/lib/currency-utils";
 import {
   applyOrderCurrencyMetadata,
@@ -486,8 +487,9 @@ export function ConfirmOrderDialog({
       taxAmount,
       deliveryCost,
       total,
-      generalDiscountAmount:
-        generalDiscountAmount > 0 ? generalDiscountAmount : undefined,
+      generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+        generalDiscountAmount,
+      ),
       ...(generalDiscountAmount > 0 &&
       generalDiscountType === "porcentaje" &&
       generalDiscountPercent != null &&
