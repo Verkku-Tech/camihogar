@@ -7,6 +7,36 @@ namespace Ordina.Orders.Application.Dispatch;
 /// </summary>
 public static class DispatchReportFilters
 {
+    /// <summary>
+    /// Ubicación de origen del producto para despacho: "tienda" | "almacen" | null.
+    /// Prioriza el origen preservado al despachar (DispatchOrigin); para productos aún
+    /// por despachar deriva del locationStatus/manufacturingStatus actuales.
+    /// </summary>
+    public static string? ResolveLocation(OrderProduct product)
+    {
+        if (product == null) return null;
+
+        var origin = product.DispatchOrigin?.Trim().ToLowerInvariant();
+        if (origin is "tienda" or "almacen")
+            return origin;
+
+        var loc = product.LocationStatus?.Trim();
+        if (string.Equals(loc, "EN TIENDA", StringComparison.OrdinalIgnoreCase))
+            return "tienda";
+
+        if (string.Equals(loc, "DISPONIBILIDAD INMEDIATA", StringComparison.OrdinalIgnoreCase))
+            return "almacen";
+
+        if (string.Equals(loc, "FABRICACION", StringComparison.OrdinalIgnoreCase))
+        {
+            var manufacturing = product.ManufacturingStatus?.Trim().ToLowerInvariant();
+            if (manufacturing is "almacen_no_fabricado" or "fabricado")
+                return "almacen";
+        }
+
+        return null;
+    }
+
     public static bool IsProductEnRuta(OrderProduct product)
     {
         var loc = product.LocationStatus?.Trim();

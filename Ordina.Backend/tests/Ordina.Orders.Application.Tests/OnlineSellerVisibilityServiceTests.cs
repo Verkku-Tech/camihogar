@@ -81,6 +81,9 @@ public class OnlineSellerVisibilityServiceTests
         public Task<IEnumerable<User>> GetByStatusAsync(string status) =>
             Task.FromResult(users.Where(u => u.Status == status));
 
+        public Task<IEnumerable<User>> GetByStoreIdAsync(string storeId) =>
+            Task.FromResult(users.Where(u => u.StoreId == storeId));
+
         public Task<User> CreateAsync(User user) => throw new NotSupportedException();
 
         public Task<User> UpdateAsync(User user) => throw new NotSupportedException();

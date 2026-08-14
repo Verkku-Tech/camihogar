@@ -73,12 +73,14 @@ public interface IReportService
     Task<Stream> GenerateDispatchReportAsync(
         string? deliveryZone = null,
         DateTime? startDate = null,
-        DateTime? endDate = null);
+        DateTime? endDate = null,
+        string? location = null);
 
     Task<List<DispatchReportRowDto>> GetDispatchReportDataAsync(
         string? deliveryZone = null,
         DateTime? startDate = null,
-        DateTime? endDate = null);
+        DateTime? endDate = null,
+        string? location = null);
 }
 
 public class ReportService : IReportService
@@ -2053,7 +2055,8 @@ public class ReportService : IReportService
     public async Task<Stream> GenerateDispatchReportAsync(
         string? deliveryZone = null,
         DateTime? startDate = null,
-        DateTime? endDate = null)
+        DateTime? endDate = null,
+        string? location = null)
     {
         try
         {
@@ -2062,7 +2065,8 @@ public class ReportService : IReportService
             var reportData = await GetFilteredDispatchDataAsync(
                 deliveryZone,
                 startDate,
-                endDate);
+                endDate,
+                location);
 
             // Orden ya aplicado en GetFilteredDispatchDataAsync (zona, fecha, nota)
 
@@ -2082,9 +2086,10 @@ public class ReportService : IReportService
                 sl.SetCellValue(1, 8, "Estado de Pago");
                 sl.SetCellValue(1, 9, "Importe Total");
                 sl.SetCellValue(1, 10, "Saldo Pendiente por Cobrar (USD)");
-                sl.SetCellValue(1, 11, "Información de despacho");
-                sl.SetCellValue(1, 12, "Observaciones de despacho");
-                sl.SetCellValue(1, 13, "Firma");
+                sl.SetCellValue(1, 11, "Ubicación");
+                sl.SetCellValue(1, 12, "Información de despacho");
+                sl.SetCellValue(1, 13, "Observaciones de despacho");
+                sl.SetCellValue(1, 14, "Firma");
 
                 // Estilo de headers
                 var headerStyle = sl.CreateStyle();
@@ -2094,7 +2099,7 @@ public class ReportService : IReportService
                 usdMoneyStyle.FormatCode = "\"$\"#,##0.00";
 
                 // Aplicar estilo a las celdas de headers
-                for (int col = 1; col <= 13; col++)
+                for (int col = 1; col <= 14; col++)
                 {
                     sl.SetCellStyle(1, col, headerStyle);
                 }
@@ -2115,9 +2120,10 @@ public class ReportService : IReportService
                     sl.SetCellValue(row, 10, item.SaldoPendiente);
                     sl.SetCellStyle(row, 9, usdMoneyStyle);
                     sl.SetCellStyle(row, 10, usdMoneyStyle);
-                    sl.SetCellValue(row, 11, item.InformacionDespacho);
-                    sl.SetCellValue(row, 12, item.DispatchObservations);
-                    sl.SetCellValue(row, 13, " ");
+                    sl.SetCellValue(row, 11, item.EstadoUbicacion);
+                    sl.SetCellValue(row, 12, item.InformacionDespacho);
+                    sl.SetCellValue(row, 13, item.DispatchObservations);
+                    sl.SetCellValue(row, 14, " ");
                     row++;
                 }
 
@@ -2132,9 +2138,10 @@ public class ReportService : IReportService
                 sl.SetColumnWidth(8, 22);  // Estado de Pago
                 sl.SetColumnWidth(9, 15);  // Importe Total
                 sl.SetColumnWidth(10, 28); // Saldo Pendiente
-                sl.SetColumnWidth(11, 32); // Información de despacho (zona/tipo)
-                sl.SetColumnWidth(12, 42); // Observaciones de despacho
-                sl.SetColumnWidth(13, 22); // Firma (espacio para firmar)
+                sl.SetColumnWidth(11, 18); // Ubicación (tienda/almacén)
+                sl.SetColumnWidth(12, 32); // Información de despacho (zona/tipo)
+                sl.SetColumnWidth(13, 42); // Observaciones de despacho
+                sl.SetColumnWidth(14, 22); // Firma (espacio para firmar)
 
                 // Guardar en el stream antes de que se cierre el SLDocument
                 sl.SaveAs(stream);
@@ -2153,7 +2160,8 @@ public class ReportService : IReportService
     public async Task<List<DispatchReportRowDto>> GetDispatchReportDataAsync(
         string? deliveryZone = null,
         DateTime? startDate = null,
-        DateTime? endDate = null)
+        DateTime? endDate = null,
+        string? location = null)
     {
         try
         {
@@ -2162,7 +2170,8 @@ public class ReportService : IReportService
             var reportData = await GetFilteredDispatchDataAsync(
                 deliveryZone,
                 startDate,
-                endDate);
+                endDate,
+                location);
 
             return reportData.Select(row => new DispatchReportRowDto
             {
@@ -2177,7 +2186,8 @@ public class ReportService : IReportService
                 ImporteTotal = row.ImporteTotal,
                 SaldoPendiente = row.SaldoPendiente,
                 DispatchObservations = row.DispatchObservations,
-                InformacionDespacho = row.InformacionDespacho
+                InformacionDespacho = row.InformacionDespacho,
+                EstadoUbicacion = row.EstadoUbicacion
             }).ToList();
         }
         catch (Exception ex)
@@ -2190,7 +2200,8 @@ public class ReportService : IReportService
     private async Task<List<DispatchReportRow>> GetFilteredDispatchDataAsync(
         string? deliveryZone = null,
         DateTime? startDate = null,
-        DateTime? endDate = null)
+        DateTime? endDate = null,
+        string? location = null)
     {
         var orders = await _orderRepository.GetAllAsync();
         var clients = await _clientRepository.GetAllAsync();
@@ -2221,6 +2232,24 @@ public class ReportService : IReportService
             var enRutaProducts = DispatchReportFilters.GetProductsEnRuta(order);
             if (enRutaProducts.Count == 0)
                 continue;
+
+            var productLocations = enRutaProducts
+                .Select(DispatchReportFilters.ResolveLocation)
+                .Where(loc => loc != null)
+                .Select(loc => loc!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!string.IsNullOrWhiteSpace(location) &&
+                !productLocations.Any(loc => string.Equals(loc, location, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            var estadoUbicacion = productLocations.Count switch
+            {
+                0 => string.Empty,
+                1 => productLocations[0] == "tienda" ? "Tienda" : "Almacén",
+                _ => "Tienda + Almacén"
+            };
 
             var client = clients.FirstOrDefault(c => c.Id == order.ClientId);
 
@@ -2289,7 +2318,8 @@ public class ReportService : IReportService
                 ImporteTotal = importeTotalUsd,
                 SaldoPendiente = saldoPendiente,
                 DispatchObservations = order.DispatchObservations ?? "",
-                InformacionDespacho = BuildInformacionDespacho(order)
+                InformacionDespacho = BuildInformacionDespacho(order),
+                EstadoUbicacion = estadoUbicacion
             });
         }
 
@@ -2447,6 +2477,7 @@ public class ReportService : IReportService
         public decimal SaldoPendiente { get; set; }
         public string DispatchObservations { get; set; } = string.Empty;
         public string InformacionDespacho { get; set; } = string.Empty;
+        public string EstadoUbicacion { get; set; } = string.Empty;
     }
 }
 

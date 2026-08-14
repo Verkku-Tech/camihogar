@@ -1747,6 +1747,8 @@ export interface OrderProduct {
     | "EN DESPACHO"
     | "DESPACHADO"; // Estado de ubicación
   logisticStatus?: string; // "Generado", "Fabricándose", "En Almacén", "En Ruta", "Completado"
+  /** Origen preservado al marcar EN DESPACHO: "tienda" | "almacen" | null */
+  dispatchOrigin?: "tienda" | "almacen" | null;
   /** ISO UTC cuando el ítem se marcó entregado/despachado */
   deliveredAt?: string;
   // Campos de sobreprecio
@@ -2183,6 +2185,7 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
       );
     })(),
     logisticStatus: p.logisticStatus,
+    dispatchOrigin: p.dispatchOrigin as "tienda" | "almacen" | null | undefined,
     deliveredAt:
       typeof p.deliveredAt === "string"
         ? p.deliveredAt
@@ -2428,6 +2431,7 @@ export const orderToBackendDto = (
     manufacturingNotes: p.manufacturingNotes,
     locationStatus: p.locationStatus,
     logisticStatus: p.logisticStatus,
+    dispatchOrigin: p.dispatchOrigin,
     deliveredAt: p.deliveredAt,
     surchargeEnabled: p.surchargeEnabled,
     surchargeAmount: p.surchargeAmount,
@@ -3275,6 +3279,7 @@ export const updateOrder = async (
                     manufacturingNotes: p.manufacturingNotes,
                     locationStatus: p.locationStatus,
                     logisticStatus: p.logisticStatus,
+                    dispatchOrigin: p.dispatchOrigin,
                     deliveredAt: p.deliveredAt,
                     surchargeEnabled: p.surchargeEnabled,
                     surchargeAmount: p.surchargeAmount,
@@ -3617,6 +3622,7 @@ export const updateOrder = async (
             manufacturingNotes: p.manufacturingNotes,
             locationStatus: p.locationStatus,
             logisticStatus: p.logisticStatus,
+            dispatchOrigin: p.dispatchOrigin,
             deliveredAt: p.deliveredAt,
             surchargeEnabled: p.surchargeEnabled,
             surchargeAmount: p.surchargeAmount,

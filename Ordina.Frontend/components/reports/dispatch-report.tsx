@@ -46,6 +46,7 @@ interface DispatchReportRow {
   saldoPendiente: number;
   informacionDespacho: string;
   observacionesDespacho: string;
+  ubicacion: string;
 }
 
 function normalizeDispatchRow(raw: Record<string, unknown>): DispatchReportRow {
@@ -64,6 +65,7 @@ function normalizeDispatchRow(raw: Record<string, unknown>): DispatchReportRow {
     saldoPendiente: Number(g("saldoPendiente") ?? 0),
     informacionDespacho: String(g("informacionDespacho") ?? "").trim(),
     observacionesDespacho: String(g("dispatchObservations") ?? "").trim(),
+    ubicacion: String(g("estadoUbicacion") ?? "").trim(),
   };
 }
 
@@ -117,6 +119,10 @@ function DispatchReportMobileCard({ row }: { row: DispatchReportRow }) {
             {displayCellText(row.descripcion)}
           </dd>
         </div>
+        <div>
+          <dt className="text-muted-foreground">Ubicación</dt>
+          <dd className="font-medium">{displayCellText(row.ubicacion)}</dd>
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
             <dt className="text-muted-foreground">Importe total</dt>
@@ -159,6 +165,7 @@ const escapeCsvCell = (value: string): string => {
 
 export function DispatchReport() {
   const [selectedZone, setSelectedZone] = useState<string>("all");
+  const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [reportData, setReportData] = useState<DispatchReportRow[]>([]);
@@ -197,6 +204,9 @@ export function DispatchReport() {
         if (selectedZone && selectedZone !== "all") {
           params.append("deliveryZone", selectedZone);
         }
+        if (selectedLocation && selectedLocation !== "all") {
+          params.append("location", selectedLocation);
+        }
         if (startDate) {
           params.append("startDate", startDate);
         }
@@ -231,12 +241,15 @@ export function DispatchReport() {
     };
 
     loadReportData();
-  }, [selectedZone, startDate, endDate]);
+  }, [selectedZone, selectedLocation, startDate, endDate]);
 
   const buildReportQueryParams = () => {
     const params = new URLSearchParams();
     if (selectedZone && selectedZone !== "all") {
       params.append("deliveryZone", selectedZone);
+    }
+    if (selectedLocation && selectedLocation !== "all") {
+      params.append("location", selectedLocation);
     }
     if (startDate) {
       params.append("startDate", startDate);
@@ -307,6 +320,7 @@ export function DispatchReport() {
         "Estado de pago",
         "Importe total",
         "Saldo pendiente (USD)",
+        "Ubicación",
         "Información de despacho",
         "Observaciones de despacho",
         "Firma",
@@ -326,6 +340,7 @@ export function DispatchReport() {
             row.estadoPago,
             row.importeTotal.toFixed(2),
             row.saldoPendiente.toFixed(2),
+            row.ubicacion,
             row.informacionDespacho,
             row.observacionesDespacho,
             "",
@@ -375,7 +390,7 @@ export function DispatchReport() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label htmlFor="zone">Zona (Recomendado)</Label>
               <Select value={selectedZone} onValueChange={setSelectedZone}>
@@ -389,6 +404,22 @@ export function DispatchReport() {
                       {zone.label}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="location">Ubicación</Label>
+              <Select
+                value={selectedLocation}
+                onValueChange={setSelectedLocation}
+              >
+                <SelectTrigger id="location">
+                  <SelectValue placeholder="Tienda y Almacén" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tienda y Almacén</SelectItem>
+                  <SelectItem value="tienda">Tienda</SelectItem>
+                  <SelectItem value="almacen">Almacén</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -493,7 +524,7 @@ export function DispatchReport() {
               </div>
 
               <div className="hidden lg:block overflow-x-auto rounded-md border">
-                <Table className="min-w-[1280px] w-full">
+                <Table className="min-w-[1380px] w-full">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="sticky left-0 z-20 min-w-[100px] bg-background">
@@ -516,6 +547,7 @@ export function DispatchReport() {
                       <TableHead className="text-right min-w-[120px]">
                         Saldo pendiente (USD)
                       </TableHead>
+                      <TableHead className="min-w-[110px]">Ubicación</TableHead>
                       <TableHead className="min-w-[180px] max-w-[240px]">
                         Información de despacho
                       </TableHead>
@@ -559,6 +591,9 @@ export function DispatchReport() {
                         <TableCell className="text-right font-medium whitespace-nowrap">
                           {formatCurrency(row.saldoPendiente)}
                         </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {displayCellText(row.ubicacion)}
+                        </TableCell>
                         <TableCell className="max-w-[240px] text-sm whitespace-pre-wrap break-words">
                           {displayCellText(row.informacionDespacho)}
                         </TableCell>
@@ -581,6 +616,7 @@ export function DispatchReport() {
                       <TableCell className="text-right whitespace-nowrap">
                         {formatCurrency(totalSaldoPendiente)}
                       </TableCell>
+                      <TableCell />
                       <TableCell />
                       <TableCell />
                       <TableCell />

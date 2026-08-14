@@ -557,7 +557,8 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> GetDispatchReport(
         [FromQuery] string? deliveryZone = null,
         [FromQuery] string? startDate = null,
-        [FromQuery] string? endDate = null)
+        [FromQuery] string? endDate = null,
+        [FromQuery] string? location = null)
     {
         try
         {
@@ -586,7 +587,8 @@ public class ReportsController : ControllerBase
             var stream = await _reportService.GenerateDispatchReportAsync(
                 deliveryZone,
                 parsedStartDate,
-                parsedEndDate);
+                parsedEndDate,
+                location);
             
             var fileName = $"Reporte_Despacho_{DateTime.UtcNow:yyyyMMdd}.xlsx";
             
@@ -619,7 +621,8 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> GetDispatchReportPreview(
         [FromQuery] string? deliveryZone = null,
         [FromQuery] string? startDate = null,
-        [FromQuery] string? endDate = null)
+        [FromQuery] string? endDate = null,
+        [FromQuery] string? location = null)
     {
         try
         {
@@ -648,7 +651,8 @@ public class ReportsController : ControllerBase
             var reportData = await _reportService.GetDispatchReportDataAsync(
                 deliveryZone,
                 parsedStartDate,
-                parsedEndDate);
+                parsedEndDate,
+                location);
             
             return Ok(reportData);
         }

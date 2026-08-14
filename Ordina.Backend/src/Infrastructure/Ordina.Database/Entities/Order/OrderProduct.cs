@@ -78,6 +78,10 @@ public class OrderProduct
     [BsonElement("locationStatus")]
     public string? LocationStatus { get; set; } // "EN TIENDA" | "FABRICACION" | null/empty
 
+    /// <summary>Origen de despacho preservado al marcar EN DESPACHO: "tienda" | "almacen" | null.</summary>
+    [BsonElement("dispatchOrigin")]
+    public string? DispatchOrigin { get; set; }
+
     [BsonElement("logisticStatus")]
     public string LogisticStatus { get; set; } = "Generado"; // "Generado", "Fabricándose", "En Almacén", "En Ruta", "Completado"
 

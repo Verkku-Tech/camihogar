@@ -17,4 +17,7 @@ public class DispatchReportRowDto
     public string DispatchObservations { get; set; } = string.Empty;
     /// <summary>Zona y tipo de entrega formateados para transportistas (sin observaciones).</summary>
     public string InformacionDespacho { get; set; } = string.Empty;
+
+    /// <summary>Origen de los productos despachados: "Tienda", "Almacén", "Tienda + Almacén" o vacío.</summary>
+    public string EstadoUbicacion { get; set; } = string.Empty;
 }

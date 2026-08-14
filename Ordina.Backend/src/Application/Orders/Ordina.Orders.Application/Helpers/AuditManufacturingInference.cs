@@ -203,9 +203,11 @@ public static class AuditManufacturingInference
     public static string BuildSemanticSummary(
         string orderNumber,
         IReadOnlyList<AuditChange> changes,
-        IReadOnlyList<ManufacturingAuditEvent> manufacturingEvents)
+        IReadOnlyList<ManufacturingAuditEvent> manufacturingEvents,
+        string? action = null)
     {
         var parts = new List<string>();
+        var isCreation = string.Equals(action, "created", StringComparison.Ordinal);
 
         if (manufacturingEvents.Count > 0)
         {
@@ -235,7 +237,19 @@ public static class AuditManufacturingInference
         foreach (var added in paymentAdded)
         {
             var detail = AuditLabelFormatter.FormatPaymentListValueForDisplay(added.NewValue);
-            parts.Add($"Agregó pago: {detail}");
+            parts.Add(isCreation
+                ? $"Agregó pago durante la creación del pedido: {detail}"
+                : $"Agregó pago: {detail}");
+        }
+
+        if (isCreation && !paymentAdded.Any())
+        {
+            var mainPayment = changes.FirstOrDefault(c => c.Field is "paymentDetails");
+            if (mainPayment != null)
+            {
+                var detail = AuditLabelFormatter.FormatValue("paymentDetails", mainPayment.NewValue);
+                parts.Add($"Agregó pago durante la creación del pedido: {detail}");
+            }
         }
 
         var paymentRemoved = changes.Where(c =>

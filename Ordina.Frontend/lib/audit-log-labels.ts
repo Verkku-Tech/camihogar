@@ -298,6 +298,25 @@ export function getDisplaySummary(log: OrderAuditLogDto): string {
   if (!log.changes?.length) return log.summary;
 
   const changes = filterRedundantCasheaPaymentAuditChanges(log.changes);
+
+  if (log.action === "created") {
+    const addedPayments = changes.filter(
+      (ch) => ch.field === "mixedPayments[+]" || ch.field === "partialPayments[+]",
+    );
+    if (addedPayments.length > 0) {
+      return addedPayments
+        .map(
+          (c) =>
+            `Agregó pago durante la creación del pedido: ${getDisplayNewValue(c)}`,
+        )
+        .join(" — ");
+    }
+    const mainPayment = changes.find((ch) => ch.field === "paymentDetails");
+    if (mainPayment) {
+      return `Agregó pago durante la creación del pedido: ${getDisplayNewValue(mainPayment)}`;
+    }
+  }
+
   const parts: string[] = [];
 
   for (const c of changes.filter((ch) => ch.field.includes(".fabricacion"))) {
