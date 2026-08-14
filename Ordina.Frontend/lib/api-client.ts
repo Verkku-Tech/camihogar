@@ -1416,6 +1416,20 @@ export class ApiClient {
     );
   }
 
+  /** Declina un pedido en estado Generado (todas sus líneas pasan a Declinado). */
+  async declineOrder(orderId: string) {
+    return this.request<OrderResponseDto>(`/api/Orders/${orderId}/decline`, {
+      method: "POST",
+    });
+  }
+
+  /** Revierte un pedido Declinado a Generado. */
+  async reactivateOrder(orderId: string) {
+    return this.request<OrderResponseDto>(`/api/Orders/${orderId}/reactivate`, {
+      method: "POST",
+    });
+  }
+
   /** Marca o desmarca conciliación de uno o más pagos (pedido). */
   async conciliatePayments(requests: ConciliatePaymentRequestDto[]) {
     return this.request<boolean>("/api/Orders/payments/conciliate", {

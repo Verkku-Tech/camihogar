@@ -19,6 +19,8 @@ public class OrderAuditLogService : IOrderAuditLogService
     public const string ActionDeleted = "deleted";
     public const string ActionPaymentConciliated = "payment_conciliated";
     public const string ActionItemValidated = "item_validated";
+    public const string ActionOrderDeclined = "order_declined";
+    public const string ActionOrderDeclineReverted = "order_decline_reverted";
     public const string ActionManufacturingQueued = AuditManufacturingInference.ActionManufacturingQueued;
     public const string ActionManufacturingStarted = AuditManufacturingInference.ActionManufacturingStarted;
     public const string ActionManufacturingCompleted = AuditManufacturingInference.ActionManufacturingCompleted;
@@ -160,6 +162,52 @@ public class OrderAuditLogService : IOrderAuditLogService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "No se pudo registrar auditoría de eliminación de pedido {OrderNumber}", order.OrderNumber);
+        }
+    }
+
+    public async Task LogOrderDeclinedAsync(Order order, string userId, string userName)
+    {
+        try
+        {
+            var log = new OrderAuditLog
+            {
+                OrderId = order.Id,
+                OrderNumber = order.OrderNumber,
+                Action = ActionOrderDeclined,
+                UserId = userId,
+                UserName = userName,
+                Summary = $"Declinó el pedido {order.OrderNumber} (cliente {order.ClientName})",
+                Changes = new List<AuditChange>(),
+                Timestamp = DateTime.UtcNow
+            };
+            await _repository.CreateAsync(log);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No se pudo registrar auditoría de declinación del pedido {OrderNumber}", order.OrderNumber);
+        }
+    }
+
+    public async Task LogOrderDeclineRevertedAsync(Order order, string userId, string userName)
+    {
+        try
+        {
+            var log = new OrderAuditLog
+            {
+                OrderId = order.Id,
+                OrderNumber = order.OrderNumber,
+                Action = ActionOrderDeclineReverted,
+                UserId = userId,
+                UserName = userName,
+                Summary = $"Reactivó el pedido {order.OrderNumber} (cliente {order.ClientName}); vuelve a estado Generado",
+                Changes = new List<AuditChange>(),
+                Timestamp = DateTime.UtcNow
+            };
+            await _repository.CreateAsync(log);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "No se pudo registrar auditoría de reactivación del pedido {OrderNumber}", order.OrderNumber);
         }
     }
 

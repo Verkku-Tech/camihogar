@@ -92,4 +92,34 @@ public class OrderStatusAggregationTests
 
         Assert.Equal("En Almacén", status);
     }
+
+    [Theory]
+    [InlineData("Declinado")]
+    [InlineData("declinado")]
+    public void IsDeclinedStatus_RecognizesDeclined(string status)
+    {
+        Assert.True(OrderStatusAggregation.IsDeclinedStatus(status));
+    }
+
+    [Fact]
+    public void IsDeclinedStatus_FalseForActiveStatuses()
+    {
+        Assert.False(OrderStatusAggregation.IsDeclinedStatus("Generado"));
+        Assert.False(OrderStatusAggregation.IsDeclinedStatus("Validado"));
+        Assert.False(OrderStatusAggregation.IsDeclinedStatus(null));
+    }
+
+    [Fact]
+    public void AllLinesDeclined_ReturnsDeclinado_EvenIfFabricationQueue()
+    {
+        var products = new[]
+        {
+            FabLine("Declinado", "por_fabricar"),
+            ImmediateLine("Declinado"),
+        };
+
+        var status = OrderStatusAggregation.CalculateFromProducts(products);
+
+        Assert.Equal("Declinado", status);
+    }
 }

@@ -51,6 +51,12 @@ public interface IOrderService
         bool callerHasInventoryMovementsView = false,
         bool callerHasOrdersUpdate = false);
     Task<OrderResponseDto> ValidateOrderItemAsync(string id, string itemId, string userId, string userName);
+
+    /// <summary>Declina un pedido en estado Generado: todas sus líneas pasan a Declinado.</summary>
+    Task<OrderResponseDto> DeclineOrderAsync(string id, string userId, string userName);
+
+    /// <summary>Revierte un pedido Declinado a Generado para poder validarlo o editarlo.</summary>
+    Task<OrderResponseDto> ReactivateOrderAsync(string id, string userId, string userName);
     Task<bool> DeleteOrderAsync(
         string id,
         string userId,

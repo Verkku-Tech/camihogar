@@ -76,6 +76,8 @@ const ACTION_OPTIONS = [
   { value: "deleted", label: "Eliminado" },
   { value: "payment_conciliated", label: "Conciliación pagos" },
   { value: "item_validated", label: "Ítem validado" },
+  { value: "order_declined", label: "Pedido declinado" },
+  { value: "order_decline_reverted", label: "Declinación revertida" },
   { value: "manufacturing_queued", label: "Enviado a reporte de fabricación" },
   { value: "manufacturing_started", label: "Inició fabricación" },
   { value: "manufacturing_completed", label: "Completó fabricación" },

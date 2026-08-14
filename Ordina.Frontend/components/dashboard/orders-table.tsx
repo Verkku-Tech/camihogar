@@ -27,6 +27,16 @@ import { getOrderStatusBadgeLabel } from "@/components/orders/constants"
 import { resolveDisplayOrderStatus } from "@/lib/order-status-aggregation"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface OrdersTableProps {
   /** Si el padre ya sincronizó pedidos, evita otro getOrders al montar. */
@@ -100,6 +110,10 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
   const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
   const [validatingIds, setValidatingIds] = useState<Set<string>>(new Set())
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
+  const [confirmAction, setConfirmAction] = useState<{
+    order: Order
+    type: "validate" | "decline"
+  } | null>(null)
 
   const {
     currentPage,
@@ -205,8 +219,8 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
     })
   }
 
-  const handleValidate = async (order: Order, e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleValidate = async (order: Order, e?: React.MouseEvent) => {
+    e?.stopPropagation()
     if (!canValidateOrders) {
       toast.error("Solo administradores pueden validar pedidos.")
       return
@@ -235,6 +249,30 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
         next.delete(order.id)
         return next
       })
+      setConfirmAction(null)
+    }
+  }
+
+  const handleDecline = async (order: Order) => {
+    if (!canValidateOrders) {
+      toast.error("Solo administradores pueden declinar pedidos.")
+      return
+    }
+    setValidatingIds((prev) => new Set(prev).add(order.id))
+    try {
+      await apiClient.declineOrder(order.id)
+      await reloadGeneratedOrders()
+      toast.success("Pedido declinado")
+    } catch (error) {
+      console.error("Error declinando pedido:", error)
+      toast.error("Error al declinar el pedido")
+    } finally {
+      setValidatingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(order.id)
+        return next
+      })
+      setConfirmAction(null)
     }
   }
 
@@ -331,17 +369,27 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
                   </TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     {isGenerated(order) && canValidateOrders ? (
-                      <Button
-                        size="sm"
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                        disabled={validatingIds.has(order.id)}
-                        onClick={(e) => handleValidate(order, e)}
-                      >
-                        {validatingIds.has(order.id) && (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        )}
-                        Validar
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                          disabled={validatingIds.has(order.id)}
+                          onClick={() => setConfirmAction({ order, type: "validate" })}
+                        >
+                          {validatingIds.has(order.id) && (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          )}
+                          Validar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={validatingIds.has(order.id)}
+                          onClick={() => setConfirmAction({ order, type: "decline" })}
+                        >
+                          Declinar
+                        </Button>
+                      </div>
                     ) : (
                       <span
                         className="text-xs text-muted-foreground"
@@ -374,5 +422,48 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
         </div>
       </CardContent>
     </Card>
+
+    <AlertDialog
+      open={confirmAction !== null}
+      onOpenChange={(open) => !open && setConfirmAction(null)}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {confirmAction?.type === "validate"
+              ? "¿Validar pedido?"
+              : "¿Declinar pedido?"}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {confirmAction?.type === "validate"
+              ? "El pedido pasará a estado Validado. Todos los productos pendientes serán validados."
+              : "El pedido pasará a estado Declinado y quedará fuera de reportes y despachos. Puedes revertirlo luego desde el detalle del pedido."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            className={
+              confirmAction?.type === "decline"
+                ? "bg-red-600 hover:bg-red-700 text-white"
+                : undefined
+            }
+            disabled={validatingIds.has(confirmAction?.order.id ?? "")}
+            onClick={() => {
+              if (!confirmAction) return
+              if (confirmAction.type === "validate") {
+                handleValidate(confirmAction.order)
+              } else {
+                handleDecline(confirmAction.order)
+              }
+            }}
+          >
+            {validatingIds.has(confirmAction?.order.id ?? "")
+              ? "Procesando..."
+              : "Confirmar"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
