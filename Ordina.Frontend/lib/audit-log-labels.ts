@@ -395,6 +395,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   deleted: "Eliminado",
   payment_conciliated: "Conciliación pagos",
   item_validated: "Ítem validado",
+  order_declined: "Pedido declinado",
+  order_decline_reverted: "Declinación revertida",
   manufacturing_queued: "Enviado a reporte de fabricación",
   manufacturing_started: "Inició fabricación",
   manufacturing_completed: "Completó fabricación",

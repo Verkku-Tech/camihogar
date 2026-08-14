@@ -340,6 +340,12 @@ public class ReportService : IReportService
                 continue;
             }
 
+            // Pedidos declinados no participan en reportes
+            if (OrderStatusAggregation.IsDeclinedStatus(order.Status))
+            {
+                continue;
+            }
+
             // Alinear con Inventario → Fabricación: reservas no van al reporte hasta confirmarse como pedido
             if (OrderDocumentTypes.IsReservationType(order.Type)
                 || OrderDocumentTypes.IsReservationOrderNumber(order.OrderNumber))
@@ -942,6 +948,10 @@ public class ReportService : IReportService
             // Presupuestos y reservas no forman parte del reporte de pagos de pedidos
             if (string.Equals(order.Type, "Budget", StringComparison.OrdinalIgnoreCase)
                 || OrderDocumentTypes.IsReservationType(order.Type))
+                continue;
+
+            // Pedidos declinados no participan en reportes
+            if (OrderStatusAggregation.IsDeclinedStatus(order.Status))
                 continue;
 
             // Un solo origen de abonos (misma regla que el detalle del pedido): partial si existe, si no mixed
@@ -1627,6 +1637,10 @@ public class ReportService : IReportService
         {
             if (OrderDocumentTypes.IsReservationType(order.Type)
                 || OrderDocumentTypes.IsReservationOrderNumber(order.OrderNumber))
+                continue;
+
+            // Pedidos declinados no participan en reportes
+            if (OrderStatusAggregation.IsDeclinedStatus(order.Status))
                 continue;
 
             if (IsPagoAEntregaCondition(order) && !HasRecordedPaymentsForCommission(order))

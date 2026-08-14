@@ -11,6 +11,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   ArrowLeft,
   User,
   Package,
@@ -564,6 +574,9 @@ export default function OrderDetailPage() {
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [client, setClient] = useState<Client | null>(null);
   const [validatingOrder, setValidatingOrder] = useState<boolean>(false);
+  const [confirmAction, setConfirmAction] = useState<
+    "validate" | "decline" | "reactivate" | null
+  >(null);
 
   /** Un solo arreglo activo: varios pagos van en mixedPayments y partialPayments queda vacío. */
   const activePayments = useMemo((): PartialPayment[] => {
@@ -911,6 +924,49 @@ export default function OrderDetailPage() {
       toast.error("Error al tratar de validar el pedido");
     } finally {
       setValidatingOrder(false);
+      setConfirmAction(null);
+    }
+  };
+
+  const handleDeclineOrder = async () => {
+    if (!canValidateOrders) {
+      toast.error("Solo administradores pueden declinar pedidos.");
+      return;
+    }
+    if (!order) return;
+    try {
+      setValidatingOrder(true);
+      await apiClient.declineOrder(order.id);
+      const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
+      if (foundOrder) setOrder(foundOrder);
+      toast.success("Pedido declinado");
+    } catch (error) {
+      console.error("Error declinando pedido:", error);
+      toast.error("Error al declinar el pedido");
+    } finally {
+      setValidatingOrder(false);
+      setConfirmAction(null);
+    }
+  };
+
+  const handleReactivateOrder = async () => {
+    if (!canValidateOrders) {
+      toast.error("Solo administradores pueden reactivar pedidos.");
+      return;
+    }
+    if (!order) return;
+    try {
+      setValidatingOrder(true);
+      await apiClient.reactivateOrder(order.id);
+      const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
+      if (foundOrder) setOrder(foundOrder);
+      toast.success("Pedido reactivado");
+    } catch (error) {
+      console.error("Error reactivando pedido:", error);
+      toast.error("Error al reactivar el pedido");
+    } finally {
+      setValidatingOrder(false);
+      setConfirmAction(null);
     }
   };
   const [productBreakdowns, setProductBreakdowns] = useState<
@@ -1677,16 +1733,37 @@ export default function OrderDetailPage() {
                     {(order.status === "Generado" ||
                       order.status === "Generada") &&
                       canValidateOrders && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => setConfirmAction("validate")}
+                            disabled={validatingOrder}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                          >
+                            {validatingOrder && (
+                              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                            )}
+                            Validar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setConfirmAction("decline")}
+                            disabled={validatingOrder}
+                          >
+                            Declinar
+                          </Button>
+                        </>
+                      )}
+                    {resolveDisplayOrderStatus(order) === "Declinado" &&
+                      canValidateOrders && (
                         <Button
                           size="sm"
-                          onClick={handleValidateOrder}
+                          variant="outline"
+                          onClick={() => setConfirmAction("reactivate")}
                           disabled={validatingOrder}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white"
                         >
-                          {validatingOrder && (
-                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                          )}
-                          Validar
+                          Reactivar
                         </Button>
                       )}
                     <Badge className={getStatusColor(resolveDisplayOrderStatus(order))}>
@@ -1837,15 +1914,34 @@ export default function OrderDetailPage() {
                   {(order.status === "Generado" ||
                     order.status === "Generada") &&
                     canValidateOrders && (
+                      <>
+                        <Button
+                          onClick={() => setConfirmAction("validate")}
+                          disabled={validatingOrder}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                        >
+                          {validatingOrder && (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          )}
+                          Validar Pedido
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => setConfirmAction("decline")}
+                          disabled={validatingOrder}
+                        >
+                          Declinar Pedido
+                        </Button>
+                      </>
+                    )}
+                  {resolveDisplayOrderStatus(order) === "Declinado" &&
+                    canValidateOrders && (
                       <Button
-                        onClick={handleValidateOrder}
+                        variant="outline"
+                        onClick={() => setConfirmAction("reactivate")}
                         disabled={validatingOrder}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white"
                       >
-                        {validatingOrder && (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        )}
-                        Validar Pedido
+                        Reactivar Pedido
                       </Button>
                     )}
                   <Badge className={getStatusColor(resolveDisplayOrderStatus(order))}>
@@ -3042,6 +3138,51 @@ export default function OrderDetailPage() {
           </main>
         </div>
       </div>
+
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction === "validate" && "¿Validar pedido?"}
+              {confirmAction === "decline" && "¿Declinar pedido?"}
+              {confirmAction === "reactivate" && "¿Reactivar pedido?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction === "validate" &&
+                "El pedido pasará a estado Validado. Todos los productos pendientes serán validados."}
+              {confirmAction === "decline" &&
+                "El pedido pasará a estado Declinado y quedará fuera de reportes y despachos. Puedes revertirlo luego con 'Reactivar'."}
+              {confirmAction === "reactivate" &&
+                "El pedido volverá a estado Generado para poder validarlo o editarlo."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className={
+                confirmAction === "decline"
+                  ? "bg-red-600 hover:bg-red-700 text-white"
+                  : undefined
+              }
+              onClick={
+                confirmAction === "validate"
+                  ? handleValidateOrder
+                  : confirmAction === "decline"
+                    ? handleDeclineOrder
+                    : confirmAction === "reactivate"
+                      ? handleReactivateOrder
+                      : undefined
+              }
+              disabled={validatingOrder}
+            >
+              {validatingOrder ? "Procesando..." : "Confirmar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ProtectedRoute>
   );
 }

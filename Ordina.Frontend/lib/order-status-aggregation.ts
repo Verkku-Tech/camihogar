@@ -55,6 +55,7 @@ export function calculateOrderStatusFromProducts(
   let hasReporteFabricacion = false;
   let hasEnAlmacen = false;
   let hasEnRuta = false;
+  let hasDeclinado = false;
   let allCompletado = true;
 
   for (const product of statusProducts) {
@@ -66,7 +67,9 @@ export function calculateOrderStatusFromProducts(
     const inManufacturingQueue = inFabricacion && manufacturing === "por_fabricar";
     const inManufacturingActive = inFabricacion && manufacturing === "fabricando";
 
-    if (status === "Generado" || status === "Pendiente") {
+    if (status === "Declinado") {
+      hasDeclinado = true;
+    } else if (status === "Generado" || status === "Pendiente") {
       hasGenerado = true;
     } else if (status === "Fabricándose" || inManufacturingActive) {
       hasFabricandose = true;
@@ -82,6 +85,7 @@ export function calculateOrderStatusFromProducts(
   }
 
   if (allCompletado) return "Completado";
+  if (hasDeclinado) return "Declinado";
   if (hasGenerado) return "Generado";
   if (hasFabricandose) return "Fabricándose";
   if (hasReporteFabricacion) return "Reporte de fabricación";

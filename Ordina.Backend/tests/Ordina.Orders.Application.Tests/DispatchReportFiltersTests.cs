@@ -39,4 +39,20 @@ public class DispatchReportFiltersTests
 
         Assert.Equal("tienda", DispatchReportFilters.ResolveLocation(product));
     }
+
+    [Fact]
+    public void IsOrderEligibleForDispatchReport_ExcludesDeclinedOrders()
+    {
+        var order = new Order
+        {
+            Type = "Order",
+            Status = "Declinado",
+            Products = new List<OrderProduct>
+            {
+                new() { LocationStatus = "EN DESPACHO", LogisticStatus = "En Ruta" },
+            },
+        };
+
+        Assert.False(DispatchReportFilters.IsOrderEligibleForDispatchReport(order));
+    }
 }

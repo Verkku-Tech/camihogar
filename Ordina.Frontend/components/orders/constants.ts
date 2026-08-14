@@ -11,6 +11,7 @@ export const ACTIVE_ORDER_STATUSES: readonly OrderStatusOption[] = [
   { value: "En Ruta", label: "En Ruta" },
   { value: "Completado", label: "Completado" },
   { value: "Cancelado", label: "Cancelado" },
+  { value: "Declinado", label: "Declinado" },
 ] as const;
 
 /** Etiquetas para estados históricos en BD que ya no se asignan en pedidos nuevos. */
@@ -20,7 +21,6 @@ export const LEGACY_ORDER_STATUS_LABELS: Record<string, string> = {
   Almacén: "Almacén (histórico)",
   Despacho: "Despacho (histórico)",
   Entregado: "Entregado (histórico)",
-  Declinado: "Declinado (histórico)",
   Generada: "Generada (histórico)",
   Completada: "Completada (histórico)",
   Fabricación: "Fabricación (histórico)",

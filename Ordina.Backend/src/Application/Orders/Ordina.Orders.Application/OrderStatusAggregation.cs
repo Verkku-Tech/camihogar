@@ -22,6 +22,7 @@ public static class OrderStatusAggregation
         bool hasReporteFabricacion = false;
         bool hasEnAlmacen = false;
         bool hasEnRuta = false;
+        bool hasDeclinado = false;
         bool allCompletado = true;
 
         foreach (var product in statusProducts)
@@ -35,7 +36,9 @@ public static class OrderStatusAggregation
             var inManufacturingQueue = inFabricacion && manufacturing == "por_fabricar";
             var inManufacturingActive = inFabricacion && manufacturing == "fabricando";
 
-            if (status == "Generado" || status == "Pendiente")
+            if (status == "Declinado")
+                hasDeclinado = true;
+            else if (status == "Generado" || status == "Pendiente")
                 hasGenerado = true;
             else if (status == "Fabricándose" || inManufacturingActive)
                 hasFabricandose = true;
@@ -51,6 +54,8 @@ public static class OrderStatusAggregation
 
         if (allCompletado)
             return "Completado";
+        if (hasDeclinado)
+            return "Declinado";
         if (hasGenerado)
             return "Generado";
         if (hasFabricandose)
@@ -92,6 +97,12 @@ public static class OrderStatusAggregation
     public static bool IsFabricationLocation(string? locationStatus)
     {
         return string.Equals(locationStatus?.Trim(), "FABRICACION", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Pedidos declinados: quedan fuera de reportes y flujos operativos.</summary>
+    public static bool IsDeclinedStatus(string? status)
+    {
+        return string.Equals(status?.Trim(), "Declinado", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string NormalizeManufacturingStatus(string? status)

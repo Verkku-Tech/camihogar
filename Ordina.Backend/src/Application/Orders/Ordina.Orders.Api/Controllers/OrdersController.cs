@@ -591,6 +591,74 @@ public class OrdersController : ControllerBase
     }
 
     /// <summary>
+    /// Declina un pedido en estado Generado (mismas condiciones que validar).
+    /// </summary>
+    [HttpPost("{id}/decline")]
+    [Authorize]
+    [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderResponseDto>> DeclineOrder(string id)
+    {
+        try
+        {
+            if (!IsAdministratorOrSuperAdministrator(User))
+                return Forbid();
+
+            var (userId, userName) = GetActor(User);
+            var order = await _orderService.DeclineOrderAsync(id, userId, userName);
+            return Ok(order);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al declinar el pedido con ID {OrderId}", id);
+            return StatusCode(500, new { message = "Error interno del servidor" });
+        }
+    }
+
+    /// <summary>
+    /// Revierte un pedido Declinado a Generado (para validarlo o editarlo de nuevo).
+    /// </summary>
+    [HttpPost("{id}/reactivate")]
+    [Authorize]
+    [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderResponseDto>> ReactivateOrder(string id)
+    {
+        try
+        {
+            if (!IsAdministratorOrSuperAdministrator(User))
+                return Forbid();
+
+            var (userId, userName) = GetActor(User);
+            var order = await _orderService.ReactivateOrderAsync(id, userId, userName);
+            return Ok(order);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al reactivar el pedido con ID {OrderId}", id);
+            return StatusCode(500, new { message = "Error interno del servidor" });
+        }
+    }
+
+    /// <summary>
     /// Elimina un pedido
     /// </summary>
     /// <param name="id">ID del pedido a eliminar</param>

@@ -18,6 +18,10 @@ public interface IOrderAuditLogService
         string userName,
         string? previousLogisticStatus = null);
 
+    Task LogOrderDeclinedAsync(Order order, string userId, string userName);
+
+    Task LogOrderDeclineRevertedAsync(Order order, string userId, string userName);
+
     Task LogPaymentsConciliatedAsync(
         Order orderBefore,
         Order orderAfter,

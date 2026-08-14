@@ -357,7 +357,9 @@ export default function PedidosPage() {
         filters.vendor === "all" || order.vendorName === filters.vendor;
       const displayStatus = resolveDisplayOrderStatus(order);
       const matchesStatus =
-        filters.status === "all" || displayStatus === filters.status;
+        filters.status !== "all"
+          ? displayStatus === filters.status
+          : displayStatus !== "Declinado";
       const matchesSaleType =
         filters.saleType === "all" ||
         (order.saleType !== undefined && order.saleType === filters.saleType);
@@ -423,8 +425,18 @@ export default function PedidosPage() {
   const showTableLoading = isLoading || serverResultsPending;
   const paginatedOrders = useMemo(() => {
     if (serverResultsPending) return EMPTY_ORDERS;
-    return useServerMode ? serverOrders : localPaginatedOrders;
-  }, [serverResultsPending, useServerMode, serverOrders, localPaginatedOrders]);
+    if (!useServerMode) return localPaginatedOrders;
+    if (filters.status !== "all") return serverOrders;
+    return serverOrders.filter(
+      (o) => resolveDisplayOrderStatus(o) !== "Declinado",
+    );
+  }, [
+    serverResultsPending,
+    useServerMode,
+    serverOrders,
+    localPaginatedOrders,
+    filters.status,
+  ]);
 
   // Totales/saldo: calcular sobre las filas visibles (API en modo servidor, no IndexedDB ajeno)
   useEffect(() => {

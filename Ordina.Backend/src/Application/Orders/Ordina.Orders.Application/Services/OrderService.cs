@@ -1321,6 +1321,90 @@ public class OrderService : IOrderService
         }
     }
 
+    public async Task<OrderResponseDto> DeclineOrderAsync(string id, string userId, string userName)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                throw new ArgumentException("El ID del pedido es requerido", nameof(id));
+            }
+
+            var existingOrder = await _orderRepository.GetByIdAsync(id);
+            if (existingOrder == null)
+            {
+                throw new KeyNotFoundException($"Pedido con ID {id} no encontrado");
+            }
+
+            if (OrderDocumentTypes.IsReservationType(existingOrder.Type)
+                || string.Equals(existingOrder.Type, "Budget", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Solo se pueden declinar pedidos (no presupuestos ni reservas).");
+            }
+
+            if (!OrderStatusAggregation.IsDeclinedStatus(existingOrder.Status)
+                && existingOrder.Products != null)
+            {
+                foreach (var product in existingOrder.Products)
+                {
+                    product.LogisticStatus = "Declinado";
+                }
+            }
+
+            existingOrder.UpdatedAt = DateTime.UtcNow;
+            RecalculateOrderStatus(existingOrder);
+            var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
+            await _auditLogService.LogOrderDeclinedAsync(updatedOrder, userId, userName);
+            return MapToDto(updatedOrder);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al declinar el pedido con ID {OrderId}", id);
+            throw;
+        }
+    }
+
+    public async Task<OrderResponseDto> ReactivateOrderAsync(string id, string userId, string userName)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                throw new ArgumentException("El ID del pedido es requerido", nameof(id));
+            }
+
+            var existingOrder = await _orderRepository.GetByIdAsync(id);
+            if (existingOrder == null)
+            {
+                throw new KeyNotFoundException($"Pedido con ID {id} no encontrado");
+            }
+
+            if (!OrderStatusAggregation.IsDeclinedStatus(existingOrder.Status))
+            {
+                throw new ArgumentException("El pedido no está declinado; no se puede reactivar.");
+            }
+
+            if (existingOrder.Products != null)
+            {
+                foreach (var product in existingOrder.Products)
+                {
+                    product.LogisticStatus = "Generado";
+                }
+            }
+
+            existingOrder.UpdatedAt = DateTime.UtcNow;
+            RecalculateOrderStatus(existingOrder);
+            var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
+            await _auditLogService.LogOrderDeclineRevertedAsync(updatedOrder, userId, userName);
+            return MapToDto(updatedOrder);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al reactivar el pedido con ID {OrderId}", id);
+            throw;
+        }
+    }
+
     public async Task<bool> DeleteOrderAsync(
         string id,
         string userId,
