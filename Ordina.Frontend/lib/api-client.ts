@@ -2166,6 +2166,8 @@ export interface OrderProductDto {
   manufacturingNotes?: string;
   locationStatus?: string;
   logisticStatus?: string;
+  /** Origen preservado al marcar EN DESPACHO: "tienda" | "almacen" | null */
+  dispatchOrigin?: string | null;
   /** ISO cuando el producto se marcó entregado/despachado */
   deliveredAt?: string;
   // Campos de refabricación

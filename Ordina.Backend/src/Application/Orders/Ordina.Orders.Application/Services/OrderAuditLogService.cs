@@ -39,6 +39,8 @@ public class OrderAuditLogService : IOrderAuditLogService
     {
         try
         {
+            var changes = BuildCreatedPaymentChanges(order);
+            var hasPayments = changes.Count > 0;
             var log = new OrderAuditLog
             {
                 OrderId = order.Id,
@@ -46,8 +48,10 @@ public class OrderAuditLogService : IOrderAuditLogService
                 Action = ActionCreated,
                 UserId = userId,
                 UserName = userName,
-                Summary = $"Creó el pedido {order.OrderNumber} para cliente {order.ClientName}",
-                Changes = new List<AuditChange>(),
+                Summary = hasPayments
+                    ? $"Creó el pedido {order.OrderNumber} para cliente {order.ClientName}. Agregó pago durante la creación del pedido."
+                    : $"Creó el pedido {order.OrderNumber} para cliente {order.ClientName}",
+                Changes = changes,
                 Timestamp = DateTime.UtcNow
             };
             await _repository.CreateAsync(log);
@@ -56,6 +60,48 @@ public class OrderAuditLogService : IOrderAuditLogService
         {
             _logger.LogWarning(ex, "No se pudo registrar auditoría de creación de pedido {OrderNumber}", order.OrderNumber);
         }
+    }
+
+    /// <summary>
+    /// Pagos cargados al crear el pedido (formato idéntico al diff de actualización).
+    /// Excluye stubs sintéticos de financiación Cashea; si no hay pagos en listas y existe
+    /// un pago principal, se registra el detalle principal.
+    /// </summary>
+    private static List<AuditChange> BuildCreatedPaymentChanges(Order order)
+    {
+        var changes = new List<AuditChange>();
+
+        var listPayments = new List<(string ListName, PartialPayment Payment)>();
+        if (order.PartialPayments != null)
+            listPayments.AddRange(order.PartialPayments.Select(p => ("partialPayments", p)));
+        if (order.MixedPayments != null)
+            listPayments.AddRange(order.MixedPayments.Select(p => ("mixedPayments", p)));
+
+        var loggable = listPayments
+            .Where(x => !OrderCommercialCurrency.IsCasheaFinancingStub(x.Payment))
+            .ToList();
+
+        foreach (var (listName, payment) in loggable)
+        {
+            changes.Add(new AuditChange
+            {
+                Field = $"{listName}[+]",
+                OldValue = null,
+                NewValue = FormatPartialPaymentFull(payment)
+            });
+        }
+
+        if (loggable.Count == 0 && order.PaymentDetails != null)
+        {
+            changes.Add(new AuditChange
+            {
+                Field = "paymentDetails",
+                OldValue = "(ninguno)",
+                NewValue = FormatPaymentDetailsFull(order.PaymentDetails)
+            });
+        }
+
+        return changes;
     }
 
     public async Task LogOrderUpdatedAsync(Order oldOrder, Order newOrder, string userId, string userName)
@@ -277,7 +323,8 @@ public class OrderAuditLogService : IOrderAuditLogService
             ? AuditManufacturingInference.BuildSemanticSummary(
                 e.OrderNumber ?? string.Empty,
                 rawChanges,
-                AuditManufacturingInference.InferFromChanges(rawChanges))
+                AuditManufacturingInference.InferFromChanges(rawChanges),
+                e.Action)
             : e.Summary;
 
         return new OrderAuditLogDto

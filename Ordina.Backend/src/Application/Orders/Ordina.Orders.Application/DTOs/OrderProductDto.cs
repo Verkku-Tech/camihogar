@@ -25,6 +25,9 @@ public class OrderProductDto
     public string? LocationStatus { get; set; }
     public string LogisticStatus { get; set; } = "Generado";
 
+    /// <summary>Origen de despacho preservado al marcar EN DESPACHO: "tienda" | "almacen" | null.</summary>
+    public string? DispatchOrigin { get; set; }
+
     /// <summary>UTC cuando el producto se marcó como entregado/despachado.</summary>
     public DateTime? DeliveredAt { get; set; }
 

@@ -107,6 +107,25 @@ const getProductDispatchStatus = (product: OrderProduct): TabType | "none" => {
   return "none"
 }
 
+/** Origen de despacho ("tienda" | "almacen") derivado de la ubicación previa del producto. */
+const resolveDispatchOrigin = (
+  product: OrderProduct
+): "tienda" | "almacen" | null => {
+  if (product.dispatchOrigin === "tienda" || product.dispatchOrigin === "almacen") {
+    return product.dispatchOrigin
+  }
+  if (product.locationStatus === "EN TIENDA") return "tienda"
+  if (product.locationStatus === "DISPONIBILIDAD INMEDIATA") return "almacen"
+  if (
+    product.locationStatus === "FABRICACION" &&
+    ((product.manufacturingStatus as string) === "almacen_no_fabricado" ||
+      (product.manufacturingStatus as string) === "fabricado")
+  ) {
+    return "almacen"
+  }
+  return null
+}
+
 /** Actualiza ubicación/logística y fecha de entrega al confirmar o revertir despacho. */
 const applyDispatchProductUpdate = (
   product: OrderProduct,
@@ -117,6 +136,7 @@ const applyDispatchProductUpdate = (
       ...product,
       locationStatus: "EN DESPACHO",
       logisticStatus: "En Ruta",
+      dispatchOrigin: resolveDispatchOrigin(product),
     }
   }
   if (action === "to_delivered") {
@@ -132,6 +152,7 @@ const applyDispatchProductUpdate = (
     locationStatus: "EN TIENDA",
     logisticStatus: "En Almacén",
     deliveredAt: undefined,
+    dispatchOrigin: undefined,
   }
 }
 
