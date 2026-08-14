@@ -327,8 +327,9 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
   }
 
   return (
-    <Card>
-      <CardContent className="p-0">
+    <>
+      <Card>
+        <CardContent className="p-0">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -465,5 +466,6 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+    </>
   )
 }
