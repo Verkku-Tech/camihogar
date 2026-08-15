@@ -126,6 +126,9 @@ public class Order
     [BsonElement("dispatchObservations")]
     public string? DispatchObservations { get; set; } // Observaciones generales del pedido
 
+    [BsonElement("declineReason")]
+    public string? DeclineReason { get; set; }
+
     [BsonElement("saleType")]
     public string? SaleType { get; set; } // "encargo", "entrega", "sistema_apartado"
 

@@ -1648,6 +1648,7 @@ public class OrderService : IOrderService
             CreateSupplierOrder = order.CreateSupplierOrder,
             Observations = order.Observations,
             DispatchObservations = order.DispatchObservations,
+            DeclineReason = order.DeclineReason,
             SaleType = order.SaleType,
             DeliveryType = order.DeliveryType,
             DeliveryZone = order.DeliveryZone,
