@@ -1321,7 +1321,7 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<OrderResponseDto> DeclineOrderAsync(string id, string userId, string userName)
+    public async Task<OrderResponseDto> DeclineOrderAsync(string id, string userId, string userName, string? declineReason)
     {
         try
         {
@@ -1345,16 +1345,23 @@ public class OrderService : IOrderService
             if (!OrderStatusAggregation.IsDeclinedStatus(existingOrder.Status)
                 && existingOrder.Products != null)
             {
+                var softStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                    { "Generado", "Validado" };
+
                 foreach (var product in existingOrder.Products)
                 {
-                    product.LogisticStatus = "Declinado";
+                    if (softStatuses.Contains(product.LogisticStatus))
+                    {
+                        product.LogisticStatus = "Declinado";
+                    }
                 }
             }
 
+            existingOrder.DeclineReason = declineReason;
             existingOrder.UpdatedAt = DateTime.UtcNow;
             RecalculateOrderStatus(existingOrder);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
-            await _auditLogService.LogOrderDeclinedAsync(updatedOrder, userId, userName);
+            await _auditLogService.LogOrderDeclinedAsync(updatedOrder, userId, userName, declineReason);
             return MapToDto(updatedOrder);
         }
         catch (Exception ex)
@@ -1392,6 +1399,7 @@ public class OrderService : IOrderService
                 }
             }
 
+            existingOrder.DeclineReason = null;
             existingOrder.UpdatedAt = DateTime.UtcNow;
             RecalculateOrderStatus(existingOrder);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);

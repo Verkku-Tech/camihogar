@@ -165,10 +165,14 @@ public class OrderAuditLogService : IOrderAuditLogService
         }
     }
 
-    public async Task LogOrderDeclinedAsync(Order order, string userId, string userName)
+    public async Task LogOrderDeclinedAsync(Order order, string userId, string userName, string? declineReason)
     {
         try
         {
+            var summary = string.IsNullOrWhiteSpace(declineReason)
+                ? $"Declinó el pedido {order.OrderNumber} (cliente {order.ClientName})"
+                : $"Declinó el pedido {order.OrderNumber} (cliente {order.ClientName}). Razón: {declineReason}";
+
             var log = new OrderAuditLog
             {
                 OrderId = order.Id,
@@ -176,7 +180,7 @@ public class OrderAuditLogService : IOrderAuditLogService
                 Action = ActionOrderDeclined,
                 UserId = userId,
                 UserName = userName,
-                Summary = $"Declinó el pedido {order.OrderNumber} (cliente {order.ClientName})",
+                Summary = summary,
                 Changes = new List<AuditChange>(),
                 Timestamp = DateTime.UtcNow
             };

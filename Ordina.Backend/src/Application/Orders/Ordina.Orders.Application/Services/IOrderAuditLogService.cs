@@ -18,7 +18,7 @@ public interface IOrderAuditLogService
         string userName,
         string? previousLogisticStatus = null);
 
-    Task LogOrderDeclinedAsync(Order order, string userId, string userName);
+    Task LogOrderDeclinedAsync(Order order, string userId, string userName, string? declineReason);
 
     Task LogOrderDeclineRevertedAsync(Order order, string userId, string userName);
 
