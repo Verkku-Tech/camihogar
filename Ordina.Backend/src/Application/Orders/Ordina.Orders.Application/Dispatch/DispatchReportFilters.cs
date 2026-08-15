@@ -55,8 +55,6 @@ public static class DispatchReportFilters
     {
         if (OrderDocumentTypes.IsReservationType(order.Type))
             return false;
-        if (OrderStatusAggregation.IsDeclinedStatus(order.Status))
-            return false;
         if (order.Status is "Generado" or "Generada")
             return false;
         if (order.Products == null || order.Products.Count == 0)
