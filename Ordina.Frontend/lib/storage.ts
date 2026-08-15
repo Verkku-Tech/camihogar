@@ -1936,6 +1936,7 @@ export interface Order {
   createSupplierOrder?: boolean;
   observations?: string; // Observaciones generales del pedido
   dispatchObservations?: string; // Observaciones generales del despacho
+  declineReason?: string;
   type?: string;
   baseCurrency?: "Bs" | "USD" | "EUR"; // Moneda base para visualización del pedido
   exchangeRatesAtCreation?: {
