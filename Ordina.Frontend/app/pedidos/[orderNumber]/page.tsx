@@ -93,6 +93,7 @@ import {
 import { tryComputeOverpaymentUsd } from "@/lib/order-overpayment";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   HoverCard,
   HoverCardContent,
@@ -577,6 +578,8 @@ export default function OrderDetailPage() {
   const [confirmAction, setConfirmAction] = useState<
     "validate" | "decline" | "reactivate" | null
   >(null);
+  const [declineReason, setDeclineReason] = useState(order?.declineReason ?? "");
+  const [savingDeclineReason, setSavingDeclineReason] = useState(false);
 
   /** Un solo arreglo activo: varios pagos van en mixedPayments y partialPayments queda vacío. */
   const activePayments = useMemo((): PartialPayment[] => {
@@ -969,6 +972,20 @@ export default function OrderDetailPage() {
       setConfirmAction(null);
     }
   };
+
+  const handleSaveDeclineReason = async () => {
+    if (!order) return;
+    setSavingDeclineReason(true);
+    try {
+      await apiClient.updateOrder(order.id, { declineReason } as any);
+      setOrder({ ...order, declineReason });
+    } catch (error) {
+      console.error("Error guardando razón del declinado:", error);
+    } finally {
+      setSavingDeclineReason(false);
+    }
+  };
+
   const [productBreakdowns, setProductBreakdowns] = useState<
     Record<
       string,
@@ -1017,6 +1034,7 @@ export default function OrderDetailPage() {
         }
 
         setOrder(foundOrder);
+        setDeclineReason(foundOrder.declineReason ?? "");
         console.log("INFORMACIÓN DEL PEDIDO >>>>", foundOrder);
 
         // Cargar información completa del cliente
@@ -2087,6 +2105,33 @@ export default function OrderDetailPage() {
                     <p className="text-sm whitespace-pre-wrap bg-amber-50 dark:bg-amber-950 p-3 rounded">
                       {order.dispatchObservations}
                     </p>
+                  </CardContent>
+                </Card>
+              )}
+              {order.status === "Declinado" && (
+                <Card className="border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">
+                      <AlertCircle className="w-5 h-5" />
+                      Razón del Declinado
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea
+                      value={declineReason}
+                      onChange={(e) => setDeclineReason(e.target.value)}
+                      placeholder="Motivo por el cual se declinó el pedido..."
+                      rows={3}
+                      className="w-full"
+                    />
+                    <Button
+                      onClick={handleSaveDeclineReason}
+                      disabled={savingDeclineReason || declineReason === (order.declineReason ?? "")}
+                      className="mt-2"
+                      size="sm"
+                    >
+                      {savingDeclineReason ? "Guardando..." : "Guardar"}
+                    </Button>
                   </CardContent>
                 </Card>
               )}

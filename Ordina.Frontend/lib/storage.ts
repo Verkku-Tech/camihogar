@@ -1929,7 +1929,8 @@ export interface Order {
     | "Completada"
     | "Reserva"
     | "Por Confirmar"
-    | "Convertido";
+    | "Convertido"
+    | "Declinado";
   createdAt: string;
   updatedAt: string;
   productMarkups?: Record<string, number>;
