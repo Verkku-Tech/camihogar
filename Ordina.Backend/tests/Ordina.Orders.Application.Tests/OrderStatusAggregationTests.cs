@@ -122,4 +122,46 @@ public class OrderStatusAggregationTests
 
         Assert.Equal("Declinado", status);
     }
+
+    [Fact]
+    public void CalculateFromProducts_WithDeclinedAndManufacturing_ReturnsDeclined()
+    {
+        var products = new List<OrderProduct>
+        {
+            new() { LogisticStatus = "Declinado" },
+            new() { LogisticStatus = "Fabricándose" },
+        };
+
+        var result = OrderStatusAggregation.CalculateFromProducts(products);
+
+        Assert.Equal("Declinado", result);
+    }
+
+    [Fact]
+    public void CalculateFromProducts_DeclinedAndCompleted_ReturnsCompleted()
+    {
+        var products = new List<OrderProduct>
+        {
+            new() { LogisticStatus = "Declinado" },
+            new() { LogisticStatus = "Completado" },
+        };
+
+        var result = OrderStatusAggregation.CalculateFromProducts(products);
+
+        Assert.Equal("Completado", result);
+    }
+
+    [Fact]
+    public void CalculateFromProducts_OnlyDeclined_ReturnsDeclined()
+    {
+        var products = new List<OrderProduct>
+        {
+            new() { LogisticStatus = "Declinado" },
+            new() { LogisticStatus = "Declinado" },
+        };
+
+        var result = OrderStatusAggregation.CalculateFromProducts(products);
+
+        Assert.Equal("Declinado", result);
+    }
 }
