@@ -977,7 +977,7 @@ export default function OrderDetailPage() {
     if (!order) return;
     setSavingDeclineReason(true);
     try {
-      await apiClient.updateOrder(order.id, { declineReason } as any);
+      await apiClient.updateOrder(order.id, { declineReason });
       setOrder({ ...order, declineReason });
     } catch (error) {
       console.error("Error guardando razón del declinado:", error);

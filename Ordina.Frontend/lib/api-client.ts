@@ -2594,6 +2594,7 @@ export interface UpdateOrderDto {
     eur?: { rate: number; effectiveDate: string } | null;
   };
   type?: string;
+  declineReason?: string;
 }
 
 // ===== ACCOUNTS DTOs =====

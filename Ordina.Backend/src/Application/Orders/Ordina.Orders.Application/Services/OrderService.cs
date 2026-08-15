@@ -1258,6 +1258,8 @@ public class OrderService : IOrderService
                 existingOrder.ExchangeRatesAtCreation = MapExchangeRatesFromDto(updateDto.ExchangeRatesAtCreation);
             if (!string.IsNullOrWhiteSpace(updateDto.BaseCurrency))
                 existingOrder.BaseCurrency = updateDto.BaseCurrency.Trim();
+            if (updateDto.DeclineReason != null)
+                existingOrder.DeclineReason = updateDto.DeclineReason;
             if (!string.IsNullOrEmpty(updateDto.Type))
                 existingOrder.Type = updateDto.Type;
 
