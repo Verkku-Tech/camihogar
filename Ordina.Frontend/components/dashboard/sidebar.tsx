@@ -51,6 +51,7 @@ const ordersSubmenu = [
   { id: "reservas", name: "Reservas", href: "/pedidos/reservas", icon: ClipboardList },
   { id: "fabricacion", name: "Fabricación", href: "/inventario/fabricacion", icon: Package },
   { id: "despachos", name: "Despachos", href: "/pedidos/despachos", icon: Truck },
+  { id: "abbaco", name: "Abbaco (migración)", href: "/abbaco", icon: Database },
 ]
 
 const inventorySubmenu = [
@@ -78,6 +79,7 @@ const permissionMap: Record<string, string | string[]> = {
   "pedidos-list": "orders.read",
   "reservas": "orders.read",
   "despachos": "dispatch.read",
+  "abbaco": "orders.read",
   "categorias": "products.read",
   "productos": "products.read",
   "fabricacion": ["inventory.movements.view", "manufacturing.manage"],
