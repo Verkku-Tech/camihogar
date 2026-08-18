@@ -415,13 +415,6 @@ export function PaymentsReport() {
       }
 
       try {
-        const token = localStorage.getItem("auth_token")
-        if (!token) {
-          toast.error("No hay sesión activa")
-          generateLocalReportData()
-          return
-        }
-
         const params = new URLSearchParams()
         if (startDate) params.append("startDate", startDate)
         if (endDate) params.append("endDate", endDate)
@@ -431,21 +424,10 @@ export function PaymentsReport() {
         }
         appendAccountFilterToParams(params, selectedAccount)
 
-        const url = `/api/proxy/orders/api/Reports/Payments/Preview?${params.toString()}`
-        const response = await fetch(url, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
-
-        if (!response.ok) {
-          throw new Error("Error al cargar el reporte")
-        }
-
-        const data = await response.json()
+        const endpoint = `/api/Reports/Payments/Preview?${params.toString()}`
+        const data = await apiClient.request<Record<string, unknown>[]>(endpoint)
         // Mapear datos del backend (camelCase desde ASP.NET)
-        const mappedData: PaymentReportRow[] = data.map((row: Record<string, unknown>) => {
+        const mappedData: PaymentReportRow[] = data.map((row) => {
           const orderId = String(row.orderId ?? "")
           const paymentType = (row.paymentType as string) || "main"
           const paymentIndex =
