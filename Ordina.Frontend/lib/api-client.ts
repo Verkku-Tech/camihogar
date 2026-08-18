@@ -1417,9 +1417,10 @@ export class ApiClient {
   }
 
   /** Declina un pedido en estado Generado (todas sus líneas pasan a Declinado). */
-  async declineOrder(orderId: string) {
+  async declineOrder(orderId: string, reason?: string) {
     return this.request<OrderResponseDto>(`/api/Orders/${orderId}/decline`, {
       method: "POST",
+      body: JSON.stringify({ reason }),
     });
   }
 
@@ -2593,6 +2594,7 @@ export interface UpdateOrderDto {
     eur?: { rate: number; effectiveDate: string } | null;
   };
   type?: string;
+  declineReason?: string;
 }
 
 // ===== ACCOUNTS DTOs =====

@@ -41,7 +41,7 @@ public class DispatchReportFiltersTests
     }
 
     [Fact]
-    public void IsOrderEligibleForDispatchReport_ExcludesDeclinedOrders()
+    public void IsOrderEligibleForDispatchReport_IncludesDeclinedOrderWithEnRutaProduct()
     {
         var order = new Order
         {
@@ -53,6 +53,6 @@ public class DispatchReportFiltersTests
             },
         };
 
-        Assert.False(DispatchReportFilters.IsOrderEligibleForDispatchReport(order));
+        Assert.True(DispatchReportFilters.IsOrderEligibleForDispatchReport(order));
     }
 }

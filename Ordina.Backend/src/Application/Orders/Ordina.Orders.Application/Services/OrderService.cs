@@ -1258,6 +1258,8 @@ public class OrderService : IOrderService
                 existingOrder.ExchangeRatesAtCreation = MapExchangeRatesFromDto(updateDto.ExchangeRatesAtCreation);
             if (!string.IsNullOrWhiteSpace(updateDto.BaseCurrency))
                 existingOrder.BaseCurrency = updateDto.BaseCurrency.Trim();
+            if (updateDto.DeclineReason != null)
+                existingOrder.DeclineReason = updateDto.DeclineReason;
             if (!string.IsNullOrEmpty(updateDto.Type))
                 existingOrder.Type = updateDto.Type;
 
@@ -1321,7 +1323,7 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task<OrderResponseDto> DeclineOrderAsync(string id, string userId, string userName)
+    public async Task<OrderResponseDto> DeclineOrderAsync(string id, string userId, string userName, string? declineReason)
     {
         try
         {
@@ -1345,16 +1347,23 @@ public class OrderService : IOrderService
             if (!OrderStatusAggregation.IsDeclinedStatus(existingOrder.Status)
                 && existingOrder.Products != null)
             {
+                var softStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                    { "Generado", "Validado" };
+
                 foreach (var product in existingOrder.Products)
                 {
-                    product.LogisticStatus = "Declinado";
+                    if (softStatuses.Contains(product.LogisticStatus))
+                    {
+                        product.LogisticStatus = "Declinado";
+                    }
                 }
             }
 
+            existingOrder.DeclineReason = declineReason;
             existingOrder.UpdatedAt = DateTime.UtcNow;
             RecalculateOrderStatus(existingOrder);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
-            await _auditLogService.LogOrderDeclinedAsync(updatedOrder, userId, userName);
+            await _auditLogService.LogOrderDeclinedAsync(updatedOrder, userId, userName, declineReason);
             return MapToDto(updatedOrder);
         }
         catch (Exception ex)
@@ -1392,6 +1401,7 @@ public class OrderService : IOrderService
                 }
             }
 
+            existingOrder.DeclineReason = null;
             existingOrder.UpdatedAt = DateTime.UtcNow;
             RecalculateOrderStatus(existingOrder);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
@@ -1648,6 +1658,7 @@ public class OrderService : IOrderService
             CreateSupplierOrder = order.CreateSupplierOrder,
             Observations = order.Observations,
             DispatchObservations = order.DispatchObservations,
+            DeclineReason = order.DeclineReason,
             SaleType = order.SaleType,
             DeliveryType = order.DeliveryType,
             DeliveryZone = order.DeliveryZone,

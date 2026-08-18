@@ -1929,13 +1929,15 @@ export interface Order {
     | "Completada"
     | "Reserva"
     | "Por Confirmar"
-    | "Convertido";
+    | "Convertido"
+    | "Declinado";
   createdAt: string;
   updatedAt: string;
   productMarkups?: Record<string, number>;
   createSupplierOrder?: boolean;
   observations?: string; // Observaciones generales del pedido
   dispatchObservations?: string; // Observaciones generales del despacho
+  declineReason?: string;
   type?: string;
   baseCurrency?: "Bs" | "USD" | "EUR"; // Moneda base para visualización del pedido
   exchangeRatesAtCreation?: {

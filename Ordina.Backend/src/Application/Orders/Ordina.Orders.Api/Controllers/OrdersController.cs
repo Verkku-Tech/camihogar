@@ -598,7 +598,7 @@ public class OrdersController : ControllerBase
     [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<OrderResponseDto>> DeclineOrder(string id)
+    public async Task<ActionResult<OrderResponseDto>> DeclineOrder(string id, [FromBody] DeclineOrderRequestDto? request)
     {
         try
         {
@@ -606,7 +606,7 @@ public class OrdersController : ControllerBase
                 return Forbid();
 
             var (userId, userName) = GetActor(User);
-            var order = await _orderService.DeclineOrderAsync(id, userId, userName);
+            var order = await _orderService.DeclineOrderAsync(id, userId, userName, request?.DeclineReason);
             return Ok(order);
         }
         catch (ArgumentException ex)

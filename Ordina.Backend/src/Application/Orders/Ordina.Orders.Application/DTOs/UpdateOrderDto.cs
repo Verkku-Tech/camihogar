@@ -39,6 +39,7 @@ public class UpdateOrderDto
     public string? DeliveryZone { get; set; }
     public ExchangeRatesAtCreationDto? ExchangeRatesAtCreation { get; set; }
     public string? BaseCurrency { get; set; }
+    public string? DeclineReason { get; set; }
     public string? Type { get; set; }
 }
 

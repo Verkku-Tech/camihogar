@@ -23,13 +23,13 @@ public static class OrderStatusAggregation
         bool hasEnAlmacen = false;
         bool hasEnRuta = false;
         bool hasDeclinado = false;
-        bool allCompletado = true;
+        bool anyCompletado = false;
 
         foreach (var product in statusProducts)
         {
             var status = product.LogisticStatus ?? "Generado";
-            if (status != "Completado")
-                allCompletado = false;
+            if (status == "Completado")
+                anyCompletado = true;
 
             var inFabricacion = IsFabricationLocation(product.LocationStatus);
             var manufacturing = NormalizeManufacturingStatus(product.ManufacturingStatus);
@@ -52,7 +52,7 @@ public static class OrderStatusAggregation
                 hasEnRuta = true;
         }
 
-        if (allCompletado)
+        if (anyCompletado)
             return "Completado";
         if (hasDeclinado)
             return "Declinado";
