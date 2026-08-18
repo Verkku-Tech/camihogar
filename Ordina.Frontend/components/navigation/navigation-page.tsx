@@ -38,6 +38,7 @@ export function NavigationPage() {
 
   const mainMenuItems = localItems.filter((item) => item.category === "main")
   const inventoryItems = localItems.filter((item) => item.category === "inventory")
+  const ordersItems = localItems.filter((item) => item.category === "orders")
   const configurationItems = localItems.filter((item) => item.category === "configuration")
 
   return (
@@ -113,6 +114,31 @@ export function NavigationPage() {
         <CardContent>
           <div className="space-y-4">
             {inventoryItems.map((item) => (
+              <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3">
+                    <h3 className="font-medium">{item.name}</h3>
+                    <Badge variant={item.active ? "default" : "secondary"}>{item.active ? "Activo" : "Inactivo"}</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Ruta: {item.href}</p>
+                </div>
+                <Switch checked={item.active} onCheckedChange={() => handleToggle(item.id)} />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Orders Navigation */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Menú de Pedidos</CardTitle>
+          <CardDescription>Controla la visibilidad de las opciones del submenú de pedidos</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {ordersItems.map((item) => (
               <div key={item.id} className="flex items-center justify-between p-4 border rounded-lg">
                 <div className="flex-1">
                   <div className="flex items-center gap-3">
