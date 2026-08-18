@@ -6,7 +6,7 @@ interface NavigationItem {
   id: string
   name: string
   href: string
-  category: "main" | "configuration" | "inventory" | "orders"
+  category: "main" | "inventory" | "orders" | "configuration"
   active: boolean
   description: string
 }
@@ -27,30 +27,6 @@ const defaultNavigationItems: NavigationItem[] = [
     category: "main",
     active: true,
     description: "Panel principal con métricas y resumen",
-  },
-  {
-    id: "pedidos-list",
-    name: "Pedidos",
-    href: "/pedidos",
-    category: "orders",
-    active: true,
-    description: "Gestión de pedidos y presupuestos",
-  },
-  {
-    id: "reservas",
-    name: "Reservas",
-    href: "/pedidos/reservas",
-    category: "orders",
-    active: true,
-    description: "Listado y confirmación de reservas en tienda",
-  },
-  {
-    id: "despachos",
-    name: "Despachos",
-    href: "/pedidos/despachos",
-    category: "orders",
-    active: true,
-    description: "Gestión de pedidos listos para despachar",
   },
   {
     id: "proveedores",
@@ -109,6 +85,46 @@ const defaultNavigationItems: NavigationItem[] = [
     description: "Gestión de productos e inventario",
   },
   {
+    id: "pedidos-list",
+    name: "Pedidos",
+    href: "/pedidos",
+    category: "orders",
+    active: true,
+    description: "Gestión de pedidos y presupuestos",
+  },
+  {
+    id: "reservas",
+    name: "Reservas",
+    href: "/pedidos/reservas",
+    category: "orders",
+    active: true,
+    description: "Listado y confirmación de reservas en tienda",
+  },
+  {
+    id: "fabricacion",
+    name: "Fabricación",
+    href: "/inventario/fabricacion",
+    category: "orders",
+    active: true,
+    description: "Gestión de órdenes de fabricación",
+  },
+  {
+    id: "despachos",
+    name: "Despachos",
+    href: "/pedidos/despachos",
+    category: "orders",
+    active: true,
+    description: "Gestión de pedidos listos para despachar",
+  },
+  {
+    id: "abbaco",
+    name: "Abbaco (migración)",
+    href: "/abbaco",
+    category: "orders",
+    active: true,
+    description: "Migración de datos de Abbaco",
+  },
+  {
     id: "usuarios",
     name: "Usuarios",
     href: "/configuracion/usuarios",
@@ -139,6 +155,14 @@ const defaultNavigationItems: NavigationItem[] = [
     category: "configuration",
     active: true,
     description: "Gestión de comisiones por rol o por usuario",
+  },
+  {
+    id: "roles",
+    name: "Roles y Permisos",
+    href: "/configuracion/roles",
+    category: "configuration",
+    active: true,
+    description: "Gestión de roles y permisos del sistema",
   },
   {
     id: "pin-acceso",
