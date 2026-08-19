@@ -1751,27 +1751,28 @@ export default function OrderDetailPage() {
                     {(order.status === "Generado" ||
                       order.status === "Generada") &&
                       canValidateOrders && (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={() => setConfirmAction("validate")}
-                            disabled={validatingOrder}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                          >
-                            {validatingOrder && (
-                              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                            )}
-                            Validar
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => setConfirmAction("decline")}
-                            disabled={validatingOrder}
-                          >
-                            Declinar
-                          </Button>
-                        </>
+                        <Button
+                          size="sm"
+                          onClick={() => setConfirmAction("validate")}
+                          disabled={validatingOrder}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                        >
+                          {validatingOrder && (
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          )}
+                          Validar
+                        </Button>
+                      )}
+                    {resolveDisplayOrderStatus(order) !== "Declinado" &&
+                      canValidateOrders && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => setConfirmAction("decline")}
+                          disabled={validatingOrder}
+                        >
+                          Declinar
+                        </Button>
                       )}
                     {resolveDisplayOrderStatus(order) === "Declinado" &&
                       canValidateOrders && (
@@ -1932,25 +1933,26 @@ export default function OrderDetailPage() {
                   {(order.status === "Generado" ||
                     order.status === "Generada") &&
                     canValidateOrders && (
-                      <>
-                        <Button
-                          onClick={() => setConfirmAction("validate")}
-                          disabled={validatingOrder}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                        >
-                          {validatingOrder && (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          )}
-                          Validar Pedido
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          onClick={() => setConfirmAction("decline")}
-                          disabled={validatingOrder}
-                        >
-                          Declinar Pedido
-                        </Button>
-                      </>
+                      <Button
+                        onClick={() => setConfirmAction("validate")}
+                        disabled={validatingOrder}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                      >
+                        {validatingOrder && (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        )}
+                        Validar Pedido
+                      </Button>
+                    )}
+                  {resolveDisplayOrderStatus(order) !== "Declinado" &&
+                    canValidateOrders && (
+                      <Button
+                        variant="destructive"
+                        onClick={() => setConfirmAction("decline")}
+                        disabled={validatingOrder}
+                      >
+                        Declinar Pedido
+                      </Button>
                     )}
                   {resolveDisplayOrderStatus(order) === "Declinado" &&
                     canValidateOrders && (
