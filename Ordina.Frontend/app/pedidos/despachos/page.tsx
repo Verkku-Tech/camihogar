@@ -66,7 +66,6 @@ import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { matchesLocalDateRange } from "@/lib/date-utils"
-import { isOrderOwnedByOnlineSeller } from "@/lib/order-online-seller-visibility"
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
 
 type TabType = "por_despachar" | "en_despacho" | "despachados"
@@ -315,7 +314,6 @@ export default function DespachosPage() {
   const canReturn = canManageAllDispatch
   const routeOnlyPermissionMessage =
     "Solo puedes pasar pedidos a ruta, no confirmar entrega ni devolver a almacén."
-  const onlineSellerUserId = isOnlineSeller ? user?.id?.trim() ?? "" : ""
   const { exchangeRates } = useCurrency()
   const router = useRouter()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
@@ -403,10 +401,9 @@ export default function DespachosPage() {
   const canOnlineSellerActOnOrder = useCallback(
     (order: UnifiedOrder): boolean => {
       if (!isOnlineSeller) return true
-      if (!onlineSellerUserId) return false
-      return isOrderOwnedByOnlineSeller(order, onlineSellerUserId)
+      return isTeamOrder(order)
     },
-    [isOnlineSeller, onlineSellerUserId],
+    [isOnlineSeller, isTeamOrder],
   )
 
   useEffect(() => {

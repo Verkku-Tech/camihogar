@@ -34,7 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Search, Plus, Eye, Edit, Trash2, X, Loader2 } from "lucide-react";
+import { Search, Plus, Eye, Edit, Trash2, X, Loader2, Wallet } from "lucide-react";
 import { OrderPdfRowAction } from "@/components/orders/order-pdf-row-action";
 import {
   Select,
@@ -121,7 +121,7 @@ const getStatusColor = (status: string) => {
 
 export default function PedidosPage() {
   const { user, hasPermission } = useAuth();
-  const { applies: onlineSellerFilter, isTeamOrder, isOwnOrder } =
+  const { applies: onlineSellerFilter, isTeamOrder } =
     useOnlineSellerVisibility();
   const [orders, setOrders] = useState<UnifiedOrder[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -595,7 +595,7 @@ export default function PedidosPage() {
   };
 
   const canEditOrder = (order: UnifiedOrder) => {
-    if (onlineSellerFilter && !isOwnOrder(order)) return false;
+    if (onlineSellerFilter && !isTeamOrder(order)) return false;
     return (
       (order.type === "budget" && (canConvertBudget || canEditOrderFull)) ||
       (order.type === "order" && canEditOrderFull) ||
@@ -604,10 +604,34 @@ export default function PedidosPage() {
   };
 
   const canDeleteOrder = (order: UnifiedOrder) => {
-    if (onlineSellerFilter && !isOwnOrder(order)) return false;
+    if (onlineSellerFilter && !isTeamOrder(order)) return false;
     return order.type === "order"
       ? hasPermission("orders.delete")
       : hasPermission("budgets.delete");
+  };
+
+  const handleEditPayments = async (row: UnifiedOrder) => {
+    if (!canEditOrderPaymentsOnly || row.type !== "order") {
+      toast.error("Acceso denegado", {
+        description: "No tienes permisos para editar los pagos de este pedido.",
+      });
+      return;
+    }
+    if (onlineSellerFilter && !isTeamOrder(row)) {
+      toast.error("Acceso denegado", {
+        description: "No tienes permisos para editar los pagos de este pedido.",
+      });
+      return;
+    }
+    setEditMode("payments");
+    const full = await getOrderByOrderNumberPreferBackend(row.orderNumber);
+    setOrderToEdit(full ?? ({ ...row, paymentMethod: row.paymentMethod ?? "" } as Order));
+    setIsEditOrderOpen(true);
+  };
+
+  const canEditOrderPaymentsQuick = (order: UnifiedOrder) => {
+    if (onlineSellerFilter && !isTeamOrder(order)) return false;
+    return canEditOrderPaymentsOnly && order.type === "order";
   };
 
   const handleDeleteClick = (order: UnifiedOrder) => {
@@ -934,6 +958,17 @@ export default function PedidosPage() {
                                     <Edit className="w-4 h-4" />
                                   </Button>
                                 )}
+                                {canEditOrderPaymentsQuick(order) &&
+                                  canEditOrderFull && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleEditPayments(order)}
+                                      title="Editar pagos"
+                                    >
+                                      <Wallet className="w-4 h-4" />
+                                    </Button>
+                                  )}
                                 {canDeleteOrder(order) && (
                                   <Button
                                     variant="ghost"
