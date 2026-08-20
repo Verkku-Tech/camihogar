@@ -53,14 +53,18 @@ public class OrderService : IOrderService
         return OrderOnlineSellerVisibility.IsVisibleToTeam(order, ids);
     }
 
-    private static void EnsureOnlineSellerCanMutate(Order order, string userId, string? callerRole)
+    private async Task EnsureOnlineSellerCanMutateTeamAsync(
+        Order order,
+        string? callerRole,
+        CancellationToken cancellationToken = default)
     {
         if (!OrderOnlineSellerVisibility.IsOnlineSellerRole(callerRole))
             return;
 
-        if (!OrderOnlineSellerVisibility.IsOwnedBySeller(order, userId))
+        var ids = await _onlineSellerVisibility.GetOnlineSellerUserIdsAsync(cancellationToken);
+        if (!OrderOnlineSellerVisibility.IsVisibleToTeam(order, ids))
             throw new UnauthorizedAccessException(
-                "No autorizado a modificar pedidos de otros vendedores online.");
+                "No autorizado a modificar pedidos ajenos al equipo online.");
     }
 
     private static readonly JsonSerializerOptions ConciliationCompareJsonOptions = new()
@@ -1145,7 +1149,7 @@ public class OrderService : IOrderService
                 throw new KeyNotFoundException($"Pedido con ID {id} no encontrado");
             }
 
-            EnsureOnlineSellerCanMutate(existingOrder, userId, callerRole);
+            await EnsureOnlineSellerCanMutateTeamAsync(existingOrder, callerRole);
 
             EnsureDispatchLogisticsAuthorized(
                 existingOrder,
@@ -1441,8 +1445,7 @@ public class OrderService : IOrderService
                     "Solo se pueden eliminar reservas pendientes de confirmación.");
             }
 
-            EnsureOnlineSellerCanMutate(existing, userId, callerRole);
-
+            await EnsureOnlineSellerCanMutateTeamAsync(existing, callerRole);
             await _auditLogService.LogOrderDeletedAsync(existing, userId, userName);
             return await _orderRepository.DeleteAsync(id);
         }
