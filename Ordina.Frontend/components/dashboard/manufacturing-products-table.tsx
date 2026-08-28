@@ -47,6 +47,9 @@ export function ManufacturingProductsTable() {
           if (order.status === "Generado" || order.status === "Generada") {
             return
           }
+          if (order.status === "Declinado") {
+            return
+          }
           order.products.forEach((product) => {
             // SOLO procesar productos que deben mandarse a fabricar
             if (product.locationStatus !== "FABRICACION") {
