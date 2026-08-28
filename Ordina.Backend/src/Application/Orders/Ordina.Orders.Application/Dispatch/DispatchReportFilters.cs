@@ -57,6 +57,8 @@ public static class DispatchReportFilters
             return false;
         if (order.Status is "Generado" or "Generada")
             return false;
+        if (OrderStatusAggregation.IsDeclinedStatus(order.Status))
+            return false;
         if (order.Products == null || order.Products.Count == 0)
             return false;
         return order.Products.Any(IsProductEnRuta);
