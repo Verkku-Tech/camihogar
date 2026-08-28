@@ -235,6 +235,7 @@ export default function FabricacionPage() {
     orders.forEach(order => {
       if (isReservationOrder(order)) return
       if (order.status === "Generado" || order.status === "Generada") return
+      if (order.status === "Declinado") return
       if (isSistemaApartado(order) && !isSistemaApartadoReadyForNormalFlow(order)) {
         return
       }
