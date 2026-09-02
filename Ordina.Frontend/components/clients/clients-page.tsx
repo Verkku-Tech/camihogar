@@ -132,9 +132,9 @@ export function ClientsPage() {
       setSelectedClient(null)
       resetForm()
       loadClients() // Refresh list
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating client:", error)
-      toast.error("Error al actualizar el cliente")
+      toast.error("Error al actualizar el cliente: " + (error?.message || "Error desconocido"))
     }
   }
 
@@ -157,9 +157,9 @@ export function ClientsPage() {
       )
       setDeactivateClient(null)
       loadClients() // Refresh list
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating client status:", error)
-      toast.error("Error al actualizar el estado del cliente")
+      toast.error("Error al actualizar el estado del cliente: " + (error?.message || "Error desconocido"))
     }
   }
 
