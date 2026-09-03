@@ -54,7 +54,7 @@ public static class RoleSeeder
                 IsSystem = true,
                 Permissions = new List<string>
                 {
-                    Permissions.Clients.Read,
+                    Permissions.Clients.Read, Permissions.Clients.Create, Permissions.Clients.Update,
                     Permissions.Inventory.ViewStock,
                     Permissions.Products.Read,
                     Permissions.Settings.ManageAlerts,
@@ -71,7 +71,7 @@ public static class RoleSeeder
                 IsSystem = true,
                 Permissions = new List<string>
                 {
-                    Permissions.Clients.Read,
+                    Permissions.Clients.Read, Permissions.Clients.Create, Permissions.Clients.Update,
                     Permissions.Inventory.ViewStock,
                     Permissions.Products.Read,
                     Permissions.Settings.ManageAlerts,
@@ -86,19 +86,38 @@ public static class RoleSeeder
             }
         };
 
-        // Nota: solo InsertOne cuando el rol no existe. Entornos con roles ya en Mongo deben asignar
-        // budgets.convert_to_order y orders.payments.manage en Configuración > Roles o vía migración del array Permissions.
-        //
-        // Online Seller: si el rol ya existía con dispatch.create/update, quitarlos manualmente en Mongo
-        // (colección Roles, documento Name = "Online Seller") para alinear permisos con el código actual.
+        // Sincroniza permisos faltantes en roles ya existentes (p.ej. clients.create/update para vendedores)
+        // y elimina permisos obsoletos de Online Seller. No sobrescribe permisos extra asignados manualmente.
 
         foreach (var roleEntry in rolesKeyed)
         {
-            var exists = await collection.Find(r => r.Name == roleEntry.Key).AnyAsync();
-            if (!exists)
+            var existing = await collection.Find(r => r.Name == roleEntry.Key).FirstOrDefaultAsync();
+            if (existing == null)
             {
                 await collection.InsertOneAsync(roleEntry.Value);
+                continue;
             }
+
+            var permissions = existing.Permissions ?? new List<string>();
+            var toAdd = roleEntry.Value.Permissions.Where(p => !permissions.Contains(p)).ToList();
+
+            // Online Seller: remover dispatch.create/update si quedaron de una versión anterior
+            var toRemove = new List<string>();
+            if (roleEntry.Key == "Online Seller")
+            {
+                if (permissions.Contains(Permissions.Dispatch.Create)) toRemove.Add(Permissions.Dispatch.Create);
+                if (permissions.Contains(Permissions.Dispatch.Update)) toRemove.Add(Permissions.Dispatch.Update);
+            }
+
+            if (toAdd.Count == 0 && toRemove.Count == 0) continue;
+
+            foreach (var p in toAdd) permissions.Add(p);
+            foreach (var p in toRemove) permissions.Remove(p);
+
+            var update = Builders<Role>.Update
+                .Set(r => r.Permissions, permissions)
+                .Set(r => r.UpdatedAt, DateTime.UtcNow);
+            await collection.UpdateOneAsync(r => r.Name == roleEntry.Key, update);
         }
     }
 }

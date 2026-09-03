@@ -146,14 +146,24 @@ public class ClientService : IClientService
                 throw new KeyNotFoundException($"Cliente con ID {id} no encontrado");
             }
 
-            // Validar y comprobar duplicidad de RutId si cambia
-            if (!string.IsNullOrWhiteSpace(updateClientDto.RutId) &&
-                !string.Equals(existingClient.RutId, updateClientDto.RutId, StringComparison.OrdinalIgnoreCase))
+            // Validar y comprobar duplicidad de RutId si cambia (normalizado: trim + case-insensitive)
+            var newRutIdNormalized = updateClientDto.RutId?.Trim();
+            var existingRutIdNormalized = existingClient.RutId?.Trim();
+            if (!string.IsNullOrWhiteSpace(newRutIdNormalized) &&
+                !string.Equals(existingRutIdNormalized, newRutIdNormalized, StringComparison.OrdinalIgnoreCase))
             {
-                var rutExists = await _clientRepository.RutIdExistsAsync(updateClientDto.RutId.Trim());
+                // Búsqueda case-insensitive para no dejar pasar duplicados por mayúsculas/minúsculas
+                var existingByRut = await _clientRepository.GetByRutIdAsync(newRutIdNormalized);
+                // Si existe otro cliente con ese RutId (distinto Id) -> conflicto
+                if (existingByRut != null && !string.Equals(existingByRut.Id, existingClient.Id, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException($"Ya existe un cliente con el RutId '{newRutIdNormalized}'");
+                }
+                // Fallback al check exacto del repositorio (cubre índice case-sensitive)
+                var rutExists = await _clientRepository.RutIdExistsAsync(newRutIdNormalized);
                 if (rutExists)
                 {
-                    throw new InvalidOperationException($"Ya existe un cliente con el RutId '{updateClientDto.RutId}'");
+                    throw new InvalidOperationException($"Ya existe un cliente con el RutId '{newRutIdNormalized}'");
                 }
             }
 
@@ -169,8 +179,29 @@ public class ClientService : IClientService
 
             MapFromUpdateDto(updateClientDto, existingClient);
 
-            var updatedClient = await _clientRepository.UpdateAsync(existingClient);
+            ClientEntity updatedClient;
+            try
+            {
+                updatedClient = await _clientRepository.UpdateAsync(existingClient);
+            }
+            catch (Exception ex) when (ex.Message.Contains("11000") || ex.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase))
+            {
+                // Índice único idx_client_rutId_unique colisionó por carrera o por diferencia de mayúsculas
+                throw new InvalidOperationException($"Ya existe un cliente con el RutId '{newRutIdNormalized ?? existingClient.RutId}'", ex);
+            }
             return MapToDto(updatedClient);
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (KeyNotFoundException)
+        {
+            throw;
+        }
+        catch (ArgumentException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
