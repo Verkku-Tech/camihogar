@@ -295,6 +295,20 @@ public class OrderRepository : IOrderRepository
         return await _collection.CountDocumentsAsync(o => o.Type == type);
     }
 
+    public async Task<long> UpdateClientNameByClientIdAsync(string clientId, string newClientName)
+    {
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(newClientName))
+            return 0;
+        var trimmedId = clientId.Trim();
+        var trimmedName = newClientName.Trim();
+        var filter = Builders<Order>.Filter.Eq(o => o.ClientId, trimmedId);
+        var update = Builders<Order>.Update
+            .Set(o => o.ClientName, trimmedName)
+            .Set(o => o.UpdatedAt, DateTime.UtcNow);
+        var result = await _collection.UpdateManyAsync(filter, update);
+        return result.ModifiedCount;
+    }
+
     public async Task<int> GetMaxNumericSuffixForTypeAndPrefixAsync(string orderType, string prefix)
     {
         if (string.IsNullOrEmpty(orderType) || string.IsNullOrEmpty(prefix))

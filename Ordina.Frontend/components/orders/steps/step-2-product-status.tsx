@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -25,6 +26,17 @@ interface Step2ProductStatusProps {
 }
 
 export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
+  // Auto-reset products with "Disponibilidad Inmediata" when sale type is "encargo"
+  useEffect(() => {
+    if (orderForm.saleType !== "encargo") return;
+    orderForm.setSelectedProducts((products) =>
+      products.map((p) =>
+        p.locationStatus === "DISPONIBILIDAD INMEDIATA"
+          ? { ...p, locationStatus: "FABRICACION" }
+          : p,
+      ),
+    );
+  }, [orderForm.saleType, orderForm.setSelectedProducts]);
   // Función helper para obtener el label de un valor de atributo
   const getValueLabel = (value: string | AttributeValue): string => {
     if (typeof value === "string") return value;
@@ -242,9 +254,11 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
                           <SelectItem value="SELECCIONAR ESTADO">
                             Seleccionar estado
                           </SelectItem>
-                          <SelectItem value="DISPONIBILIDAD INMEDIATA">
-                            Disponibilidad Inmediata
-                          </SelectItem>
+                          {orderForm.saleType !== "encargo" && (
+                            <SelectItem value="DISPONIBILIDAD INMEDIATA">
+                              Disponibilidad Inmediata
+                            </SelectItem>
+                          )}
                           <SelectItem value="EN TIENDA">En Tienda</SelectItem>
                           <SelectItem value="FABRICACION">
                             Fabricación

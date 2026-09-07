@@ -64,4 +64,11 @@ public interface IOrderRepository
     /// (p. ej. tipo Order y prefijo ORD-). Si no hay coincidencias, devuelve 0.
     /// </summary>
     Task<int> GetMaxNumericSuffixForTypeAndPrefixAsync(string orderType, string prefix);
+
+    /// <summary>
+    /// Propaga el nombre actualizado del cliente a todos los pedidos/presupuestos/reservas que lo referencian.
+    /// Actualiza el campo denormalizado ClientName para que búsquedas y listados reflejen el nombre vigente.
+    /// Retorna cantidad de documentos modificados.
+    /// </summary>
+    Task<long> UpdateClientNameByClientIdAsync(string clientId, string newClientName);
 }

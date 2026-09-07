@@ -5020,10 +5020,60 @@ export const updateClient = async (
     };
 
     await db.update("clients", updatedClient);
+
+    // Propagar cambio de nombre a pedidos/presupuestos/reservas en caché local
+    if (updates.nombreRazonSocial && 
+        updates.nombreRazonSocial !== existingClient.nombreRazonSocial) {
+      await propagateClientNameToOrders(id, updates.nombreRazonSocial);
+    }
+
     return updatedClient;
   } catch (error) {
     console.error("Error updating client in IndexedDB:", error);
     throw error;
+  }
+};
+
+/**
+ * Propaga el nombre actualizado del cliente a todos los pedidos/presupuestos/reservas
+ * en la caché local de IndexedDB que referencian a este cliente.
+ */
+const propagateClientNameToOrders = async (
+  clientId: string,
+  newClientName: string,
+): Promise<void> => {
+  try {
+    const trimmedName = newClientName.trim();
+    if (!trimmedName) return;
+
+    // Obtener todos los pedidos de la caché local
+    const allOrders = await db.getAll("orders") as Order[];
+    
+    // Filtrar pedidos que referencian a este cliente
+    const ordersToUpdate = allOrders.filter(
+      (order) => order.clientId === clientId && order.clientName !== trimmedName
+    );
+
+    // Actualizar cada pedido con el nuevo nombre
+    for (const order of ordersToUpdate) {
+      await db.update("orders", {
+        ...order,
+        clientName: trimmedName,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    if (ordersToUpdate.length > 0) {
+      console.log(
+        `✅ Nombre del cliente propagado a ${ordersToUpdate.length} pedidos/presupuestos/reservas en caché local`
+      );
+    }
+  } catch (error) {
+    // No fallar la actualización del cliente por error en propagación
+    console.warn(
+      "⚠️ Error propagando nombre del cliente a pedidos en caché local:",
+      error
+    );
   }
 };
 

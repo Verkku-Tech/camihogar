@@ -15,13 +15,16 @@ namespace Ordina.Users.Application.Services;
 public class ClientService : IClientService
 {
     private readonly IClientRepository _clientRepository;
+    private readonly IOrderRepository _orderRepository;
     private readonly ILogger<ClientService> _logger;
 
     public ClientService(
         IClientRepository clientRepository,
+        IOrderRepository orderRepository,
         ILogger<ClientService> logger)
     {
         _clientRepository = clientRepository;
+        _orderRepository = orderRepository;
         _logger = logger;
     }
 
@@ -177,6 +180,9 @@ public class ClientService : IClientService
                 ValidateEstado(updateClientDto.Estado);
             }
 
+            // Capturar nombre antiguo antes de actualizar
+            var oldClientName = existingClient.NombreRazonSocial?.Trim() ?? string.Empty;
+            
             MapFromUpdateDto(updateClientDto, existingClient);
 
             ClientEntity updatedClient;
@@ -189,6 +195,30 @@ public class ClientService : IClientService
                 // Índice único idx_client_rutId_unique colisionó por carrera o por diferencia de mayúsculas
                 throw new InvalidOperationException($"Ya existe un cliente con el RutId '{newRutIdNormalized ?? existingClient.RutId}'", ex);
             }
+
+            // Propagar cambio de nombre a pedidos existentes si el nombre cambió
+            var newClientName = updatedClient.NombreRazonSocial?.Trim() ?? string.Empty;
+            if (!string.Equals(oldClientName, newClientName, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(id))
+            {
+                try
+                {
+                    var propagatedCount = await _orderRepository.UpdateClientNameByClientIdAsync(id, newClientName);
+                    if (propagatedCount > 0)
+                    {
+                        _logger.LogInformation(
+                            "Nombre del cliente {ClientId} propagado a {Count} pedidos/presupuestos/reservas",
+                            id, propagatedCount);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // No fallar la actualización del cliente por error en propagación
+                    _logger.LogWarning(ex,
+                        "Error propagando nombre del cliente {ClientId} a pedidos. El cliente se actualizó correctamente.",
+                        id);
+                }
+            }
+
             return MapToDto(updatedClient);
         }
         catch (InvalidOperationException)

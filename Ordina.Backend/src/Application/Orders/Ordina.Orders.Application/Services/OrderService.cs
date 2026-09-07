@@ -500,7 +500,16 @@ public class OrderService : IOrderService
         {
             var teamFilter = await ResolveTeamFilterAsync(callerRole);
             var orders = await _orderRepository.GetAllAsync(teamFilter);
-            return orders.Select(MapToDto);
+            
+            // Obtener información de clientes en lote para usar nombres vivos
+            var clientIds = orders.Select(o => o.ClientId).Distinct().ToList();
+            var clientCache = new Dictionary<string, Client?>(StringComparer.Ordinal);
+            foreach (var clientId in clientIds)
+            {
+                clientCache[clientId] = await _clientRepository.GetByIdAsync(clientId);
+            }
+            
+            return orders.Select(o => MapToDtoWithClientName(o, clientCache));
         }
         catch (Exception ex)
         {
@@ -552,9 +561,17 @@ public class OrderService : IOrderService
                     repoFilter,
                     teamFilter);
 
+                // Obtener información de clientes en lote para usar nombres vivos
+                var clientIds = filtered.Select(o => o.ClientId).Distinct().ToList();
+                var clientCache = new Dictionary<string, Client?>(StringComparer.Ordinal);
+                foreach (var clientId in clientIds)
+                {
+                    clientCache[clientId] = await _clientRepository.GetByIdAsync(clientId);
+                }
+
                 return new PagedOrdersResponseDto
                 {
-                    Orders = filtered.Select(MapToDto),
+                    Orders = filtered.Select(o => MapToDtoWithClientName(o, clientCache)),
                     Page = page,
                     PageSize = pageSize,
                     TotalCount = filteredTotal,
@@ -565,9 +582,17 @@ public class OrderService : IOrderService
             var (orders, totalCount) = await _orderRepository.GetPagedAsync(
                 page, pageSize, since, teamFilter);
 
+            // Obtener información de clientes en lote para usar nombres vivos
+            var clientIdsForPaged = orders.Select(o => o.ClientId).Distinct().ToList();
+            var clientCacheForPaged = new Dictionary<string, Client?>(StringComparer.Ordinal);
+            foreach (var clientId in clientIdsForPaged)
+            {
+                clientCacheForPaged[clientId] = await _clientRepository.GetByIdAsync(clientId);
+            }
+
             return new PagedOrdersResponseDto
             {
-                Orders = orders.Select(MapToDto),
+                Orders = orders.Select(o => MapToDtoWithClientName(o, clientCacheForPaged)),
                 Page = page,
                 PageSize = pageSize,
                 TotalCount = totalCount,
@@ -595,7 +620,15 @@ public class OrderService : IOrderService
 
             var teamFilter = await ResolveTeamFilterAsync(callerRole);
             var orders = await _orderRepository.GetByClientIdAsync(clientId, teamFilter);
-            return orders.Select(MapToDto);
+            
+            // Obtener información del cliente para usar nombre vivo
+            var client = await _clientRepository.GetByIdAsync(clientId);
+            var clientCache = new Dictionary<string, Client?>(StringComparer.Ordinal)
+            {
+                { clientId, client }
+            };
+            
+            return orders.Select(o => MapToDtoWithClientName(o, clientCache));
         }
         catch (Exception ex)
         {
@@ -617,7 +650,16 @@ public class OrderService : IOrderService
 
             var teamFilter = await ResolveTeamFilterAsync(callerRole);
             var orders = await _orderRepository.GetByStatusAsync(status, teamFilter);
-            return orders.Select(MapToDto);
+            
+            // Obtener información de clientes en lote para usar nombres vivos
+            var clientIds = orders.Select(o => o.ClientId).Distinct().ToList();
+            var clientCache = new Dictionary<string, Client?>(StringComparer.Ordinal);
+            foreach (var clientId in clientIds)
+            {
+                clientCache[clientId] = await _clientRepository.GetByIdAsync(clientId);
+            }
+            
+            return orders.Select(o => MapToDtoWithClientName(o, clientCache));
         }
         catch (Exception ex)
         {
@@ -642,7 +684,14 @@ public class OrderService : IOrderService
             if (!await IsOrderVisibleToCallerAsync(order, callerRole))
                 return null;
 
-            return MapToDto(order);
+            // Obtener información del cliente para usar nombre vivo
+            var client = await _clientRepository.GetByIdAsync(order.ClientId);
+            var clientCache = new Dictionary<string, Client?>(StringComparer.Ordinal)
+            {
+                { order.ClientId, client }
+            };
+            
+            return MapToDtoWithClientName(order, clientCache);
         }
         catch (Exception ex)
         {
@@ -669,7 +718,14 @@ public class OrderService : IOrderService
             if (!await IsOrderVisibleToCallerAsync(order, callerRole))
                 return null;
 
-            return MapToDto(order);
+            // Obtener información del cliente para usar nombre vivo
+            var client = await _clientRepository.GetByIdAsync(order.ClientId);
+            var clientCache = new Dictionary<string, Client?>(StringComparer.Ordinal)
+            {
+                { order.ClientId, client }
+            };
+            
+            return MapToDtoWithClientName(order, clientCache);
         }
         catch (Exception ex)
         {
@@ -759,11 +815,16 @@ public class OrderService : IOrderService
             phone = client?.Telefono2?.Trim();
         }
 
+        // Usar el nombre vivo del cliente de la caché si está disponible, si no, el denormalizado
+        var clientName = !string.IsNullOrWhiteSpace(client?.NombreRazonSocial)
+            ? client.NombreRazonSocial.Trim()
+            : order.ClientName;
+
         return new OrderSearchResultDto
         {
             OrderId = order.Id,
             OrderNumber = order.OrderNumber,
-            ClientName = order.ClientName,
+            ClientName = clientName,
             ClientId = order.ClientId,
             Type = string.IsNullOrWhiteSpace(order.Type) ? "Order" : order.Type,
             ClientPhone = string.IsNullOrWhiteSpace(phone) ? null : phone,
@@ -1675,6 +1736,23 @@ public class OrderService : IOrderService
             SourceReservationVendorId = order.SourceReservationVendorId,
             SourceReservationVendorName = order.SourceReservationVendorName,
         };
+    }
+
+    /// <summary>
+    /// Mapea un pedido a DTO usando el nombre vivo del cliente de la caché si está disponible.
+    /// </summary>
+    private OrderResponseDto MapToDtoWithClientName(Order order, Dictionary<string, Client?> clientCache)
+    {
+        var dto = MapToDto(order);
+        
+        // Usar el nombre vivo del cliente de la caché si está disponible
+        if (clientCache.TryGetValue(order.ClientId, out var client) && 
+            !string.IsNullOrWhiteSpace(client?.NombreRazonSocial))
+        {
+            dto.ClientName = client.NombreRazonSocial.Trim();
+        }
+        
+        return dto;
     }
 
     private static List<OrderProduct> CloneOrderProducts(IEnumerable<OrderProduct> products)
