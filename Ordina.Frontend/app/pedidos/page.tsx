@@ -942,7 +942,7 @@ export default function PedidosPage() {
                                   }
                                   lazyLoad
                                 />
-                                {canEditOrder(order) && (
+                                {canEditOrder(order) && canEditOrderFull && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -950,25 +950,22 @@ export default function PedidosPage() {
                                     title={
                                       order.type === "budget"
                                         ? "Editar presupuesto"
-                                        : canEditOrderFull
-                                          ? "Editar pedido"
-                                          : "Editar pagos"
+                                        : "Editar pedido"
                                     }
                                   >
                                     <Edit className="w-4 h-4" />
                                   </Button>
                                 )}
-                                {canEditOrderPaymentsQuick(order) &&
-                                  canEditOrderFull && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleEditPayments(order)}
-                                      title="Editar pagos"
-                                    >
-                                      <Wallet className="w-4 h-4" />
-                                    </Button>
-                                  )}
+                                {canEditOrderPaymentsQuick(order) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditPayments(order)}
+                                    title="Editar pagos"
+                                  >
+                                    <Wallet className="w-4 h-4" />
+                                  </Button>
+                                )}
                                 {canDeleteOrder(order) && (
                                   <Button
                                     variant="ghost"
