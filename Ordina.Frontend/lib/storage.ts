@@ -2760,9 +2760,8 @@ export const getOrders = async (
         ? { forceFullSync: optionsOrForceFull }
         : optionsOrForceFull ?? {};
 
-    const localOrders = await db.getAll<Order>("orders");
-
     if (!isOnline()) {
+      const localOrders = await db.getAll<Order>("orders");
       console.log(`Órdenes desde IndexedDB (offline): ${localOrders.length}`);
       return localOrders;
     }
@@ -2771,7 +2770,14 @@ export const getOrders = async (
       return await inflightOrdersSync;
     }
 
-    const localForMerge = localOrders;
+    // Cuando online, cargar IndexedDB en paralelo con el sync del servidor
+    // para no bloquear la UI. El timeout evita que IndexedDB lento retrase todo.
+    const localOrdersPromise = Promise.race([
+      db.getAll<Order>("orders"),
+      new Promise<Order[]>((resolve) => setTimeout(() => resolve([]), 500)),
+    ]);
+
+    const localForMerge = await localOrdersPromise;
     inflightOrdersSync = (async (): Promise<Order[]> => {
       try {
         const allOrders: Order[] = [];
@@ -5038,7 +5044,7 @@ export const updateClient = async (
  * Propaga el nombre actualizado del cliente a todos los pedidos/presupuestos/reservas
  * en la caché local de IndexedDB que referencian a este cliente.
  */
-const propagateClientNameToOrders = async (
+export const propagateClientNameToOrders = async (
   clientId: string,
   newClientName: string,
 ): Promise<void> => {
@@ -5063,9 +5069,24 @@ const propagateClientNameToOrders = async (
       });
     }
 
-    if (ordersToUpdate.length > 0) {
+    // Propagar también a presupuestos en caché local
+    const allBudgets = await db.getAll("budgets") as Budget[];
+    const budgetsToUpdate = allBudgets.filter(
+      (b) => b.clientId === clientId && b.clientName !== trimmedName
+    );
+
+    for (const budget of budgetsToUpdate) {
+      await db.update("budgets", {
+        ...budget,
+        clientName: trimmedName,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    const total = ordersToUpdate.length + budgetsToUpdate.length;
+    if (total > 0) {
       console.log(
-        `✅ Nombre del cliente propagado a ${ordersToUpdate.length} pedidos/presupuestos/reservas en caché local`
+        `✅ Nombre del cliente propagado a ${ordersToUpdate.length} pedidos y ${budgetsToUpdate.length} presupuestos en caché local`
       );
     }
   } catch (error) {

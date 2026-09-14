@@ -69,7 +69,7 @@ import { matchesLocalDateRange } from "@/lib/date-utils"
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
 
 type TabType = "por_despachar" | "en_despacho" | "despachados"
-type ActionType = "to_dispatch" | "to_delivered" | "to_store" | "to_manufacturing"
+type ActionType = "to_dispatch" | "to_delivered" | "to_store"
 
 type DeliveredRow = { order: UnifiedOrder; product: OrderProduct }
 
@@ -144,16 +144,6 @@ const applyDispatchProductUpdate = (
       locationStatus: "DESPACHADO",
       logisticStatus: "Completado",
       deliveredAt: new Date().toISOString(),
-    }
-  }
-  if (action === "to_manufacturing") {
-    return {
-      ...product,
-      locationStatus: "FABRICACION",
-      logisticStatus: "Fabricándose",
-      manufacturingStatus: "debe_fabricar",
-      deliveredAt: undefined,
-      dispatchOrigin: undefined,
     }
   }
   return {
@@ -322,7 +312,6 @@ export default function DespachosPage() {
     !canManageAllDispatch && (isOnlineSeller || hasSendToRoute)
   const canDeliver = canManageAllDispatch || hasConfirmDelivery
   const canReturn = canManageAllDispatch
-  const canReturnToManufacturing = canManageAllDispatch
   const routeOnlyPermissionMessage =
     "Solo puedes pasar pedidos a ruta, no confirmar entrega ni devolver a almacén."
   const { exchangeRates } = useCurrency()
@@ -336,7 +325,7 @@ export default function DespachosPage() {
   const [activeTab, setActiveTab] = useState<TabType>("por_despachar")
   const canMutateCurrentTab =
     activeTab === "por_despachar"
-      ? canSendToRoute || canReturnToManufacturing
+      ? canSendToRoute
       : activeTab === "en_despacho"
         ? canDeliver || canReturn
         : false
@@ -344,7 +333,6 @@ export default function DespachosPage() {
     if (action === "to_dispatch") return canSendToRoute
     if (action === "to_delivered") return canDeliver
     if (action === "to_store") return canReturn
-    if (action === "to_manufacturing") return canReturnToManufacturing
     return false
   }
 
@@ -703,9 +691,6 @@ export default function DespachosPage() {
     if (action === "to_delivered") {
       return "No tienes permiso para confirmar entrega."
     }
-    if (action === "to_manufacturing") {
-      return "No tienes permiso para devolver productos a fabricación."
-    }
     return "Solo administradores pueden devolver productos a almacén."
   }
 
@@ -928,7 +913,6 @@ export default function DespachosPage() {
     if (actionType === "to_dispatch") return "¿Pasar a En Despacho?"
     if (actionType === "to_delivered") return "¿Confirmar Entrega/Despachado?"
     if (actionType === "to_store") return "¿Devolver a Almacén?"
-    if (actionType === "to_manufacturing") return "¿Devolver a Fabricación?"
     return ""
   }
 
@@ -936,7 +920,6 @@ export default function DespachosPage() {
     if (actionType === "to_dispatch") return "Los productos se enviarán a ruta. El pedido no se cerrará todavía."
     if (actionType === "to_delivered") return "Los productos se marcarán como Entregados (Despachados). Si el pedido queda entregado en su totalidad, pasará al estado Completada."
     if (actionType === "to_store") return "Los productos volverán a estar 'En Tienda' listos para futuro despacho."
-    if (actionType === "to_manufacturing") return "Los productos volverán a fabricación con estado 'Debe Fabricar'. Se reiniciará el proceso de fabricación."
     return ""
   }
 
@@ -1066,11 +1049,6 @@ export default function DespachosPage() {
                     {canSendToRoute && selectedOrders.size > 0 && activeTab === "por_despachar" && (
                       <Button onClick={() => handleBulkActionClick("to_dispatch")} className="w-full sm:w-auto mt-4 sm:mt-0">
                         <Truck className="mr-2 h-4 w-4" /> Despachar Seleccionados ({selectedOrders.size})
-                      </Button>
-                    )}
-                    {canReturnToManufacturing && selectedOrders.size > 0 && activeTab === "por_despachar" && (
-                      <Button onClick={() => handleBulkActionClick("to_manufacturing")} className="bg-red-600 hover:bg-red-700 w-full sm:w-auto mt-4 sm:mt-0">
-                        <RotateCcw className="mr-2 h-4 w-4" /> A Fabricación ({selectedOrders.size})
                       </Button>
                     )}
                     {(canDeliver || canReturn) &&
@@ -1305,16 +1283,6 @@ export default function DespachosPage() {
                                       <Truck className="w-3 h-3 mr-1" /> A Ruta
                                     </Button>
                                   )}
-                                  {activeTab === "por_despachar" && activeProducts.length > 0 && canReturnToManufacturing && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-                                      onClick={(e) => { e.stopPropagation(); handleActionClick(order, "to_manufacturing") }}
-                                    >
-                                      <RotateCcw className="w-3 h-3 mr-1" /> A Fabricación
-                                    </Button>
-                                  )}
                                   {activeTab === "en_despacho" &&
                                     activeProducts.length > 0 &&
                                     canDeliver && (
@@ -1479,7 +1447,7 @@ export default function DespachosPage() {
             <AlertDialogCancel onClick={() => setOrderToActOn(null)}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleExecuteAction}
-              className={actionType === "to_delivered" ? "bg-green-600 hover:bg-green-700" : actionType === "to_store" ? "bg-orange-600 hover:bg-orange-700" : actionType === "to_manufacturing" ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}
+              className={actionType === "to_delivered" ? "bg-green-600 hover:bg-green-700" : actionType === "to_store" ? "bg-orange-600 hover:bg-orange-700" : "bg-blue-600 hover:bg-blue-700"}
             >
               Confirmar
             </AlertDialogAction>
@@ -1504,7 +1472,7 @@ export default function DespachosPage() {
             <AlertDialogCancel onClick={() => setIsBulkActionDialogOpen(false)}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleExecuteBulkAction}
-              className={actionType === "to_delivered" ? "bg-green-600 hover:bg-green-700" : actionType === "to_store" ? "bg-orange-600 hover:bg-orange-700" : actionType === "to_manufacturing" ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}
+              className={actionType === "to_delivered" ? "bg-green-600 hover:bg-green-700" : actionType === "to_store" ? "bg-orange-600 hover:bg-orange-700" : "bg-blue-600 hover:bg-blue-700"}
             >
               Confirmar Masivo
             </AlertDialogAction>

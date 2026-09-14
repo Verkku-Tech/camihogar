@@ -177,7 +177,8 @@ export default function PedidosPage() {
 
   const isBrowserOnline =
     typeof navigator !== "undefined" ? navigator.onLine : true;
-  const useServerMode = hasListFilters && isBrowserOnline;
+  // Usar modo servidor siempre que haya conexión, para evitar cargar todo de IndexedDB
+  const useServerMode = isBrowserOnline;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 400);
@@ -275,19 +276,18 @@ export default function PedidosPage() {
   }, [loadServerFilteredOrders]);
 
   useEffect(() => {
+    // Solo cargar de IndexedDB cuando estemos offline (modo local)
+    if (useServerMode) return;
+    
     const loadOrders = async () => {
       try {
-        if (!useServerMode) {
-          setIsLoading(true);
-        }
+        setIsLoading(true);
         const loadedOrders = await getUnifiedOrders();
         setOrders(loadedOrders);
       } catch (error) {
         console.error("Error loading orders:", error);
       } finally {
-        if (!useServerMode) {
-          setIsLoading(false);
-        }
+        setIsLoading(false);
       }
     };
 
@@ -326,16 +326,18 @@ export default function PedidosPage() {
   };
 
   // Obtener valores únicos para los filtros
+  // Cuando hay conexión, usar serverOrders; cuando no, usar orders (local)
+  const ordersForFilters = useServerMode ? serverOrders : orders;
   const uniqueVendors = Array.from(
-    new Set(orders.map((o) => o.vendorName)),
+    new Set(ordersForFilters.map((o) => o.vendorName)),
   ).sort();
 
   const statusFilterOptions = useMemo(
     () =>
       buildOrderStatusFilterOptions(
-        orders.map((o) => resolveDisplayOrderStatus(o)),
+        ordersForFilters.map((o) => resolveDisplayOrderStatus(o)),
       ),
-    [orders],
+    [ordersForFilters],
   );
 
   let rangeFrom = dateFrom;

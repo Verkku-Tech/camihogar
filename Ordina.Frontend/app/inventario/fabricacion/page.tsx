@@ -471,6 +471,11 @@ export default function FabricacionPage() {
   const handleSendToQueueClick = (orderId: string, product: OrderProduct) => {
     if (isProcessing) return
     if (!ensureOrderReadyForManufacturing(orderId)) return
+    const locStatus = product.locationStatus?.trim()
+    if (locStatus === "DISPONIBILIDAD INMEDIATA") {
+      toast.error("Este producto es de disponibilidad inmediata y no debe fabricarse")
+      return
+    }
     setSelectedProduct({ orderId, product })
     setProviderDialogMode("queue")
     setSelectProviderDialogOpen(true)
@@ -482,6 +487,11 @@ export default function FabricacionPage() {
   ) => {
     if (isProcessing) return
     if (!ensureOrderReadyForManufacturing(orderId)) return
+    const locStatus = product.locationStatus?.trim()
+    if (locStatus === "DISPONIBILIDAD INMEDIATA") {
+      toast.error("Este producto es de disponibilidad inmediata y no debe fabricarse")
+      return
+    }
 
     if (product.manufacturingProviderId && product.manufacturingProviderName) {
       if (!beginProcessing()) return
@@ -521,6 +531,11 @@ export default function FabricacionPage() {
   const handleRefabricationClick = (orderId: string, product: OrderProduct) => {
     if (isProcessing) return
     if (!ensureOrderReadyForManufacturing(orderId)) return
+    const locStatus = product.locationStatus?.trim()
+    if (locStatus === "DISPONIBILIDAD INMEDIATA") {
+      toast.error("Este producto es de disponibilidad inmediata y no debe fabricarse")
+      return
+    }
     setSelectedProduct({ orderId, product })
     setProviderDialogMode("refabrication")
     setSelectProviderDialogOpen(true)
