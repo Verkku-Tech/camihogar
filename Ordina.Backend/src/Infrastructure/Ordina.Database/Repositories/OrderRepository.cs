@@ -77,8 +77,14 @@ public class OrderRepository : IOrderRepository
         var totalCount = await _collection.CountDocumentsAsync(filter);
         var skip = (page - 1) * pageSize;
 
+        // Cuando se usa since (sync incremental), ordenar por UpdatedAt para traer los más recientes primero.
+        // En carga completa, ordenar por CreatedAt descendente.
+        var sortDefinition = since.HasValue
+            ? Builders<Order>.Sort.Descending(o => o.UpdatedAt)
+            : Builders<Order>.Sort.Descending(o => o.CreatedAt);
+
         var orders = await _collection.Find(filter)
-            .SortByDescending(o => o.CreatedAt)
+            .Sort(sortDefinition)
             .Skip(skip)
             .Limit(pageSize)
             .ToListAsync();

@@ -116,3 +116,4 @@ logs/
 .agents/
 .kiro/
 skills-lock.json
+docs/superpowers/*
