@@ -80,6 +80,7 @@ import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
 import { useClientSearchIds } from "@/hooks/use-client-search-ids";
 import { toLocalDateKey } from "@/lib/date-utils";
 import { textIncludesForSearch } from "@/lib/text-search";
+import { isReservationOrderNumber } from "@/lib/order-document-types";
 
 const EMPTY_ORDERS: UnifiedOrder[] = [];
 
@@ -379,6 +380,12 @@ export default function PedidosPage() {
         order.type === "budget" &&
         order.status.trim().toLowerCase() === "convertido";
 
+      // Ocultar reservas (RES-/PCF-) salvo que se filtre explícitamente por estado de reserva
+      const isReservation = isReservationOrderNumber(order.orderNumber);
+      const isReservaStatusFilter =
+        filters.status === "Reserva" || filters.status === "Por Confirmar";
+      const hideReservation = isReservation && !isReservaStatusFilter;
+
       return (
         matchesSearch &&
         matchesVendor &&
@@ -387,7 +394,8 @@ export default function PedidosPage() {
         matchesDateFrom &&
         matchesDateTo &&
         matchesClient &&
-        !isConvertedBudget
+        !isConvertedBudget &&
+        !hideReservation
       );
     });
   }, [
@@ -429,8 +437,11 @@ export default function PedidosPage() {
     if (serverResultsPending) return EMPTY_ORDERS;
     if (!useServerMode) return localPaginatedOrders;
     if (filters.status !== "all") return serverOrders;
+    // Cuando status es "all": ocultar declinados y reservas (RES-/PCF-)
     return serverOrders.filter(
-      (o) => resolveDisplayOrderStatus(o) !== "Declinado",
+      (o) =>
+        resolveDisplayOrderStatus(o) !== "Declinado" &&
+        !isReservationOrderNumber(o.orderNumber),
     );
   }, [
     serverResultsPending,

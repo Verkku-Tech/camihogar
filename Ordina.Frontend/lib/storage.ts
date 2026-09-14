@@ -3960,11 +3960,11 @@ export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
       budgets.map((b) => b.budgetNumber).filter(Boolean),
     );
 
-    // Pedidos reales: excluir presupuestos y reservas (evita duplicar con la lista de getBudgets)
+    // Pedidos reales: excluir presupuestos (evita duplicar con la lista de getBudgets)
+    // Las reservas se incluyen aquí y se filtran en la UI cuando no hay filtro de estado
     const ordersForUnified = orders.filter(
       (o) =>
         !isBackendBudgetOrder(o) &&
-        !isBackendReservationOrder(o) &&
         !budgetIds.has(o.id) &&
         !budgetNumbers.has(o.orderNumber),
     );
