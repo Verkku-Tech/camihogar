@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -246,11 +245,9 @@ export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
                           <SelectItem value="SELECCIONAR ESTADO">
                             Seleccionar estado
                           </SelectItem>
-                          {orderForm.saleType !== "encargo" && (
-                            <SelectItem value="DISPONIBILIDAD INMEDIATA">
-                              Disponibilidad Inmediata
-                            </SelectItem>
-                          )}
+                          <SelectItem value="DISPONIBILIDAD INMEDIATA">
+                            Disponibilidad Inmediata
+                          </SelectItem>
                           <SelectItem value="EN TIENDA">En Tienda</SelectItem>
                           <SelectItem value="FABRICACION">
                             Fabricación
