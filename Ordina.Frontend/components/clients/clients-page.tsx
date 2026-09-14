@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Plus, Search, Edit, Power, PowerOff, Filter, ChevronLeft, ChevronRight, RefreshCw, Upload, Download, History } from "lucide-react"
 import { toast } from "sonner"
 import { apiClient, type ClientResponseDto, type CreateClientDto } from "@/lib/api-client"
+import { propagateClientNameToOrders } from "@/lib/storage"
 import { useAuth } from "@/contexts/auth-context"
 import { ImportClientsDialog } from "@/components/clients/import-clients-dialog"
 import { DownloadClientFormatDialog } from "@/components/clients/download-format-dialog"
@@ -127,6 +128,12 @@ export function ClientsPage() {
 
     try {
       await apiClient.updateClient(selectedClient.id, formData)
+
+      // Propagar cambio de nombre a pedidos/presupuestos en caché local IndexedDB
+      if (formData.nombreRazonSocial && formData.nombreRazonSocial !== selectedClient.nombreRazonSocial) {
+        await propagateClientNameToOrders(selectedClient.id, formData.nombreRazonSocial)
+      }
+
       toast.success("Cliente actualizado exitosamente")
       setIsEditDialogOpen(false)
       setSelectedClient(null)

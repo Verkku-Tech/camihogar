@@ -26,17 +26,9 @@ interface Step2ProductStatusProps {
 }
 
 export function Step2ProductStatus({ orderForm }: Step2ProductStatusProps) {
-  // Auto-reset products with "Disponibilidad Inmediata" when sale type is "encargo"
-  useEffect(() => {
-    if (orderForm.saleType !== "encargo") return;
-    orderForm.setSelectedProducts((products) =>
-      products.map((p) =>
-        p.locationStatus === "DISPONIBILIDAD INMEDIATA"
-          ? { ...p, locationStatus: "FABRICACION" }
-          : p,
-      ),
-    );
-  }, [orderForm.saleType, orderForm.setSelectedProducts]);
+  // No convertir automáticamente DISPONIBILIDAD INMEDIATA → FABRICACION.
+  // Los productos de disponibilidad inmediata nunca deben fabricarse;
+  // el usuario debe decidir manualmente el locationStatus.
   // Función helper para obtener el label de un valor de atributo
   const getValueLabel = (value: string | AttributeValue): string => {
     if (typeof value === "string") return value;

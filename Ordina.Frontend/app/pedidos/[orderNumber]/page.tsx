@@ -2186,9 +2186,19 @@ export default function OrderDetailPage() {
                                     // Normalizar locationStatus para comparación (trim y manejar ambos formatos)
                                     const locationStatus =
                                       product.locationStatus?.trim();
+                                    const locationStatusUpper =
+                                      locationStatus?.toUpperCase();
 
-                                    // Verificar si es "EN TIENDA" (ambos formatos)
+                                    // Verificar si es "DISPONIBILIDAD INMEDIATA" — nunca debe mostrarse como fabricación
                                     if (
+                                      locationStatus === "DISPONIBILIDAD INMEDIATA" ||
+                                      locationStatusUpper === "DISPONIBILIDAD INMEDIATA" ||
+                                      !locationStatus
+                                    ) {
+                                      // Mantener badgeText = "Disponibilidad Inmediata" (default)
+                                    }
+                                    // Verificar si es "EN TIENDA" (ambos formatos)
+                                    else if (
                                       locationStatus === "en_tienda" ||
                                       locationStatus === "EN TIENDA"
                                     ) {
@@ -2196,15 +2206,9 @@ export default function OrderDetailPage() {
                                       badgeVariant = "default";
                                     }
                                     // Verificar si es "FABRICACION"
-                                    // También verificar variaciones con espacios o mayúsculas/minúsculas
                                     else if (
                                       locationStatus === "FABRICACION" ||
-                                      locationStatus?.toUpperCase() ===
-                                        "FABRICACION" ||
-                                      (locationStatus &&
-                                        locationStatus
-                                          .toLowerCase()
-                                          .includes("fabric"))
+                                      locationStatusUpper === "FABRICACION"
                                     ) {
                                       if (
                                         product.manufacturingStatus ===
