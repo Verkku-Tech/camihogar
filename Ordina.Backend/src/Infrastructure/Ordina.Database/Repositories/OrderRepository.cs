@@ -78,7 +78,7 @@ public class OrderRepository : IOrderRepository
         var skip = (page - 1) * pageSize;
 
         var orders = await _collection.Find(filter)
-            .SortByDescending(o => o.UpdatedAt)
+            .SortByDescending(o => o.CreatedAt)
             .Skip(skip)
             .Limit(pageSize)
             .ToListAsync();
