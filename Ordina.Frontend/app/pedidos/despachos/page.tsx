@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Search, Eye, Truck, CheckCircle, PackageCheck, RotateCcw, Download } from "lucide-react"
+import { Search, Eye, Truck, CheckCircle, PackageCheck, RotateCcw, Download, Loader2 } from "lucide-react"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { OrderGroupCollapsible } from "@/components/orders/order-group-collapsible"
 import { toast } from "sonner"
@@ -34,6 +34,7 @@ import {
   type Category,
   type Product,
 } from "@/lib/storage"
+import { useLazyUnifiedOrders } from "@/hooks/use-lazy-unified-orders"
 import {
   formatOrderProductDescription,
   getOrderProductAttributePairs,
@@ -349,6 +350,7 @@ export default function DespachosPage() {
   }
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { orders: lazyOrders, isLoadingInitial, isLoadingMore, reload: reloadLazyOrders } = useLazyUnifiedOrders({ initialPages: 10 })
   const [isLoading, setIsLoading] = useState(true)
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
   const usdRate = exchangeRates?.USD?.rate
@@ -380,29 +382,21 @@ export default function DespachosPage() {
     })
   }
 
-  const loadOrders = async () => {
-    try {
-      setIsLoading(true)
-      const allOrders = await getUnifiedOrders()
-      // Guardar todos los pedidos que calcen en AL Menos UNA de las pestañas posibles
-      const dispatchableOrders = allOrders.filter(
+  // Sincronizar órdenes del hook lazy con el estado local
+  useEffect(() => {
+    if (lazyOrders.length > 0) {
+      // Filtrar solo pedidos despachables
+      const dispatchableOrders = lazyOrders.filter(
         (order) => order.type === "order" && (
-          isOrderInTab(order, "por_despachar") || 
-          isOrderInTab(order, "en_despacho") || 
+          isOrderInTab(order, "por_despachar") ||
+          isOrderInTab(order, "en_despacho") ||
           isOrderInTab(order, "despachados")
         )
       )
       setOrders(dispatchableOrders)
-    } catch (error) {
-      console.error("Error loading dispatch orders:", error)
-    } finally {
-      setIsLoading(false)
     }
-  }
-
-  useEffect(() => {
-    loadOrders()
-  }, [])
+    setIsLoading(isLoadingInitial)
+  }, [lazyOrders, isLoadingInitial])
 
   /** Online Seller: pedidos del equipo online (ver). */
   const visibleOrders = useMemo(() => {
@@ -818,7 +812,7 @@ export default function DespachosPage() {
         completedAt: completedAt,
       })
 
-      await loadOrders()
+      reloadLazyOrders()
       setIsActionDialogOpen(false)
       setOrderToActOn(null)
       setActionType(null)
@@ -904,7 +898,7 @@ export default function DespachosPage() {
         updatedCount += pIds.length
       }
 
-      await loadOrders()
+      reloadLazyOrders()
       setIsBulkActionDialogOpen(false)
       setSelectedOrders(new Set())
       setActionType(null)
@@ -1093,7 +1087,12 @@ export default function DespachosPage() {
                   </CardHeader>
                   <CardContent>
                     {isLoading ? (
-                      <div className="text-center py-8">Cargando pedidos...</div>
+                      <div className="text-center py-8">
+                        <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Cargando pedidos...
+                        </div>
+                      </div>
                     ) : activeTab === "despachados" ? (
                       deliveredRows.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">

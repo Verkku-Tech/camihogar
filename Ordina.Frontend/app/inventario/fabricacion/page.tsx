@@ -31,6 +31,7 @@ import {
 import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight, RotateCcw, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { getOrders, getOrder, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder } from "@/lib/storage"
+import { useLazyOrders } from "@/hooks/use-lazy-orders"
 import {
   HoverCard,
   HoverCardContent,
@@ -96,6 +97,7 @@ export default function FabricacionPage() {
   const canRevertManufacturing =
     isAdmin || hasPermission(MANUFACTURING_MANAGE)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { orders: lazyOrders, isLoadingInitial, isLoadingMore, isFullyLoaded, reload: reloadLazyOrders } = useLazyOrders({ initialPages: 10 })
   const [orders, setOrders] = useState<Order[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [productRows, setProductRows] = useState<ProductRow[]>([])
@@ -189,23 +191,25 @@ export default function FabricacionPage() {
     setSelectedProducts(new Set())
   }, [filterStatus, filterPurchaseType, filterProvider])
 
-  // Cargar pedidos y categorías
+  // Cargar categorías (las órdenes se cargan con useLazyOrders)
   useEffect(() => {
-    const loadData = async () => {
+    const loadCategories = async () => {
       try {
-        const [loadedOrders, loadedCategories] = await Promise.all([
-          getOrders(),
-          getCategories()
-        ])
-        setOrders(loadedOrders)
+        const loadedCategories = await getCategories()
         setCategories(loadedCategories)
       } catch (error) {
-        console.error("Error loading data:", error)
-        toast.error("Error al cargar los datos")
+        console.error("Error loading categories:", error)
       }
     }
-    loadData()
+    loadCategories()
   }, [])
+
+  // Sincronizar órdenes del hook lazy con el estado local
+  useEffect(() => {
+    if (lazyOrders.length > 0) {
+      setOrders(lazyOrders)
+    }
+  }, [lazyOrders])
 
   useEffect(() => {
     if (!authLoading && user && !hasManufacturingAccess) {
@@ -1892,6 +1896,20 @@ export default function FabricacionPage() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Indicador de carga lazy */}
+            {isLoadingInitial && (
+              <div className="mb-4 flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100" role="status">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                Cargando pedidos...
+              </div>
+            )}
+            {isLoadingMore && !isLoadingInitial && (
+              <div className="mb-4 flex items-center gap-2 rounded-md border border-muted bg-muted/50 px-4 py-2 text-xs text-muted-foreground" role="status">
+                <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                Cargando más pedidos en segundo plano...
+              </div>
             )}
 
             {/* Tabla de productos agrupados por pedido */}

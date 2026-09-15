@@ -2649,6 +2649,9 @@ export async function persistConvertedBudgetLocally(
 export type GetOrdersOptions = {
   forceFullSync?: boolean;
   refreshFromBackend?: boolean;
+  /** Si se provee, retorna después de cargar tantas páginas iniciales (cada una pageSize=50).
+   *  El resto se sigue cargando en background y se almacena en IndexedDB para uso posterior. */
+  initialPageLimit?: number;
 };
 
 /** Una sola sincronización a la vez: varias llamadas simultáneas comparten la misma promesa. */
@@ -2853,7 +2856,9 @@ export const getOrders = async (
         let page = 1;
         let hasMore = true;
         let lastServerTimestamp = "";
+        const initialLimit = options.initialPageLimit;
 
+        // Fase 1: Cargar páginas iniciales (o todas si no hay límite)
         while (hasMore) {
           const response = await apiClient.getOrdersPaged(page, 50);
           const mappedOrders = response.orders.map(orderFromBackendDto);
@@ -2864,8 +2869,71 @@ export const getOrders = async (
           console.log(
             `Pedidos página ${page - 1}: ${mappedOrders.length} (acumulado: ${allOrders.length}/${response.totalCount})`,
           );
+          // Si hay límite inicial y lo alcanzamos, guardamos lo que tenemos y retornamos
+          if (initialLimit && page > initialLimit && hasMore) {
+            console.log(
+              `getOrders: límite inicial de ${initialLimit} páginas alcanzado (${allOrders.length} pedidos). El resto se carga en background.`,
+            );
+            // Guardar lo que tenemos en IndexedDB
+            const ordersOnlyPartial = allOrders.filter((o) => !isBackendBudgetOrder(o));
+            for (const order of ordersOnlyPartial) {
+              try { await db.put("orders", order); } catch { /* ignore */ }
+            }
+            // Separar presupuestos
+            for (const order of allOrders) {
+              if (!isBackendBudgetOrder(order)) continue;
+              try { await db.remove("orders", order.id); } catch { /* ignore */ }
+              try { await db.put("budgets", orderMappedToBudget(order)); } catch { /* ignore */ }
+            }
+            if (lastServerTimestamp) {
+              await setLastOrdersSyncAt(lastServerTimestamp);
+            }
+            const mergedPartial = [...ordersOnlyPartial, ...localForMerge.filter(
+              (o) => !ordersOnlyPartial.some((s) => s.orderNumber === o.orderNumber) && !isBackendBudgetOrder(o),
+            )];
+            ordersListSyncedThisSession = true;
+            console.log(
+              `Órdenes iniciales: ${ordersOnlyPartial.length} del servidor + ${localForMerge.length} locales = ${mergedPartial.length}`,
+            );
+
+            // Fase 2: Cargar el resto en background (no bloquea)
+            const backgroundFetch = async () => {
+              try {
+                while (hasMore) {
+                  const bgResponse = await apiClient.getOrdersPaged(page, 50);
+                  const bgMapped = bgResponse.orders.map(orderFromBackendDto);
+                  allOrders.push(...bgMapped);
+                  hasMore = bgResponse.hasNextPage;
+                  lastServerTimestamp = bgResponse.serverTimestamp || lastServerTimestamp;
+                  page++;
+                  // Guardar en IndexedDB incrementalmente
+                  for (const order of bgMapped) {
+                    if (isBackendBudgetOrder(order)) {
+                      try { await db.remove("orders", order.id); } catch { /* ignore */ }
+                      try { await db.put("budgets", orderMappedToBudget(order)); } catch { /* ignore */ }
+                    } else {
+                      try { await db.put("orders", order); } catch { /* ignore */ }
+                    }
+                  }
+                  console.log(
+                    `Pedidos (background) página ${page - 1}: ${bgMapped.length} (acumulado: ${allOrders.length}/${bgResponse.totalCount})`,
+                  );
+                }
+                if (lastServerTimestamp) {
+                  await setLastOrdersSyncAt(lastServerTimestamp);
+                }
+                console.log(`Órdenes (background) completadas: ${allOrders.length} totales`);
+              } catch (bgErr) {
+                console.warn("Error en carga background de pedidos:", bgErr);
+              }
+            };
+            // Fire and forget - no await
+            backgroundFetch();
+            return mergedPartial;
+          }
         }
 
+        // Flujo normal (sin límite inicial o se cargaron todas las páginas)
         // Presupuestos: misma sincronización paginada que los pedidos → cache en `budgets` (lista estable al refrescar).
         for (const order of allOrders) {
           if (!isBackendBudgetOrder(order)) continue;
@@ -3949,10 +4017,10 @@ export interface UnifiedOrder {
 }
 
 // Función para obtener pedidos y presupuestos unificados
-export const getUnifiedOrders = async (): Promise<UnifiedOrder[]> => {
+export const getUnifiedOrders = async (options?: GetOrdersOptions): Promise<UnifiedOrder[]> => {
   try {
     // Secuencial: getOrders sincroniza primero y escribe presupuestos en `budgets`; luego getBudgets refina con el API por estado.
-    const orders = await getOrders();
+    const orders = await getOrders(options);
     const budgets = await getBudgets({ skipApiIfFresh: true });
 
     const budgetIds = new Set(budgets.map((b) => b.id));
