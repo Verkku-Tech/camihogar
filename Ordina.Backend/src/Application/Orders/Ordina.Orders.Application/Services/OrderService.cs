@@ -523,7 +523,8 @@ public class OrderService : IOrderService
         int pageSize = 50,
         DateTime? since = null,
         string? callerRole = null,
-        OrderListFilterDto? listFilter = null)
+        OrderListFilterDto? listFilter = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -559,7 +560,8 @@ public class OrderService : IOrderService
                     page,
                     pageSize,
                     repoFilter,
-                    teamFilter);
+                    teamFilter,
+                    cancellationToken);
 
                 // Obtener información de clientes en lote para usar nombres vivos
                 var clientIds = filtered.Select(o => o.ClientId).Distinct().ToList();
@@ -580,7 +582,7 @@ public class OrderService : IOrderService
             }
 
             var (orders, totalCount) = await _orderRepository.GetPagedAsync(
-                page, pageSize, since, teamFilter);
+                page, pageSize, since, teamFilter, cancellationToken);
 
             // Obtener información de clientes en lote para usar nombres vivos
             var clientIdsForPaged = orders.Select(o => o.ClientId).Distinct().ToList();

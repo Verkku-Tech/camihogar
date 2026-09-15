@@ -29,6 +29,8 @@ interface UseLazyOrdersResult {
  * 
  * Online: Usa API paginada. El callback onBackgroundComplete notifica cuando termina.
  * Offline: IndexedDB como fallback.
+ * 
+ * Aborta la carga al desmontar el componente.
  */
 export function useLazyOrders(options: UseLazyOrdersOptions = {}): UseLazyOrdersResult {
   const { initialPages = 10, forceFullSync, refreshFromBackend } = options
@@ -40,7 +42,7 @@ export function useLazyOrders(options: UseLazyOrdersOptions = {}): UseLazyOrders
   const [reloadKey, setReloadKey] = useState(0)
   const mountedRef = useRef(true)
 
-  const loadOrders = useCallback(async () => {
+  const loadOrders = useCallback(async (signal?: AbortSignal) => {
     if (!mountedRef.current) return
 
     setIsLoadingInitial(true)
@@ -52,9 +54,10 @@ export function useLazyOrders(options: UseLazyOrdersOptions = {}): UseLazyOrders
         initialPageLimit: initialPages,
         forceFullSync,
         refreshFromBackend,
+        signal,
         // Callback que se llama cuando la carga background termina
         onBackgroundComplete: (allOrders) => {
-          if (!mountedRef.current) return
+          if (!mountedRef.current || signal?.aborted) return
           setOrders(allOrders)
           setIsLoadingMore(false)
           setIsFullyLoaded(true)
@@ -64,7 +67,7 @@ export function useLazyOrders(options: UseLazyOrdersOptions = {}): UseLazyOrders
       // getOrders con initialPageLimit retorna el lote inicial rápido
       const initialOrders = await getOrders(opts)
 
-      if (!mountedRef.current) return
+      if (!mountedRef.current || signal?.aborted) return
 
       setOrders(initialOrders)
       setIsLoadingInitial(false)
@@ -81,6 +84,7 @@ export function useLazyOrders(options: UseLazyOrdersOptions = {}): UseLazyOrders
         setIsLoadingMore(true)
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return
       console.error("Error loading orders:", error)
       if (mountedRef.current) {
         setIsLoadingInitial(false)
@@ -91,9 +95,11 @@ export function useLazyOrders(options: UseLazyOrdersOptions = {}): UseLazyOrders
 
   useEffect(() => {
     mountedRef.current = true
-    loadOrders()
+    const controller = new AbortController()
+    loadOrders(controller.signal)
     return () => {
       mountedRef.current = false
+      controller.abort()
     }
   }, [loadOrders])
 

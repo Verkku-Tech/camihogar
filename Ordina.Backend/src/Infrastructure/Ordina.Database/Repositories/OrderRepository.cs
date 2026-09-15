@@ -64,7 +64,8 @@ public class OrderRepository : IOrderRepository
         int page,
         int pageSize,
         DateTime? since = null,
-        IReadOnlyCollection<string>? onlineSellerTeamIds = null)
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+        CancellationToken cancellationToken = default)
     {
         var filterBuilder = Builders<Order>.Filter;
         var filter = filterBuilder.Empty;
@@ -74,7 +75,7 @@ public class OrderRepository : IOrderRepository
 
         filter = CombineFilters(filter, onlineSellerTeamIds);
 
-        var totalCount = await _collection.CountDocumentsAsync(filter);
+        var totalCount = await _collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
         var skip = (page - 1) * pageSize;
 
         // Cuando se usa since (sync incremental), ordenar por UpdatedAt para traer los más recientes primero.
@@ -87,7 +88,7 @@ public class OrderRepository : IOrderRepository
             .Sort(sortDefinition)
             .Skip(skip)
             .Limit(pageSize)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return (orders, (int)totalCount);
     }
@@ -96,15 +97,24 @@ public class OrderRepository : IOrderRepository
         int page,
         int pageSize,
         OrderListFilter listFilter,
-        IReadOnlyCollection<string>? onlineSellerTeamIds = null)
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+        CancellationToken cancellationToken = default)
     {
         var fb = Builders<Order>.Filter;
         var filters = new List<FilterDefinition<Order>>();
 
         // Excluir reservas (misma lógica que SearchHeaderAsync)
-        filters.Add(fb.Nin(o => o.Type, new[] { "Reservation", "PendingConfirmation" }));
-        filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^RES-", "i"))));
-        filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^PCF-", "i"))));
+        // Solo excluir cuando NO se está filtrando por un status de reserva específico
+        var isReservationStatusFilter =
+            string.Equals(listFilter.Status?.Trim(), "Reserva", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(listFilter.Status?.Trim(), "Por Confirmar", StringComparison.OrdinalIgnoreCase);
+
+        if (!isReservationStatusFilter)
+        {
+            filters.Add(fb.Nin(o => o.Type, new[] { "Reservation", "PendingConfirmation" }));
+            filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^RES-", "i"))));
+            filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^PCF-", "i"))));
+        }
 
         // Presupuestos convertidos
         filters.Add(fb.Not(fb.And(
@@ -168,14 +178,14 @@ public class OrderRepository : IOrderRepository
 
         var filter = CombineFilters(fb.And(filters), onlineSellerTeamIds);
 
-        var totalCount = await _collection.CountDocumentsAsync(filter);
+        var totalCount = await _collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
         var skip = (page - 1) * pageSize;
 
         var orders = await _collection.Find(filter)
             .SortByDescending(o => o.CreatedAt)
             .Skip(skip)
             .Limit(pageSize)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return (orders, (int)totalCount);
     }

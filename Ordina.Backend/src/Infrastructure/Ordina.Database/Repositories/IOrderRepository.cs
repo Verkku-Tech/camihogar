@@ -14,19 +14,22 @@ public interface IOrderRepository
     /// <param name="pageSize">Cantidad de elementos por página</param>
     /// <param name="since">Fecha opcional para filtrar solo pedidos modificados desde esa fecha</param>
     /// <param name="onlineSellerTeamIds">Si se indica, solo pedidos con vendedor/referidor/reserva online en el equipo</param>
+    /// <param name="cancellationToken">Token de cancelación para abortar la consulta</param>
     /// <returns>Tupla con los pedidos y el total de elementos</returns>
     Task<(IEnumerable<Order> Orders, int TotalCount)> GetPagedAsync(
         int page,
         int pageSize,
         DateTime? since = null,
-        IReadOnlyCollection<string>? onlineSellerTeamIds = null);
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Listado paginado con filtros de búsqueda (ignora sincronización incremental).</summary>
     Task<(IEnumerable<Order> Orders, int TotalCount)> GetFilteredPagedAsync(
         int page,
         int pageSize,
         OrderListFilter listFilter,
-        IReadOnlyCollection<string>? onlineSellerTeamIds = null);
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+        CancellationToken cancellationToken = default);
     
     Task<IEnumerable<Order>> GetByClientIdAsync(
         string clientId,

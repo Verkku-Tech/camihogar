@@ -2551,6 +2551,8 @@ export type GetOrdersOptions = {
   initialPageLimit?: number;
   /** Callback que se llama cuando la carga background de órdenes termina. */
   onBackgroundComplete?: (allOrders: Order[]) => void;
+  /** Signal para cancelar la carga de órdenes. */
+  signal?: AbortSignal;
 };
 
 /** Una sola sincronización a la vez: varias llamadas simultáneas comparten la misma promesa. */
@@ -2664,6 +2666,7 @@ export const getOrders = async (
       typeof optionsOrForceFull === "boolean"
         ? { forceFullSync: optionsOrForceFull }
         : optionsOrForceFull ?? {};
+    const signal = options.signal;
 
     if (!isOnline()) {
       const localOrders = await db.getAll<Order>("orders");
@@ -2685,6 +2688,7 @@ export const getOrders = async (
     const localForMerge = await localOrdersPromise;
     inflightOrdersSync = (async (): Promise<Order[]> => {
       try {
+        if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
         const allOrders: Order[] = [];
         const forceFull =
           options.forceFullSync === true || options.refreshFromBackend === true;
@@ -2700,8 +2704,9 @@ export const getOrders = async (
 
         if (since && !forceFull) {
           try {
+            if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
             const { orders: delta, serverTimestamp } =
-              await apiClient.getOrdersSince(since);
+              await apiClient.getOrdersSince(since, signal);
             const mappedDelta = delta.map(orderFromBackendDto);
             await Promise.allSettled(
               mappedDelta.map((order) =>
@@ -2736,6 +2741,7 @@ export const getOrders = async (
               "Sync incremental sin pedidos con cache vacío; usando paginación completa",
             );
           } catch (incErr) {
+            if (incErr instanceof DOMException && incErr.name === "AbortError") throw incErr;
             console.warn(
               "Sync incremental falló, usando paginación completa:",
               incErr,
@@ -2750,7 +2756,8 @@ export const getOrders = async (
 
         // Fase 1: Cargar páginas iniciales (o todas si no hay límite)
         while (hasMore) {
-          const response = await apiClient.getOrdersPaged(page, 50);
+          if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+          const response = await apiClient.getOrdersPaged(page, 50, undefined, undefined, signal);
           const mappedOrders = response.orders.map(orderFromBackendDto);
           allOrders.push(...mappedOrders);
           hasMore = response.hasNextPage;
@@ -2792,7 +2799,8 @@ export const getOrders = async (
             const backgroundFetch = async () => {
               try {
                 while (hasMore) {
-                  const bgResponse = await apiClient.getOrdersPaged(page, 50);
+                  if (signal?.aborted) return;
+                  const bgResponse = await apiClient.getOrdersPaged(page, 50, undefined, undefined, signal);
                   const bgMapped = bgResponse.orders.map(orderFromBackendDto);
                   allOrders.push(...bgMapped);
                   hasMore = bgResponse.hasNextPage;
@@ -2881,6 +2889,7 @@ export const getOrders = async (
         );
         return merged;
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") throw error;
         console.warn(
           "Error obteniendo órdenes del servidor, usando IndexedDB:",
           error,
@@ -2894,6 +2903,7 @@ export const getOrders = async (
 
     return await inflightOrdersSync;
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return [];
     console.error("Error loading orders:", error);
     return [];
   }

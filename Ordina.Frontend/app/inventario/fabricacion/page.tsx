@@ -97,7 +97,7 @@ export default function FabricacionPage() {
   const canRevertManufacturing =
     isAdmin || hasPermission(MANUFACTURING_MANAGE)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { orders: lazyOrders, isLoadingInitial, isLoadingMore, isFullyLoaded, reload: reloadLazyOrders } = useLazyOrders({ initialPages: 10 })
+  const { orders: lazyOrders, isLoadingInitial, isLoadingMore, isFullyLoaded, reload: reloadLazyOrders } = useLazyOrders({ initialPages: 2 })
   const [orders, setOrders] = useState<Order[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [productRows, setProductRows] = useState<ProductRow[]>([])

@@ -1251,6 +1251,7 @@ export class ApiClient {
       dateTo?: string;
       includeBudgets?: boolean;
     },
+    signal?: AbortSignal,
   ) {
     const params = new URLSearchParams();
     params.append("page", page.toString());
@@ -1270,6 +1271,7 @@ export class ApiClient {
     }
     return this.request<PagedOrdersResponseDto>(
       `/api/Orders?${params.toString()}`,
+      { signal },
     );
   }
 
@@ -1280,6 +1282,7 @@ export class ApiClient {
    */
   async getOrdersSince(
     since: string,
+    signal?: AbortSignal,
   ): Promise<{ orders: OrderResponseDto[]; serverTimestamp: string }> {
     const allOrders: OrderResponseDto[] = [];
     let page = 1;
@@ -1287,7 +1290,8 @@ export class ApiClient {
     let serverTimestamp = "";
 
     while (hasMore) {
-      const response = await this.getOrdersPaged(page, 50, since);
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const response = await this.getOrdersPaged(page, 50, since, undefined, signal);
       allOrders.push(...response.orders);
       serverTimestamp = response.serverTimestamp;
       hasMore = response.hasNextPage;

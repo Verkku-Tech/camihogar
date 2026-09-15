@@ -46,11 +46,19 @@ export function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     const load = async () => {
       try {
-        const list = await getOrders();
+        const list = await getOrders({
+          initialPageLimit: 3,
+          signal: controller.signal,
+          onBackgroundComplete: (allOrders) => {
+            if (!cancelled) setSharedOrders(allOrders);
+          },
+        });
         if (!cancelled) setSharedOrders(list);
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
         console.error("Error loading orders for dashboard:", error);
         if (!cancelled) setSharedOrders([]);
       }
@@ -58,6 +66,7 @@ export function Dashboard() {
     void load();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, []);
 

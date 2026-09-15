@@ -96,7 +96,8 @@ public class OrdersController : ControllerBase
         [FromQuery] string? saleType = null,
         [FromQuery] DateTime? dateFrom = null,
         [FromQuery] DateTime? dateTo = null,
-        [FromQuery] bool includeBudgets = true)
+        [FromQuery] bool includeBudgets = true,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -117,7 +118,8 @@ public class OrdersController : ControllerBase
                 pageSize,
                 listFilter.HasActiveFilters ? null : since,
                 GetCallerRole(User),
-                listFilter.HasActiveFilters ? listFilter : null);
+                listFilter.HasActiveFilters ? listFilter : null,
+                cancellationToken);
             return Ok(result);
         }
         catch (Exception ex)
