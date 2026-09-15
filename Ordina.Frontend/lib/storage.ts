@@ -3102,7 +3102,7 @@ const dedupeReservationOrders = (list: Order[]): Order[] => {
   return out;
 };
 
-/** Listado dedicado de reservas (RES-/PCF-); no usa getUnifiedOrders ni getOrders paginado completo. */
+/** Listado dedicado de reservas (RES-/PCF-); usa getOrdersPaged con filtro status. */
 export const getReservations = async (): Promise<Order[]> => {
   const cacheReservations = async (list: Order[]) => {
     for (const o of list) {
@@ -3114,17 +3114,31 @@ export const getReservations = async (): Promise<Order[]> => {
     }
   };
 
+  /** Carga todas las órdenes de un status usando paginación */
+  const fetchByStatus = async (status: string): Promise<Order[]> => {
+    const all: Order[] = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+      const response = await apiClient.getOrdersPaged(page, 50, undefined, {
+        status,
+        includeBudgets: false,
+      });
+      const mapped = (response.orders ?? []).map(orderFromBackendDto);
+      all.push(...mapped);
+      hasMore = response.hasNextPage ?? false;
+      page++;
+    }
+    return all;
+  };
+
   if (isOnline()) {
     try {
-      const [reservaDtos, legacyDtos] = await Promise.all([
-        apiClient.getOrdersByStatus("Reserva"),
-        apiClient
-          .getOrdersByStatus("Por Confirmar")
-          .catch(() => [] as OrderResponseDto[]),
+      const [reservaOrders, legacyOrders] = await Promise.all([
+        fetchByStatus("Reserva"),
+        fetchByStatus("Por Confirmar").catch(() => [] as Order[]),
       ]);
-      const mapped = dedupeReservationOrders(
-        [...reservaDtos, ...legacyDtos].map((dto) => orderFromBackendDto(dto)),
-      );
+      const mapped = dedupeReservationOrders([...reservaOrders, ...legacyOrders]);
       await cacheReservations(mapped);
       return sortOrdersByCreatedDesc(mapped);
     } catch (error) {
