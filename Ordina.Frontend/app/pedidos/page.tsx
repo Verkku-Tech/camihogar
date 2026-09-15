@@ -252,9 +252,18 @@ export default function PedidosPage() {
     } catch (error) {
       if (generation !== serverFetchGenerationRef.current) return;
       console.error("Error loading filtered orders:", error);
-      toast.error("No se pudieron cargar los pedidos filtrados.");
-      setServerOrders([]);
-      setServerTotalCount(0);
+      // Fallback a IndexedDB cuando la API falla (offline, timeout, etc.)
+      try {
+        const fallbackOrders = await getUnifiedOrders();
+        if (generation !== serverFetchGenerationRef.current) return;
+        setServerOrders(fallbackOrders);
+        setServerTotalCount(fallbackOrders.length);
+      } catch {
+        if (generation !== serverFetchGenerationRef.current) return;
+        setServerOrders([]);
+        setServerTotalCount(0);
+      }
+      toast.error("No se pudieron cargar los pedidos filtrados del servidor.");
     } finally {
       if (generation === serverFetchGenerationRef.current) {
         setIsLoading(false);
@@ -313,8 +322,14 @@ export default function PedidosPage() {
 
   // Función para refrescar después de crear un pedido
   const handleOrderCreated = async () => {
-    const loadedOrders = await getUnifiedOrders();
-    setOrders(loadedOrders);
+    if (useServerMode) {
+      // Online: refrescar solo la página actual desde la API
+      await loadServerFilteredOrders();
+    } else {
+      // Offline: refrescar desde IndexedDB
+      const loadedOrders = await getUnifiedOrders();
+      setOrders(loadedOrders);
+    }
     setIsNewOrderOpen(false);
   };
 

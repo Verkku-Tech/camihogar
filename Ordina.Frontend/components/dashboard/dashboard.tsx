@@ -236,7 +236,7 @@ export function Dashboard() {
             )}
             */}
             {!isOnlineSeller && activeTab === "fabricacion" && (
-              <ManufacturingProductsTable />
+              <ManufacturingProductsTable prefetchedOrders={sharedOrders} />
             )}
             {!isOnlineSeller && activeTab === "despachos" && (
               <DispatchesTable />

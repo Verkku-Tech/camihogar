@@ -6,11 +6,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
-  getUnifiedOrders,
   isDispatchNoteOrder,
   getOrderDispatchDisplayDate,
   type UnifiedOrder,
 } from "@/lib/storage"
+import { useLazyUnifiedOrders } from "@/hooks/use-lazy-unified-orders"
 import { isSistemaApartado } from "@/lib/order-sa"
 import { formatCurrency, getActiveExchangeRates } from "@/lib/currency-utils"
 import {
@@ -21,6 +21,7 @@ import { Eye } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
+import { Loader2 } from "lucide-react"
 
 const DEFAULT_ITEMS_PER_PAGE = 10
 
@@ -39,23 +40,17 @@ export function DispatchesTable() {
   const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
 
-  useEffect(() => {
-    const loadDispatches = async () => {
-      try {
-        const allOrders = await getUnifiedOrders()
-        const completedOrders = sortDispatchOrders(
-          allOrders.filter((order) => isDispatchNoteOrder(order)),
-        )
-        setDispatches(completedOrders)
-      } catch (error) {
-        console.error("Error loading dispatches:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  const { orders: allOrders, isLoadingInitial, isLoadingMore } = useLazyUnifiedOrders({ initialPages: 10 })
 
-    void loadDispatches()
-  }, [])
+  useEffect(() => {
+    const completedOrders = sortDispatchOrders(
+      allOrders.filter((order) => isDispatchNoteOrder(order)),
+    )
+    setDispatches(completedOrders)
+    if (!isLoadingInitial) {
+      setIsLoading(false)
+    }
+  }, [allOrders, isLoadingInitial])
 
   const {
     currentPage,

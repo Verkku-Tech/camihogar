@@ -2652,6 +2652,8 @@ export type GetOrdersOptions = {
   /** Si se provee, retorna después de cargar tantas páginas iniciales (cada una pageSize=50).
    *  El resto se sigue cargando en background y se almacena en IndexedDB para uso posterior. */
   initialPageLimit?: number;
+  /** Callback que se llama cuando la carga background de órdenes termina. */
+  onBackgroundComplete?: (allOrders: Order[]) => void;
 };
 
 /** Una sola sincronización a la vez: varias llamadas simultáneas comparten la misma promesa. */
@@ -2923,6 +2925,11 @@ export const getOrders = async (
                   await setLastOrdersSyncAt(lastServerTimestamp);
                 }
                 console.log(`Órdenes (background) completadas: ${allOrders.length} totales`);
+                // Notificar que la carga background terminó
+                if (options.onBackgroundComplete) {
+                  const ordersOnlyBg = allOrders.filter((o) => !isBackendBudgetOrder(o));
+                  options.onBackgroundComplete(ordersOnlyBg);
+                }
               } catch (bgErr) {
                 console.warn("Error en carga background de pedidos:", bgErr);
               }

@@ -26,6 +26,9 @@ interface UseLazyUnifiedOrdersResult {
 /**
  * Hook que carga pedidos unificados de forma lazy: primero un lote inicial (~10 páginas = 500 items)
  * y el resto se carga en background sin bloquear la UI.
+ *
+ * Online: Usa API paginada. El callback onBackgroundComplete notifica cuando termina.
+ * Offline: IndexedDB como fallback.
  */
 export function useLazyUnifiedOrders(options: UseLazyUnifiedOrdersOptions = {}): UseLazyUnifiedOrdersResult {
   const { initialPages = 10, forceFullSync, refreshFromBackend } = options
@@ -49,6 +52,15 @@ export function useLazyUnifiedOrders(options: UseLazyUnifiedOrdersOptions = {}):
         initialPageLimit: initialPages,
         forceFullSync,
         refreshFromBackend,
+        // Callback que se llama cuando la carga background de órdenes termina
+        onBackgroundComplete: async () => {
+          if (!mountedRef.current) return
+          // Reconstruir unified orders con las órdenes completas
+          const finalOrders = await getUnifiedOrders()
+          setOrders(finalOrders)
+          setIsLoadingMore(false)
+          setIsFullyLoaded(true)
+        },
       }
 
       // getUnifiedOrders con initialPageLimit retorna el lote inicial rápido
@@ -65,44 +77,9 @@ export function useLazyUnifiedOrders(options: UseLazyUnifiedOrdersOptions = {}):
         setIsFullyLoaded(true)
         setIsLoadingMore(false)
       } else {
+        // Podría haber más datos cargándose en background via API
+        // El callback onBackgroundComplete se encargará de actualizar
         setIsLoadingMore(true)
-
-        // Poll para detectar cuando la carga background termine
-        const pollForMore = async () => {
-          const { getAll } = await import("@/lib/indexeddb")
-          let lastCount = initialOrders.length
-          let stableCount = 0
-
-          const check = async () => {
-            if (!mountedRef.current) return
-            try {
-              // Re-leer unified orders para ver si hay más
-              const allUnified = await getUnifiedOrders()
-              const currentCount = allUnified.length
-
-              if (currentCount > lastCount) {
-                setOrders(allUnified)
-                lastCount = currentCount
-                stableCount = 0
-                setTimeout(check, 1000)
-              } else if (stableCount < 3) {
-                stableCount++
-                setTimeout(check, 1500)
-              } else {
-                setOrders(allUnified)
-                setIsLoadingMore(false)
-                setIsFullyLoaded(true)
-              }
-            } catch {
-              setIsLoadingMore(false)
-              setIsFullyLoaded(true)
-            }
-          }
-
-          setTimeout(check, 2000)
-        }
-
-        pollForMore()
       }
     } catch (error) {
       console.error("Error loading unified orders:", error)

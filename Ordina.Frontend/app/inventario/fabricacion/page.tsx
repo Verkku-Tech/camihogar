@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight, RotateCcw, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import { getOrders, getOrder, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder } from "@/lib/storage"
+import { getOrder, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder } from "@/lib/storage"
 import { useLazyOrders } from "@/hooks/use-lazy-orders"
 import {
   HoverCard,
@@ -514,8 +514,7 @@ export default function FabricacionPage() {
               : p,
           ),
         })
-        const loadedOrders = await getOrders()
-        setOrders(loadedOrders)
+        reloadLazyOrders()
         toast.success("Producto en fabricación")
       } catch (error: unknown) {
         const message =
@@ -708,8 +707,7 @@ export default function FabricacionPage() {
 
       await updateOrder(order.id, { products: updatedProducts })
 
-      const loadedOrders = await getOrders()
-      setOrders(loadedOrders)
+      reloadLazyOrders()
 
       const successMessage =
         mode === "queue"
@@ -757,8 +755,7 @@ export default function FabricacionPage() {
         products: updatedProducts
       })
       
-      const loadedOrders = await getOrders()
-      setOrders(loadedOrders)
+      reloadLazyOrders()
 
       toast.success("Producto marcado como En almacén")
     } catch (error: any) {
@@ -847,8 +844,7 @@ export default function FabricacionPage() {
       )
       if (!ok) return
 
-      const loadedOrders = await getOrders()
-      setOrders(loadedOrders)
+      reloadLazyOrders()
       toast.success(`Producto devuelto a ${REPORTE_FABRICACION_LABEL}`)
     } catch (error: unknown) {
       console.error("Error reverting manufacturing status:", error)
@@ -884,8 +880,7 @@ export default function FabricacionPage() {
       )
       if (!ok) return
 
-      const loadedOrders = await getOrders()
-      setOrders(loadedOrders)
+      reloadLazyOrders()
       toast.success("Producto devuelto a Debe fabricar")
     } catch (error: unknown) {
       console.error("Error reverting to debe fabricar:", error)
@@ -932,8 +927,7 @@ export default function FabricacionPage() {
         }
       }
 
-      const loadedOrders = await getOrders()
-      setOrders(loadedOrders)
+      reloadLazyOrders()
       setSelectedProducts(new Set())
       setBulkRevertDialogOpen(false)
 
@@ -1193,8 +1187,7 @@ export default function FabricacionPage() {
         }
       }
 
-      const loadedOrders = await getOrders()
-      setOrders(loadedOrders)
+      reloadLazyOrders()
       setSelectedProducts(new Set())
       setBulkManufactureDialogOpen(false)
       setBulkSelectedProvider(null)
@@ -1260,8 +1253,7 @@ export default function FabricacionPage() {
         }
       }
 
-      const loadedOrders = await getOrders()
-      setOrders(loadedOrders)
+      reloadLazyOrders()
       setSelectedProducts(new Set())
       setBulkManufactureDialogOpen(false)
       setBulkSelectedProvider(null)
@@ -1328,8 +1320,7 @@ export default function FabricacionPage() {
         }
       }
 
-      const loadedOrders = await getOrders()
-      setOrders(loadedOrders)
+      reloadLazyOrders()
       setSelectedProducts(new Set())
 
       if (successCount === 0 && errorCount === 0) {
@@ -1426,8 +1417,7 @@ export default function FabricacionPage() {
         }
       }
 
-      const loadedOrders = await getOrders()
-      setOrders(loadedOrders)
+      reloadLazyOrders()
       setSelectedProducts(new Set())
 
       if (errorCount === 0) {
@@ -1471,8 +1461,7 @@ export default function FabricacionPage() {
         }
       }
 
-      const loadedOrders = await getOrders()
-      setOrders(loadedOrders)
+      reloadLazyOrders()
 
       if (successCount > 0) {
         toast.success(
@@ -1658,8 +1647,7 @@ export default function FabricacionPage() {
         }
       }
 
-      const loadedOrders = await getOrders()
-      setOrders(loadedOrders)
+      reloadLazyOrders()
       setSelectedProducts(new Set())
 
       if (errorCount === 0) {

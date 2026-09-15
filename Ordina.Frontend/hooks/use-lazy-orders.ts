@@ -26,6 +26,9 @@ interface UseLazyOrdersResult {
 /**
  * Hook que carga pedidos de forma lazy: primero un lote inicial (~10 páginas = 500 items)
  * y el resto se carga en background sin bloquear la UI.
+ * 
+ * Online: Usa API paginada. El callback onBackgroundComplete notifica cuando termina.
+ * Offline: IndexedDB como fallback.
  */
 export function useLazyOrders(options: UseLazyOrdersOptions = {}): UseLazyOrdersResult {
   const { initialPages = 10, forceFullSync, refreshFromBackend } = options
@@ -49,6 +52,13 @@ export function useLazyOrders(options: UseLazyOrdersOptions = {}): UseLazyOrders
         initialPageLimit: initialPages,
         forceFullSync,
         refreshFromBackend,
+        // Callback que se llama cuando la carga background termina
+        onBackgroundComplete: (allOrders) => {
+          if (!mountedRef.current) return
+          setOrders(allOrders)
+          setIsLoadingMore(false)
+          setIsFullyLoaded(true)
+        },
       }
 
       // getOrders con initialPageLimit retorna el lote inicial rápido
@@ -60,57 +70,15 @@ export function useLazyOrders(options: UseLazyOrdersOptions = {}): UseLazyOrders
       setIsLoadingInitial(false)
 
       // Verificar si ya tenemos todos (modo offline o pocos datos)
-      // Si initialOrders.length < expectedFromPages, probablemente ya tenemos todo
-      const expectedMinimum = initialPages * 50 * 0.5 // Al menos 50% de lo esperado
+      const expectedMinimum = initialPages * 50 * 0.5
       if (initialOrders.length < expectedMinimum) {
-        // Pocos datos, probablemente ya está completo
+        // Pocos datos, probablemente ya está completo (offline o pocos datos)
         setIsFullyLoaded(true)
         setIsLoadingMore(false)
       } else {
-        // Podría haber más datos cargándose en background
+        // Podría haber más datos cargándose en background via API
+        // El callback onBackgroundComplete se encargará de actualizar
         setIsLoadingMore(true)
-
-        // Poll para detectar cuando la carga background termine
-        // Se verifica si IndexedDB tiene más datos que los iniciales
-        const pollForMore = async () => {
-          const { getAll } = await import("@/lib/indexeddb")
-          let lastCount = initialOrders.length
-          let stableCount = 0
-
-          const check = async () => {
-            if (!mountedRef.current) return
-            try {
-              const allOrders = await getAll<Order>("orders")
-              const currentCount = allOrders.length
-
-              if (currentCount > lastCount) {
-                // Hay más datos disponibles
-                setOrders(allOrders)
-                lastCount = currentCount
-                stableCount = 0
-                // Seguir verificando
-                setTimeout(check, 1000)
-              } else if (stableCount < 3) {
-                // Aún no estable, esperar un poco más
-                stableCount++
-                setTimeout(check, 1500)
-              } else {
-                // Datos estables, carga completa
-                setOrders(allOrders)
-                setIsLoadingMore(false)
-                setIsFullyLoaded(true)
-              }
-            } catch {
-              setIsLoadingMore(false)
-              setIsFullyLoaded(true)
-            }
-          }
-
-          // Empezar a verificar después de un breve delay
-          setTimeout(check, 2000)
-        }
-
-        pollForMore()
       }
     } catch (error) {
       console.error("Error loading orders:", error)

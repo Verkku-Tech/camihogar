@@ -21,7 +21,11 @@ interface ManufacturingProduct {
 
 const DEFAULT_ITEMS_PER_PAGE = 10
 
-export function ManufacturingProductsTable() {
+interface ManufacturingProductsTableProps {
+  prefetchedOrders?: Order[] | null
+}
+
+export function ManufacturingProductsTable({ prefetchedOrders }: ManufacturingProductsTableProps) {
   const router = useRouter()
   const [products, setProducts] = useState<ManufacturingProduct[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -40,7 +44,8 @@ export function ManufacturingProductsTable() {
   useEffect(() => {
     const loadProducts = async () => {
       try {
-        const orders = await getOrders()
+        // Usar pedidos prefetched si están disponibles, si no cargar
+        const orders = prefetchedOrders ?? await getOrders()
         const manufacturingProducts: ManufacturingProduct[] = []
 
         orders.forEach((order) => {
@@ -88,7 +93,7 @@ export function ManufacturingProductsTable() {
     }
 
     loadProducts()
-  }, [])
+  }, [prefetchedOrders])
 
   const getStatusBadge = (status: string) => {
     switch (status) {
