@@ -41,6 +41,7 @@ import {
   type OrderProductDescriptionContext,
 } from "@/lib/order-product-description"
 import { isSistemaApartado } from "@/lib/order-sa"
+import { isReservationOrder } from "@/lib/order-document-types"
 import { useCurrency } from "@/contexts/currency-context"
 import { getActiveExchangeRates } from "@/lib/currency-utils"
 import {
@@ -270,6 +271,7 @@ function getDeliveredHistoryRowSortTime(row: DeliveredRow): number {
 // Helper: Verifica si el pedido debe mostrarse en una pestaña específica
 const isOrderInTab = (order: UnifiedOrder, tab: TabType): boolean => {
   if (order.type !== "order") return false
+  if (isReservationOrder(order)) return false
   if (order.status === "Generado" || order.status === "Generada") return false
 
   // Si pedimos ver despachados y la orden está completada entera, la mostramos ahí
