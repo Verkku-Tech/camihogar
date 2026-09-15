@@ -1145,7 +1145,7 @@ export class ApiClient {
     if (response && response.items && response.items.length > 0) {
       try {
         const { put } = await import("./indexeddb");
-        await Promise.all(
+        Promise.allSettled(
           response.items.map((client) => put("clients", client)),
         );
       } catch (e) {

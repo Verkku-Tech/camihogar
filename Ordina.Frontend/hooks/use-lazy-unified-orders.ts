@@ -55,7 +55,8 @@ export function useLazyUnifiedOrders(options: UseLazyUnifiedOrdersOptions = {}):
         // Callback que se llama cuando la carga background de órdenes termina
         onBackgroundComplete: async () => {
           if (!mountedRef.current) return
-          // Reconstruir unified orders con las órdenes completas
+          // Con los inflight guards, getOrders() y getBudgets() retornan
+          // sus promesas ya resueltas → reutiliza datos sin re-fetchear API
           const finalOrders = await getUnifiedOrders()
           setOrders(finalOrders)
           setIsLoadingMore(false)

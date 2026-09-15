@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight, RotateCcw, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import { getOrder, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder } from "@/lib/storage"
+import { getOrder, getOrdersByIds, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder } from "@/lib/storage"
 import { useLazyOrders } from "@/hooks/use-lazy-orders"
 import {
   HoverCard,
@@ -798,8 +798,9 @@ export default function FabricacionPage() {
   const revertProductToDebeFabricarInOrder = async (
     orderId: string,
     productId: string,
+    preloadedOrder?: Order,
   ): Promise<boolean> => {
-    const order = await getOrder(orderId)
+    const order = preloadedOrder ?? await getOrder(orderId)
     if (!order) throw new Error("Pedido no encontrado")
     if (!isSistemaApartadoReadyForNormalFlow(order)) {
       toast.error(
@@ -1149,12 +1150,15 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
+      const orderIds = selectedKeys.map((k) => k.split("|")[0])
+      const ordersMap = await getOrdersByIds(orderIds)
+
       for (let i = 0; i < selectedKeys.length; i++) {
         const key = selectedKeys[i]
         reportProcessingProgress(i + 1, selectedKeys.length)
         const [orderId, productId] = key.split("|")
         try {
-          const order = await getOrder(orderId)
+          const order = ordersMap.get(orderId)
           if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
             errorCount++
             continue
@@ -1216,12 +1220,15 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
+      const orderIds = selectedKeys.map((k) => k.split("|")[0])
+      const ordersMap = await getOrdersByIds(orderIds)
+
       for (let i = 0; i < selectedKeys.length; i++) {
         const key = selectedKeys[i]
         reportProcessingProgress(i + 1, selectedKeys.length)
         const [orderId, productId] = key.split("|")
         try {
-          const order = await getOrder(orderId)
+          const order = ordersMap.get(orderId)
           if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
             errorCount++
             continue
@@ -1278,12 +1285,15 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
+      const orderIds = selectedKeys.map((k) => k.split("|")[0])
+      const ordersMap = await getOrdersByIds(orderIds)
+
       for (let i = 0; i < selectedKeys.length; i++) {
         const key = selectedKeys[i]
         reportProcessingProgress(i + 1, selectedKeys.length)
         const [orderId, productId] = key.split("|")
         try {
-          const order = await getOrder(orderId)
+          const order = ordersMap.get(orderId)
           if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
             errorCount++
             continue
@@ -1375,12 +1385,15 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
+      const orderIds = selectedKeys.map((k) => k.split("|")[0])
+      const ordersMap = await getOrdersByIds(orderIds)
+
       for (let i = 0; i < selectedKeys.length; i++) {
         const key = selectedKeys[i]
         reportProcessingProgress(i + 1, selectedKeys.length)
         const [orderId, productId] = key.split("|")
         try {
-          const order = await getOrder(orderId)
+          const order = ordersMap.get(orderId)
           if (!order) {
             errorCount++
             continue
@@ -1448,12 +1461,16 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
+      const orderIds = selectedKeys.map((k) => k.split("|")[0])
+      const ordersMap = await getOrdersByIds(orderIds)
+
       for (let i = 0; i < selectedKeys.length; i++) {
         const key = selectedKeys[i]
         reportProcessingProgress(i + 1, selectedKeys.length)
         const [orderId, productId] = key.split("|")
         try {
-          const ok = await revertProductToDebeFabricarInOrder(orderId, productId)
+          const order = ordersMap.get(orderId)
+          const ok = await revertProductToDebeFabricarInOrder(orderId, productId, order)
           if (ok) successCount++
         } catch (error) {
           console.error(`Error revirtiendo producto ${productId}:`, error)
@@ -1580,12 +1597,15 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
+      const orderIds = selectedKeys.map((k) => k.split("|")[0])
+      const ordersMap = await getOrdersByIds(orderIds)
+
       for (let i = 0; i < selectedKeys.length; i++) {
         const key = selectedKeys[i]
         reportProcessingProgress(i + 1, selectedKeys.length)
         const [orderId, productId] = key.split("|")
         try {
-          const order = await getOrder(orderId)
+          const order = ordersMap.get(orderId)
           if (!order) {
             errorCount++
             continue
