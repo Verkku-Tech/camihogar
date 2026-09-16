@@ -47,6 +47,7 @@ export function Dashboard() {
   const [generatedOrders, setGeneratedOrders] = useState<Order[] | null>(null);
   const [manufacturingOrders, setManufacturingOrders] = useState<Order[] | null>(null);
   const [dispatchOrders, setDispatchOrders] = useState<UnifiedOrder[] | null>(null);
+  const [saOrders, setSaOrders] = useState<Order[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -224,6 +225,8 @@ export function Dashboard() {
         const mappedSa = saResp.orders.map(orderFromBackendDto);
         const mappedAll = pendingResp.orders.map(orderFromBackendDto);
 
+        if (!cancelled) setSaOrders(mappedSa);
+
         const calculatedMetrics = await calculateDashboardMetrics(
           period,
           undefined,
@@ -398,7 +401,7 @@ export function Dashboard() {
               <DispatchesTable prefetchedOrders={dispatchOrders} />
             )}
             {!isOnlineSeller && activeTab === "sa-vencidos" && (
-              <ExpiredLayawaysTable />
+              <ExpiredLayawaysTable prefetchedOrders={saOrders} />
             )}
           </div>
         </main>

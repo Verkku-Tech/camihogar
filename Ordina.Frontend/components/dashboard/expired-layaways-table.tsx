@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { getExpiredLayaways, type Order } from "@/lib/storage"
-import { getActivePaymentsList } from "@/lib/order-payments"
+import { type Order } from "@/lib/storage"
+import { getActivePaymentsList, getOrderPendingTotal, PAYMENT_BALANCE_EPSILON_BS } from "@/lib/order-payments"
+import { SA_LAYAWAY_DAYS, getDaysSinceOrder, getLayawayDaysPastWindow } from "@/lib/order-sa"
 import { formatCurrency, getActiveExchangeRates } from "@/lib/currency-utils"
 import {
   commercialRatesToExchangeRatesInput,
@@ -17,26 +18,40 @@ import { Badge } from "@/components/ui/badge"
 
 type ExpiredLayawayOrder = Order & { daysExpired: number; pendingAmount: number }
 
-export function ExpiredLayawaysTable() {
+interface ExpiredLayawaysTableProps {
+  prefetchedOrders?: Order[] | null
+}
+
+export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableProps) {
   const router = useRouter()
-  const [expiredLayaways, setExpiredLayaways] = useState<ExpiredLayawayOrder[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(!prefetchedOrders)
   const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    const loadExpiredLayaways = async () => {
-      try {
-        const expired = await getExpiredLayaways()
-        setExpiredLayaways(expired)
-      } catch (error) {
-        console.error("Error loading expired layaways:", error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  const expiredLayaways = useMemo(() => {
+    const orders = prefetchedOrders ?? []
+    const now = new Date()
 
-    loadExpiredLayaways()
-  }, [])
+    return orders
+      .filter((order) => {
+        if (order.saleType !== "sistema_apartado") return false
+        if (order.status === "Cancelado") return false
+        const pendingAmount = getOrderPendingTotal(order)
+        if (pendingAmount <= PAYMENT_BALANCE_EPSILON_BS) return false
+        return getDaysSinceOrder(order.createdAt, now) > SA_LAYAWAY_DAYS
+      })
+      .map((order) => ({
+        ...order,
+        daysExpired: getLayawayDaysPastWindow(order.createdAt, now),
+        pendingAmount: getOrderPendingTotal(order),
+      }))
+      .sort((a, b) => b.daysExpired - a.daysExpired)
+  }, [prefetchedOrders])
+
+  useEffect(() => {
+    if (prefetchedOrders !== undefined) {
+      setIsLoading(false)
+    }
+  }, [prefetchedOrders])
 
   // Formatear montos en USD cuando cambien los apartados vencidos
   useEffect(() => {
