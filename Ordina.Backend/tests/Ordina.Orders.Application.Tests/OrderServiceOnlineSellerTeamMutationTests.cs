@@ -164,7 +164,8 @@ public class OrderServiceOnlineSellerTeamMutationTests
             int page,
             int pageSize,
             DateTime? since = null,
-            IReadOnlyCollection<string>? onlineSellerTeamIds = null)
+            IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+            CancellationToken cancellationToken = default)
         {
             IEnumerable<Order> items = stored == null ? Array.Empty<Order>() : new[] { stored };
             return Task.FromResult((items, stored == null ? 0 : 1));
@@ -174,7 +175,8 @@ public class OrderServiceOnlineSellerTeamMutationTests
             int page,
             int pageSize,
             OrderListFilter listFilter,
-            IReadOnlyCollection<string>? onlineSellerTeamIds = null)
+            IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+            CancellationToken cancellationToken = default)
         {
             IEnumerable<Order> items = stored == null ? Array.Empty<Order>() : new[] { stored };
             return Task.FromResult((items, stored == null ? 0 : 1));
@@ -208,6 +210,21 @@ public class OrderServiceOnlineSellerTeamMutationTests
 
         public Task<int> GetMaxNumericSuffixForTypeAndPrefixAsync(string orderType, string prefix) =>
             Task.FromResult(0);
+
+        public Task<int> GetFilteredCountAsync(
+            OrderListFilter listFilter,
+            IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(stored == null ? 0 : 1);
+
+        public Task<int> GetCountAsync(
+            IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+            DateTime? since = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(stored == null ? 0 : 1);
+
+        public Task<long> UpdateClientNameByClientIdAsync(string clientId, string newClientName) =>
+            Task.FromResult(0L);
     }
 
     private sealed class FakeClientRepository : IClientRepository

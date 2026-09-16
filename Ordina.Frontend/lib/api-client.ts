@@ -1275,6 +1275,36 @@ export class ApiClient {
     );
   }
 
+  async getOrderCount(
+    filters?: {
+      search?: string;
+      clientSearch?: string;
+      vendor?: string;
+      status?: string;
+      saleType?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      includeBudgets?: boolean;
+    },
+    signal?: AbortSignal,
+  ) {
+    const params = new URLSearchParams();
+    if (filters?.search) params.append("search", filters.search);
+    if (filters?.clientSearch) params.append("clientSearch", filters.clientSearch);
+    if (filters?.vendor) params.append("vendor", filters.vendor);
+    if (filters?.status) params.append("status", filters.status);
+    if (filters?.saleType) params.append("saleType", filters.saleType);
+    if (filters?.dateFrom) params.append("dateFrom", filters.dateFrom);
+    if (filters?.dateTo) params.append("dateTo", filters.dateTo);
+    if (filters?.includeBudgets === false) {
+      params.append("includeBudgets", "false");
+    }
+    return this.request<{ totalCount: number; totalPages: number; pageSize: number }>(
+      `/api/Orders/count?${params.toString()}`,
+      { signal },
+    );
+  }
+
   /**
    * Obtiene todos los pedidos modificados desde una fecha específica (para sincronización incremental)
    * Itera automáticamente por todas las páginas

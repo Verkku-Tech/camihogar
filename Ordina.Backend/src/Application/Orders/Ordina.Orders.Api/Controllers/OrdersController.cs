@@ -130,6 +130,44 @@ public class OrdersController : ControllerBase
     }
 
     /// <summary>
+    /// Obtiene el conteo total de pedidos aplicando filtros, sin cargar los pedidos.
+    /// Útil para paginación server-side: saber total de páginas antes de cargar datos.
+    /// </summary>
+    [HttpGet("count")]
+    [ProducesResponseType(typeof(OrderCountDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<OrderCountDto>> GetOrderCount(
+        [FromQuery] string? search = null,
+        [FromQuery] string? clientSearch = null,
+        [FromQuery] string? vendor = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? saleType = null,
+        [FromQuery] DateTime? dateFrom = null,
+        [FromQuery] DateTime? dateTo = null,
+        [FromQuery] bool includeBudgets = true,
+        CancellationToken cancellationToken = default)
+    {
+        var callerRole = GetCallerRole(User);
+        var filter = new OrderListFilterDto
+        {
+            Search = search,
+            ClientSearch = clientSearch,
+            Vendor = vendor,
+            Status = status,
+            SaleType = saleType,
+            DateFrom = dateFrom,
+            DateTo = dateTo,
+            IncludeBudgets = includeBudgets,
+        };
+
+        var count = await _orderService.GetOrderCountAsync(
+            filter.HasActiveFilters ? filter : null,
+            callerRole,
+            cancellationToken);
+
+        return Ok(count);
+    }
+
+    /// <summary>
     /// Registro de auditoría de pedidos (paginado, con filtros)
     /// </summary>
     [HttpGet("audit-logs")]

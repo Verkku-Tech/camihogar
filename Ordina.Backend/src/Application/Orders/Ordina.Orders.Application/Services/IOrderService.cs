@@ -22,6 +22,12 @@ public interface IOrderService
         string query,
         int limit = 20,
         string? callerRole = null);
+
+    /// <summary>Obtiene el conteo total de pedidos aplicando filtros, sin cargar los pedidos.</summary>
+    Task<OrderCountDto> GetOrderCountAsync(
+        OrderListFilterDto? listFilter = null,
+        string? callerRole = null,
+        CancellationToken cancellationToken = default);
     
     Task<IEnumerable<OrderResponseDto>> GetOrdersByClientIdAsync(
         string clientId,

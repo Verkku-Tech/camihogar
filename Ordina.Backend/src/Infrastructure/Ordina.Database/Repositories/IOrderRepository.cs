@@ -30,6 +30,18 @@ public interface IOrderRepository
         OrderListFilter listFilter,
         IReadOnlyCollection<string>? onlineSellerTeamIds = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Cuenta pedidos aplicando filtros sin cargar los documentos.</summary>
+    Task<int> GetFilteredCountAsync(
+        OrderListFilter listFilter,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Cuenta todos los pedidos, opcionalmente filtrados por fecha.</summary>
+    Task<int> GetCountAsync(
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+        DateTime? since = null,
+        CancellationToken cancellationToken = default);
     
     Task<IEnumerable<Order>> GetByClientIdAsync(
         string clientId,

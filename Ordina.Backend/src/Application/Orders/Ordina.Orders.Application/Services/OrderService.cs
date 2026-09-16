@@ -609,6 +609,63 @@ public class OrderService : IOrderService
         }
     }
 
+    public async Task<OrderCountDto> GetOrderCountAsync(
+        OrderListFilterDto? listFilter = null,
+        string? callerRole = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var teamFilter = await ResolveTeamFilterAsync(callerRole);
+            const int pageSize = 30;
+
+            if (listFilter?.HasActiveFilters == true)
+            {
+                var repoFilter = new OrderListFilter
+                {
+                    Search = listFilter.Search,
+                    ClientSearch = listFilter.ClientSearch,
+                    Vendor = listFilter.Vendor,
+                    Status = listFilter.Status,
+                    SaleType = listFilter.SaleType,
+                    DateFrom = listFilter.DateFrom,
+                    DateTo = listFilter.DateTo,
+                    IncludeBudgets = listFilter.IncludeBudgets,
+                };
+
+                if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
+                {
+                    repoFilter.MatchingClientIds = await _clientRepository.FindIdsBySearchAsync(
+                        listFilter.ClientSearch.Trim(), 500);
+                }
+
+                var totalCount = await _orderRepository.GetFilteredCountAsync(
+                    repoFilter, teamFilter, cancellationToken);
+
+                return new OrderCountDto
+                {
+                    TotalCount = totalCount,
+                    TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize),
+                    PageSize = pageSize,
+                };
+            }
+
+            var count = await _orderRepository.GetCountAsync(teamFilter, null, cancellationToken);
+
+            return new OrderCountDto
+            {
+                TotalCount = count,
+                TotalPages = (int)Math.Ceiling(count / (double)pageSize),
+                PageSize = pageSize,
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al obtener conteo de pedidos");
+            throw;
+        }
+    }
+
     public async Task<IEnumerable<OrderResponseDto>> GetOrdersByClientIdAsync(
         string clientId,
         string? callerRole = null)

@@ -190,6 +190,105 @@ public class OrderRepository : IOrderRepository
         return (orders, (int)totalCount);
     }
 
+    public async Task<int> GetFilteredCountAsync(
+        OrderListFilter listFilter,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+        CancellationToken cancellationToken = default)
+    {
+        var fb = Builders<Order>.Filter;
+        var filters = new List<FilterDefinition<Order>>();
+
+        var isReservationStatusFilter =
+            string.Equals(listFilter.Status?.Trim(), "Reserva", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(listFilter.Status?.Trim(), "Por Confirmar", StringComparison.OrdinalIgnoreCase);
+
+        if (!isReservationStatusFilter)
+        {
+            filters.Add(fb.Nin(o => o.Type, new[] { "Reservation", "PendingConfirmation" }));
+            filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^RES-", "i"))));
+            filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^PCF-", "i"))));
+        }
+
+        filters.Add(fb.Not(fb.And(
+            fb.Eq(o => o.Type, "Budget"),
+            fb.Regex(o => o.Status, new BsonRegularExpression("^convertido$", "i")))));
+
+        if (!listFilter.IncludeBudgets)
+        {
+            filters.Add(fb.Ne(o => o.Type, "Budget"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.Search))
+        {
+            var regex = AccentInsensitiveRegex.ToBsonRegex(listFilter.Search.Trim());
+            filters.Add(fb.Or(
+                fb.Regex(o => o.OrderNumber, regex),
+                fb.Regex(o => o.ClientName, regex),
+                fb.Regex(o => o.VendorName, regex)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
+        {
+            var trimmed = listFilter.ClientSearch.Trim();
+            var nameRegex = AccentInsensitiveRegex.ToBsonRegex(trimmed);
+            var clientOr = new List<FilterDefinition<Order>>
+            {
+                fb.Regex(o => o.ClientName, nameRegex),
+            };
+            if (listFilter.MatchingClientIds is { Count: > 0 })
+            {
+                clientOr.Add(fb.In(o => o.ClientId, listFilter.MatchingClientIds));
+            }
+            filters.Add(fb.Or(clientOr));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.Vendor))
+        {
+            filters.Add(fb.Eq(o => o.VendorName, listFilter.Vendor.Trim()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.Status))
+        {
+            filters.Add(fb.Eq(o => o.Status, listFilter.Status.Trim()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.SaleType))
+        {
+            filters.Add(fb.Eq(o => o.SaleType, listFilter.SaleType.Trim()));
+        }
+
+        if (listFilter.DateFrom.HasValue)
+        {
+            filters.Add(fb.Gte(o => o.CreatedAt, listFilter.DateFrom.Value.Date));
+        }
+
+        if (listFilter.DateTo.HasValue)
+        {
+            var end = listFilter.DateTo.Value.Date.AddDays(1).AddTicks(-1);
+            filters.Add(fb.Lte(o => o.CreatedAt, end));
+        }
+
+        var filter = CombineFilters(fb.And(filters), onlineSellerTeamIds);
+
+        return (int)await _collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+    }
+
+    public async Task<int> GetCountAsync(
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+        DateTime? since = null,
+        CancellationToken cancellationToken = default)
+    {
+        var filterBuilder = Builders<Order>.Filter;
+        var filter = filterBuilder.Empty;
+
+        if (since.HasValue)
+            filter = filterBuilder.Gte(o => o.UpdatedAt, since.Value);
+
+        filter = CombineFilters(filter, onlineSellerTeamIds);
+
+        return (int)await _collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+    }
+
     public async Task<IEnumerable<Order>> GetByClientIdAsync(
         string clientId,
         IReadOnlyCollection<string>? onlineSellerTeamIds = null)
