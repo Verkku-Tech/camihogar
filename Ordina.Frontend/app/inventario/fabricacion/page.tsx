@@ -214,7 +214,7 @@ export default function FabricacionPage() {
   const [isLoadingServer, setIsLoadingServer] = useState(true)
   const abortRef = useRef<AbortController | null>(null)
 
-  // Fetch all orders with locationStatus filter ( ElemMatch backend filter)
+  // Fetch all orders with locationStatus filter — get count first, then load all pages in parallel
   useEffect(() => {
     const controller = new AbortController()
     abortRef.current = controller
@@ -222,20 +222,26 @@ export default function FabricacionPage() {
     const fetchAll = async () => {
       setIsLoadingServer(true)
       try {
-        const allOrders: OrderResponseDto[] = []
-        let page = 1
-        let hasNext = true
+        // Step 1: get total count to know how many pages to fetch
+        const countResult = await apiClient.getOrderCount(
+          { locationStatus: "FABRICACION" },
+          controller.signal,
+        )
+        const totalPages = countResult.totalPages ?? 1
+        const pageSize = 50
 
-        while (hasNext && !controller.signal.aborted) {
-          const response = await apiClient.getOrdersPaged(page, 50, undefined, {
-            locationStatus: "FABRICACION",
-          }, controller.signal)
-          allOrders.push(...response.orders)
-          hasNext = response.hasNextPage
-          page++
-        }
+        // Step 2: fetch all pages in parallel
+        const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
+        const results = await Promise.all(
+          pageNumbers.map((p) =>
+            apiClient.getOrdersPaged(p, pageSize, undefined, {
+              locationStatus: "FABRICACION",
+            }, controller.signal),
+          ),
+        )
 
         if (!controller.signal.aborted) {
+          const allOrders = results.flatMap((r) => r.orders ?? [])
           setServerOrders(allOrders)
         }
       } catch (err) {
@@ -252,7 +258,7 @@ export default function FabricacionPage() {
     return () => controller.abort()
   }, [])
 
-  // Refetch function for mutations
+  // Refetch function for mutations — parallel loading
   const refetch = useCallback(() => {
     abortRef.current?.abort()
     const controller = new AbortController()
@@ -261,20 +267,24 @@ export default function FabricacionPage() {
     const fetchAll = async () => {
       setIsLoadingServer(true)
       try {
-        const allOrders: OrderResponseDto[] = []
-        let page = 1
-        let hasNext = true
+        const countResult = await apiClient.getOrderCount(
+          { locationStatus: "FABRICACION" },
+          controller.signal,
+        )
+        const totalPages = countResult.totalPages ?? 1
+        const pageSize = 50
 
-        while (hasNext && !controller.signal.aborted) {
-          const response = await apiClient.getOrdersPaged(page, 50, undefined, {
-            locationStatus: "FABRICACION",
-          }, controller.signal)
-          allOrders.push(...response.orders)
-          hasNext = response.hasNextPage
-          page++
-        }
+        const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
+        const results = await Promise.all(
+          pageNumbers.map((p) =>
+            apiClient.getOrdersPaged(p, pageSize, undefined, {
+              locationStatus: "FABRICACION",
+            }, controller.signal),
+          ),
+        )
 
         if (!controller.signal.aborted) {
+          const allOrders = results.flatMap((r) => r.orders ?? [])
           setServerOrders(allOrders)
         }
       } catch (err) {
