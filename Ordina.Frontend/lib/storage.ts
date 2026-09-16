@@ -3256,19 +3256,25 @@ export const updateOrder = async (
     // Intentar actualizar en el backend si hay conexión
     if (isOnline()) {
       try {
-        // Buscar el pedido en el backend por orderNumber para obtener su ObjectId
-        try {
-          const backendOrder = await apiClient.getOrderByOrderNumber(
-            existingOrder.orderNumber,
-          );
-          if (backendOrder) {
-            backendOrderId = backendOrder.id;
+        // Si id es un ObjectId de MongoDB (24 caracteres hex) o id existe, usarlo directamente sin hacer GET extra
+        if (existingOrder.id && (existingOrder.id.length === 24 && /^[0-9a-fA-F]{24}$/.test(existingOrder.id))) {
+          backendOrderId = existingOrder.id;
+        } else if (id && (id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id))) {
+          backendOrderId = id;
+        } else {
+          try {
+            const backendOrder = await apiClient.getOrderByOrderNumber(
+              existingOrder.orderNumber,
+            );
+            if (backendOrder) {
+              backendOrderId = backendOrder.id;
+            }
+          } catch (error) {
+            // El pedido no existe en el backend todavía
+            console.warn(
+              "⚠️ Pedido no encontrado en backend por orderNumber, actualizando solo localmente",
+            );
           }
-        } catch (error) {
-          // El pedido no existe en el backend todavía
-          console.warn(
-            "⚠️ Pedido no encontrado en backend por orderNumber, actualizando solo localmente",
-          );
         }
 
         // Si encontramos el pedido en el backend, actualizarlo

@@ -967,41 +967,52 @@ export default function DespachosPage() {
       })
 
       let updatedCount = 0
+      const orderEntries = Object.entries(productsByOrder)
 
-      for (const [orderId, pIds] of Object.entries(productsByOrder)) {
-        const order = visibleOrders.find(o => o.id === orderId)
-        if (!order) continue
-        if (!canOnlineSellerActOnOrder(order)) {
-          toast.error(
-            `No puedes modificar el pedido ${order.orderNumber}: no es tuyo.`,
-          )
-          continue
-        }
-
-        const updatedProducts = order.products.map(p =>
-          pIds.includes(p.id) ? applyDispatchProductUpdate(p, actionType) : p
-        )
-
-        let newOrderStatus = order.status as any
-        let completedAt = order.completedAt
-        let dispatchDate = order.dispatchDate
-
-        if (actionType === "to_delivered") {
-          const allDispatched = updatedProducts.every(p => p.locationStatus === "DESPACHADO")
-          if (allDispatched) {
-            newOrderStatus = "Completada"
-            completedAt = new Date().toISOString()
-            dispatchDate = dispatchDate || new Date().toISOString()
+      const results = await Promise.allSettled(
+        orderEntries.map(async ([orderId, pIds]) => {
+          const order = visibleOrders.find((o) => o.id === orderId)
+          if (!order) return 0
+          if (!canOnlineSellerActOnOrder(order)) {
+            toast.error(
+              `No puedes modificar el pedido ${order.orderNumber}: no es tuyo.`,
+            )
+            return 0
           }
-        }
 
-        await updateOrder(order.id, {
-          products: updatedProducts,
-          status: newOrderStatus,
-          dispatchDate: dispatchDate,
-          completedAt: completedAt,
-        })
-        updatedCount += pIds.length
+          const updatedProducts = order.products.map((p) =>
+            pIds.includes(p.id) ? applyDispatchProductUpdate(p, actionType) : p,
+          )
+
+          let newOrderStatus = order.status as any
+          let completedAt = order.completedAt
+          let dispatchDate = order.dispatchDate
+
+          if (actionType === "to_delivered") {
+            const allDispatched = updatedProducts.every(
+              (p) => p.locationStatus === "DESPACHADO",
+            )
+            if (allDispatched) {
+              newOrderStatus = "Completada"
+              completedAt = new Date().toISOString()
+              dispatchDate = dispatchDate || new Date().toISOString()
+            }
+          }
+
+          await updateOrder(order.id, {
+            products: updatedProducts,
+            status: newOrderStatus,
+            dispatchDate: dispatchDate,
+            completedAt: completedAt,
+          })
+          return pIds.length
+        }),
+      )
+
+      for (const res of results) {
+        if (res.status === "fulfilled") {
+          updatedCount += res.value
+        }
       }
 
       refetch()

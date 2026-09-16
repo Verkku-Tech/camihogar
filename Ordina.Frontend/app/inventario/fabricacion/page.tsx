@@ -1177,44 +1177,64 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
-      const orderIds = selectedKeys.map((k) => k.split("|")[0])
+      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
       const ordersMap = await getOrdersByIds(orderIds)
 
-      for (let i = 0; i < selectedKeys.length; i++) {
-        const key = selectedKeys[i]
-        reportProcessingProgress(i + 1, selectedKeys.length)
-        const [orderId, productId] = key.split("|")
-        try {
-          const order = ordersMap.get(orderId)
-          if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
-            errorCount++
-            continue
+      const productsByOrder = new Map<string, string[]>()
+      for (const key of selectedKeys) {
+        const [oId, pId] = key.split("|")
+        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
+        productsByOrder.get(oId)!.push(pId)
+      }
+
+      let processed = 0
+      const orderEntries = Array.from(productsByOrder.entries())
+      const results = await Promise.allSettled(
+        orderEntries.map(async ([orderId, productIds]) => {
+          try {
+            const order = ordersMap.get(orderId)
+            if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
+              return { success: false, count: 0, errors: productIds.length }
+            }
+
+            const pSet = new Set(productIds)
+            let updatedAny = false
+            const updatedProducts = order.products.map((p) => {
+              if (
+                pSet.has(p.id) &&
+                resolveManufacturingRowStatus(p.manufacturingStatus) === "debe_fabricar"
+              ) {
+                updatedAny = true
+                return buildProductQueuedForManufacturing(
+                  p,
+                  providerId,
+                  providerName,
+                  notes,
+                )
+              }
+              return p
+            })
+
+            if (!updatedAny) return { success: true, count: 0, errors: 0 }
+
+            const synced = await updateOrder(order.id, { products: updatedProducts })
+            ordersMap.set(orderId, synced)
+            return { success: true, count: productIds.length, errors: 0 }
+          } catch (error) {
+            console.error(`Error actualizando orden ${orderId}:`, error)
+            return { success: false, count: 0, errors: productIds.length }
+          } finally {
+            processed += productIds.length
+            reportProcessingProgress(processed, selectedKeys.length)
           }
+        }),
+      )
 
-          const productIndex = order.products.findIndex((p) => p.id === productId)
-          if (productIndex === -1) {
-            errorCount++
-            continue
-          }
-
-          const current = order.products[productIndex]
-          if (resolveManufacturingRowStatus(current.manufacturingStatus) !== "debe_fabricar") {
-            continue
-          }
-
-          const updatedProducts = [...order.products]
-          updatedProducts[productIndex] = buildProductQueuedForManufacturing(
-            current,
-            providerId,
-            providerName,
-            notes,
-          )
-
-          const synced = await updateOrder(order.id, { products: updatedProducts })
-          ordersMap.set(orderId, synced)
-          successCount++
-        } catch (error) {
-          console.error(`Error actualizando producto ${productId}:`, error)
+      for (const res of results) {
+        if (res.status === "fulfilled") {
+          successCount += res.value.count
+          errorCount += res.value.errors
+        } else {
           errorCount++
         }
       }
@@ -1248,43 +1268,63 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
-      const orderIds = selectedKeys.map((k) => k.split("|")[0])
+      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
       const ordersMap = await getOrdersByIds(orderIds)
 
-      for (let i = 0; i < selectedKeys.length; i++) {
-        const key = selectedKeys[i]
-        reportProcessingProgress(i + 1, selectedKeys.length)
-        const [orderId, productId] = key.split("|")
-        try {
-          const order = ordersMap.get(orderId)
-          if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
-            errorCount++
-            continue
+      const productsByOrder = new Map<string, string[]>()
+      for (const key of selectedKeys) {
+        const [oId, pId] = key.split("|")
+        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
+        productsByOrder.get(oId)!.push(pId)
+      }
+
+      let processed = 0
+      const orderEntries = Array.from(productsByOrder.entries())
+      const results = await Promise.allSettled(
+        orderEntries.map(async ([orderId, productIds]) => {
+          try {
+            const order = ordersMap.get(orderId)
+            if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
+              return { success: false, count: 0, errors: productIds.length }
+            }
+
+            const pSet = new Set(productIds)
+            let updatedAny = false
+            const updatedProducts = order.products.map((p) => {
+              if (
+                pSet.has(p.id) &&
+                resolveManufacturingRowStatus(p.manufacturingStatus) === "por_fabricar"
+              ) {
+                updatedAny = true
+                return buildProductStartingManufacturing(p, {
+                  providerId: opts.providerId,
+                  providerName: opts.providerName,
+                  notes: opts.notes,
+                })
+              }
+              return p
+            })
+
+            if (!updatedAny) return { success: true, count: 0, errors: 0 }
+
+            const synced = await updateOrder(order.id, { products: updatedProducts })
+            ordersMap.set(orderId, synced)
+            return { success: true, count: productIds.length, errors: 0 }
+          } catch (error) {
+            console.error(`Error actualizando orden ${orderId}:`, error)
+            return { success: false, count: 0, errors: productIds.length }
+          } finally {
+            processed += productIds.length
+            reportProcessingProgress(processed, selectedKeys.length)
           }
+        }),
+      )
 
-          const productIndex = order.products.findIndex((p) => p.id === productId)
-          if (productIndex === -1) {
-            errorCount++
-            continue
-          }
-
-          const current = order.products[productIndex]
-          if (resolveManufacturingRowStatus(current.manufacturingStatus) !== "por_fabricar") {
-            continue
-          }
-
-          const updatedProducts = [...order.products]
-          updatedProducts[productIndex] = buildProductStartingManufacturing(current, {
-            providerId: opts.providerId,
-            providerName: opts.providerName,
-            notes: opts.notes,
-          })
-
-          const synced = await updateOrder(order.id, { products: updatedProducts })
-          ordersMap.set(orderId, synced)
-          successCount++
-        } catch (error) {
-          console.error(`Error actualizando producto ${productId}:`, error)
+      for (const res of results) {
+        if (res.status === "fulfilled") {
+          successCount += res.value.count
+          errorCount += res.value.errors
+        } else {
           errorCount++
         }
       }
@@ -1314,48 +1354,66 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
-      const orderIds = selectedKeys.map((k) => k.split("|")[0])
+      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
       const ordersMap = await getOrdersByIds(orderIds)
 
-      for (let i = 0; i < selectedKeys.length; i++) {
-        const key = selectedKeys[i]
-        reportProcessingProgress(i + 1, selectedKeys.length)
-        const [orderId, productId] = key.split("|")
-        try {
-          const order = ordersMap.get(orderId)
-          if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
-            errorCount++
-            continue
+      const productsByOrder = new Map<string, string[]>()
+      for (const key of selectedKeys) {
+        const [oId, pId] = key.split("|")
+        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
+        productsByOrder.get(oId)!.push(pId)
+      }
+
+      let processed = 0
+      const orderEntries = Array.from(productsByOrder.entries())
+      const results = await Promise.allSettled(
+        orderEntries.map(async ([orderId, productIds]) => {
+          try {
+            const order = ordersMap.get(orderId)
+            if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
+              return { success: false, count: 0, errors: productIds.length }
+            }
+
+            const pSet = new Set(productIds)
+            let updatedAny = false
+            const updatedProducts = order.products.map((p) => {
+              if (
+                pSet.has(p.id) &&
+                resolveManufacturingRowStatus(p.manufacturingStatus) === "por_fabricar"
+              ) {
+                const providerId = p.manufacturingProviderId?.trim()
+                const providerName = p.manufacturingProviderName?.trim()
+                if (providerId && providerName) {
+                  updatedAny = true
+                  return buildProductStartingManufacturing(p, {
+                    providerId,
+                    providerName,
+                  })
+                }
+              }
+              return p
+            })
+
+            if (!updatedAny) return { success: true, count: 0, errors: 0 }
+
+            const synced = await updateOrder(order.id, { products: updatedProducts })
+            ordersMap.set(orderId, synced)
+            return { success: true, count: productIds.length, errors: 0 }
+          } catch (error) {
+            console.error(`Error actualizando orden ${orderId}:`, error)
+            return { success: false, count: 0, errors: productIds.length }
+          } finally {
+            processed += productIds.length
+            reportProcessingProgress(processed, selectedKeys.length)
           }
+        }),
+      )
 
-          const productIndex = order.products.findIndex((p) => p.id === productId)
-          if (productIndex === -1) {
-            errorCount++
-            continue
-          }
-
-          const current = order.products[productIndex]
-          if (resolveManufacturingRowStatus(current.manufacturingStatus) !== "por_fabricar") {
-            continue
-          }
-
-          const providerId = current.manufacturingProviderId?.trim()
-          const providerName = current.manufacturingProviderName?.trim()
-          if (!providerId || !providerName) {
-            continue
-          }
-
-          const updatedProducts = [...order.products]
-          updatedProducts[productIndex] = buildProductStartingManufacturing(current, {
-            providerId,
-            providerName,
-          })
-
-          const synced = await updateOrder(order.id, { products: updatedProducts })
-          ordersMap.set(orderId, synced)
-          successCount++
-        } catch (error) {
-          console.error(`Error actualizando producto ${productId}:`, error)
+      for (const res of results) {
+        if (res.status === "fulfilled") {
+          successCount += res.value.count
+          errorCount += res.value.errors
+        } else {
           errorCount++
         }
       }
@@ -1394,11 +1452,6 @@ export default function FabricacionPage() {
       )
     })
 
-    if (selectedKeys.length === 0) {
-      toast.error("No hay productos pendientes de proveedor en la selección")
-      return
-    }
-
     await executeBulkStartManufactureWithProvider(selectedKeys, {
       providerId,
       providerName,
@@ -1415,48 +1468,61 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
-      const orderIds = selectedKeys.map((k) => k.split("|")[0])
+      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
       const ordersMap = await getOrdersByIds(orderIds)
 
-      for (let i = 0; i < selectedKeys.length; i++) {
-        const key = selectedKeys[i]
-        reportProcessingProgress(i + 1, selectedKeys.length)
-        const [orderId, productId] = key.split("|")
-        try {
-          const order = ordersMap.get(orderId)
-          if (!order) {
-            errorCount++
-            continue
-          }
-          if (!isSistemaApartadoReadyForNormalFlow(order)) {
-            continue
-          }
+      const productsByOrder = new Map<string, string[]>()
+      for (const key of selectedKeys) {
+        const [oId, pId] = key.split("|")
+        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
+        productsByOrder.get(oId)!.push(pId)
+      }
 
-          const productIndex = order.products.findIndex((p) => p.id === productId)
-          if (productIndex === -1) {
-            errorCount++
-            continue
+      let processed = 0
+      const orderEntries = Array.from(productsByOrder.entries())
+      const results = await Promise.allSettled(
+        orderEntries.map(async ([orderId, productIds]) => {
+          try {
+            const order = ordersMap.get(orderId)
+            if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
+              return { success: false, count: 0, errors: productIds.length }
+            }
+
+            const pSet = new Set(productIds)
+            let updatedAny = false
+            const updatedProducts = order.products.map((p) => {
+              if (pSet.has(p.id) && p.manufacturingStatus === "fabricando") {
+                updatedAny = true
+                return {
+                  ...p,
+                  manufacturingStatus: "almacen_no_fabricado" as const,
+                  logisticStatus: "En Almacén",
+                  manufacturingCompletedAt: new Date().toISOString(),
+                }
+              }
+              return p
+            })
+
+            if (!updatedAny) return { success: true, count: 0, errors: 0 }
+
+            const synced = await updateOrder(order.id, { products: updatedProducts })
+            ordersMap.set(orderId, synced)
+            return { success: true, count: productIds.length, errors: 0 }
+          } catch (error) {
+            console.error(`Error actualizando orden ${orderId}:`, error)
+            return { success: false, count: 0, errors: productIds.length }
+          } finally {
+            processed += productIds.length
+            reportProcessingProgress(processed, selectedKeys.length)
           }
+        }),
+      )
 
-          if (order.products[productIndex].manufacturingStatus !== "fabricando") {
-            continue
-          }
-
-          const updatedProduct = {
-            ...order.products[productIndex],
-            manufacturingStatus: "almacen_no_fabricado" as const,
-            logisticStatus: "En Almacén",
-            manufacturingCompletedAt: new Date().toISOString(),
-          }
-
-          const updatedProducts = [...order.products]
-          updatedProducts[productIndex] = updatedProduct
-
-          const synced = await updateOrder(order.id, { products: updatedProducts })
-          ordersMap.set(orderId, synced)
-          successCount++
-        } catch (error) {
-          console.error(`Error actualizando producto ${productId}:`, error)
+      for (const res of results) {
+        if (res.status === "fulfilled") {
+          successCount += res.value.count
+          errorCount += res.value.errors
+        } else {
           errorCount++
         }
       }
@@ -1492,15 +1558,40 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
-      for (let i = 0; i < selectedKeys.length; i++) {
-        const key = selectedKeys[i]
-        reportProcessingProgress(i + 1, selectedKeys.length)
-        const [orderId, productId] = key.split("|")
-        try {
-          const ok = await revertProductToDebeFabricarInOrder(orderId, productId)
-          if (ok) successCount++
-        } catch (error) {
-          console.error(`Error revirtiendo producto ${productId}:`, error)
+      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
+      const productsByOrder = new Map<string, string[]>()
+      for (const key of selectedKeys) {
+        const [oId, pId] = key.split("|")
+        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
+        productsByOrder.get(oId)!.push(pId)
+      }
+
+      let processed = 0
+      const orderEntries = Array.from(productsByOrder.entries())
+      const results = await Promise.allSettled(
+        orderEntries.map(async ([orderId, productIds]) => {
+          try {
+            let okCount = 0
+            for (const pId of productIds) {
+              const ok = await revertProductToDebeFabricarInOrder(orderId, pId)
+              if (ok) okCount++
+            }
+            return { success: true, count: okCount, errors: productIds.length - okCount }
+          } catch (error) {
+            console.error(`Error revirtiendo productos en orden ${orderId}:`, error)
+            return { success: false, count: 0, errors: productIds.length }
+          } finally {
+            processed += productIds.length
+            reportProcessingProgress(processed, selectedKeys.length)
+          }
+        }),
+      )
+
+      for (const res of results) {
+        if (res.status === "fulfilled") {
+          successCount += res.value.count
+          errorCount += res.value.errors
+        } else {
           errorCount++
         }
       }
@@ -1624,73 +1715,83 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
-      const orderIds = selectedKeys.map((k) => k.split("|")[0])
+      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
       const ordersMap = await getOrdersByIds(orderIds)
 
-      for (let i = 0; i < selectedKeys.length; i++) {
-        const key = selectedKeys[i]
-        reportProcessingProgress(i + 1, selectedKeys.length)
-        const [orderId, productId] = key.split("|")
-        try {
-          const order = ordersMap.get(orderId)
-          if (!order) {
-            errorCount++
-            continue
+      const productsByOrder = new Map<string, string[]>()
+      for (const key of selectedKeys) {
+        const [oId, pId] = key.split("|")
+        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
+        productsByOrder.get(oId)!.push(pId)
+      }
+
+      let processed = 0
+      const orderEntries = Array.from(productsByOrder.entries())
+      const results = await Promise.allSettled(
+        orderEntries.map(async ([orderId, productIds]) => {
+          try {
+            const order = ordersMap.get(orderId)
+            if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
+              return { success: false, count: 0, errors: productIds.length }
+            }
+
+            const pSet = new Set(productIds)
+            let updatedAny = false
+            const updatedProducts = order.products.map((p) => {
+              if (
+                pSet.has(p.id) &&
+                (p.manufacturingStatus === "almacen_no_fabricado" || (p.manufacturingStatus as string) === "fabricado")
+              ) {
+                updatedAny = true
+                const historyRecord = {
+                  reason: refabricationReason,
+                  date: new Date().toISOString(),
+                  previousProviderId: p.manufacturingProviderId,
+                  previousProviderName: p.manufacturingProviderName,
+                  newProviderId: providerId,
+                  newProviderName: providerName,
+                }
+                return {
+                  ...p,
+                  availabilityStatus: "no_disponible" as const,
+                  manufacturingStatus: "fabricando" as const,
+                  manufacturingProviderId: providerId,
+                  manufacturingProviderName: providerName,
+                  manufacturingStartedAt: new Date().toISOString(),
+                  manufacturingNotes: notes,
+                  logisticStatus: "Fabricándose",
+                  manufacturingCompletedAt: undefined,
+                  refabricationReason: refabricationReason,
+                  refabricatedAt: new Date().toISOString(),
+                  refabricationHistory: [
+                    ...(p.refabricationHistory || []),
+                    historyRecord,
+                  ],
+                }
+              }
+              return p
+            })
+
+            if (!updatedAny) return { success: true, count: 0, errors: 0 }
+
+            const synced = await updateOrder(order.id, { products: updatedProducts })
+            ordersMap.set(orderId, synced)
+            return { success: true, count: productIds.length, errors: 0 }
+          } catch (error) {
+            console.error(`Error actualizando orden ${orderId}:`, error)
+            return { success: false, count: 0, errors: productIds.length }
+          } finally {
+            processed += productIds.length
+            reportProcessingProgress(processed, selectedKeys.length)
           }
-          if (!isSistemaApartadoReadyForNormalFlow(order)) {
-            continue
-          }
+        }),
+      )
 
-          const productIndex = order.products.findIndex((p) => p.id === productId)
-          if (productIndex === -1) {
-            errorCount++
-            continue
-          }
-
-          const currentProduct = order.products[productIndex]
-
-          if (
-            currentProduct.manufacturingStatus !== "almacen_no_fabricado" &&
-            (currentProduct.manufacturingStatus as string) !== "fabricado"
-          ) {
-            continue
-          }
-
-          const historyRecord = {
-            reason: refabricationReason,
-            date: new Date().toISOString(),
-            previousProviderId: currentProduct.manufacturingProviderId,
-            previousProviderName: currentProduct.manufacturingProviderName,
-            newProviderId: providerId,
-            newProviderName: providerName,
-          }
-
-          const updatedProduct: OrderProduct = {
-            ...currentProduct,
-            availabilityStatus: "no_disponible" as const,
-            manufacturingStatus: "fabricando" as const,
-            manufacturingProviderId: providerId,
-            manufacturingProviderName: providerName,
-            manufacturingStartedAt: new Date().toISOString(),
-            manufacturingNotes: notes,
-            logisticStatus: "Fabricándose",
-            manufacturingCompletedAt: undefined,
-            refabricationReason: refabricationReason,
-            refabricatedAt: new Date().toISOString(),
-            refabricationHistory: [
-              ...(currentProduct.refabricationHistory || []),
-              historyRecord,
-            ],
-          }
-
-          const updatedProducts = [...order.products]
-          updatedProducts[productIndex] = updatedProduct
-
-          const synced = await updateOrder(order.id, { products: updatedProducts })
-          ordersMap.set(orderId, synced)
-          successCount++
-        } catch (error) {
-          console.error(`Error refabricando producto ${productId}:`, error)
+      for (const res of results) {
+        if (res.status === "fulfilled") {
+          successCount += res.value.count
+          errorCount += res.value.errors
+        } else {
           errorCount++
         }
       }
