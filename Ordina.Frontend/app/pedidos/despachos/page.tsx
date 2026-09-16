@@ -846,6 +846,49 @@ export default function DespachosPage() {
     setIsBulkActionDialogOpen(true)
   }
 
+  // Map frontend action types to backend status targets for despachos
+  const mapDispatchActionToBackendStatus = (
+    action: ActionType
+  ): { targetLocationStatus: string; targetLogisticStatus?: string; targetManufacturingStatus?: string } | null => {
+    switch (action) {
+      case "to_dispatch":
+        return { targetLocationStatus: "EN DESPACHO", targetLogisticStatus: "En Ruta" }
+      case "to_delivered":
+        return { targetLocationStatus: "DESPACHADO", targetLogisticStatus: "Completado" }
+      case "to_store":
+        return { targetLocationStatus: "EN TIENDA", targetLogisticStatus: "En Almacén" }
+      case "to_manufacturing":
+        return { targetLocationStatus: "FABRICACION", targetLogisticStatus: "Fabricándose", targetManufacturingStatus: "debe_fabricar" }
+      default:
+        return null
+    }
+  }
+
+  // Helper centralizado para llamar al nuevo endpoint backend bulk
+  const callBackendDispatchStatusUpdate = async (
+    items: { orderId: string; productId: string }[],
+    action: ActionType
+  ): Promise<number> => {
+    const backendTarget = mapDispatchActionToBackendStatus(action)
+    if (!backendTarget) return 0
+
+    const payloadItems = items.map((item) => {
+      const order = visibleOrders.find((o) => o.id === item.orderId)
+      const prod = order?.products.find((p) => p.id === item.productId)
+      return {
+        orderId: item.orderId,
+        productId: item.productId,
+        targetLocationStatus: backendTarget.targetLocationStatus,
+        targetLogisticStatus: backendTarget.targetLogisticStatus,
+        targetManufacturingStatus: backendTarget.targetManufacturingStatus,
+        dispatchOrigin: prod ? (resolveDispatchOrigin(prod) ?? undefined) : undefined,
+      }
+    })
+
+    const response = await apiClient.bulkUpdateProductStatus({ items: payloadItems })
+    return response.updatedCount
+  }
+
   // Ejecuta la acción en BDD de un solo pedido
   const handleExecuteAction = async () => {
     if (!actionType || !canPerformDispatchAction(actionType)) {
@@ -888,35 +931,12 @@ export default function DespachosPage() {
         return
       }
 
-      const actingIds = new Set(productsToActOn.map(p => p.id))
+      const itemsToUpdate = productsToActOn.map((p) => ({
+        orderId: orderToActOn.id,
+        productId: p.id,
+      }))
 
-      const updatedProducts = orderToActOn.products.map(p =>
-        actingIds.has(p.id) ? applyDispatchProductUpdate(p, actionType) : p
-      )
-
-      // Verificar si el pedido se completa totalmente
-      // Un pedido está completo SOLO si TODOS sus productos tienen status DESPACHADO (o legacy finished)
-      // Incluso los que no tocamos ahora, deben estar DESPACHADOS para completar.
-      let newOrderStatus = orderToActOn.status as any
-      let completedAt = orderToActOn.completedAt
-      let dispatchDate = orderToActOn.dispatchDate
-
-      // Al Entregar, si todo quedó entregado -> Completada.
-      if (actionType === "to_delivered") {
-        const allDispatched = updatedProducts.every(p => p.locationStatus === "DESPACHADO")
-        if (allDispatched) {
-          newOrderStatus = "Completada"
-          completedAt = new Date().toISOString()
-          dispatchDate = dispatchDate || new Date().toISOString()
-        }
-      }
-
-      await updateOrder(orderToActOn.id, {
-        products: updatedProducts,
-        status: newOrderStatus,
-        dispatchDate: dispatchDate,
-        completedAt: completedAt,
-      })
+      const updatedCount = await callBackendDispatchStatusUpdate(itemsToUpdate, actionType)
 
       refetch()
       setIsActionDialogOpen(false)
@@ -931,7 +951,7 @@ export default function DespachosPage() {
         return newSet
       })
 
-      toast.success(`Acción realizada sobre ${productsToActOn.length} producto(s)`)
+      toast.success(`Acción realizada sobre ${updatedCount} producto(s)`)
     } catch (error) {
       console.error("Error executing action:", error)
       toast.error("Error al procesar. Por favor intenta nuevamente.")
@@ -955,74 +975,37 @@ export default function DespachosPage() {
     try {
       setIsLoading(true)
       const selectedItems = Array.from(selectedOrders)
-      const productsByOrder: Record<string, string[]> = {}
+      const itemsToUpdate: { orderId: string; productId: string }[] = []
 
       selectedItems.forEach(item => {
-        // En este nuevo formato todo es orderId|productId
         if (item.includes("|")) {
           const [oId, pId] = item.split("|")
-          if (!productsByOrder[oId]) productsByOrder[oId] = []
-          productsByOrder[oId].push(pId)
-        }
-      })
-
-      let updatedCount = 0
-      const orderEntries = Object.entries(productsByOrder)
-
-      const results = await Promise.allSettled(
-        orderEntries.map(async ([orderId, pIds]) => {
-          const order = visibleOrders.find((o) => o.id === orderId)
-          if (!order) return 0
-          if (!canOnlineSellerActOnOrder(order)) {
+          const order = visibleOrders.find((o) => o.id === oId)
+          if (order && !canOnlineSellerActOnOrder(order)) {
             toast.error(
               `No puedes modificar el pedido ${order.orderNumber}: no es tuyo.`,
             )
-            return 0
+            return
           }
-
-          const updatedProducts = order.products.map((p) =>
-            pIds.includes(p.id) ? applyDispatchProductUpdate(p, actionType) : p,
-          )
-
-          let newOrderStatus = order.status as any
-          let completedAt = order.completedAt
-          let dispatchDate = order.dispatchDate
-
-          if (actionType === "to_delivered") {
-            const allDispatched = updatedProducts.every(
-              (p) => p.locationStatus === "DESPACHADO",
-            )
-            if (allDispatched) {
-              newOrderStatus = "Completada"
-              completedAt = new Date().toISOString()
-              dispatchDate = dispatchDate || new Date().toISOString()
-            }
-          }
-
-          await updateOrder(order.id, {
-            products: updatedProducts,
-            status: newOrderStatus,
-            dispatchDate: dispatchDate,
-            completedAt: completedAt,
-          })
-          return pIds.length
-        }),
-      )
-
-      for (const res of results) {
-        if (res.status === "fulfilled") {
-          updatedCount += res.value
+          itemsToUpdate.push({ orderId: oId, productId: pId })
         }
+      })
+
+      if (itemsToUpdate.length === 0) {
+        setIsBulkActionDialogOpen(false)
+        setIsLoading(false)
+        return
       }
+
+      const updatedCount = await callBackendDispatchStatusUpdate(itemsToUpdate, actionType)
 
       refetch()
       setIsBulkActionDialogOpen(false)
       setSelectedOrders(new Set())
-      setActionType(null)
-      toast.success(`Acción procesada para ${updatedCount} producto(s).`)
+      toast.success(`Acción masiva completada para ${updatedCount} producto(s)`)
     } catch (error) {
-      console.error("Error bulk action:", error)
-      toast.error("Error al procesar en lote. Verifica la consola.")
+      console.error("Error executing bulk action:", error)
+      toast.error("Error al procesar la acción masiva. Por favor intenta nuevamente.")
     } finally {
       setIsLoading(false)
     }
