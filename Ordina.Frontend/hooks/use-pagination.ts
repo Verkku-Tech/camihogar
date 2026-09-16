@@ -24,6 +24,11 @@ export function usePagination<T>({
     setCurrentPage(1)
   }, [data.length])
 
+  // Resetear a página 1 cuando cambia itemsPerPage
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [itemsPerPage])
+
   const goToPage = (page: number) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page)

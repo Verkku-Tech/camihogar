@@ -115,7 +115,7 @@ export default function ReservasPage() {
       user.role === "Administrator" ||
       user.role === "Super Administrator");
 
-  const ITEMS_PER_PAGE = 30;
+  const [itemsPerPage, setItemsPerPage] = useState(30);
 
   const fetchPage = useCallback(
     async (page: number, signal?: AbortSignal) => {
@@ -134,7 +134,7 @@ export default function ReservasPage() {
 
       const response = await apiClient.getOrdersPaged(
         page,
-        ITEMS_PER_PAGE,
+        itemsPerPage,
         undefined,
         filters,
         signal,
@@ -145,7 +145,7 @@ export default function ReservasPage() {
         totalPages: response.totalPages,
       };
     },
-    [searchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name],
+    [searchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name, itemsPerPage],
   );
 
   const fetchCount = useCallback(
@@ -184,12 +184,13 @@ export default function ReservasPage() {
   } = useServerPagination({
     fetchPage,
     fetchCount,
+    itemsPerPage,
   });
 
   const isLoading = isLoadingCount;
 
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE + 1;
-  const endIndex = Math.min(currentPage * ITEMS_PER_PAGE, totalCount);
+  const startIndex = (currentPage - 1) * itemsPerPage + 1;
+  const endIndex = Math.min(currentPage * itemsPerPage, totalCount);
 
   useEffect(() => {
     const updateTotals = async () => {
@@ -447,7 +448,8 @@ export default function ReservasPage() {
                         startIndex={startIndex}
                         endIndex={endIndex}
                         onPageChange={goToPage}
-                        itemsPerPage={ITEMS_PER_PAGE}
+                        itemsPerPage={itemsPerPage}
+                        onItemsPerPageChange={setItemsPerPage}
                       />
                     </>
                   )}

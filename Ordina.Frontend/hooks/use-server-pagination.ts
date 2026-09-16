@@ -20,6 +20,8 @@ interface UseServerPaginationOptions<T> {
   prefetchThreshold?: number;
   /** Enabled flag (default: true) */
   enabled?: boolean;
+  /** Items per page – when changed, the hook re-fetches from page 1 */
+  itemsPerPage?: number;
 }
 
 interface UseServerPaginationResult<T> {
@@ -47,6 +49,7 @@ export function useServerPagination<T>(
     batchPages = 3,
     prefetchThreshold = 1,
     enabled = true,
+    itemsPerPage,
   } = options;
 
   const [pages, setPages] = useState<Map<number, T[]>>(new Map());
@@ -178,6 +181,22 @@ export function useServerPagination<T>(
     }
   }, [totalCount, pages.size, loadBatch, enabled]);
 
+  // Refetch: clear all cached data and reload from page 1
+  const refetch = useCallback(() => {
+    loadedBatchesRef.current.clear();
+    setPages(new Map());
+    setCurrentPage(1);
+  }, []);
+
+  // Re-fetch when itemsPerPage changes
+  const prevItemsPerPageRef = useRef(itemsPerPage);
+  useEffect(() => {
+    if (itemsPerPage !== undefined && prevItemsPerPageRef.current !== undefined && itemsPerPage !== prevItemsPerPageRef.current) {
+      refetch();
+    }
+    prevItemsPerPageRef.current = itemsPerPage;
+  }, [itemsPerPage, refetch]);
+
   const currentItems = useMemo(() => {
     return pages.get(currentPage) || [];
   }, [pages, currentPage]);
@@ -195,11 +214,6 @@ export function useServerPagination<T>(
     nextPage: () => goToPage(currentPage + 1),
     previousPage: () => goToPage(currentPage - 1),
     cancel: () => abortControllerRef.current?.abort(),
-    refetch: () => {
-      loadedBatchesRef.current.clear();
-      setPages(new Map());
-      setCurrentPage(1);
-      loadBatch(1);
-    },
+    refetch,
   };
 }

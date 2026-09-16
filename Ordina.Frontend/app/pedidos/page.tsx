@@ -250,6 +250,7 @@ export default function PedidosPage() {
       [serverFilters, itemsPerPage],
     ),
     enabled: useServerMode && textFiltersSettled,
+    itemsPerPage,
   });
 
   useEffect(() => {

@@ -352,6 +352,7 @@ export default function DespachosPage() {
   }
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
 
   // Server-side pagination: fetch pages from API, convert to UnifiedOrder, filter client-side
   // For despachados tab, we load all delivered orders separately; skip server pagination
@@ -368,14 +369,14 @@ export default function DespachosPage() {
       includeBudgets?: boolean
     } = { includeBudgets: false }
 
-    const response = await apiClient.getOrdersPaged(page, 20, undefined, filters, signal)
+    const response = await apiClient.getOrdersPaged(page, itemsPerPage, undefined, filters, signal)
     const unified = response.orders.map(orderDtoToUnifiedOrder)
     return {
       items: unified,
       totalCount: response.totalCount,
       totalPages: response.totalPages,
     }
-  }, [activeTab])
+  }, [activeTab, itemsPerPage])
 
   const fetchCount = useCallback(async (signal?: AbortSignal) => {
     if (activeTab === "despachados") {
@@ -400,6 +401,7 @@ export default function DespachosPage() {
     batchPages: 3,
     prefetchThreshold: 1,
     enabled: true,
+    itemsPerPage,
   })
 
   const { refetch } = pagination
@@ -419,7 +421,6 @@ export default function DespachosPage() {
   const [isBulkActionDialogOpen, setIsBulkActionDialogOpen] = useState(false)
   
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
-  const [itemsPerPage, setItemsPerPage] = useState(10)
   const [deliveredPage, setDeliveredPage] = useState(1)
   const [categories, setCategories] = useState<Category[]>([])
   const [allProducts, setAllProducts] = useState<Product[]>([])
@@ -692,10 +693,10 @@ export default function DespachosPage() {
   const totalItems = isDespachados ? deliveredRows.length : pagination.totalCount
   const startIndex = isDespachados
     ? (deliveredPage - 1) * itemsPerPage + 1
-    : (pagination.currentPage - 1) * 20 + 1
+    : (pagination.currentPage - 1) * itemsPerPage + 1
   const endIndex = isDespachados
     ? Math.min(deliveredPage * itemsPerPage, deliveredRows.length)
-    : Math.min(pagination.currentPage * 20, pagination.totalCount)
+    : Math.min(pagination.currentPage * itemsPerPage, pagination.totalCount)
   const goToPage = useCallback((page: number) => {
     if (isDespachados) {
       setDeliveredPage(page)
