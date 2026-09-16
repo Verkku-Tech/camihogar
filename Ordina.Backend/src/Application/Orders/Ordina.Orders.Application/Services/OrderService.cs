@@ -547,6 +547,8 @@ public class OrderService : IOrderService
                     DateFrom = listFilter.DateFrom,
                     DateTo = listFilter.DateTo,
                     IncludeBudgets = listFilter.IncludeBudgets,
+                    LocationStatus = listFilter.LocationStatus,
+                    ManufacturingStatus = listFilter.ManufacturingStatus,
                 };
 
                 if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
@@ -631,6 +633,8 @@ public class OrderService : IOrderService
                     DateFrom = listFilter.DateFrom,
                     DateTo = listFilter.DateTo,
                     IncludeBudgets = listFilter.IncludeBudgets,
+                    LocationStatus = listFilter.LocationStatus,
+                    ManufacturingStatus = listFilter.ManufacturingStatus,
                 };
 
                 if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))

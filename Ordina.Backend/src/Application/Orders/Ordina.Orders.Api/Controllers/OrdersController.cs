@@ -97,6 +97,8 @@ public class OrdersController : ControllerBase
         [FromQuery] DateTime? dateFrom = null,
         [FromQuery] DateTime? dateTo = null,
         [FromQuery] bool includeBudgets = true,
+        [FromQuery] string? locationStatus = null,
+        [FromQuery] string? manufacturingStatus = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -111,6 +113,8 @@ public class OrdersController : ControllerBase
                 DateFrom = dateFrom,
                 DateTo = dateTo,
                 IncludeBudgets = includeBudgets,
+                LocationStatus = locationStatus,
+                ManufacturingStatus = manufacturingStatus,
             };
 
             var result = await _orderService.GetOrdersPagedAsync(
@@ -144,6 +148,8 @@ public class OrdersController : ControllerBase
         [FromQuery] DateTime? dateFrom = null,
         [FromQuery] DateTime? dateTo = null,
         [FromQuery] bool includeBudgets = true,
+        [FromQuery] string? locationStatus = null,
+        [FromQuery] string? manufacturingStatus = null,
         CancellationToken cancellationToken = default)
     {
         var callerRole = GetCallerRole(User);
@@ -157,6 +163,8 @@ public class OrdersController : ControllerBase
             DateFrom = dateFrom,
             DateTo = dateTo,
             IncludeBudgets = includeBudgets,
+            LocationStatus = locationStatus,
+            ManufacturingStatus = manufacturingStatus,
         };
 
         var count = await _orderService.GetOrderCountAsync(

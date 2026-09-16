@@ -11,6 +11,8 @@ public class OrderListFilter
     public DateTime? DateFrom { get; set; }
     public DateTime? DateTo { get; set; }
     public bool IncludeBudgets { get; set; } = true;
+    public string? LocationStatus { get; set; }
+    public string? ManufacturingStatus { get; set; }
 
     /// <summary>IDs de clientes resueltos por <see cref="ClientSearch"/> (llenado en capa de servicio).</summary>
     public IReadOnlyCollection<string>? MatchingClientIds { get; set; }
@@ -22,5 +24,7 @@ public class OrderListFilter
         || !string.IsNullOrWhiteSpace(Status)
         || !string.IsNullOrWhiteSpace(SaleType)
         || DateFrom.HasValue
-        || DateTo.HasValue;
+        || DateTo.HasValue
+        || !string.IsNullOrWhiteSpace(LocationStatus)
+        || !string.IsNullOrWhiteSpace(ManufacturingStatus);
 }

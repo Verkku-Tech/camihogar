@@ -176,6 +176,18 @@ public class OrderRepository : IOrderRepository
             filters.Add(fb.Lte(o => o.CreatedAt, end));
         }
 
+        if (!string.IsNullOrWhiteSpace(listFilter.LocationStatus))
+        {
+            filters.Add(fb.ElemMatch(o => o.Products,
+                p => p.LocationStatus == listFilter.LocationStatus.Trim()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.ManufacturingStatus))
+        {
+            filters.Add(fb.ElemMatch(o => o.Products,
+                p => p.ManufacturingStatus == listFilter.ManufacturingStatus.Trim()));
+        }
+
         var filter = CombineFilters(fb.And(filters), onlineSellerTeamIds);
 
         var totalCount = await _collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
@@ -266,6 +278,18 @@ public class OrderRepository : IOrderRepository
         {
             var end = listFilter.DateTo.Value.Date.AddDays(1).AddTicks(-1);
             filters.Add(fb.Lte(o => o.CreatedAt, end));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.LocationStatus))
+        {
+            filters.Add(fb.ElemMatch(o => o.Products,
+                p => p.LocationStatus == listFilter.LocationStatus.Trim()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.ManufacturingStatus))
+        {
+            filters.Add(fb.ElemMatch(o => o.Products,
+                p => p.ManufacturingStatus == listFilter.ManufacturingStatus.Trim()));
         }
 
         var filter = CombineFilters(fb.And(filters), onlineSellerTeamIds);

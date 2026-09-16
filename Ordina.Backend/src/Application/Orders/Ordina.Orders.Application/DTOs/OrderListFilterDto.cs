@@ -11,6 +11,8 @@ public class OrderListFilterDto
     public DateTime? DateFrom { get; set; }
     public DateTime? DateTo { get; set; }
     public bool IncludeBudgets { get; set; } = true;
+    public string? LocationStatus { get; set; }
+    public string? ManufacturingStatus { get; set; }
 
     public bool HasActiveFilters =>
         !string.IsNullOrWhiteSpace(Search)
@@ -19,5 +21,7 @@ public class OrderListFilterDto
         || !string.IsNullOrWhiteSpace(Status)
         || !string.IsNullOrWhiteSpace(SaleType)
         || DateFrom.HasValue
-        || DateTo.HasValue;
+        || DateTo.HasValue
+        || !string.IsNullOrWhiteSpace(LocationStatus)
+        || !string.IsNullOrWhiteSpace(ManufacturingStatus);
 }

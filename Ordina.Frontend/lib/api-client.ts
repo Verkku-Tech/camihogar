@@ -1250,6 +1250,8 @@ export class ApiClient {
       dateFrom?: string;
       dateTo?: string;
       includeBudgets?: boolean;
+      locationStatus?: string;
+      manufacturingStatus?: string;
     },
     signal?: AbortSignal,
   ) {
@@ -1269,6 +1271,8 @@ export class ApiClient {
     if (filters?.includeBudgets === false) {
       params.append("includeBudgets", "false");
     }
+    if (filters?.locationStatus) params.append("locationStatus", filters.locationStatus);
+    if (filters?.manufacturingStatus) params.append("manufacturingStatus", filters.manufacturingStatus);
     return this.request<PagedOrdersResponseDto>(
       `/api/Orders?${params.toString()}`,
       { signal },
@@ -1285,6 +1289,8 @@ export class ApiClient {
       dateFrom?: string;
       dateTo?: string;
       includeBudgets?: boolean;
+      locationStatus?: string;
+      manufacturingStatus?: string;
     },
     signal?: AbortSignal,
   ) {
@@ -1299,6 +1305,8 @@ export class ApiClient {
     if (filters?.includeBudgets === false) {
       params.append("includeBudgets", "false");
     }
+    if (filters?.locationStatus) params.append("locationStatus", filters.locationStatus);
+    if (filters?.manufacturingStatus) params.append("manufacturingStatus", filters.manufacturingStatus);
     return this.request<{ totalCount: number; totalPages: number; pageSize: number }>(
       `/api/Orders/count?${params.toString()}`,
       { signal },
