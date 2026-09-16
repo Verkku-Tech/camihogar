@@ -30,8 +30,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight, RotateCcw, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import { getOrder, getOrdersByIds, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder } from "@/lib/storage"
-import { useLazyOrders } from "@/hooks/use-lazy-orders"
+import { getOrder, getOrdersByIds, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder, orderFromBackendDto } from "@/lib/storage"
+
 import {
   HoverCard,
   HoverCardContent,
@@ -44,6 +44,8 @@ import {
 } from "@/components/manufacturing/select-provider-dialog"
 import { useRouter } from "next/navigation"
 import { usePagination } from "@/hooks/use-pagination"
+import { apiClient, type OrderResponseDto } from "@/lib/api-client"
+
 import { TablePagination } from "@/components/ui/table-pagination"
 import { PURCHASE_TYPES } from "@/components/orders/constants"
 import { isSistemaApartado, isSistemaApartadoReadyForNormalFlow } from "@/lib/order-sa"
@@ -97,10 +99,7 @@ export default function FabricacionPage() {
   const canRevertManufacturing =
     isAdmin || hasPermission(MANUFACTURING_MANAGE)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { orders: lazyOrders, isLoadingInitial, isLoadingMore, isFullyLoaded, reload: reloadLazyOrders } = useLazyOrders({ initialPages: 2 })
-  const [orders, setOrders] = useState<Order[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [productRows, setProductRows] = useState<ProductRow[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [filterStatus, setFilterStatus] = useState<
     "all" | "needs_fabrication" | "ready_for_batch" | "fabricating" | "warehouse"
@@ -204,24 +203,98 @@ export default function FabricacionPage() {
     loadCategories()
   }, [])
 
-  // Sincronizar órdenes del hook lazy con el estado local
-  useEffect(() => {
-    if (lazyOrders.length > 0) {
-      setOrders(lazyOrders)
-    }
-  }, [lazyOrders])
-
   useEffect(() => {
     if (!authLoading && user && !hasManufacturingAccess) {
       router.push("/")
     }
   }, [authLoading, user, hasManufacturingAccess, router])
 
-  // Proveedores únicos (de productos en fabricación)
+  // Server-side data: all orders with locationStatus=FABRICACION
+  const [serverOrders, setServerOrders] = useState<OrderResponseDto[]>([])
+  const [isLoadingServer, setIsLoadingServer] = useState(true)
+  const abortRef = useRef<AbortController | null>(null)
+
+  // Fetch all orders with locationStatus filter ( ElemMatch backend filter)
+  useEffect(() => {
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    const fetchAll = async () => {
+      setIsLoadingServer(true)
+      try {
+        const allOrders: OrderResponseDto[] = []
+        let page = 1
+        let hasNext = true
+
+        while (hasNext && !controller.signal.aborted) {
+          const response = await apiClient.getOrdersPaged(page, 50, undefined, {
+            locationStatus: "FABRICACION",
+          }, controller.signal)
+          allOrders.push(...response.orders)
+          hasNext = response.hasNextPage
+          page++
+        }
+
+        if (!controller.signal.aborted) {
+          setServerOrders(allOrders)
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return
+        console.error("Failed to load manufacturing orders:", err)
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoadingServer(false)
+        }
+      }
+    }
+
+    fetchAll()
+    return () => controller.abort()
+  }, [])
+
+  // Refetch function for mutations
+  const refetch = useCallback(() => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    const fetchAll = async () => {
+      setIsLoadingServer(true)
+      try {
+        const allOrders: OrderResponseDto[] = []
+        let page = 1
+        let hasNext = true
+
+        while (hasNext && !controller.signal.aborted) {
+          const response = await apiClient.getOrdersPaged(page, 50, undefined, {
+            locationStatus: "FABRICACION",
+          }, controller.signal)
+          allOrders.push(...response.orders)
+          hasNext = response.hasNextPage
+          page++
+        }
+
+        if (!controller.signal.aborted) {
+          setServerOrders(allOrders)
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return
+        console.error("Failed to reload manufacturing orders:", err)
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoadingServer(false)
+        }
+      }
+    }
+
+    fetchAll()
+  }, [])
+
+  // Proveedores únicos (de productos en fabricación, ya filtrado server-side)
   const uniqueProviders = useMemo(() => {
     const providers = new Set<string>()
-    orders.forEach(order => {
-      if (isReservationOrder(order)) return
+    serverOrders.forEach(order => {
+      if (isReservationOrder(order as unknown as Order)) return
       if (order.status === "Generado" || order.status === "Generada") return
       order.products.forEach(p => {
         if (p.locationStatus !== "FABRICACION") return
@@ -230,44 +303,34 @@ export default function FabricacionPage() {
       })
     })
     return Array.from(providers).sort()
-  }, [orders])
+  }, [serverOrders])
 
-  // Procesar pedidos y crear filas de productos
-  useEffect(() => {
+  // Filtrado client-side sobre las filas del servidor
+  const productRows = useMemo(() => {
     const rows: ProductRow[] = []
 
-    orders.forEach(order => {
-      if (isReservationOrder(order)) return
+    serverOrders.forEach(order => {
+      if (isReservationOrder(order as unknown as Order)) return
       if (order.status === "Generado" || order.status === "Generada") return
       if (order.status === "Declinado") return
-      if (isSistemaApartado(order) && !isSistemaApartadoReadyForNormalFlow(order)) {
-        return
-      }
+      if (isSistemaApartado(order as unknown as Order) && !isSistemaApartadoReadyForNormalFlow(order as unknown as Order)) return
+
       order.products.forEach(product => {
-        // SOLO procesar productos que deben mandarse a fabricar
-        if (product.locationStatus !== "FABRICACION") {
-          return // Saltar productos en tienda
-        }
-
-        const status = resolveManufacturingRowStatus(
-          product.manufacturingStatus as string | undefined,
-        )
-
-        // Agregar producto a la lista
+        if (product.locationStatus !== "FABRICACION") return
         rows.push({
           orderId: order.id,
           orderNumber: order.orderNumber,
           clientName: order.clientName,
           orderDate: order.createdAt,
-          saleType: order.saleType,
-          product,
-          status
+          saleType: order.saleType as ProductRow["saleType"],
+          product: product as unknown as OrderProduct,
+          status: resolveManufacturingRowStatus(product.manufacturingStatus as string | undefined),
         })
       })
     })
 
-    // Filtrar según estado seleccionado
     let filtered = rows
+
     if (filterStatus !== "all") {
       filtered = rows.filter(row => {
         if (filterStatus === "needs_fabrication") return row.status === "debe_fabricar"
@@ -278,7 +341,6 @@ export default function FabricacionPage() {
       })
     }
 
-    // Filtrar por búsqueda (incluye proveedor)
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
       filtered = filtered.filter(row =>
@@ -289,7 +351,6 @@ export default function FabricacionPage() {
       )
     }
 
-    // Filtrar por proveedor
     if (filterProvider !== "all") {
       filtered = filtered.filter(row => {
         const provider = row.product.manufacturingProviderName?.trim() || ""
@@ -298,12 +359,10 @@ export default function FabricacionPage() {
       })
     }
 
-    // Tipo de venta (Encargo, Encargo/Entrega, SA)
     if (filterPurchaseType !== "all") {
       filtered = filtered.filter((row) => row.saleType === filterPurchaseType)
     }
 
-    // Ordenar: primero por ESTADO (Debe Fabricar → Fabricando → En almacén), luego por pedido
     filtered.sort((a, b) => {
       const statusDiff =
         MANUFACTURING_STATUS_ORDER[a.status] - MANUFACTURING_STATUS_ORDER[b.status]
@@ -311,10 +370,13 @@ export default function FabricacionPage() {
       return a.orderNumber.localeCompare(b.orderNumber)
     })
 
-    setProductRows(filtered)
-  }, [orders, filterStatus, filterPurchaseType, filterProvider, searchTerm])
+    return filtered
+  }, [serverOrders, filterStatus, filterPurchaseType, filterProvider, searchTerm])
 
-  // Paginación
+  // Orders as Order type for handlers that need full Order objects
+  const orders = useMemo(() => serverOrders.map(o => orderFromBackendDto(o)), [serverOrders])
+
+  // Paginación client-side sobre filas filtradas
   const {
     currentPage,
     totalPages,
@@ -514,7 +576,7 @@ export default function FabricacionPage() {
               : p,
           ),
         })
-        reloadLazyOrders()
+        refetch()
         toast.success("Producto en fabricación")
       } catch (error: unknown) {
         const message =
@@ -707,7 +769,7 @@ export default function FabricacionPage() {
 
       await updateOrder(order.id, { products: updatedProducts })
 
-      reloadLazyOrders()
+      refetch()
 
       const successMessage =
         mode === "queue"
@@ -755,7 +817,7 @@ export default function FabricacionPage() {
         products: updatedProducts
       })
       
-      reloadLazyOrders()
+      refetch()
 
       toast.success("Producto marcado como En almacén")
     } catch (error: any) {
@@ -845,7 +907,7 @@ export default function FabricacionPage() {
       )
       if (!ok) return
 
-      reloadLazyOrders()
+      refetch()
       toast.success(`Producto devuelto a ${REPORTE_FABRICACION_LABEL}`)
     } catch (error: unknown) {
       console.error("Error reverting manufacturing status:", error)
@@ -881,7 +943,7 @@ export default function FabricacionPage() {
       )
       if (!ok) return
 
-      reloadLazyOrders()
+      refetch()
       toast.success("Producto devuelto a Debe fabricar")
     } catch (error: unknown) {
       console.error("Error reverting to debe fabricar:", error)
@@ -928,7 +990,7 @@ export default function FabricacionPage() {
         }
       }
 
-      reloadLazyOrders()
+      refetch()
       setSelectedProducts(new Set())
       setBulkRevertDialogOpen(false)
 
@@ -1191,7 +1253,7 @@ export default function FabricacionPage() {
         }
       }
 
-      reloadLazyOrders()
+      refetch()
       setSelectedProducts(new Set())
       setBulkManufactureDialogOpen(false)
       setBulkSelectedProvider(null)
@@ -1260,7 +1322,7 @@ export default function FabricacionPage() {
         }
       }
 
-      reloadLazyOrders()
+      refetch()
       setSelectedProducts(new Set())
       setBulkManufactureDialogOpen(false)
       setBulkSelectedProvider(null)
@@ -1330,7 +1392,7 @@ export default function FabricacionPage() {
         }
       }
 
-      reloadLazyOrders()
+      refetch()
       setSelectedProducts(new Set())
 
       if (successCount === 0 && errorCount === 0) {
@@ -1430,7 +1492,7 @@ export default function FabricacionPage() {
         }
       }
 
-      reloadLazyOrders()
+      refetch()
       setSelectedProducts(new Set())
 
       if (errorCount === 0) {
@@ -1478,7 +1540,7 @@ export default function FabricacionPage() {
         }
       }
 
-      reloadLazyOrders()
+      refetch()
 
       if (successCount > 0) {
         toast.success(
@@ -1667,7 +1729,7 @@ export default function FabricacionPage() {
         }
       }
 
-      reloadLazyOrders()
+      refetch()
       setSelectedProducts(new Set())
 
       if (errorCount === 0) {
@@ -1906,17 +1968,11 @@ export default function FabricacionPage() {
               </Card>
             )}
 
-            {/* Indicador de carga lazy */}
-            {isLoadingInitial && (
+            {/* Indicador de carga */}
+            {isLoadingServer && (
               <div className="mb-4 flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100" role="status">
                 <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                 Cargando pedidos...
-              </div>
-            )}
-            {isLoadingMore && !isLoadingInitial && (
-              <div className="mb-4 flex items-center gap-2 rounded-md border border-muted bg-muted/50 px-4 py-2 text-xs text-muted-foreground" role="status">
-                <Loader2 className="h-3 w-3 animate-spin shrink-0" />
-                Cargando más pedidos en segundo plano...
               </div>
             )}
 
