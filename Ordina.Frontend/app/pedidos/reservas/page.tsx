@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { ProtectedRoute } from "@/components/auth/protected-route";
@@ -34,10 +34,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  getReservations,
+  orderFromBackendDto,
   deleteOrder,
   type Order,
 } from "@/lib/storage";
+import { apiClient } from "@/lib/api-client";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,12 +56,10 @@ import {
 } from "@/lib/order-currency-display";
 import { useAuth } from "@/contexts/auth-context";
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility";
-import { useClientSearchIds } from "@/hooks/use-client-search-ids";
-import { usePagination } from "@/hooks/use-pagination";
+import { useServerPagination } from "@/hooks/use-server-pagination";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { EditOrderDialog } from "@/components/orders/edit-order-dialog";
 import { isActiveReservation } from "@/lib/order-document-types";
-import { matchesLocalDateRange } from "@/lib/date-utils";
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -93,20 +92,11 @@ function reservationOnlineVendor(order: Order): string {
 export default function ReservasPage() {
   const router = useRouter();
   const { user, hasPermission } = useAuth();
-  const { applies: onlineSellerFilter, isTeamOrder } =
-    useOnlineSellerVisibility();
-  const [reservations, setReservations] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { applies: onlineSellerFilter } = useOnlineSellerVisibility();
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-  const {
-    matchingClientIds,
-    isLoading: clientSearchLoading,
-    isTruncated: clientSearchTruncated,
-  } = useClientSearchIds(searchTerm);
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({});
   const [reservationToConfirm, setReservationToConfirm] = useState<Order | null>(
     null,
@@ -125,26 +115,85 @@ export default function ReservasPage() {
       user.role === "Administrator" ||
       user.role === "Super Administrator");
 
-  const loadReservations = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const list = await getReservations();
-      setReservations(list);
-    } catch (error) {
-      console.error("Error loading reservations:", error);
-      toast.error("No se pudieron cargar las reservas.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const ITEMS_PER_PAGE = 30;
 
-  useEffect(() => {
-    void loadReservations();
-  }, [loadReservations]);
+  const fetchPage = useCallback(
+    async (page: number, signal?: AbortSignal) => {
+      const filters: {
+        status: string;
+        search?: string;
+        dateFrom?: string;
+        dateTo?: string;
+        vendor?: string;
+      } = { status: "Reserva" };
+
+      if (searchTerm.trim()) filters.search = searchTerm.trim();
+      if (dateFrom) filters.dateFrom = dateFrom;
+      if (dateTo) filters.dateTo = dateTo;
+      if (onlineSellerFilter && user?.name) filters.vendor = user.name;
+
+      const response = await apiClient.getOrdersPaged(
+        page,
+        ITEMS_PER_PAGE,
+        undefined,
+        filters,
+        signal,
+      );
+      return {
+        items: (response.orders ?? []).map(orderFromBackendDto),
+        totalCount: response.totalCount,
+        totalPages: response.totalPages,
+      };
+    },
+    [searchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name],
+  );
+
+  const fetchCount = useCallback(
+    async (signal?: AbortSignal) => {
+      const filters: {
+        status: string;
+        search?: string;
+        dateFrom?: string;
+        dateTo?: string;
+        vendor?: string;
+      } = { status: "Reserva" };
+
+      if (searchTerm.trim()) filters.search = searchTerm.trim();
+      if (dateFrom) filters.dateFrom = dateFrom;
+      if (dateTo) filters.dateTo = dateTo;
+      if (onlineSellerFilter && user?.name) filters.vendor = user.name;
+
+      const response = await apiClient.getOrderCount(filters, signal);
+      return {
+        totalCount: response.totalCount,
+        totalPages: response.totalPages,
+      };
+    },
+    [searchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name],
+  );
+
+  const {
+    currentPage,
+    totalPages,
+    totalCount,
+    currentItems,
+    isLoadingCount,
+    isLoadingPages,
+    goToPage,
+    refetch,
+  } = useServerPagination({
+    fetchPage,
+    fetchCount,
+  });
+
+  const isLoading = isLoadingCount;
+
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const endIndex = Math.min(currentPage * ITEMS_PER_PAGE, totalCount);
 
   useEffect(() => {
     const updateTotals = async () => {
-      if (reservations.length === 0) {
+      if (currentItems.length === 0) {
         setOrderTotals({});
         return;
       }
@@ -154,7 +203,7 @@ export default function ReservasPage() {
         EUR: rates.EUR,
       });
       const totals: Record<string, string> = {};
-      for (const order of reservations) {
+      for (const order of currentItems) {
         totals[order.id] = formatOrderAmountForDisplay(
           order.total,
           order,
@@ -164,60 +213,7 @@ export default function ReservasPage() {
       setOrderTotals(totals);
     };
     void updateTotals();
-  }, [reservations]);
-
-  const filteredReservations = useMemo(() => {
-    let rangeFrom = dateFrom;
-    let rangeTo = dateTo;
-    if (rangeFrom && rangeTo && rangeFrom > rangeTo) {
-      [rangeFrom, rangeTo] = [rangeTo, rangeFrom];
-    }
-
-    const q = searchTerm.trim().toLowerCase();
-
-    return reservations.filter((order) => {
-      if (onlineSellerFilter && !isTeamOrder(order)) return false;
-
-      const on = (order.orderNumber ?? "").toLowerCase();
-      const vendor = reservationOnlineVendor(order).toLowerCase();
-
-      const matchesSearch =
-        q === "" ||
-        on.includes(q) ||
-        vendor.includes(q) ||
-        matchingClientIds?.has(order.clientId) ||
-        order.clientName.toLowerCase().includes(q);
-
-      const matchesDate = matchesLocalDateRange(
-        order.createdAt,
-        rangeFrom,
-        rangeTo,
-      );
-
-      return matchesSearch && matchesDate;
-    });
-  }, [
-    reservations,
-    searchTerm,
-    matchingClientIds,
-    dateFrom,
-    dateTo,
-    onlineSellerFilter,
-    isTeamOrder,
-  ]);
-
-  const {
-    currentPage,
-    totalPages,
-    paginatedData: paginatedReservations,
-    goToPage,
-    startIndex,
-    endIndex,
-    totalItems,
-  } = usePagination({
-    data: filteredReservations,
-    itemsPerPage,
-  });
+  }, [currentItems]);
 
   const handleDeleteClick = (order: Order) => {
     if (!canDeleteReservation) {
@@ -242,7 +238,7 @@ export default function ReservasPage() {
       setIsDeleteDialogOpen(false);
       setReservationToDelete(null);
       toast.success("Reserva eliminada");
-      await loadReservations();
+      refetch();
     } catch (error) {
       console.error("Error deleting reservation:", error);
       toast.error("Error al eliminar la reserva. Por favor intenta nuevamente.");
@@ -277,15 +273,7 @@ export default function ReservasPage() {
                     className="w-full pl-9 pr-9"
                     aria-label="Buscar reservas"
                   />
-                  {clientSearchLoading && (
-                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground pointer-events-none" />
-                  )}
                 </div>
-                {clientSearchTruncated && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400">
-                    Más de 100 coincidencias de cliente; refina la búsqueda
-                  </span>
-                )}
                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto">
                   <div className="flex w-full items-center gap-2 sm:w-auto">
                     <Label
@@ -339,9 +327,9 @@ export default function ReservasPage() {
                       <Loader2 className="h-6 w-6 animate-spin" />
                       Cargando reservas...
                     </div>
-                  ) : filteredReservations.length === 0 ? (
+                  ) : currentItems.length === 0 ? (
                     <p className="py-8 text-center text-muted-foreground">
-                      {reservations.length === 0
+                      {totalCount === 0
                         ? "No hay reservas registradas."
                         : "No hay reservas que coincidan con los filtros."}
                     </p>
@@ -375,7 +363,7 @@ export default function ReservasPage() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {paginatedReservations.map((order) => {
+                            {currentItems.map((order) => {
                               const pending = isActiveReservation(order);
                               return (
                                 <TableRow key={order.id}>
@@ -455,12 +443,11 @@ export default function ReservasPage() {
                       <TablePagination
                         currentPage={currentPage}
                         totalPages={totalPages}
-                        totalItems={totalItems}
+                        totalItems={totalCount}
                         startIndex={startIndex}
                         endIndex={endIndex}
                         onPageChange={goToPage}
-                        itemsPerPage={itemsPerPage}
-                        onItemsPerPageChange={setItemsPerPage}
+                        itemsPerPage={ITEMS_PER_PAGE}
                       />
                     </>
                   )}
@@ -480,7 +467,7 @@ export default function ReservasPage() {
         mode="confirm-reservation"
         onConfirmed={() => {
           setReservationToConfirm(null);
-          void loadReservations();
+          refetch();
         }}
       />
 
