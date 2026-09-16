@@ -14,7 +14,6 @@ import { Loader2, Plus } from "lucide-react";
 import {
   calculateDashboardMetrics,
   DashboardMetrics,
-  getOrders,
   orderFromBackendDto,
   type Order,
   type UnifiedOrder,
@@ -48,9 +47,6 @@ export function Dashboard() {
   const [generatedOrders, setGeneratedOrders] = useState<Order[] | null>(null);
   const [manufacturingOrders, setManufacturingOrders] = useState<Order[] | null>(null);
   const [dispatchOrders, setDispatchOrders] = useState<UnifiedOrder[] | null>(null);
-
-  // Pedidos completos para métricas del dashboard (solo Admin/Super Admin)
-  const [sharedOrders, setSharedOrders] = useState<Order[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,34 +113,6 @@ export function Dashboard() {
     };
   }, []);
 
-  // Pedidos para métricas (solo Admin/Super Admin, carga completa en background)
-  useEffect(() => {
-    if (!canViewFinancialDashboard) return;
-    let cancelled = false;
-    const controller = new AbortController();
-    const load = async () => {
-      try {
-        const list = await getOrders({
-          initialPageLimit: 3,
-          signal: controller.signal,
-          onBackgroundComplete: (allOrders) => {
-            if (!cancelled) setSharedOrders(allOrders);
-          },
-        });
-        if (!cancelled) setSharedOrders(list);
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        console.error("Error loading orders for metrics:", error);
-        if (!cancelled) setSharedOrders([]);
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [canViewFinancialDashboard]);
-
   useEffect(() => {
     if (isOnlineSeller) {
       setActiveTab("pedidos");
@@ -157,27 +125,131 @@ export function Dashboard() {
       setIsLoadingMetrics(false);
       return;
     }
-    if (sharedOrders === null) {
-      setIsLoadingMetrics(true);
-      return;
-    }
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const toDateString = (d: Date) =>
+      d.getFullYear().toString() +
+      "-" +
+      String(d.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(d.getDate()).padStart(2, "0");
+
     const loadMetrics = async () => {
       setIsLoadingMetrics(true);
       try {
+        const now = new Date();
+        const todayStart = new Date(now);
+        todayStart.setHours(0, 0, 0, 0);
+
+        const periodStart = new Date(now);
+        switch (period) {
+          case "day":
+            periodStart.setTime(todayStart.getTime());
+            break;
+          case "week":
+            periodStart.setDate(now.getDate() - 7);
+            break;
+          case "month":
+            periodStart.setMonth(now.getMonth() - 1);
+            break;
+          case "year":
+            periodStart.setFullYear(now.getFullYear() - 1);
+            break;
+        }
+
+        const previousPeriodStart = new Date(periodStart);
+        let periodDuration = now.getTime() - periodStart.getTime();
+        if (period === "day") {
+          periodDuration = 24 * 60 * 60 * 1000;
+        }
+        previousPeriodStart.setTime(periodStart.getTime() - periodDuration);
+
+        const [
+          currentPeriodResp,
+          previousPeriodResp,
+          mfgResp,
+          saResp,
+          pendingResp,
+        ] = await Promise.all([
+          apiClient.getOrdersPaged(
+            1, 200, undefined,
+            {
+              dateFrom: toDateString(periodStart),
+              dateTo: toDateString(now),
+              includeBudgets: false,
+            },
+            controller.signal,
+          ),
+          apiClient.getOrdersPaged(
+            1, 200, undefined,
+            {
+              dateFrom: toDateString(previousPeriodStart),
+              dateTo: toDateString(periodStart),
+              includeBudgets: false,
+            },
+            controller.signal,
+          ),
+          apiClient.getOrdersPaged(
+            1, 200, undefined,
+            {
+              locationStatus: "FABRICACION",
+              excludeStatuses: "Generado,Generada,Declinado",
+              includeBudgets: false,
+            },
+            controller.signal,
+          ),
+          apiClient.getOrdersPaged(
+            1, 200, undefined,
+            {
+              saleType: "sistema_apartado",
+              includeBudgets: false,
+            },
+            controller.signal,
+          ),
+          apiClient.getOrdersPaged(
+            1, 200, undefined,
+            {
+              includeBudgets: false,
+            },
+            controller.signal,
+          ),
+        ]);
+
+        if (cancelled) return;
+
+        const mappedCurrent = currentPeriodResp.orders.map(orderFromBackendDto);
+        const mappedPrevious = previousPeriodResp.orders.map(orderFromBackendDto);
+        const mappedMfg = mfgResp.orders.map(orderFromBackendDto);
+        const mappedSa = saResp.orders.map(orderFromBackendDto);
+        const mappedAll = pendingResp.orders.map(orderFromBackendDto);
+
         const calculatedMetrics = await calculateDashboardMetrics(
           period,
-          sharedOrders,
+          undefined,
+          {
+            ordersInPeriod: mappedCurrent,
+            previousOrdersInPeriod: mappedPrevious,
+            mfgOrders: mappedMfg,
+            saOrders: mappedSa,
+            allOrders: mappedAll,
+          },
         );
         setMetrics(calculatedMetrics);
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
         console.error("Error loading dashboard metrics:", error);
       } finally {
-        setIsLoadingMetrics(false);
+        if (!cancelled) setIsLoadingMetrics(false);
       }
     };
 
     void loadMetrics();
-  }, [period, sharedOrders, canViewFinancialDashboard]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [period, canViewFinancialDashboard]);
 
   const handlePeriodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value as Period;

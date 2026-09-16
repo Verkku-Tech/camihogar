@@ -4339,9 +4339,14 @@ export const calculateDashboardMetrics = async (
   period: "day" | "week" | "month" | "year" = "week",
   /** Si se pasa, no se vuelve a llamar a getOrders (p. ej. Dashboard con carga unificada). */
   existingOrders?: Order[],
+  filteredData?: {
+    ordersInPeriod?: Order[];
+    previousOrdersInPeriod?: Order[];
+    mfgOrders?: Order[];
+    saOrders?: Order[];
+    allOrders?: Order[];
+  },
 ): Promise<DashboardMetrics> => {
-  const orders = existingOrders ?? (await getOrders());
-
   // Filtrar por período
   const now = new Date();
   const periodStart = new Date();
@@ -4374,13 +4379,25 @@ export const calculateDashboardMetrics = async (
   }
   previousPeriodStart.setTime(periodStart.getTime() - periodDuration);
 
-  const ordersCreatedInPeriod = orders.filter((order) =>
-    orderCreatedInPeriod(order, periodStart, now),
-  );
+  let orders: Order[];
+  let ordersCreatedInPeriod: Order[];
+  let previousOrdersCreatedInPeriod: Order[];
 
-  const previousOrdersCreatedInPeriod = orders.filter((order) =>
-    orderCreatedInPeriod(order, previousPeriodStart, previousPeriodEnd),
-  );
+  if (filteredData?.ordersInPeriod && filteredData?.previousOrdersInPeriod) {
+    // Use pre-filtered data from targeted API calls
+    orders = filteredData.allOrders ?? [];
+    ordersCreatedInPeriod = filteredData.ordersInPeriod;
+    previousOrdersCreatedInPeriod = filteredData.previousOrdersInPeriod;
+  } else {
+    // Fallback: fetch all orders and filter client-side
+    orders = existingOrders ?? (await getOrders());
+    ordersCreatedInPeriod = orders.filter((order) =>
+      orderCreatedInPeriod(order, periodStart, now),
+    );
+    previousOrdersCreatedInPeriod = orders.filter((order) =>
+      orderCreatedInPeriod(order, previousPeriodStart, previousPeriodEnd),
+    );
+  }
 
   // 1. Total ventas (pedidos generados en el periodo)
   const completedOrders = ordersCreatedInPeriod.length;
@@ -4439,7 +4456,8 @@ export const calculateDashboardMetrics = async (
 
   // 5. Sistemas de Apartado (SA) vencidos: deuda con partial/mixed, y más de 90 días desde el pedido
   // (a partir del día 91: getDaysSinceOrder(createdAt) > SA_LAYAWAY_DAYS)
-  const expiredLayawaysOrders = orders.filter((order) => {
+  const expiredLayawaysSource = filteredData?.saOrders ?? orders;
+  const expiredLayawaysOrders = expiredLayawaysSource.filter((order) => {
     if (order.saleType !== "sistema_apartado") {
       return false;
     }
@@ -4463,7 +4481,8 @@ export const calculateDashboardMetrics = async (
   );
 
   // Productos por fabricar (Métrica): excluir pedidos SA con saldo (alineado con cola de fabricación)
-  const productsToManufacture = orders.reduce((count, order) => {
+  const mfgSource = filteredData?.mfgOrders ?? orders;
+  const productsToManufacture = mfgSource.reduce((count, order) => {
     if (
       order.saleType === "sistema_apartado" &&
       getOrderPendingTotal(order) > PAYMENT_BALANCE_EPSILON_BS

@@ -549,6 +549,8 @@ public class OrderService : IOrderService
                     IncludeBudgets = listFilter.IncludeBudgets,
                     LocationStatus = listFilter.LocationStatus,
                     ManufacturingStatus = listFilter.ManufacturingStatus,
+                    ExcludeStatuses = listFilter.ExcludeStatuses,
+                    ProductFilterPreset = listFilter.ProductFilterPreset,
                 };
 
                 if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
@@ -635,6 +637,8 @@ public class OrderService : IOrderService
                     IncludeBudgets = listFilter.IncludeBudgets,
                     LocationStatus = listFilter.LocationStatus,
                     ManufacturingStatus = listFilter.ManufacturingStatus,
+                    ExcludeStatuses = listFilter.ExcludeStatuses,
+                    ProductFilterPreset = listFilter.ProductFilterPreset,
                 };
 
                 if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))

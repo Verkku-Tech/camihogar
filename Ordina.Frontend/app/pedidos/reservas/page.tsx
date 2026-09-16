@@ -115,7 +115,7 @@ export default function ReservasPage() {
       user.role === "Administrator" ||
       user.role === "Super Administrator");
 
-  const [itemsPerPage, setItemsPerPage] = useState(30);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const fetchPage = useCallback(
     async (page: number, signal?: AbortSignal) => {

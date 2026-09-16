@@ -220,11 +220,10 @@ export default function FabricacionPage() {
   }, [authLoading, user, hasManufacturingAccess, router])
 
   // Server-side pagination for fabrication orders
-  const ORDER_PAGE_SIZE = 50
 
   const fetchPage = useCallback(
     async (page: number, signal?: AbortSignal) => {
-      const response = await apiClient.getOrdersPaged(page, ORDER_PAGE_SIZE, undefined, {
+      const response = await apiClient.getOrdersPaged(page, itemsPerPage, undefined, {
         locationStatus: "FABRICACION",
         excludeStatuses: "Generado,Generada,Declinado",
         search: searchTerm.trim() || undefined,
@@ -235,10 +234,10 @@ export default function FabricacionPage() {
       return {
         items: response.orders ?? [],
         totalCount: response.totalCount ?? 0,
-        totalPages: Math.max(1, Math.ceil((response.totalCount ?? 0) / ORDER_PAGE_SIZE)),
+        totalPages: Math.max(1, Math.ceil((response.totalCount ?? 0) / itemsPerPage)),
       }
     },
-    [searchTerm, filterStatus],
+    [searchTerm, filterStatus, itemsPerPage],
   )
 
   const fetchCount = useCallback(
@@ -246,13 +245,13 @@ export default function FabricacionPage() {
       const response = await apiClient.getOrderCount({
         locationStatus: "FABRICACION",
         excludeStatuses: "Generado,Generada,Declinado",
-      }, signal, ORDER_PAGE_SIZE)
+      }, signal, itemsPerPage)
       return {
         totalCount: response.totalCount ?? 0,
-        totalPages: response.totalPages ?? Math.max(1, Math.ceil((response.totalCount ?? 0) / ORDER_PAGE_SIZE)),
+        totalPages: response.totalPages ?? Math.max(1, Math.ceil((response.totalCount ?? 0) / itemsPerPage)),
       }
     },
-    [],
+    [itemsPerPage],
   )
 
   const {
@@ -269,6 +268,7 @@ export default function FabricacionPage() {
     fetchCount,
     batchPages: 3,
     prefetchThreshold: 1,
+    itemsPerPage,
   })
 
   const isLoadingServer = isLoadingCount || isLoadingPages
@@ -342,8 +342,8 @@ export default function FabricacionPage() {
   const totalPages = serverTotalPages
   const totalItems = serverTotalCount
   const goToPage = serverGoToPage
-  const startIndex = serverTotalCount === 0 ? 0 : (serverCurrentPage - 1) * ORDER_PAGE_SIZE + 1
-  const endIndex = Math.min(serverCurrentPage * ORDER_PAGE_SIZE, serverTotalCount)
+  const startIndex = serverTotalCount === 0 ? 0 : (serverCurrentPage - 1) * itemsPerPage + 1
+  const endIndex = Math.min(serverCurrentPage * itemsPerPage, serverTotalCount)
 
   // Obtener badge de estado
   const getStatusBadge = (status: string) => {
@@ -1200,7 +1200,8 @@ export default function FabricacionPage() {
             notes,
           )
 
-          await updateOrder(order.id, { products: updatedProducts })
+          const synced = await updateOrder(order.id, { products: updatedProducts })
+          ordersMap.set(orderId, synced)
           successCount++
         } catch (error) {
           console.error(`Error actualizando producto ${productId}:`, error)
@@ -1269,7 +1270,8 @@ export default function FabricacionPage() {
             notes: opts.notes,
           })
 
-          await updateOrder(order.id, { products: updatedProducts })
+          const synced = await updateOrder(order.id, { products: updatedProducts })
+          ordersMap.set(orderId, synced)
           successCount++
         } catch (error) {
           console.error(`Error actualizando producto ${productId}:`, error)
@@ -1339,7 +1341,8 @@ export default function FabricacionPage() {
             providerName,
           })
 
-          await updateOrder(order.id, { products: updatedProducts })
+          const synced = await updateOrder(order.id, { products: updatedProducts })
+          ordersMap.set(orderId, synced)
           successCount++
         } catch (error) {
           console.error(`Error actualizando producto ${productId}:`, error)
@@ -1439,7 +1442,8 @@ export default function FabricacionPage() {
           const updatedProducts = [...order.products]
           updatedProducts[productIndex] = updatedProduct
 
-          await updateOrder(order.id, { products: updatedProducts })
+          const synced = await updateOrder(order.id, { products: updatedProducts })
+          ordersMap.set(orderId, synced)
           successCount++
         } catch (error) {
           console.error(`Error actualizando producto ${productId}:`, error)
@@ -1478,16 +1482,12 @@ export default function FabricacionPage() {
     let errorCount = 0
 
     try {
-      const orderIds = selectedKeys.map((k) => k.split("|")[0])
-      const ordersMap = await getOrdersByIds(orderIds)
-
       for (let i = 0; i < selectedKeys.length; i++) {
         const key = selectedKeys[i]
         reportProcessingProgress(i + 1, selectedKeys.length)
         const [orderId, productId] = key.split("|")
         try {
-          const order = ordersMap.get(orderId)
-          const ok = await revertProductToDebeFabricarInOrder(orderId, productId, order)
+          const ok = await revertProductToDebeFabricarInOrder(orderId, productId)
           if (ok) successCount++
         } catch (error) {
           console.error(`Error revirtiendo producto ${productId}:`, error)
@@ -1676,7 +1676,8 @@ export default function FabricacionPage() {
           const updatedProducts = [...order.products]
           updatedProducts[productIndex] = updatedProduct
 
-          await updateOrder(order.id, { products: updatedProducts })
+          const synced = await updateOrder(order.id, { products: updatedProducts })
+          ordersMap.set(orderId, synced)
           successCount++
         } catch (error) {
           console.error(`Error refabricando producto ${productId}:`, error)
