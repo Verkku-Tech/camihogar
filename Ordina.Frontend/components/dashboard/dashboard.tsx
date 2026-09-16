@@ -105,6 +105,22 @@ export function Dashboard() {
         console.error("Error loading dispatch orders:", error);
         if (!cancelled) setDispatchOrders([]);
       }
+
+      try {
+        // SA vencidos tab: all sistema_apartado orders (filtering done client-side)
+        const saResp = await apiClient.getOrdersPaged(
+          1, 200, undefined,
+          { saleType: "sistema_apartado", includeBudgets: false },
+          controller.signal,
+        );
+        if (!cancelled) {
+          setSaOrders(saResp.orders.map(orderFromBackendDto));
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("Error loading SA orders:", error);
+        if (!cancelled) setSaOrders([]);
+      }
     };
 
     void loadPerTab();
@@ -224,8 +240,6 @@ export function Dashboard() {
         const mappedMfg = mfgResp.orders.map(orderFromBackendDto);
         const mappedSa = saResp.orders.map(orderFromBackendDto);
         const mappedAll = pendingResp.orders.map(orderFromBackendDto);
-
-        if (!cancelled) setSaOrders(mappedSa);
 
         const calculatedMetrics = await calculateDashboardMetrics(
           period,
