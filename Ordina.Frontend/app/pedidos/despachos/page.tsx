@@ -25,16 +25,17 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { OrderGroupCollapsible } from "@/components/orders/order-group-collapsible"
 import { toast } from "sonner"
 import {
-  getUnifiedOrders,
   getCategories,
   getProducts,
   updateOrder,
+  orderDtoToUnifiedOrder,
   type UnifiedOrder,
   type OrderProduct,
   type Category,
   type Product,
 } from "@/lib/storage"
-import { useLazyUnifiedOrders } from "@/hooks/use-lazy-unified-orders"
+import { apiClient } from "@/lib/api-client"
+import { useServerPagination } from "@/hooks/use-server-pagination"
 import {
   formatOrderProductDescription,
   getOrderProductAttributePairs,
@@ -64,7 +65,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { matchesLocalDateRange } from "@/lib/date-utils"
@@ -352,7 +352,62 @@ export default function DespachosPage() {
   }
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { orders: lazyOrders, isLoadingInitial, isLoadingMore, reload: reloadLazyOrders } = useLazyUnifiedOrders({ initialPages: 10 })
+
+  // Server-side pagination: fetch pages from API, convert to UnifiedOrder, filter client-side
+  // For despachados tab, we load all delivered orders separately; skip server pagination
+  const fetchPage = useCallback(async (page: number, signal?: AbortSignal) => {
+    if (activeTab === "despachados") {
+      // Return empty; delivered orders are loaded via separate effect
+      return { items: [], totalCount: 0, totalPages: 0 }
+    }
+    const filters: {
+      search?: string
+      clientSearch?: string
+      vendor?: string
+      status?: string
+      includeBudgets?: boolean
+    } = { includeBudgets: false }
+
+    const response = await apiClient.getOrdersPaged(page, 20, undefined, filters, signal)
+    const unified = response.orders.map(orderDtoToUnifiedOrder)
+    return {
+      items: unified,
+      totalCount: response.totalCount,
+      totalPages: response.totalPages,
+    }
+  }, [activeTab])
+
+  const fetchCount = useCallback(async (signal?: AbortSignal) => {
+    if (activeTab === "despachados") {
+      // Delivered count comes from allDeliveredOrders state
+      return { totalCount: 0, totalPages: 0 }
+    }
+    const filters: {
+      status?: string
+      includeBudgets?: boolean
+    } = { includeBudgets: false }
+
+    const response = await apiClient.getOrderCount(filters, signal)
+    return {
+      totalCount: response.totalCount,
+      totalPages: response.totalPages,
+    }
+  }, [activeTab])
+
+  const pagination = useServerPagination({
+    fetchPage,
+    fetchCount,
+    batchPages: 3,
+    prefetchThreshold: 1,
+    enabled: true,
+  })
+
+  const { refetch } = pagination
+
+  // Separate state for delivered orders (all loaded at once for product-row pagination)
+  const [allDeliveredOrders, setAllDeliveredOrders] = useState<UnifiedOrder[]>([])
+  const [isLoadingDelivered, setIsLoadingDelivered] = useState(true)
+
   const [isLoading, setIsLoading] = useState(true)
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
   const usdRate = exchangeRates?.USD?.rate
@@ -365,6 +420,7 @@ export default function DespachosPage() {
   
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [deliveredPage, setDeliveredPage] = useState(1)
   const [categories, setCategories] = useState<Category[]>([])
   const [allProducts, setAllProducts] = useState<Product[]>([])
   /** Importe total del pedido formateado (pestaña despachados, filas paginadas). */
@@ -384,27 +440,67 @@ export default function DespachosPage() {
     })
   }
 
-  // Sincronizar órdenes del hook lazy con el estado local
+  // Sync server-paginated orders with local state (apply dispatch filtering)
   useEffect(() => {
-    if (lazyOrders.length > 0) {
-      // Filtrar solo pedidos despachables
-      const dispatchableOrders = lazyOrders.filter(
-        (order) => order.type === "order" && (
-          isOrderInTab(order, "por_despachar") ||
-          isOrderInTab(order, "en_despacho") ||
-          isOrderInTab(order, "despachados")
+    if (activeTab !== "despachados") {
+      if (pagination.currentItems.length > 0) {
+        const dispatchableOrders = pagination.currentItems.filter(
+          (order) => order.type === "order" && (
+            isOrderInTab(order, "por_despachar") ||
+            isOrderInTab(order, "en_despacho")
+          )
         )
-      )
-      setOrders(dispatchableOrders)
+        setOrders(dispatchableOrders)
+      }
+      setIsLoading(pagination.isLoadingCount || pagination.isLoadingPages)
+    } else {
+      setIsLoading(isLoadingDelivered)
     }
-    setIsLoading(isLoadingInitial)
-  }, [lazyOrders, isLoadingInitial])
+  }, [activeTab, pagination.currentItems, pagination.isLoadingCount, pagination.isLoadingPages, isLoadingDelivered])
 
-  /** Online Seller: pedidos del equipo online (ver). */
+  // Load ALL delivered orders at once for product-row pagination
+  useEffect(() => {
+    if (activeTab !== "despachados") {
+      setIsLoadingDelivered(false)
+      return
+    }
+    let cancelled = false
+    const loadAll = async () => {
+      setIsLoadingDelivered(true)
+      try {
+        const allOrders: UnifiedOrder[] = []
+        let page = 1
+        let hasNext = true
+        while (hasNext && !cancelled) {
+          const response = await apiClient.getOrdersPaged(page, 50, undefined, {
+            status: "Completada",
+            includeBudgets: false,
+          })
+          allOrders.push(...response.orders.map(orderDtoToUnifiedOrder))
+          hasNext = response.hasNextPage
+          page++
+        }
+        if (!cancelled) {
+          setAllDeliveredOrders(allOrders)
+        }
+      } catch (error) {
+        console.error("Error loading delivered orders:", error)
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDelivered(false)
+        }
+      }
+    }
+    void loadAll()
+    return () => { cancelled = true }
+  }, [activeTab])
+
+  /** Online Seller: pedidos del equipo online (ver). For despachados tab, use allDeliveredOrders. */
   const visibleOrders = useMemo(() => {
-    if (!isOnlineSeller) return orders
-    return orders.filter((o) => isTeamOrder(o))
-  }, [orders, isOnlineSeller, isTeamOrder])
+    const source = activeTab === "despachados" ? allDeliveredOrders : orders
+    if (!isOnlineSeller) return source
+    return source.filter((o) => isTeamOrder(o))
+  }, [activeTab, allDeliveredOrders, orders, isOnlineSeller, isTeamOrder])
 
   const canOnlineSellerActOnOrder = useCallback(
     (order: UnifiedOrder): boolean => {
@@ -434,6 +530,7 @@ export default function DespachosPage() {
   useEffect(() => {
     setSelectedOrders(new Set())
     setExpandedOrders(new Set())
+    setDeliveredPage(1)
     if (activeTab !== "despachados") {
       setDeliveredDateFrom("")
       setDeliveredDateTo("")
@@ -571,23 +668,45 @@ export default function DespachosPage() {
     }
   }, [deliveredRows, exchangeRates, productDescriptionCtx])
 
-  // Paginación: por pedido (almacén / en ruta) o por fila entregada (despachados)
-  const ordersPagination = usePagination({
-    data: filteredOrders,
-    itemsPerPage,
-  })
-  const deliveredRowsPagination = usePagination({
-    data: deliveredRows,
-    itemsPerPage,
-  })
+  // Pagination: for orders (almacén / en ruta) or per delivered row (despachados)
+  // Non-despachados tabs use server pagination directly; despachados flattens to product rows
+  const isDespachados = activeTab === "despachados"
 
-  const paginatedOrders = ordersPagination.paginatedData
-  const paginatedDeliveredRows = deliveredRowsPagination.paginatedData
-  const deliveredCurrentPage = deliveredRowsPagination.currentPage
+  const paginatedOrders = useMemo(() => {
+    if (isDespachados) return []
+    return filteredOrders // Already limited to current server page
+  }, [isDespachados, filteredOrders])
+
+  const paginatedDeliveredRows = useMemo(() => {
+    if (!isDespachados) return []
+    const start = (deliveredPage - 1) * itemsPerPage
+    return deliveredRows.slice(start, start + itemsPerPage)
+  }, [isDespachados, deliveredPage, deliveredRows, itemsPerPage])
+
+  // Unified pagination values for the UI
+  // For despachados: paginate by product rows (all delivered loaded)
+  // For other tabs: paginate by orders (server-side)
+  const deliveredTotalPages = Math.max(1, Math.ceil(deliveredRows.length / itemsPerPage))
+  const currentPage = isDespachados ? deliveredPage : pagination.currentPage
+  const totalPages = isDespachados ? deliveredTotalPages : pagination.totalPages
+  const totalItems = isDespachados ? deliveredRows.length : pagination.totalCount
+  const startIndex = isDespachados
+    ? (deliveredPage - 1) * itemsPerPage + 1
+    : (pagination.currentPage - 1) * 20 + 1
+  const endIndex = isDespachados
+    ? Math.min(deliveredPage * itemsPerPage, deliveredRows.length)
+    : Math.min(pagination.currentPage * 20, pagination.totalCount)
+  const goToPage = useCallback((page: number) => {
+    if (isDespachados) {
+      setDeliveredPage(page)
+    } else {
+      pagination.goToPage(page)
+    }
+  }, [isDespachados, pagination.goToPage])
 
   const deliveredPageOrderTotalsSignature = useMemo(() => {
     if (activeTab !== "despachados") return ""
-    const start = (deliveredCurrentPage - 1) * itemsPerPage
+    const start = (deliveredPage - 1) * itemsPerPage
     const pageRows = deliveredRows.slice(start, start + itemsPerPage)
     if (pageRows.length === 0) return ""
     const seen = new Set<string>()
@@ -598,24 +717,13 @@ export default function DespachosPage() {
       parts.push(`${order.id}|${order.total}`)
     }
     return parts.join("|")
-  }, [activeTab, deliveredRows, deliveredCurrentPage, itemsPerPage])
-
-  const listPagination =
-    activeTab === "despachados" ? deliveredRowsPagination : ordersPagination
-  const {
-    currentPage,
-    totalPages,
-    goToPage,
-    startIndex,
-    endIndex,
-    totalItems,
-  } = listPagination
+  }, [activeTab, deliveredRows, deliveredPage, itemsPerPage])
 
   useEffect(() => {
     if (activeTab !== "despachados" || deliveredPageOrderTotalsSignature === "") {
       return
     }
-    const start = (deliveredCurrentPage - 1) * itemsPerPage
+    const start = (deliveredPage - 1) * itemsPerPage
     const pageRows = deliveredRows.slice(start, start + itemsPerPage)
     if (pageRows.length === 0) return
 
@@ -814,7 +922,7 @@ export default function DespachosPage() {
         completedAt: completedAt,
       })
 
-      reloadLazyOrders()
+      refetch()
       setIsActionDialogOpen(false)
       setOrderToActOn(null)
       setActionType(null)
@@ -900,7 +1008,7 @@ export default function DespachosPage() {
         updatedCount += pIds.length
       }
 
-      reloadLazyOrders()
+      refetch()
       setIsBulkActionDialogOpen(false)
       setSelectedOrders(new Set())
       setActionType(null)
@@ -1443,7 +1551,10 @@ export default function DespachosPage() {
                         endIndex={endIndex}
                         onPageChange={goToPage}
                         itemsPerPage={itemsPerPage}
-                        onItemsPerPageChange={setItemsPerPage}
+                        onItemsPerPageChange={(value) => {
+                          setItemsPerPage(value)
+                          setDeliveredPage(1)
+                        }}
                       />
                     )}
                   </CardContent>
