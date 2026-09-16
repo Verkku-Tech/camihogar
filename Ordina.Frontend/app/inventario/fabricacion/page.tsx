@@ -227,8 +227,9 @@ export default function FabricacionPage() {
           { locationStatus: "FABRICACION" },
           controller.signal,
         )
-        const totalPages = countResult.totalPages ?? 1
         const pageSize = 50
+        // totalPages from count endpoint uses its own pageSize (30); recalc for our pageSize
+        const totalPages = Math.max(1, Math.ceil((countResult.totalCount ?? 0) / pageSize))
 
         // Step 2: fetch all pages in parallel
         const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
@@ -271,8 +272,8 @@ export default function FabricacionPage() {
           { locationStatus: "FABRICACION" },
           controller.signal,
         )
-        const totalPages = countResult.totalPages ?? 1
         const pageSize = 50
+        const totalPages = Math.max(1, Math.ceil((countResult.totalCount ?? 0) / pageSize))
 
         const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
         const results = await Promise.all(
