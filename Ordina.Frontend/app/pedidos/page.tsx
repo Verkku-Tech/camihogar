@@ -64,6 +64,7 @@ import {
 import { getOrderBaseCurrency } from "@/lib/order-line-pricing";
 import { useAuth } from "@/contexts/auth-context";
 import { usePagination } from "@/hooks/use-pagination";
+import { useServerPagination } from "@/hooks/use-server-pagination";
 import { TablePagination } from "@/components/ui/table-pagination";
 import {
   buildOrderStatusFilterOptions,
@@ -154,11 +155,7 @@ export default function PedidosPage() {
   } = useClientSearchIds(clientSearch);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [debouncedClientSearch, setDebouncedClientSearch] = useState("");
-  const [serverOrders, setServerOrders] = useState<UnifiedOrder[]>([]);
-  const [serverTotalCount, setServerTotalCount] = useState(0);
-  const [serverPage, setServerPage] = useState(1);
   const offlineFilterToastShown = useRef(false);
-  const serverFetchGenerationRef = useRef(0);
 
   const textFiltersSettled =
     searchTerm === debouncedSearchTerm &&
@@ -192,17 +189,6 @@ export default function PedidosPage() {
   }, [clientSearch]);
 
   useEffect(() => {
-    setServerPage(1);
-  }, [
-    debouncedSearchTerm,
-    debouncedClientSearch,
-    filters,
-    dateFrom,
-    dateTo,
-    itemsPerPage,
-  ]);
-
-  useEffect(() => {
     if (!hasListFilters || isBrowserOnline) return;
     if (offlineFilterToastShown.current) return;
     offlineFilterToastShown.current = true;
@@ -215,75 +201,56 @@ export default function PedidosPage() {
     }
   }, [hasListFilters, isBrowserOnline]);
 
-  const loadServerFilteredOrders = useCallback(async () => {
-    if (!useServerMode) return;
-    if (!textFiltersSettled) return;
-
+  const serverFilters = useMemo(() => {
     let rangeFrom = dateFrom;
     let rangeTo = dateTo;
     if (rangeFrom && rangeTo && rangeFrom > rangeTo) {
       [rangeFrom, rangeTo] = [rangeTo, rangeFrom];
     }
+    return {
+      search: debouncedSearchTerm.trim() || undefined,
+      clientSearch: debouncedClientSearch.trim() || undefined,
+      vendor: filters.vendor !== "all" ? filters.vendor : undefined,
+      status: filters.status !== "all" ? filters.status : undefined,
+      saleType: filters.saleType !== "all" ? filters.saleType : undefined,
+      dateFrom: rangeFrom || undefined,
+      dateTo: rangeTo || undefined,
+      includeBudgets: true,
+    };
+  }, [debouncedSearchTerm, debouncedClientSearch, filters, dateFrom, dateTo]);
 
-    const generation = ++serverFetchGenerationRef.current;
-
-    try {
-      setIsLoading(true);
-      const response = await apiClient.getOrdersPaged(
-        serverPage,
-        itemsPerPage,
-        undefined,
-        {
-          search: debouncedSearchTerm.trim() || undefined,
-          clientSearch: debouncedClientSearch.trim() || undefined,
-          vendor: filters.vendor !== "all" ? filters.vendor : undefined,
-          status: filters.status !== "all" ? filters.status : undefined,
-          saleType: filters.saleType !== "all" ? filters.saleType : undefined,
-          dateFrom: rangeFrom || undefined,
-          dateTo: rangeTo || undefined,
-          includeBudgets: true,
-        },
-      );
-      if (generation !== serverFetchGenerationRef.current) return;
-      setServerOrders(
-        (response.orders ?? []).map((dto) => orderDtoToUnifiedOrder(dto)),
-      );
-      setServerTotalCount(response.totalCount ?? 0);
-    } catch (error) {
-      if (generation !== serverFetchGenerationRef.current) return;
-      console.error("Error loading filtered orders:", error);
-      // Fallback a IndexedDB cuando la API falla (offline, timeout, etc.)
-      try {
-        const fallbackOrders = await getUnifiedOrders();
-        if (generation !== serverFetchGenerationRef.current) return;
-        setServerOrders(fallbackOrders);
-        setServerTotalCount(fallbackOrders.length);
-      } catch {
-        if (generation !== serverFetchGenerationRef.current) return;
-        setServerOrders([]);
-        setServerTotalCount(0);
-      }
-      toast.error("No se pudieron cargar los pedidos filtrados del servidor.");
-    } finally {
-      if (generation === serverFetchGenerationRef.current) {
-        setIsLoading(false);
-      }
-    }
-  }, [
-    useServerMode,
-    textFiltersSettled,
-    debouncedSearchTerm,
-    debouncedClientSearch,
-    filters,
-    dateFrom,
-    dateTo,
-    serverPage,
-    itemsPerPage,
-  ]);
-
-  useEffect(() => {
-    void loadServerFilteredOrders();
-  }, [loadServerFilteredOrders]);
+  const serverPagination = useServerPagination({
+    fetchPage: useCallback(
+      async (page: number, signal?: AbortSignal) => {
+        const response = await apiClient.getOrdersPaged(
+          page,
+          itemsPerPage,
+          undefined,
+          serverFilters,
+          signal,
+        );
+        return {
+          items: (response.orders ?? []).map((dto) =>
+            orderDtoToUnifiedOrder(dto),
+          ),
+          totalCount: response.totalCount ?? 0,
+          totalPages: Math.max(1, Math.ceil((response.totalCount ?? 0) / itemsPerPage)),
+        };
+      },
+      [itemsPerPage, serverFilters],
+    ),
+    fetchCount: useCallback(
+      async (signal?: AbortSignal) => {
+        const response = await apiClient.getOrderCount(serverFilters, signal);
+        return {
+          totalCount: response.totalCount ?? 0,
+          totalPages: response.totalPages ?? Math.max(1, Math.ceil((response.totalCount ?? 0) / itemsPerPage)),
+        };
+      },
+      [serverFilters, itemsPerPage],
+    ),
+    enabled: useServerMode && textFiltersSettled,
+  });
 
   useEffect(() => {
     // Solo cargar de IndexedDB cuando estemos offline (modo local)
@@ -323,10 +290,8 @@ export default function PedidosPage() {
   // Función para refrescar después de crear un pedido
   const handleOrderCreated = async () => {
     if (useServerMode) {
-      // Online: refrescar solo la página actual desde la API
-      await loadServerFilteredOrders();
+      serverPagination.refetch();
     } else {
-      // Offline: refrescar desde IndexedDB
       const loadedOrders = await getUnifiedOrders();
       setOrders(loadedOrders);
     }
@@ -340,21 +305,6 @@ export default function PedidosPage() {
       orderTotals[orderToDelete.id] || `Bs.${orderToDelete.total.toFixed(2)}`
     );
   };
-
-  // Obtener valores únicos para los filtros
-  // Cuando hay conexión, usar serverOrders; cuando no, usar orders (local)
-  const ordersForFilters = useServerMode ? serverOrders : orders;
-  const uniqueVendors = Array.from(
-    new Set(ordersForFilters.map((o) => o.vendorName)),
-  ).sort();
-
-  const statusFilterOptions = useMemo(
-    () =>
-      buildOrderStatusFilterOptions(
-        ordersForFilters.map((o) => resolveDisplayOrderStatus(o)),
-      ),
-    [ordersForFilters],
-  );
 
   let rangeFrom = dateFrom;
   let rangeTo = dateTo;
@@ -438,22 +388,46 @@ export default function PedidosPage() {
     itemsPerPage,
   });
 
-  const serverTotalPages = Math.max(
-    1,
-    Math.ceil(serverTotalCount / itemsPerPage) || 1,
-  );
+  const {
+    currentItems: serverCurrentItems,
+    currentPage: serverCurrentPage,
+    totalPages: serverTotalPages,
+    totalCount: serverTotalCount,
+    isLoadingCount,
+    isLoadingPages,
+    goToPage: serverGoToPage,
+    refetch: serverRefetch,
+  } = serverPagination;
+
   const serverStartIndex =
-    serverTotalCount === 0 ? 0 : (serverPage - 1) * itemsPerPage + 1;
-  const serverEndIndex = Math.min(serverPage * itemsPerPage, serverTotalCount);
+    serverTotalCount === 0 ? 0 : (serverCurrentPage - 1) * itemsPerPage + 1;
+  const serverEndIndex = Math.min(
+    serverCurrentPage * itemsPerPage,
+    serverTotalCount,
+  );
 
   const serverResultsPending = useServerMode && !textFiltersSettled;
-  const showTableLoading = isLoading || serverResultsPending;
+
+  const ordersForFilters = useServerMode ? serverCurrentItems : orders;
+  const uniqueVendors = Array.from(
+    new Set(ordersForFilters.map((o) => o.vendorName)),
+  ).sort();
+
+  const statusFilterOptions = useMemo(
+    () =>
+      buildOrderStatusFilterOptions(
+        ordersForFilters.map((o) => resolveDisplayOrderStatus(o)),
+      ),
+    [ordersForFilters],
+  );
+
+  const showTableLoading =
+    isLoading || isLoadingCount || isLoadingPages || serverResultsPending;
   const paginatedOrders = useMemo(() => {
     if (serverResultsPending) return EMPTY_ORDERS;
     if (!useServerMode) return localPaginatedOrders;
-    if (filters.status !== "all") return serverOrders;
-    // Cuando status es "all": ocultar declinados y reservas (RES-/PCF-)
-    return serverOrders.filter(
+    if (filters.status !== "all") return serverCurrentItems;
+    return serverCurrentItems.filter(
       (o) =>
         resolveDisplayOrderStatus(o) !== "Declinado" &&
         !isReservationOrderNumber(o.orderNumber),
@@ -461,7 +435,7 @@ export default function PedidosPage() {
   }, [
     serverResultsPending,
     useServerMode,
-    serverOrders,
+    serverCurrentItems,
     localPaginatedOrders,
     filters.status,
   ]);
@@ -529,7 +503,7 @@ export default function PedidosPage() {
     };
   }, [paginatedOrders]);
 
-  const currentPage = useServerMode ? serverPage : localCurrentPage;
+  const currentPage = useServerMode ? serverCurrentPage : localCurrentPage;
   const totalPages = useServerMode ? serverTotalPages : localTotalPages;
   const startIndex = serverResultsPending
     ? 0
@@ -546,7 +520,7 @@ export default function PedidosPage() {
     : useServerMode
       ? serverTotalCount
       : localTotalItems;
-  const goToPage = useServerMode ? setServerPage : localGoToPage;
+  const goToPage = useServerMode ? serverGoToPage : localGoToPage;
 
   const handleDelete = async () => {
     if (!orderToDelete) return;
@@ -566,7 +540,7 @@ export default function PedidosPage() {
       }
       // Refrescar la lista de pedidos
       if (useServerMode) {
-        await loadServerFilteredOrders();
+        serverRefetch();
       } else {
         const loadedOrders = await getUnifiedOrders();
         setOrders(loadedOrders);
