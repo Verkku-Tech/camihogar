@@ -43,8 +43,8 @@ import {
   type ManufacturingProviderDialogMode,
 } from "@/components/manufacturing/select-provider-dialog"
 import { useRouter } from "next/navigation"
-import { usePagination } from "@/hooks/use-pagination"
 import { apiClient, type OrderResponseDto } from "@/lib/api-client"
+import { useServerPagination } from "@/hooks/use-server-pagination"
 
 import { TablePagination } from "@/components/ui/table-pagination"
 import { PURCHASE_TYPES } from "@/components/orders/constants"
@@ -209,99 +209,53 @@ export default function FabricacionPage() {
     }
   }, [authLoading, user, hasManufacturingAccess, router])
 
-  // Server-side data: all orders with locationStatus=FABRICACION
-  const [serverOrders, setServerOrders] = useState<OrderResponseDto[]>([])
-  const [isLoadingServer, setIsLoadingServer] = useState(true)
-  const abortRef = useRef<AbortController | null>(null)
+  // Server-side pagination for fabrication orders
+  const ORDER_PAGE_SIZE = 50
 
-  // Fetch all orders with locationStatus filter — get count first, then load all pages in parallel
-  useEffect(() => {
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    const fetchAll = async () => {
-      setIsLoadingServer(true)
-      try {
-        // Step 1: get total count to know how many pages to fetch
-        const countResult = await apiClient.getOrderCount(
-          { locationStatus: "FABRICACION" },
-          controller.signal,
-        )
-        const pageSize = 50
-        // totalPages from count endpoint uses its own pageSize (30); recalc for our pageSize
-        const totalPages = Math.max(1, Math.ceil((countResult.totalCount ?? 0) / pageSize))
-
-        // Step 2: fetch all pages in parallel
-        const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
-        const results = await Promise.all(
-          pageNumbers.map((p) =>
-            apiClient.getOrdersPaged(p, pageSize, undefined, {
-              locationStatus: "FABRICACION",
-            }, controller.signal),
-          ),
-        )
-
-        if (!controller.signal.aborted) {
-          const allOrders = results.flatMap((r) => r.orders ?? [])
-          setServerOrders(allOrders)
-        }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return
-        console.error("Failed to load manufacturing orders:", err)
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoadingServer(false)
-        }
+  const fetchPage = useCallback(
+    async (page: number, signal?: AbortSignal) => {
+      const response = await apiClient.getOrdersPaged(page, ORDER_PAGE_SIZE, undefined, {
+        locationStatus: "FABRICACION",
+      }, signal)
+      return {
+        items: response.orders ?? [],
+        totalCount: response.totalCount ?? 0,
+        totalPages: Math.max(1, Math.ceil((response.totalCount ?? 0) / ORDER_PAGE_SIZE)),
       }
-    }
+    },
+    [],
+  )
 
-    fetchAll()
-    return () => controller.abort()
-  }, [])
-
-  // Refetch function for mutations — parallel loading
-  const refetch = useCallback(() => {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    const fetchAll = async () => {
-      setIsLoadingServer(true)
-      try {
-        const countResult = await apiClient.getOrderCount(
-          { locationStatus: "FABRICACION" },
-          controller.signal,
-        )
-        const pageSize = 50
-        const totalPages = Math.max(1, Math.ceil((countResult.totalCount ?? 0) / pageSize))
-
-        const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
-        const results = await Promise.all(
-          pageNumbers.map((p) =>
-            apiClient.getOrdersPaged(p, pageSize, undefined, {
-              locationStatus: "FABRICACION",
-            }, controller.signal),
-          ),
-        )
-
-        if (!controller.signal.aborted) {
-          const allOrders = results.flatMap((r) => r.orders ?? [])
-          setServerOrders(allOrders)
-        }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return
-        console.error("Failed to reload manufacturing orders:", err)
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoadingServer(false)
-        }
+  const fetchCount = useCallback(
+    async (signal?: AbortSignal) => {
+      const response = await apiClient.getOrderCount({ locationStatus: "FABRICACION" }, signal)
+      return {
+        totalCount: response.totalCount ?? 0,
+        totalPages: Math.max(1, Math.ceil((response.totalCount ?? 0) / ORDER_PAGE_SIZE)),
       }
-    }
+    },
+    [],
+  )
 
-    fetchAll()
-  }, [])
+  const {
+    currentItems: serverOrders,
+    currentPage: serverCurrentPage,
+    totalPages: serverTotalPages,
+    totalCount: serverTotalCount,
+    isLoadingCount,
+    isLoadingPages,
+    goToPage: serverGoToPage,
+    refetch: serverRefetch,
+  } = useServerPagination<OrderResponseDto>({
+    fetchPage,
+    fetchCount,
+    batchPages: 3,
+    prefetchThreshold: 1,
+  })
 
-  // Proveedores únicos (de productos en fabricación, ya filtrado server-side)
+  const isLoadingServer = isLoadingCount || isLoadingPages
+
+  // Proveedores únicos (de productos en fabricación, de la página actual)
   const uniqueProviders = useMemo(() => {
     const providers = new Set<string>()
     serverOrders.forEach(order => {
@@ -316,7 +270,7 @@ export default function FabricacionPage() {
     return Array.from(providers).sort()
   }, [serverOrders])
 
-  // Filtrado client-side sobre las filas del servidor
+  // Filtrado client-side sobre las filas de la página actual
   const productRows = useMemo(() => {
     const rows: ProductRow[] = []
 
@@ -387,19 +341,14 @@ export default function FabricacionPage() {
   // Orders as Order type for handlers that need full Order objects
   const orders = useMemo(() => serverOrders.map(o => orderFromBackendDto(o)), [serverOrders])
 
-  // Paginación client-side sobre filas filtradas
-  const {
-    currentPage,
-    totalPages,
-    paginatedData: paginatedRows,
-    goToPage,
-    startIndex,
-    endIndex,
-    totalItems,
-  } = usePagination({
-    data: productRows,
-    itemsPerPage,
-  })
+  // Use server pagination — productRows are already for the current page
+  const paginatedRows = productRows
+  const currentPage = serverCurrentPage
+  const totalPages = serverTotalPages
+  const totalItems = serverTotalCount
+  const goToPage = serverGoToPage
+  const startIndex = serverTotalCount === 0 ? 0 : (serverCurrentPage - 1) * ORDER_PAGE_SIZE + 1
+  const endIndex = Math.min(serverCurrentPage * ORDER_PAGE_SIZE, serverTotalCount)
 
   // Obtener badge de estado
   const getStatusBadge = (status: string) => {
@@ -587,7 +536,7 @@ export default function FabricacionPage() {
               : p,
           ),
         })
-        refetch()
+        serverRefetch()
         toast.success("Producto en fabricación")
       } catch (error: unknown) {
         const message =
@@ -780,7 +729,7 @@ export default function FabricacionPage() {
 
       await updateOrder(order.id, { products: updatedProducts })
 
-      refetch()
+      serverRefetch()
 
       const successMessage =
         mode === "queue"
@@ -828,7 +777,7 @@ export default function FabricacionPage() {
         products: updatedProducts
       })
       
-      refetch()
+      serverRefetch()
 
       toast.success("Producto marcado como En almacén")
     } catch (error: any) {
@@ -918,7 +867,7 @@ export default function FabricacionPage() {
       )
       if (!ok) return
 
-      refetch()
+      serverRefetch()
       toast.success(`Producto devuelto a ${REPORTE_FABRICACION_LABEL}`)
     } catch (error: unknown) {
       console.error("Error reverting manufacturing status:", error)
@@ -954,7 +903,7 @@ export default function FabricacionPage() {
       )
       if (!ok) return
 
-      refetch()
+      serverRefetch()
       toast.success("Producto devuelto a Debe fabricar")
     } catch (error: unknown) {
       console.error("Error reverting to debe fabricar:", error)
@@ -1001,7 +950,7 @@ export default function FabricacionPage() {
         }
       }
 
-      refetch()
+      serverRefetch()
       setSelectedProducts(new Set())
       setBulkRevertDialogOpen(false)
 
@@ -1264,7 +1213,7 @@ export default function FabricacionPage() {
         }
       }
 
-      refetch()
+      serverRefetch()
       setSelectedProducts(new Set())
       setBulkManufactureDialogOpen(false)
       setBulkSelectedProvider(null)
@@ -1333,7 +1282,7 @@ export default function FabricacionPage() {
         }
       }
 
-      refetch()
+      serverRefetch()
       setSelectedProducts(new Set())
       setBulkManufactureDialogOpen(false)
       setBulkSelectedProvider(null)
@@ -1403,7 +1352,7 @@ export default function FabricacionPage() {
         }
       }
 
-      refetch()
+      serverRefetch()
       setSelectedProducts(new Set())
 
       if (successCount === 0 && errorCount === 0) {
@@ -1503,7 +1452,7 @@ export default function FabricacionPage() {
         }
       }
 
-      refetch()
+      serverRefetch()
       setSelectedProducts(new Set())
 
       if (errorCount === 0) {
@@ -1551,7 +1500,7 @@ export default function FabricacionPage() {
         }
       }
 
-      refetch()
+      serverRefetch()
 
       if (successCount > 0) {
         toast.success(
@@ -1740,7 +1689,7 @@ export default function FabricacionPage() {
         }
       }
 
-      refetch()
+      serverRefetch()
       setSelectedProducts(new Set())
 
       if (errorCount === 0) {
@@ -2005,7 +1954,7 @@ export default function FabricacionPage() {
                 <CardHeader>
                   <CardTitle>Productos en Fabricación</CardTitle>
                   <CardDescription>
-                    {totalItems} producto(s) encontrado(s)
+                    {productRows.length} producto(s) en esta página / {serverTotalCount} pedido(s) total
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
