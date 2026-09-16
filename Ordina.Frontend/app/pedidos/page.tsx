@@ -140,7 +140,7 @@ export default function PedidosPage() {
   const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
   const [editMode, setEditMode] = useState<"full" | "payments">("full");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState<UnifiedOrder | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({});
