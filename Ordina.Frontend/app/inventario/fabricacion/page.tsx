@@ -90,6 +90,16 @@ const MANUFACTURING_STATUS_ORDER: Record<ProductRow["status"], number> = {
   disponible: 4,
 }
 
+const mapFilterStatusToManufacturing = (filterStatus: string): string | undefined => {
+  switch (filterStatus) {
+    case "needs_fabrication": return "debe_fabricar"
+    case "ready_for_batch": return "por_fabricar"
+    case "fabricating": return "fabricando"
+    case "warehouse": return "almacen_no_fabricado"
+    default: return undefined
+  }
+}
+
 export default function FabricacionPage() {
   const { user, hasPermission, isLoading: authLoading } = useAuth()
   const isAdmin =
@@ -216,6 +226,11 @@ export default function FabricacionPage() {
     async (page: number, signal?: AbortSignal) => {
       const response = await apiClient.getOrdersPaged(page, ORDER_PAGE_SIZE, undefined, {
         locationStatus: "FABRICACION",
+        excludeStatuses: "Generado,Generada,Declinado",
+        search: searchTerm.trim() || undefined,
+        manufacturingStatus: filterStatus !== "all"
+          ? mapFilterStatusToManufacturing(filterStatus)
+          : undefined,
       }, signal)
       return {
         items: response.orders ?? [],
@@ -223,15 +238,18 @@ export default function FabricacionPage() {
         totalPages: Math.max(1, Math.ceil((response.totalCount ?? 0) / ORDER_PAGE_SIZE)),
       }
     },
-    [],
+    [searchTerm, filterStatus],
   )
 
   const fetchCount = useCallback(
     async (signal?: AbortSignal) => {
-      const response = await apiClient.getOrderCount({ locationStatus: "FABRICACION" }, signal)
+      const response = await apiClient.getOrderCount({
+        locationStatus: "FABRICACION",
+        excludeStatuses: "Generado,Generada,Declinado",
+      }, signal, ORDER_PAGE_SIZE)
       return {
         totalCount: response.totalCount ?? 0,
-        totalPages: Math.max(1, Math.ceil((response.totalCount ?? 0) / ORDER_PAGE_SIZE)),
+        totalPages: response.totalPages ?? Math.max(1, Math.ceil((response.totalCount ?? 0) / ORDER_PAGE_SIZE)),
       }
     },
     [],
@@ -260,7 +278,6 @@ export default function FabricacionPage() {
     const providers = new Set<string>()
     serverOrders.forEach(order => {
       if (isReservationOrder(order as unknown as Order)) return
-      if (order.status === "Generado" || order.status === "Generada") return
       order.products.forEach(p => {
         if (p.locationStatus !== "FABRICACION") return
         const name = p.manufacturingProviderName?.trim()
@@ -276,8 +293,6 @@ export default function FabricacionPage() {
 
     serverOrders.forEach(order => {
       if (isReservationOrder(order as unknown as Order)) return
-      if (order.status === "Generado" || order.status === "Generada") return
-      if (order.status === "Declinado") return
       if (isSistemaApartado(order as unknown as Order) && !isSistemaApartadoReadyForNormalFlow(order as unknown as Order)) return
 
       order.products.forEach(product => {
@@ -295,26 +310,6 @@ export default function FabricacionPage() {
     })
 
     let filtered = rows
-
-    if (filterStatus !== "all") {
-      filtered = rows.filter(row => {
-        if (filterStatus === "needs_fabrication") return row.status === "debe_fabricar"
-        if (filterStatus === "ready_for_batch") return row.status === "por_fabricar"
-        if (filterStatus === "fabricating") return row.status === "fabricando"
-        if (filterStatus === "warehouse") return row.status === "almacen_no_fabricado"
-        return true
-      })
-    }
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      filtered = filtered.filter(row =>
-        row.orderNumber.toLowerCase().includes(term) ||
-        row.clientName.toLowerCase().includes(term) ||
-        row.product.name.toLowerCase().includes(term) ||
-        (row.product.manufacturingProviderName?.toLowerCase().includes(term) ?? false)
-      )
-    }
 
     if (filterProvider !== "all") {
       filtered = filtered.filter(row => {
@@ -336,7 +331,7 @@ export default function FabricacionPage() {
     })
 
     return filtered
-  }, [serverOrders, filterStatus, filterPurchaseType, filterProvider, searchTerm])
+  }, [serverOrders, filterProvider, filterPurchaseType])
 
   // Orders as Order type for handlers that need full Order objects
   const orders = useMemo(() => serverOrders.map(o => orderFromBackendDto(o)), [serverOrders])

@@ -13,6 +13,8 @@ public class OrderListFilter
     public bool IncludeBudgets { get; set; } = true;
     public string? LocationStatus { get; set; }
     public string? ManufacturingStatus { get; set; }
+    public string? ExcludeStatuses { get; set; }
+    public string? ProductFilterPreset { get; set; }
 
     /// <summary>IDs de clientes resueltos por <see cref="ClientSearch"/> (llenado en capa de servicio).</summary>
     public IReadOnlyCollection<string>? MatchingClientIds { get; set; }
@@ -26,5 +28,7 @@ public class OrderListFilter
         || DateFrom.HasValue
         || DateTo.HasValue
         || !string.IsNullOrWhiteSpace(LocationStatus)
-        || !string.IsNullOrWhiteSpace(ManufacturingStatus);
+        || !string.IsNullOrWhiteSpace(ManufacturingStatus)
+        || !string.IsNullOrWhiteSpace(ExcludeStatuses)
+        || !string.IsNullOrWhiteSpace(ProductFilterPreset);
 }

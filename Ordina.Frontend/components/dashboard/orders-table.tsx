@@ -88,7 +88,6 @@ function filterAndSortGeneratedOrders(
   onlineSellerFilterLoading: boolean,
 ) {
   let list = allOrders
-    .filter((o) => o.status === "Generado" || o.status === "Generada")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   if (isOnlineSellerRole(userRole) && !onlineSellerFilterLoading && onlineSellerIds.size > 0) {
     list = list.filter((o) =>

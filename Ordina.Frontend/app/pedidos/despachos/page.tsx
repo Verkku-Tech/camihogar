@@ -367,7 +367,11 @@ export default function DespachosPage() {
       vendor?: string
       status?: string
       includeBudgets?: boolean
-    } = { includeBudgets: false }
+      productFilterPreset?: string
+    } = {
+      includeBudgets: false,
+      productFilterPreset: activeTab,
+    }
 
     const response = await apiClient.getOrdersPaged(page, itemsPerPage, undefined, filters, signal)
     const unified = response.orders.map(orderDtoToUnifiedOrder)
@@ -386,14 +390,18 @@ export default function DespachosPage() {
     const filters: {
       status?: string
       includeBudgets?: boolean
-    } = { includeBudgets: false }
+      productFilterPreset?: string
+    } = {
+      includeBudgets: false,
+      productFilterPreset: activeTab,
+    }
 
-    const response = await apiClient.getOrderCount(filters, signal)
+    const response = await apiClient.getOrderCount(filters, signal, itemsPerPage)
     return {
       totalCount: response.totalCount,
       totalPages: response.totalPages,
     }
-  }, [activeTab])
+  }, [activeTab, itemsPerPage])
 
   const pagination = useServerPagination({
     fetchPage,
@@ -444,15 +452,8 @@ export default function DespachosPage() {
   // Sync server-paginated orders with local state (apply dispatch filtering)
   useEffect(() => {
     if (activeTab !== "despachados") {
-      if (pagination.currentItems.length > 0) {
-        const dispatchableOrders = pagination.currentItems.filter(
-          (order) => order.type === "order" && (
-            isOrderInTab(order, "por_despachar") ||
-            isOrderInTab(order, "en_despacho")
-          )
-        )
-        setOrders(dispatchableOrders)
-      }
+      // Server already filtered via productFilterPreset; just filter by type
+      setOrders(pagination.currentItems.filter((order) => order.type === "order"))
       setIsLoading(pagination.isLoadingCount || pagination.isLoadingPages)
     } else {
       setIsLoading(isLoadingDelivered)
@@ -558,8 +559,9 @@ export default function DespachosPage() {
 
   const filteredOrders = useMemo(() => {
     return visibleOrders.filter((order) => {
-      // 1. Filtrar por tab activo
-      if (!isOrderInTab(order, activeTab)) return false
+      // For despachados tab, still need client-side check (loads all delivered)
+      // For other tabs, server already filtered via productFilterPreset
+      if (activeTab === "despachados" && !isOrderInTab(order, "despachados")) return false
 
       // 2. Filtro de búsqueda
       const matchesSearch =

@@ -27,6 +27,7 @@ public interface IOrderService
     Task<OrderCountDto> GetOrderCountAsync(
         OrderListFilterDto? listFilter = null,
         string? callerRole = null,
+        int pageSize = 30,
         CancellationToken cancellationToken = default);
     
     Task<IEnumerable<OrderResponseDto>> GetOrdersByClientIdAsync(

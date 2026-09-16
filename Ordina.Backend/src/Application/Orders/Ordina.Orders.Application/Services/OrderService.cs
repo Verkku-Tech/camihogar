@@ -614,12 +614,12 @@ public class OrderService : IOrderService
     public async Task<OrderCountDto> GetOrderCountAsync(
         OrderListFilterDto? listFilter = null,
         string? callerRole = null,
+        int pageSize = 30,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var teamFilter = await ResolveTeamFilterAsync(callerRole);
-            const int pageSize = 30;
 
             if (listFilter?.HasActiveFilters == true)
             {

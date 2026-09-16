@@ -188,6 +188,39 @@ public class OrderRepository : IOrderRepository
                 p => p.ManufacturingStatus == listFilter.ManufacturingStatus.Trim()));
         }
 
+        if (!string.IsNullOrWhiteSpace(listFilter.ExcludeStatuses))
+        {
+            var excludeList = listFilter.ExcludeStatuses
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => s.Trim())
+                .ToList();
+            if (excludeList.Count > 0)
+            {
+                filters.Add(fb.Nin(o => o.Status, excludeList));
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.ProductFilterPreset))
+        {
+            var preset = listFilter.ProductFilterPreset.Trim().ToLowerInvariant();
+            switch (preset)
+            {
+                case "por_despachar":
+                    filters.Add(fb.ElemMatch(o => o.Products, p =>
+                        p.LocationStatus == null
+                        || p.LocationStatus == "EN TIENDA"
+                        || p.LocationStatus == "DISPONIBILIDAD INMEDIATA"
+                        || (p.LocationStatus == "FABRICACION" && p.ManufacturingStatus == "almacen_no_fabricado")));
+                    break;
+                case "en_despacho":
+                    filters.Add(fb.ElemMatch(o => o.Products, p => p.LocationStatus == "EN DESPACHO"));
+                    break;
+                case "despachados":
+                    filters.Add(fb.ElemMatch(o => o.Products, p => p.LocationStatus == "DESPACHADO"));
+                    break;
+            }
+        }
+
         var filter = CombineFilters(fb.And(filters), onlineSellerTeamIds);
 
         var totalCount = await _collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
@@ -290,6 +323,39 @@ public class OrderRepository : IOrderRepository
         {
             filters.Add(fb.ElemMatch(o => o.Products,
                 p => p.ManufacturingStatus == listFilter.ManufacturingStatus.Trim()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.ExcludeStatuses))
+        {
+            var excludeList = listFilter.ExcludeStatuses
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => s.Trim())
+                .ToList();
+            if (excludeList.Count > 0)
+            {
+                filters.Add(fb.Nin(o => o.Status, excludeList));
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(listFilter.ProductFilterPreset))
+        {
+            var preset = listFilter.ProductFilterPreset.Trim().ToLowerInvariant();
+            switch (preset)
+            {
+                case "por_despachar":
+                    filters.Add(fb.ElemMatch(o => o.Products, p =>
+                        p.LocationStatus == null
+                        || p.LocationStatus == "EN TIENDA"
+                        || p.LocationStatus == "DISPONIBILIDAD INMEDIATA"
+                        || (p.LocationStatus == "FABRICACION" && p.ManufacturingStatus == "almacen_no_fabricado")));
+                    break;
+                case "en_despacho":
+                    filters.Add(fb.ElemMatch(o => o.Products, p => p.LocationStatus == "EN DESPACHO"));
+                    break;
+                case "despachados":
+                    filters.Add(fb.ElemMatch(o => o.Products, p => p.LocationStatus == "DESPACHADO"));
+                    break;
+            }
         }
 
         var filter = CombineFilters(fb.And(filters), onlineSellerTeamIds);

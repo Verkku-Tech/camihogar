@@ -6,11 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
-  isDispatchNoteOrder,
   getOrderDispatchDisplayDate,
   type UnifiedOrder,
 } from "@/lib/storage"
-import { useLazyUnifiedOrders } from "@/hooks/use-lazy-unified-orders"
 import { isSistemaApartado } from "@/lib/order-sa"
 import { formatCurrency, getActiveExchangeRates } from "@/lib/currency-utils"
 import {
@@ -21,9 +19,13 @@ import { Eye } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
-import { Loader2 } from "lucide-react"
 
 const DEFAULT_ITEMS_PER_PAGE = 10
+
+interface DispatchesTableProps {
+  /** Datos prefetcheados del dashboard con filtro server-side por_despachar. */
+  prefetchedOrders?: UnifiedOrder[] | null
+}
 
 function sortDispatchOrders(orders: UnifiedOrder[]): UnifiedOrder[] {
   return [...orders].sort((a, b) => {
@@ -33,24 +35,22 @@ function sortDispatchOrders(orders: UnifiedOrder[]): UnifiedOrder[] {
   })
 }
 
-export function DispatchesTable() {
+export function DispatchesTable({ prefetchedOrders }: DispatchesTableProps) {
   const router = useRouter()
   const [dispatches, setDispatches] = useState<UnifiedOrder[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
 
-  const { orders: allOrders, isLoadingInitial, isLoadingMore } = useLazyUnifiedOrders({ initialPages: 10 })
-
   useEffect(() => {
-    const completedOrders = sortDispatchOrders(
-      allOrders.filter((order) => isDispatchNoteOrder(order)),
-    )
-    setDispatches(completedOrders)
-    if (!isLoadingInitial) {
-      setIsLoading(false)
+    if (prefetchedOrders === null || prefetchedOrders === undefined) {
+      return
     }
-  }, [allOrders, isLoadingInitial])
+    // Los datos ya vienen filtrados del server (productFilterPreset: por_despachar)
+    const completedOrders = sortDispatchOrders(prefetchedOrders)
+    setDispatches(completedOrders)
+    setIsLoading(false)
+  }, [prefetchedOrders])
 
   const {
     currentPage,

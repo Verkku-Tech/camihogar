@@ -1252,6 +1252,8 @@ export class ApiClient {
       includeBudgets?: boolean;
       locationStatus?: string;
       manufacturingStatus?: string;
+      excludeStatuses?: string;
+      productFilterPreset?: string;
     },
     signal?: AbortSignal,
   ) {
@@ -1273,6 +1275,8 @@ export class ApiClient {
     }
     if (filters?.locationStatus) params.append("locationStatus", filters.locationStatus);
     if (filters?.manufacturingStatus) params.append("manufacturingStatus", filters.manufacturingStatus);
+    if (filters?.excludeStatuses) params.append("excludeStatuses", filters.excludeStatuses);
+    if (filters?.productFilterPreset) params.append("productFilterPreset", filters.productFilterPreset);
     return this.request<PagedOrdersResponseDto>(
       `/api/Orders?${params.toString()}`,
       { signal },
@@ -1291,8 +1295,11 @@ export class ApiClient {
       includeBudgets?: boolean;
       locationStatus?: string;
       manufacturingStatus?: string;
+      excludeStatuses?: string;
+      productFilterPreset?: string;
     },
     signal?: AbortSignal,
+    pageSize?: number,
   ) {
     const params = new URLSearchParams();
     if (filters?.search) params.append("search", filters.search);
@@ -1307,6 +1314,9 @@ export class ApiClient {
     }
     if (filters?.locationStatus) params.append("locationStatus", filters.locationStatus);
     if (filters?.manufacturingStatus) params.append("manufacturingStatus", filters.manufacturingStatus);
+    if (filters?.excludeStatuses) params.append("excludeStatuses", filters.excludeStatuses);
+    if (filters?.productFilterPreset) params.append("productFilterPreset", filters.productFilterPreset);
+    if (pageSize) params.append("pageSize", pageSize.toString());
     return this.request<{ totalCount: number; totalPages: number; pageSize: number }>(
       `/api/Orders/count?${params.toString()}`,
       { signal },

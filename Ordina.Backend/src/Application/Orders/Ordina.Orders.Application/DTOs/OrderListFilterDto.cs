@@ -13,6 +13,8 @@ public class OrderListFilterDto
     public bool IncludeBudgets { get; set; } = true;
     public string? LocationStatus { get; set; }
     public string? ManufacturingStatus { get; set; }
+    public string? ExcludeStatuses { get; set; }
+    public string? ProductFilterPreset { get; set; }
 
     public bool HasActiveFilters =>
         !string.IsNullOrWhiteSpace(Search)
@@ -23,5 +25,7 @@ public class OrderListFilterDto
         || DateFrom.HasValue
         || DateTo.HasValue
         || !string.IsNullOrWhiteSpace(LocationStatus)
-        || !string.IsNullOrWhiteSpace(ManufacturingStatus);
+        || !string.IsNullOrWhiteSpace(ManufacturingStatus)
+        || !string.IsNullOrWhiteSpace(ExcludeStatuses)
+        || !string.IsNullOrWhiteSpace(ProductFilterPreset);
 }

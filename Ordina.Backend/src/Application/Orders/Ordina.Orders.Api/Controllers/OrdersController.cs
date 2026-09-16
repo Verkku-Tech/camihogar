@@ -99,6 +99,8 @@ public class OrdersController : ControllerBase
         [FromQuery] bool includeBudgets = true,
         [FromQuery] string? locationStatus = null,
         [FromQuery] string? manufacturingStatus = null,
+        [FromQuery] string? excludeStatuses = null,
+        [FromQuery] string? productFilterPreset = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -115,6 +117,8 @@ public class OrdersController : ControllerBase
                 IncludeBudgets = includeBudgets,
                 LocationStatus = locationStatus,
                 ManufacturingStatus = manufacturingStatus,
+                ExcludeStatuses = excludeStatuses,
+                ProductFilterPreset = productFilterPreset,
             };
 
             var result = await _orderService.GetOrdersPagedAsync(
@@ -150,6 +154,9 @@ public class OrdersController : ControllerBase
         [FromQuery] bool includeBudgets = true,
         [FromQuery] string? locationStatus = null,
         [FromQuery] string? manufacturingStatus = null,
+        [FromQuery] string? excludeStatuses = null,
+        [FromQuery] string? productFilterPreset = null,
+        [FromQuery] int pageSize = 30,
         CancellationToken cancellationToken = default)
     {
         var callerRole = GetCallerRole(User);
@@ -165,11 +172,14 @@ public class OrdersController : ControllerBase
             IncludeBudgets = includeBudgets,
             LocationStatus = locationStatus,
             ManufacturingStatus = manufacturingStatus,
+            ExcludeStatuses = excludeStatuses,
+            ProductFilterPreset = productFilterPreset,
         };
 
         var count = await _orderService.GetOrderCountAsync(
             filter.HasActiveFilters ? filter : null,
             callerRole,
+            pageSize,
             cancellationToken);
 
         return Ok(count);

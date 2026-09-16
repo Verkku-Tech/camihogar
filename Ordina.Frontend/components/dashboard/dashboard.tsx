@@ -15,8 +15,11 @@ import {
   calculateDashboardMetrics,
   DashboardMetrics,
   getOrders,
+  orderFromBackendDto,
   type Order,
+  type UnifiedOrder,
 } from "@/lib/storage";
+import { apiClient } from "@/lib/api-client";
 import { Card, CardContent } from "@/components/ui/card";
 import { NewOrderDialog } from "@/components/orders/new-order-dialog";
 import { useAuth } from "@/contexts/auth-context";
@@ -41,10 +44,82 @@ export function Dashboard() {
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(true);
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
 
-  /** null = aún no cargado; evita múltiples getOrders en cabecera/tabla/métricas. */
+  /** Datos por pestaña, cargados desde la API con filtros server-side. */
+  const [generatedOrders, setGeneratedOrders] = useState<Order[] | null>(null);
+  const [manufacturingOrders, setManufacturingOrders] = useState<Order[] | null>(null);
+  const [dispatchOrders, setDispatchOrders] = useState<UnifiedOrder[] | null>(null);
+
+  // Pedidos completos para métricas del dashboard (solo Admin/Super Admin)
   const [sharedOrders, setSharedOrders] = useState<Order[] | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const loadPerTab = async () => {
+      try {
+        // Orders tab: status Generado/Generada
+        const ordersResp = await apiClient.getOrdersPaged(
+          1, 50, undefined,
+          { status: "Generado", includeBudgets: false },
+          controller.signal,
+        );
+        if (!cancelled) {
+          setGeneratedOrders(ordersResp.orders.map(orderFromBackendDto));
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("Error loading generated orders:", error);
+        if (!cancelled) setGeneratedOrders([]);
+      }
+
+      try {
+        // Manufacturing tab: locationStatus FABRICACION, exclude Generado/Generada/Declinado
+        const mfgResp = await apiClient.getOrdersPaged(
+          1, 50, undefined,
+          {
+            locationStatus: "FABRICACION",
+            excludeStatuses: "Generado,Generada,Declinado",
+            includeBudgets: false,
+          },
+          controller.signal,
+        );
+        if (!cancelled) {
+          setManufacturingOrders(mfgResp.orders.map(orderFromBackendDto));
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("Error loading manufacturing orders:", error);
+        if (!cancelled) setManufacturingOrders([]);
+      }
+
+      try {
+        // Dispatches tab: por_despachar preset, no budgets
+        const dispatchResp = await apiClient.getOrdersPaged(
+          1, 50, undefined,
+          { productFilterPreset: "por_despachar", includeBudgets: false },
+          controller.signal,
+        );
+        if (!cancelled) {
+          setDispatchOrders(dispatchResp.orders.map(orderFromBackendDto) as unknown as UnifiedOrder[]);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("Error loading dispatch orders:", error);
+        if (!cancelled) setDispatchOrders([]);
+      }
+    };
+
+    void loadPerTab();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, []);
+
+  // Pedidos para métricas (solo Admin/Super Admin, carga completa en background)
+  useEffect(() => {
+    if (!canViewFinancialDashboard) return;
     let cancelled = false;
     const controller = new AbortController();
     const load = async () => {
@@ -59,7 +134,7 @@ export function Dashboard() {
         if (!cancelled) setSharedOrders(list);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        console.error("Error loading orders for dashboard:", error);
+        console.error("Error loading orders for metrics:", error);
         if (!cancelled) setSharedOrders([]);
       }
     };
@@ -68,7 +143,7 @@ export function Dashboard() {
       cancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [canViewFinancialDashboard]);
 
   useEffect(() => {
     if (isOnlineSeller) {
@@ -229,7 +304,7 @@ export function Dashboard() {
 
             {/* Tab Content */}
             {activeTab === "pedidos" &&
-              (sharedOrders === null ? (
+              (generatedOrders === null ? (
                 <Card>
                   <CardContent className="flex items-center gap-2 p-6 text-muted-foreground">
                     <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
@@ -237,7 +312,7 @@ export function Dashboard() {
                   </CardContent>
                 </Card>
               ) : (
-                <OrdersTable prefetchedOrders={sharedOrders} />
+                <OrdersTable prefetchedOrders={generatedOrders} />
               ))}
             {/* OCULTO TEMPORALMENTE - Presupuestos
             {!isOnlineSeller && activeTab === "presupuestos" && (
@@ -245,10 +320,10 @@ export function Dashboard() {
             )}
             */}
             {!isOnlineSeller && activeTab === "fabricacion" && (
-              <ManufacturingProductsTable prefetchedOrders={sharedOrders} />
+              <ManufacturingProductsTable prefetchedOrders={manufacturingOrders} />
             )}
             {!isOnlineSeller && activeTab === "despachos" && (
-              <DispatchesTable />
+              <DispatchesTable prefetchedOrders={dispatchOrders} />
             )}
             {!isOnlineSeller && activeTab === "sa-vencidos" && (
               <ExpiredLayawaysTable />

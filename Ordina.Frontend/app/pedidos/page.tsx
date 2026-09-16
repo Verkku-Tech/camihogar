@@ -216,6 +216,7 @@ export default function PedidosPage() {
       dateFrom: rangeFrom || undefined,
       dateTo: rangeTo || undefined,
       includeBudgets: true,
+      excludeStatuses: filters.status === "all" ? "Declinado" : undefined,
     };
   }, [debouncedSearchTerm, debouncedClientSearch, filters, dateFrom, dateTo]);
 
@@ -241,7 +242,7 @@ export default function PedidosPage() {
     ),
     fetchCount: useCallback(
       async (signal?: AbortSignal) => {
-        const response = await apiClient.getOrderCount(serverFilters, signal);
+        const response = await apiClient.getOrderCount(serverFilters, signal, itemsPerPage);
         return {
           totalCount: response.totalCount ?? 0,
           totalPages: response.totalPages ?? Math.max(1, Math.ceil((response.totalCount ?? 0) / itemsPerPage)),
@@ -427,18 +428,12 @@ export default function PedidosPage() {
   const paginatedOrders = useMemo(() => {
     if (serverResultsPending) return EMPTY_ORDERS;
     if (!useServerMode) return localPaginatedOrders;
-    if (filters.status !== "all") return serverCurrentItems;
-    return serverCurrentItems.filter(
-      (o) =>
-        resolveDisplayOrderStatus(o) !== "Declinado" &&
-        !isReservationOrderNumber(o.orderNumber),
-    );
+    return serverCurrentItems;
   }, [
     serverResultsPending,
     useServerMode,
     serverCurrentItems,
     localPaginatedOrders,
-    filters.status,
   ]);
 
   // Totales/saldo: calcular sobre las filas visibles (API en modo servidor, no IndexedDB ajeno)
