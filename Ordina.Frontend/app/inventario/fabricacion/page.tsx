@@ -111,6 +111,12 @@ export default function FabricacionPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 400)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
   const [filterStatus, setFilterStatus] = useState<
     "all" | "needs_fabrication" | "ready_for_batch" | "fabricating" | "warehouse"
   >("all")
@@ -226,7 +232,7 @@ export default function FabricacionPage() {
       const response = await apiClient.getOrdersPaged(page, itemsPerPage, undefined, {
         locationStatus: "FABRICACION",
         excludeStatuses: "Generado,Generada,Declinado",
-        search: searchTerm.trim() || undefined,
+        search: debouncedSearchTerm.trim() || undefined,
         manufacturingStatus: filterStatus !== "all"
           ? mapFilterStatusToManufacturing(filterStatus)
           : undefined,
@@ -237,7 +243,7 @@ export default function FabricacionPage() {
         totalPages: Math.max(1, Math.ceil((response.totalCount ?? 0) / itemsPerPage)),
       }
     },
-    [searchTerm, filterStatus, itemsPerPage],
+    [debouncedSearchTerm, filterStatus, itemsPerPage],
   )
 
   const fetchCount = useCallback(
@@ -245,13 +251,17 @@ export default function FabricacionPage() {
       const response = await apiClient.getOrderCount({
         locationStatus: "FABRICACION",
         excludeStatuses: "Generado,Generada,Declinado",
+        search: debouncedSearchTerm.trim() || undefined,
+        manufacturingStatus: filterStatus !== "all"
+          ? mapFilterStatusToManufacturing(filterStatus)
+          : undefined,
       }, signal, itemsPerPage)
       return {
         totalCount: response.totalCount ?? 0,
         totalPages: response.totalPages ?? Math.max(1, Math.ceil((response.totalCount ?? 0) / itemsPerPage)),
       }
     },
-    [itemsPerPage],
+    [debouncedSearchTerm, filterStatus, itemsPerPage],
   )
 
   const {

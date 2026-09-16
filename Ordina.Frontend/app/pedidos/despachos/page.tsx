@@ -332,6 +332,12 @@ export default function DespachosPage() {
   const router = useRouter()
   const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 400)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
   const [deliveryTypeFilter, setDeliveryTypeFilter] = useState<string>("all")
   const [deliveryZoneFilter, setDeliveryZoneFilter] = useState<string>("all")
   const [deliveredDateFrom, setDeliveredDateFrom] = useState("")
@@ -354,6 +360,12 @@ export default function DespachosPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [itemsPerPage, setItemsPerPage] = useState(10)
 
+  const serverFilters = useMemo(() => ({
+    search: debouncedSearchTerm.trim() || undefined,
+    includeBudgets: false,
+    productFilterPreset: activeTab,
+  }), [debouncedSearchTerm, activeTab])
+
   // Server-side pagination: fetch pages from API, convert to UnifiedOrder, filter client-side
   // For despachados tab, we load all delivered orders separately; skip server pagination
   const fetchPage = useCallback(async (page: number, signal?: AbortSignal) => {
@@ -361,47 +373,28 @@ export default function DespachosPage() {
       // Return empty; delivered orders are loaded via separate effect
       return { items: [], totalCount: 0, totalPages: 0 }
     }
-    const filters: {
-      search?: string
-      clientSearch?: string
-      vendor?: string
-      status?: string
-      includeBudgets?: boolean
-      productFilterPreset?: string
-    } = {
-      includeBudgets: false,
-      productFilterPreset: activeTab,
-    }
 
-    const response = await apiClient.getOrdersPaged(page, itemsPerPage, undefined, filters, signal)
+    const response = await apiClient.getOrdersPaged(page, itemsPerPage, undefined, serverFilters, signal)
     const unified = response.orders.map(orderDtoToUnifiedOrder)
     return {
       items: unified,
       totalCount: response.totalCount,
       totalPages: response.totalPages,
     }
-  }, [activeTab, itemsPerPage])
+  }, [activeTab, itemsPerPage, serverFilters])
 
   const fetchCount = useCallback(async (signal?: AbortSignal) => {
     if (activeTab === "despachados") {
       // Delivered count comes from allDeliveredOrders state
       return { totalCount: 0, totalPages: 0 }
     }
-    const filters: {
-      status?: string
-      includeBudgets?: boolean
-      productFilterPreset?: string
-    } = {
-      includeBudgets: false,
-      productFilterPreset: activeTab,
-    }
 
-    const response = await apiClient.getOrderCount(filters, signal, itemsPerPage)
+    const response = await apiClient.getOrderCount(serverFilters, signal, itemsPerPage)
     return {
       totalCount: response.totalCount,
       totalPages: response.totalPages,
     }
-  }, [activeTab, itemsPerPage])
+  }, [activeTab, itemsPerPage, serverFilters])
 
   const pagination = useServerPagination({
     fetchPage,
