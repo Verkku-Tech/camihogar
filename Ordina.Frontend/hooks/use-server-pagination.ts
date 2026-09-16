@@ -197,6 +197,15 @@ export function useServerPagination<T>(
     prevItemsPerPageRef.current = itemsPerPage;
   }, [itemsPerPage, refetch]);
 
+  // Re-fetch when fetchPage changes (filters changed)
+  const prevFetchPageRef = useRef(fetchPage);
+  useEffect(() => {
+    if (prevFetchPageRef.current !== fetchPage) {
+      refetch();
+    }
+    prevFetchPageRef.current = fetchPage;
+  }, [fetchPage, refetch]);
+
   const currentItems = useMemo(() => {
     return pages.get(currentPage) || [];
   }, [pages, currentPage]);
