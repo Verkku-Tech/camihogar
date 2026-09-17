@@ -80,6 +80,7 @@ const getStatusColor = (status: string) => {
     case "Por despachar":
       return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
     case "Completada":
+    case "Completado":
       return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
     case "Generada":
       return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
@@ -275,7 +276,7 @@ const isOrderInTab = (order: UnifiedOrder, tab: TabType): boolean => {
   if (order.status === "Generado" || order.status === "Generada") return false
 
   // Si pedimos ver despachados y la orden está completada entera, la mostramos ahí
-  if (tab === "despachados" && order.status === "Completada") return true
+  if (tab === "despachados" && (order.status === "Completada" || order.status === "Completado")) return true
 
   if (!order.products || order.products.length === 0) return false
 
@@ -468,7 +469,7 @@ export default function DespachosPage() {
         let hasNext = true
         while (hasNext && !cancelled) {
           const response = await apiClient.getOrdersPaged(page, 50, undefined, {
-            status: "Completada",
+            status: "Completado",
             includeBudgets: false,
           })
           allOrders.push(...response.orders.map(orderDtoToUnifiedOrder))
