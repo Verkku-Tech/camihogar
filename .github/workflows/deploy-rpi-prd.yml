@@ -13,7 +13,7 @@ env:
 
 jobs:
   build-and-push:
-    name: Build & Push Docker Images
+    name: Build & Push Docker Images (ARM64)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,6 +21,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -41,6 +44,7 @@ jobs:
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Security/Ordina.Security.Api/Dockerfile
+          platforms: linux/arm64
           push: true
           tags: |
             ghcr.io/${{ env.REPO_LOWER }}-security-api:latest
@@ -51,6 +55,7 @@ jobs:
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Users/Ordina.Users.Api/Dockerfile
+          platforms: linux/arm64
           push: true
           tags: |
             ghcr.io/${{ env.REPO_LOWER }}-users-api:latest
@@ -61,6 +66,7 @@ jobs:
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Providers/Ordina.Providers.Api/Dockerfile
+          platforms: linux/arm64
           push: true
           tags: |
             ghcr.io/${{ env.REPO_LOWER }}-providers-api:latest
@@ -71,6 +77,7 @@ jobs:
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Orders/Ordina.Orders.Api/Dockerfile
+          platforms: linux/arm64
           push: true
           tags: |
             ghcr.io/${{ env.REPO_LOWER }}-orders-api:latest
@@ -81,6 +88,7 @@ jobs:
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Payments/Ordina.Payments.Api/Dockerfile
+          platforms: linux/arm64
           push: true
           tags: |
             ghcr.io/${{ env.REPO_LOWER }}-payments-api:latest
@@ -91,6 +99,7 @@ jobs:
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Stores/Ordina.Stores.Api/Dockerfile
+          platforms: linux/arm64
           push: true
           tags: |
             ghcr.io/${{ env.REPO_LOWER }}-stores-api:latest
@@ -101,6 +110,7 @@ jobs:
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Presentation/Ordina.ApiGateway/Dockerfile
+          platforms: linux/arm64
           push: true
           tags: |
             ghcr.io/${{ env.REPO_LOWER }}-apigateway:latest
@@ -111,6 +121,7 @@ jobs:
         with:
           context: ./Ordina.Frontend
           file: ./Ordina.Frontend/Dockerfile
+          platforms: linux/arm64
           push: true
           tags: |
             ghcr.io/${{ env.REPO_LOWER }}-frontend:latest
@@ -204,7 +215,7 @@ jobs:
             echo "✓ Frontend está respondiendo"
           else
             echo "✗ Frontend no está respondiendo"
-            failed=$((failed + 1))
+            failed=$((frontend + 1))
           fi
 
           if [ $failed -gt 0 ]; then
