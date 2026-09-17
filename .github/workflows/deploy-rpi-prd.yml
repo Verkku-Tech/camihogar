@@ -13,11 +13,39 @@ env:
 
 jobs:
   build-and-push:
-    name: Build & Push Docker Images (Native ARM64)
+    name: Build & Push ${{ matrix.service.name }} (ARM64)
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: security-api
+            context: ./Ordina.Backend
+            file: ./Ordina.Backend/src/Application/Security/Ordina.Security.Api/Dockerfile
+          - name: users-api
+            context: ./Ordina.Backend
+            file: ./Ordina.Backend/src/Application/Users/Ordina.Users.Api/Dockerfile
+          - name: providers-api
+            context: ./Ordina.Backend
+            file: ./Ordina.Backend/src/Application/Providers/Ordina.Providers.Api/Dockerfile
+          - name: orders-api
+            context: ./Ordina.Backend
+            file: ./Ordina.Backend/src/Application/Orders/Ordina.Orders.Api/Dockerfile
+          - name: payments-api
+            context: ./Ordina.Backend
+            file: ./Ordina.Backend/src/Application/Payments/Ordina.Payments.Api/Dockerfile
+          - name: stores-api
+            context: ./Ordina.Backend
+            file: ./Ordina.Backend/src/Application/Stores/Ordina.Stores.Api/Dockerfile
+          - name: apigateway
+            context: ./Ordina.Backend
+            file: ./Ordina.Backend/src/Presentation/Ordina.ApiGateway/Dockerfile
+          - name: frontend
+            context: ./Ordina.Frontend
+            file: ./Ordina.Frontend/Dockerfile
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -36,93 +64,16 @@ jobs:
         run: |
           echo "REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
-      - name: Build & Push Security API
+      - name: Build & Push Docker Image
         uses: docker/build-push-action@v6
         with:
-          context: ./Ordina.Backend
-          file: ./Ordina.Backend/src/Application/Security/Ordina.Security.Api/Dockerfile
+          context: ${{ matrix.service.context }}
+          file: ${{ matrix.service.file }}
           platforms: linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ env.REPO_LOWER }}-security-api:latest
-            ghcr.io/${{ env.REPO_LOWER }}-security-api:${{ github.sha }}
-
-      - name: Build & Push Users API
-        uses: docker/build-push-action@v6
-        with:
-          context: ./Ordina.Backend
-          file: ./Ordina.Backend/src/Application/Users/Ordina.Users.Api/Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ env.REPO_LOWER }}-users-api:latest
-            ghcr.io/${{ env.REPO_LOWER }}-users-api:${{ github.sha }}
-
-      - name: Build & Push Providers API
-        uses: docker/build-push-action@v6
-        with:
-          context: ./Ordina.Backend
-          file: ./Ordina.Backend/src/Application/Providers/Ordina.Providers.Api/Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ env.REPO_LOWER }}-providers-api:latest
-            ghcr.io/${{ env.REPO_LOWER }}-providers-api:${{ github.sha }}
-
-      - name: Build & Push Orders API
-        uses: docker/build-push-action@v6
-        with:
-          context: ./Ordina.Backend
-          file: ./Ordina.Backend/src/Application/Orders/Ordina.Orders.Api/Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ env.REPO_LOWER }}-orders-api:latest
-            ghcr.io/${{ env.REPO_LOWER }}-orders-api:${{ github.sha }}
-
-      - name: Build & Push Payments API
-        uses: docker/build-push-action@v6
-        with:
-          context: ./Ordina.Backend
-          file: ./Ordina.Backend/src/Application/Payments/Ordina.Payments.Api/Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ env.REPO_LOWER }}-payments-api:latest
-            ghcr.io/${{ env.REPO_LOWER }}-payments-api:${{ github.sha }}
-
-      - name: Build & Push Stores API
-        uses: docker/build-push-action@v6
-        with:
-          context: ./Ordina.Backend
-          file: ./Ordina.Backend/src/Application/Stores/Ordina.Stores.Api/Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ env.REPO_LOWER }}-stores-api:latest
-            ghcr.io/${{ env.REPO_LOWER }}-stores-api:${{ github.sha }}
-
-      - name: Build & Push API Gateway
-        uses: docker/build-push-action@v6
-        with:
-          context: ./Ordina.Backend
-          file: ./Ordina.Backend/src/Presentation/Ordina.ApiGateway/Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ env.REPO_LOWER }}-apigateway:latest
-            ghcr.io/${{ env.REPO_LOWER }}-apigateway:${{ github.sha }}
-
-      - name: Build & Push Frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: ./Ordina.Frontend
-          file: ./Ordina.Frontend/Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ env.REPO_LOWER }}-frontend:latest
-            ghcr.io/${{ env.REPO_LOWER }}-frontend:${{ github.sha }}
+            ghcr.io/${{ env.REPO_LOWER }}-${{ matrix.service.name }}:latest
+            ghcr.io/${{ env.REPO_LOWER }}-${{ matrix.service.name }}:${{ github.sha }}
 
   deploy:
     name: Deploy to Raspberry Pi 5
