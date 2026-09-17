@@ -59,7 +59,8 @@ export function useServerPagination<T>(
   const [isLoadingCount, setIsLoadingCount] = useState(true);
   const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set());
 
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const countAbortRef = useRef<AbortController | null>(null);
+  const batchAbortRef = useRef<AbortController | null>(null);
   const loadedBatchesRef = useRef<Set<number>>(new Set());
   const mountedRef = useRef(true);
 
@@ -67,16 +68,17 @@ export function useServerPagination<T>(
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      abortControllerRef.current?.abort();
+      countAbortRef.current?.abort();
+      batchAbortRef.current?.abort();
     };
   }, []);
 
-  // Load count on mount
+  // Load count – independent abort controller so refetch() doesn't cancel it
   useEffect(() => {
     if (!enabled) return;
 
     const controller = new AbortController();
-    abortControllerRef.current = controller;
+    countAbortRef.current = controller;
 
     const loadCount = async () => {
       setIsLoadingCount(true);
@@ -109,7 +111,7 @@ export function useServerPagination<T>(
       if (loadedBatchesRef.current.has(batchKey)) return;
 
       const controller = new AbortController();
-      abortControllerRef.current = controller;
+      batchAbortRef.current = controller;
 
       const pagesToLoad = Array.from({ length: batchPages }, (_, i) => startPage + i).filter(
         (p) => p <= totalPages,
@@ -181,8 +183,9 @@ export function useServerPagination<T>(
     }
   }, [totalCount, pages.size, loadBatch, enabled]);
 
-  // Refetch: clear all cached data and reload from page 1
+  // Refetch: abort in-flight requests, clear all cached data and reload from page 1
   const refetch = useCallback(() => {
+    batchAbortRef.current?.abort();
     loadedBatchesRef.current.clear();
     setPages(new Map());
     setCurrentPage(1);
@@ -222,7 +225,7 @@ export function useServerPagination<T>(
     goToPage,
     nextPage: () => goToPage(currentPage + 1),
     previousPage: () => goToPage(currentPage - 1),
-    cancel: () => abortControllerRef.current?.abort(),
+    cancel: () => batchAbortRef.current?.abort(),
     refetch,
   };
 }

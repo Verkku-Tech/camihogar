@@ -8,6 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UserSecretsId>ce97208f-ae6f-4aa4-90e9-eef24b40c064</UserSecretsId>
+    <DisableApiEndpointDiscovery>true</DisableApiEndpointDiscovery>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,6 +29,7 @@
     <ProjectReference Include="../../Application/Orders/Ordina.Orders.Api/Ordina.Orders.Api.csproj" />
     <ProjectReference Include="../../Application/Payments/Ordina.Payments.Api/Ordina.Payments.Api.csproj" />
     <ProjectReference Include="../../Infrastructure/Ordina.ServiceDefaults/Ordina.ServiceDefaults.csproj" IsAspireProjectResource="false" />
+    <ProjectReference Include="..\..\Application\Stores\Ordina.Stores.Api\Ordina.Stores.Api.csproj" />
   </ItemGroup>
 
 </Project>
