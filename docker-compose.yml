@@ -133,10 +133,10 @@ services:
       - ordina-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/health || curl -f http://localhost:8080 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   # Microservices (All using MongoDB)
   security-api:
@@ -160,10 +160,10 @@ services:
       - ordina-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8082/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   users-api:
     image: ghcr.io/verkku-tech/camihogar-users-api:latest
@@ -186,10 +186,10 @@ services:
       - ordina-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8083/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   providers-api:
     image: ghcr.io/verkku-tech/camihogar-providers-api:latest
@@ -212,10 +212,10 @@ services:
       - ordina-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8084/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   orders-api:
     image: ghcr.io/verkku-tech/camihogar-orders-api:latest
@@ -238,10 +238,10 @@ services:
       - ordina-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8085/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   payments-api:
     image: ghcr.io/verkku-tech/camihogar-payments-api:latest
@@ -264,10 +264,10 @@ services:
       - ordina-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8086/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   stores-api:
     image: ghcr.io/verkku-tech/camihogar-stores-api:latest
@@ -290,10 +290,10 @@ services:
       - ordina-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8087/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   # Frontend Application
   frontend:
@@ -328,10 +328,10 @@ services:
       - ordina-network
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
 volumes:
   postgres_data:

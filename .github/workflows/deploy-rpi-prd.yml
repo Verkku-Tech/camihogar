@@ -109,7 +109,7 @@ jobs:
       - name: Pull Latest Docker Images
         run: |
           set -euo pipefail
-          echo "=== Descargando imágenes precompiladas desde GHCR ==="
+          echo "=== Descargando capas modificadas desde GHCR ==="
           docker compose pull
 
       - name: Deploy Services
@@ -122,8 +122,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "=== Esperando a que los servicios estén listos ==="
-          timeout=180
-          interval=5
+          timeout=60
+          interval=2
           elapsed=0
 
           while [ $elapsed -lt $timeout ]; do
@@ -179,7 +179,7 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          echo "=== Limpiando imágenes no utilizadas ==="
-          docker image prune -af || true
+          echo "=== Limpiando imágenes huérfanas (preservando caché de capas) ==="
+          docker image prune -f || true
           echo "=== Espacio en disco después de limpieza ==="
           df -h
