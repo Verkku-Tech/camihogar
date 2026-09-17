@@ -117,3 +117,6 @@ logs/
 .kiro/
 skills-lock.json
 docs/superpowers/*
+
+# Worktrees
+.worktrees/
