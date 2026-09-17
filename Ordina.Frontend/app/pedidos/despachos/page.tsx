@@ -365,16 +365,12 @@ export default function DespachosPage() {
     search: debouncedSearchTerm.trim() || undefined,
     includeBudgets: false,
     productFilterPreset: activeTab,
-  }), [debouncedSearchTerm, activeTab])
+    dateFrom: activeTab === "despachados" && deliveredDateFrom ? deliveredDateFrom : undefined,
+    dateTo: activeTab === "despachados" && deliveredDateTo ? deliveredDateTo : undefined,
+  }), [debouncedSearchTerm, activeTab, deliveredDateFrom, deliveredDateTo])
 
-  // Server-side pagination: fetch pages from API, convert to UnifiedOrder, filter client-side
-  // For despachados tab, we load all delivered orders separately; skip server pagination
+  // Server-side pagination: fetch pages from API, convert to UnifiedOrder
   const fetchPage = useCallback(async (page: number, signal?: AbortSignal) => {
-    if (activeTab === "despachados") {
-      // Return empty; delivered orders are loaded via separate effect
-      return { items: [], totalCount: 0, totalPages: 0 }
-    }
-
     const response = await apiClient.getOrdersPaged(page, itemsPerPage, undefined, serverFilters, signal)
     const unified = response.orders.map(orderDtoToUnifiedOrder)
     return {
@@ -382,20 +378,15 @@ export default function DespachosPage() {
       totalCount: response.totalCount,
       totalPages: response.totalPages,
     }
-  }, [activeTab, itemsPerPage, serverFilters])
+  }, [itemsPerPage, serverFilters])
 
   const fetchCount = useCallback(async (signal?: AbortSignal) => {
-    if (activeTab === "despachados") {
-      // Delivered count comes from allDeliveredOrders state
-      return { totalCount: 0, totalPages: 0 }
-    }
-
     const response = await apiClient.getOrderCount(serverFilters, signal, itemsPerPage)
     return {
       totalCount: response.totalCount,
       totalPages: response.totalPages,
     }
-  }, [activeTab, itemsPerPage, serverFilters])
+  }, [itemsPerPage, serverFilters])
 
   const pagination = useServerPagination({
     fetchPage,
@@ -408,10 +399,6 @@ export default function DespachosPage() {
 
   const { refetch } = pagination
 
-  // Separate state for delivered orders (all loaded at once for product-row pagination)
-  const [allDeliveredOrders, setAllDeliveredOrders] = useState<UnifiedOrder[]>([])
-  const [isLoadingDelivered, setIsLoadingDelivered] = useState(true)
-
   const [isLoading, setIsLoading] = useState(true)
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
   const usdRate = exchangeRates?.USD?.rate
@@ -423,7 +410,6 @@ export default function DespachosPage() {
   const [isBulkActionDialogOpen, setIsBulkActionDialogOpen] = useState(false)
   
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
-  const [deliveredPage, setDeliveredPage] = useState(1)
   const [categories, setCategories] = useState<Category[]>([])
   const [allProducts, setAllProducts] = useState<Product[]>([])
   /** Importe total del pedido formateado (pestaña despachados, filas paginadas). */
@@ -443,60 +429,17 @@ export default function DespachosPage() {
     })
   }
 
-  // Sync server-paginated orders with local state (apply dispatch filtering)
+  // Sync server-paginated orders with local state
   useEffect(() => {
-    if (activeTab !== "despachados") {
-      // Server already filtered via productFilterPreset; just filter by type
-      setOrders(pagination.currentItems.filter((order) => order.type === "order"))
-      setIsLoading(pagination.isLoadingCount || pagination.isLoadingPages)
-    } else {
-      setIsLoading(isLoadingDelivered)
-    }
-  }, [activeTab, pagination.currentItems, pagination.isLoadingCount, pagination.isLoadingPages, isLoadingDelivered])
+    setOrders(pagination.currentItems.filter((order) => order.type === "order"))
+    setIsLoading(pagination.isLoadingCount || pagination.isLoadingPages)
+  }, [pagination.currentItems, pagination.isLoadingCount, pagination.isLoadingPages])
 
-  // Load ALL delivered orders at once for product-row pagination
-  useEffect(() => {
-    if (activeTab !== "despachados") {
-      setIsLoadingDelivered(false)
-      return
-    }
-    let cancelled = false
-    const loadAll = async () => {
-      setIsLoadingDelivered(true)
-      try {
-        const allOrders: UnifiedOrder[] = []
-        let page = 1
-        let hasNext = true
-        while (hasNext && !cancelled) {
-          const response = await apiClient.getOrdersPaged(page, 50, undefined, {
-            status: "Completado",
-            includeBudgets: false,
-          })
-          allOrders.push(...response.orders.map(orderDtoToUnifiedOrder))
-          hasNext = response.hasNextPage
-          page++
-        }
-        if (!cancelled) {
-          setAllDeliveredOrders(allOrders)
-        }
-      } catch (error) {
-        console.error("Error loading delivered orders:", error)
-      } finally {
-        if (!cancelled) {
-          setIsLoadingDelivered(false)
-        }
-      }
-    }
-    void loadAll()
-    return () => { cancelled = true }
-  }, [activeTab])
-
-  /** Online Seller: pedidos del equipo online (ver). For despachados tab, use allDeliveredOrders. */
+  /** Online Seller: pedidos del equipo online (ver). */
   const visibleOrders = useMemo(() => {
-    const source = activeTab === "despachados" ? allDeliveredOrders : orders
-    if (!isOnlineSeller) return source
-    return source.filter((o) => isTeamOrder(o))
-  }, [activeTab, allDeliveredOrders, orders, isOnlineSeller, isTeamOrder])
+    if (!isOnlineSeller) return orders
+    return orders.filter((o) => isTeamOrder(o))
+  }, [orders, isOnlineSeller, isTeamOrder])
 
   const canOnlineSellerActOnOrder = useCallback(
     (order: UnifiedOrder): boolean => {
@@ -526,7 +469,6 @@ export default function DespachosPage() {
   useEffect(() => {
     setSelectedOrders(new Set())
     setExpandedOrders(new Set())
-    setDeliveredPage(1)
     if (activeTab !== "despachados") {
       setDeliveredDateFrom("")
       setDeliveredDateTo("")
@@ -553,32 +495,23 @@ export default function DespachosPage() {
 
   const filteredOrders = useMemo(() => {
     return visibleOrders.filter((order) => {
-      // For despachados tab, still need client-side check (loads all delivered)
-      // For other tabs, server already filtered via productFilterPreset
       if (activeTab === "despachados" && !isOrderInTab(order, "despachados")) return false
 
-      // 2. Filtro de búsqueda
-      const matchesSearch =
-        order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.vendorName.toLowerCase().includes(searchTerm.toLowerCase())
-
-      // 3. Filtro por tipo de entrega
+      // Filtro por tipo de entrega
       const matchesDeliveryType =
         deliveryTypeFilter === "all" ||
         order.deliveryType === deliveryTypeFilter
 
-      // 4. Filtro por zona de entrega
+      // Filtro por zona de entrega
       const matchesDeliveryZone =
         deliveryZoneFilter === "all" ||
         order.deliveryZone === deliveryZoneFilter
 
-      return matchesSearch && matchesDeliveryType && matchesDeliveryZone
+      return matchesDeliveryType && matchesDeliveryZone
     })
   }, [
     visibleOrders,
     activeTab,
-    searchTerm,
     deliveryTypeFilter,
     deliveryZoneFilter,
   ])
@@ -613,37 +546,89 @@ export default function DespachosPage() {
     return rows
   }, [filteredOrders, deliveredDateFrom, deliveredDateTo])
 
+  const [isExportingCsv, setIsExportingCsv] = useState(false)
+
   const handleExportDispatchedCsv = useCallback(async () => {
-    const headers = [
-      "Pedido",
-      "Cliente",
-      "Vendedor",
-      "Producto",
-      "Cantidad",
-      "Importe total",
-      "Zona entrega",
-      "Fecha entrega",
-    ]
-    const rows: string[][] = []
+    setIsExportingCsv(true)
+    const toastId = toast.loading("Generando CSV de despachados...")
     try {
-      for (const { order, product } of deliveredRows) {
-        const precioVenta = formatDeliveredHistoryOrderTotal(order, exchangeRates)
-        rows.push([
-          order.orderNumber,
-          order.clientName,
-          order.vendorName ?? "",
-          formatOrderProductDescription(product, productDescriptionCtx),
-          String(product.quantity),
-          precioVenta,
-          deliveryZoneLabel(order.deliveryZone),
-          product.deliveredAt
-            ? new Date(product.deliveredAt).toLocaleString("es-VE", {
-                dateStyle: "short",
-                timeStyle: "short",
-              })
-            : "",
-        ])
+      const allOrders: UnifiedOrder[] = []
+      let page = 1
+      let totalPages = 1
+      const exportPageSize = 50
+
+      while (page <= totalPages) {
+        const response = await apiClient.getOrdersPaged(
+          page,
+          exportPageSize,
+          undefined,
+          serverFilters,
+        )
+        allOrders.push(...response.orders.map(orderDtoToUnifiedOrder))
+        totalPages = Math.max(1, response.totalPages || 1)
+        page++
       }
+
+      const rows: string[][] = []
+      for (const order of allOrders) {
+        if (order.type !== "order") continue
+        if (
+          deliveryTypeFilter !== "all" &&
+          order.deliveryType !== deliveryTypeFilter
+        ) {
+          continue
+        }
+        if (
+          deliveryZoneFilter !== "all" &&
+          order.deliveryZone !== deliveryZoneFilter
+        ) {
+          continue
+        }
+
+        for (const product of order.products) {
+          if (getProductDispatchStatus(product) !== "despachados") continue
+          if (
+            !matchesLocalDateRange(
+              product.deliveredAt,
+              deliveredDateFrom,
+              deliveredDateTo,
+            )
+          ) {
+            continue
+          }
+
+          const precioVenta = formatDeliveredHistoryOrderTotal(
+            order,
+            exchangeRates,
+          )
+          rows.push([
+            order.orderNumber,
+            order.clientName,
+            order.vendorName ?? "",
+            formatOrderProductDescription(product, productDescriptionCtx),
+            String(product.quantity),
+            precioVenta,
+            deliveryZoneLabel(order.deliveryZone),
+            product.deliveredAt
+              ? new Date(product.deliveredAt).toLocaleString("es-VE", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                })
+              : "",
+          ])
+        }
+      }
+
+      const headers = [
+        "Pedido",
+        "Cliente",
+        "Vendedor",
+        "Producto",
+        "Cantidad",
+        "Importe total",
+        "Zona entrega",
+        "Fecha entrega",
+      ]
       const lines = [headers.map(escapeCsvCell).join(",")]
       for (const r of rows) {
         lines.push(r.map(escapeCsvCell).join(","))
@@ -658,15 +643,23 @@ export default function DespachosPage() {
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
-      toast.success("Listado exportado (CSV)")
+      toast.success("Listado completo exportado (CSV)", { id: toastId })
     } catch (error) {
       console.error("Error exportando CSV de despachados:", error)
-      toast.error("No se pudo generar el CSV")
+      toast.error("No se pudo generar el CSV", { id: toastId })
+    } finally {
+      setIsExportingCsv(false)
     }
-  }, [deliveredRows, exchangeRates, productDescriptionCtx])
+  }, [
+    serverFilters,
+    deliveryTypeFilter,
+    deliveryZoneFilter,
+    deliveredDateFrom,
+    deliveredDateTo,
+    exchangeRates,
+    productDescriptionCtx,
+  ])
 
-  // Pagination: for orders (almacén / en ruta) or per delivered row (despachados)
-  // Non-despachados tabs use server pagination directly; despachados flattens to product rows
   const isDespachados = activeTab === "despachados"
 
   const paginatedOrders = useMemo(() => {
@@ -676,59 +669,40 @@ export default function DespachosPage() {
 
   const paginatedDeliveredRows = useMemo(() => {
     if (!isDespachados) return []
-    const start = (deliveredPage - 1) * itemsPerPage
-    return deliveredRows.slice(start, start + itemsPerPage)
-  }, [isDespachados, deliveredPage, deliveredRows, itemsPerPage])
+    return deliveredRows
+  }, [isDespachados, deliveredRows])
 
   // Unified pagination values for the UI
-  // For despachados: paginate by product rows (all delivered loaded)
-  // For other tabs: paginate by orders (server-side)
-  const deliveredTotalPages = Math.max(1, Math.ceil(deliveredRows.length / itemsPerPage))
-  const currentPage = isDespachados ? deliveredPage : pagination.currentPage
-  const totalPages = isDespachados ? deliveredTotalPages : pagination.totalPages
-  const totalItems = isDespachados ? deliveredRows.length : pagination.totalCount
-  const startIndex = isDespachados
-    ? (deliveredPage - 1) * itemsPerPage + 1
-    : (pagination.currentPage - 1) * itemsPerPage + 1
-  const endIndex = isDespachados
-    ? Math.min(deliveredPage * itemsPerPage, deliveredRows.length)
-    : Math.min(pagination.currentPage * itemsPerPage, pagination.totalCount)
+  const currentPage = pagination.currentPage
+  const totalPages = pagination.totalPages
+  const totalItems = pagination.totalCount
+  const startIndex = (pagination.currentPage - 1) * itemsPerPage + 1
+  const endIndex = Math.min(pagination.currentPage * itemsPerPage, pagination.totalCount)
   const goToPage = useCallback((page: number) => {
-    if (isDespachados) {
-      setDeliveredPage(page)
-    } else {
-      pagination.goToPage(page)
-    }
-  }, [isDespachados, pagination.goToPage])
+    pagination.goToPage(page)
+  }, [pagination])
 
   const deliveredPageOrderTotalsSignature = useMemo(() => {
-    if (activeTab !== "despachados") return ""
-    const start = (deliveredPage - 1) * itemsPerPage
-    const pageRows = deliveredRows.slice(start, start + itemsPerPage)
-    if (pageRows.length === 0) return ""
+    if (activeTab !== "despachados" || deliveredRows.length === 0) return ""
     const seen = new Set<string>()
     const parts: string[] = []
-    for (const { order } of pageRows) {
+    for (const { order } of deliveredRows) {
       if (seen.has(order.id)) continue
       seen.add(order.id)
       parts.push(`${order.id}|${order.total}`)
     }
     return parts.join("|")
-  }, [activeTab, deliveredRows, deliveredPage, itemsPerPage])
+  }, [activeTab, deliveredRows])
 
   useEffect(() => {
     if (activeTab !== "despachados" || deliveredPageOrderTotalsSignature === "") {
       return
     }
-    const start = (deliveredPage - 1) * itemsPerPage
-    const pageRows = deliveredRows.slice(start, start + itemsPerPage)
-    if (pageRows.length === 0) return
-
     let cancelled = false
     const run = () => {
       const next: Record<string, string> = {}
       const seen = new Set<string>()
-      for (const { order } of pageRows) {
+      for (const { order } of deliveredRows) {
         if (seen.has(order.id)) continue
         seen.add(order.id)
         next[order.id] = formatDeliveredHistoryOrderTotal(order, exchangeRates)
@@ -741,7 +715,7 @@ export default function DespachosPage() {
     return () => {
       cancelled = true
     }
-  }, [activeTab, deliveredPageOrderTotalsSignature, exchangeRates])
+  }, [activeTab, deliveredPageOrderTotalsSignature, deliveredRows, exchangeRates])
 
   // Manejar selección individual de productos relevantes a la pestaña
   const handleToggleSelect = (orderId: string) => {
@@ -1121,18 +1095,23 @@ export default function DespachosPage() {
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
-                    {activeTab === "despachados" && deliveredRows.length > 0 && (
+                    {activeTab === "despachados" && (
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
                         className="shrink-0"
+                        disabled={isExportingCsv}
                         onClick={() => {
                           void handleExportDispatchedCsv()
                         }}
                       >
-                        <Download className="mr-2 h-4 w-4" />
-                        Exportar CSV
+                        {isExportingCsv ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="mr-2 h-4 w-4" />
+                        )}
+                        {isExportingCsv ? "Generando CSV..." : "Exportar CSV"}
                       </Button>
                     )}
                     
@@ -1510,9 +1489,7 @@ export default function DespachosPage() {
                       </div>
                     )}
 
-                    {!isLoading &&
-                      ((activeTab === "despachados" && deliveredRows.length > 0) ||
-                        (activeTab !== "despachados" && filteredOrders.length > 0)) && (
+                    {!isLoading && totalItems > 0 && (
                       <TablePagination
                         currentPage={currentPage}
                         totalPages={totalPages}
@@ -1523,7 +1500,7 @@ export default function DespachosPage() {
                         itemsPerPage={itemsPerPage}
                         onItemsPerPageChange={(value) => {
                           setItemsPerPage(value)
-                          setDeliveredPage(1)
+                          goToPage(1)
                         }}
                       />
                     )}
