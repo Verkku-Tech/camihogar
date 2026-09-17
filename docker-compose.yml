@@ -104,6 +104,7 @@ services:
 
   # API Gateway
   apigateway:
+    image: ghcr.io/verkku-tech/camihogar-apigateway:latest
     build:
       context: ./Ordina.Backend
       dockerfile: src/Presentation/Ordina.ApiGateway/Dockerfile
@@ -139,6 +140,7 @@ services:
 
   # Microservices (All using MongoDB)
   security-api:
+    image: ghcr.io/verkku-tech/camihogar-security-api:latest
     build:
       context: ./Ordina.Backend
       dockerfile: src/Application/Security/Ordina.Security.Api/Dockerfile
@@ -164,6 +166,7 @@ services:
       start_period: 60s
 
   users-api:
+    image: ghcr.io/verkku-tech/camihogar-users-api:latest
     build:
       context: ./Ordina.Backend
       dockerfile: src/Application/Users/Ordina.Users.Api/Dockerfile
@@ -189,6 +192,7 @@ services:
       start_period: 60s
 
   providers-api:
+    image: ghcr.io/verkku-tech/camihogar-providers-api:latest
     build:
       context: ./Ordina.Backend
       dockerfile: src/Application/Providers/Ordina.Providers.Api/Dockerfile
@@ -214,6 +218,7 @@ services:
       start_period: 60s
 
   orders-api:
+    image: ghcr.io/verkku-tech/camihogar-orders-api:latest
     build:
       context: ./Ordina.Backend
       dockerfile: src/Application/Orders/Ordina.Orders.Api/Dockerfile
@@ -239,6 +244,7 @@ services:
       start_period: 60s
 
   payments-api:
+    image: ghcr.io/verkku-tech/camihogar-payments-api:latest
     build:
       context: ./Ordina.Backend
       dockerfile: src/Application/Payments/Ordina.Payments.Api/Dockerfile
@@ -264,6 +270,7 @@ services:
       start_period: 60s
 
   stores-api:
+    image: ghcr.io/verkku-tech/camihogar-stores-api:latest
     build:
       context: ./Ordina.Backend
       dockerfile: src/Application/Stores/Ordina.Stores.Api/Dockerfile
@@ -290,6 +297,7 @@ services:
 
   # Frontend Application
   frontend:
+    image: ghcr.io/verkku-tech/camihogar-frontend:latest
     build:
       context: ./Ordina.Frontend
       dockerfile: Dockerfile

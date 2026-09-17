@@ -8,11 +8,124 @@ concurrency:
   group: camihogar-rpi
   cancel-in-progress: true
 
+env:
+  REGISTRY: ghcr.io
+
 jobs:
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase Repository Name
+        run: |
+          echo "REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Build & Push Security API
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/src/Application/Security/Ordina.Security.Api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}-security-api:latest
+            ghcr.io/${{ env.REPO_LOWER }}-security-api:${{ github.sha }}
+
+      - name: Build & Push Users API
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/src/Application/Users/Ordina.Users.Api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}-users-api:latest
+            ghcr.io/${{ env.REPO_LOWER }}-users-api:${{ github.sha }}
+
+      - name: Build & Push Providers API
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/src/Application/Providers/Ordina.Providers.Api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}-providers-api:latest
+            ghcr.io/${{ env.REPO_LOWER }}-providers-api:${{ github.sha }}
+
+      - name: Build & Push Orders API
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/src/Application/Orders/Ordina.Orders.Api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}-orders-api:latest
+            ghcr.io/${{ env.REPO_LOWER }}-orders-api:${{ github.sha }}
+
+      - name: Build & Push Payments API
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/src/Application/Payments/Ordina.Payments.Api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}-payments-api:latest
+            ghcr.io/${{ env.REPO_LOWER }}-payments-api:${{ github.sha }}
+
+      - name: Build & Push Stores API
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/src/Application/Stores/Ordina.Stores.Api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}-stores-api:latest
+            ghcr.io/${{ env.REPO_LOWER }}-stores-api:${{ github.sha }}
+
+      - name: Build & Push API Gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/src/Presentation/Ordina.ApiGateway/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}-apigateway:latest
+            ghcr.io/${{ env.REPO_LOWER }}-apigateway:${{ github.sha }}
+
+      - name: Build & Push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Ordina.Frontend
+          file: ./Ordina.Frontend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}-frontend:latest
+            ghcr.io/${{ env.REPO_LOWER }}-frontend:${{ github.sha }}
+
   deploy:
+    name: Deploy to Raspberry Pi 5
+    needs: build-and-push
     runs-on: [self-hosted, Linux, ARM64]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Setup Docker Permissions
         run: |
@@ -29,48 +142,38 @@ jobs:
             exit 1
           fi
 
-      - name: Sanity Check
-        run: |
-          set -euo pipefail
-          echo "=== Verificando entorno ==="
-          whoami
-          echo "=== Verificando Docker ==="
-          docker --version
-          docker compose version
-          echo "=== Verificando espacio en disco ==="
-          df -h
-          echo "=== Verificando directorios ==="
-          ls -la Ordina.Backend
-          ls -la Ordina.Frontend
-          echo "=== Verificando conectividad Docker ==="
-          docker ps
-
       - name: Ensure curl exists
         run: |
           set -euo pipefail
           command -v curl >/dev/null 2>&1 || (echo "curl no encontrado; instálalo en la RPi con: sudo apt-get install -y curl" && exit 1)
 
+      - name: Pull Latest Docker Images
+        run: |
+          set -euo pipefail
+          echo "=== Descargando imágenes precompiladas desde GHCR ==="
+          docker compose pull
+
       - name: Deploy Services
         run: |
           set -euo pipefail
           echo "=== Desplegando todos los servicios ==="
-          docker compose up -d --build --remove-orphans
+          docker compose up -d --remove-orphans
 
-      - name: Wait for Services
+      - name: Wait for Services Warmup
         run: |
           set -euo pipefail
           echo "=== Esperando a que los servicios estén listos ==="
-          timeout=300
-          interval=10
+          timeout=180
+          interval=5
           elapsed=0
 
           while [ $elapsed -lt $timeout ]; do
-            # si todos están "running" y no hay "restarting"/"exited", consideramos OK
-            if docker compose ps --format json 2>/dev/null | grep -q '"State":"running"'; then
-              echo "Contenedores running detectados. Continuando..."
+            if curl -fsS "http://localhost:8082/health" >/dev/null 2>&1 && \
+               curl -fsS "http://localhost:3000" >/dev/null 2>&1; then
+              echo "Contenedores listos y respondiendo. Continuando..."
               break
             fi
-            echo "Aún no están listos... ($elapsed/$timeout)"
+            echo "Aún iniciando servicios... ($elapsed/$timeout)"
             sleep $interval
             elapsed=$((elapsed + interval))
           done
@@ -83,7 +186,7 @@ jobs:
           set -euo pipefail
           echo "=== Verificando salud de los servicios ==="
 
-          apis=("8082:security-api" "8083:users-api" "8084:providers-api" "8085:orders-api" "8086:payments-api")
+          apis=("8082:security-api" "8083:users-api" "8084:providers-api" "8085:orders-api" "8086:payments-api" "8087:stores-api")
           failed=0
 
           for api in "${apis[@]}"; do
