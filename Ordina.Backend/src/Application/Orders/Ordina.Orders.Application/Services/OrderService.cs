@@ -553,14 +553,14 @@ public class OrderService : IOrderService
                     ProductFilterPreset = listFilter.ProductFilterPreset,
                 };
 
-                var clientSearchTerm = !string.IsNullOrWhiteSpace(listFilter.ClientSearch)
-                    ? listFilter.ClientSearch.Trim()
-                    : listFilter.Search?.Trim();
+                var searchToUse = !string.IsNullOrWhiteSpace(listFilter.Search)
+                    ? listFilter.Search.Trim()
+                    : listFilter.ClientSearch?.Trim();
 
-                if (!string.IsNullOrWhiteSpace(clientSearchTerm))
+                if (!string.IsNullOrWhiteSpace(searchToUse))
                 {
                     repoFilter.MatchingClientIds = await _clientRepository.FindIdsBySearchAsync(
-                        clientSearchTerm,
+                        searchToUse,
                         500);
                 }
 
@@ -645,14 +645,14 @@ public class OrderService : IOrderService
                     ProductFilterPreset = listFilter.ProductFilterPreset,
                 };
 
-                var clientSearchTerm = !string.IsNullOrWhiteSpace(listFilter.ClientSearch)
-                    ? listFilter.ClientSearch.Trim()
-                    : listFilter.Search?.Trim();
+                var searchToUse = !string.IsNullOrWhiteSpace(listFilter.Search)
+                    ? listFilter.Search.Trim()
+                    : listFilter.ClientSearch?.Trim();
 
-                if (!string.IsNullOrWhiteSpace(clientSearchTerm))
+                if (!string.IsNullOrWhiteSpace(searchToUse))
                 {
                     repoFilter.MatchingClientIds = await _clientRepository.FindIdsBySearchAsync(
-                        clientSearchTerm, 500);
+                        searchToUse, 500);
                 }
 
                 var totalCount = await _orderRepository.GetFilteredCountAsync(
@@ -2391,8 +2391,9 @@ public class OrderService : IOrderService
                     switch (action)
                     {
                         case "queue":
-                            if ((product.ManufacturingStatus ?? "").Trim() == "debe_fabricar")
+                            if (OrderStatusAggregation.NormalizeManufacturingStatus(product.ManufacturingStatus) == "debe_fabricar")
                             {
+                                product.LocationStatus = "FABRICACION";
                                 product.ManufacturingStatus = "por_fabricar";
                                 product.ManufacturingProviderId = dto.ProviderId;
                                 product.ManufacturingProviderName = dto.ProviderName;
@@ -2404,8 +2405,9 @@ public class OrderService : IOrderService
                             break;
 
                         case "start":
-                            if ((product.ManufacturingStatus ?? "").Trim() == "por_fabricar")
+                            if (OrderStatusAggregation.NormalizeManufacturingStatus(product.ManufacturingStatus) == "por_fabricar")
                             {
+                                product.LocationStatus = "FABRICACION";
                                 product.ManufacturingStatus = "fabricando";
                                 if (!string.IsNullOrWhiteSpace(dto.ProviderId))
                                     product.ManufacturingProviderId = dto.ProviderId;
@@ -2422,8 +2424,9 @@ public class OrderService : IOrderService
                             break;
 
                         case "mark_fabricated":
-                            if ((product.ManufacturingStatus ?? "").Trim() == "fabricando")
+                            if (OrderStatusAggregation.NormalizeManufacturingStatus(product.ManufacturingStatus) == "fabricando")
                             {
+                                product.LocationStatus = "FABRICACION";
                                 product.ManufacturingStatus = "almacen_no_fabricado";
                                 product.LogisticStatus = "En Almacén";
                                 product.ManufacturingCompletedAt = DateTime.UtcNow;
@@ -2433,7 +2436,7 @@ public class OrderService : IOrderService
                             break;
 
                         case "refabrication":
-                            if ((product.ManufacturingStatus ?? "").Trim() == "almacen_no_fabricado" || (product.ManufacturingStatus ?? "").Trim() == "fabricado")
+                            if (OrderStatusAggregation.NormalizeManufacturingStatus(product.ManufacturingStatus) == "almacen_no_fabricado")
                             {
                                 var historyRecord = new RefabricationRecord
                                 {
@@ -2444,6 +2447,7 @@ public class OrderService : IOrderService
                                     NewProviderId = dto.ProviderId,
                                     NewProviderName = dto.ProviderName
                                 };
+                                product.LocationStatus = "FABRICACION";
                                 product.AvailabilityStatus = "no_disponible";
                                 product.ManufacturingStatus = "fabricando";
                                 product.ManufacturingProviderId = dto.ProviderId;
@@ -2485,9 +2489,9 @@ public class OrderService : IOrderService
                             break;
 
                         case "to_manufacturing":
-                            product.LocationStatus = "EN TIENDA";
+                            product.LocationStatus = "FABRICACION";
                             product.ManufacturingStatus = "debe_fabricar";
-                            product.LogisticStatus = "Por Fabricar";
+                            product.LogisticStatus = "Validado";
                             product.ManufacturingProviderId = null;
                             product.ManufacturingProviderName = null;
                             product.ManufacturingStartedAt = null;

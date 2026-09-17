@@ -24,6 +24,10 @@ public class ClientRepository : IClientRepository
     public async Task<(IEnumerable<Client> Items, long TotalCount)> GetAllAsync(int page, int pageSize, string? search)
     {
         var filter = BuildSearchFilter(search);
+        if (filter == null)
+        {
+            return (Enumerable.Empty<Client>(), 0);
+        }
 
         var totalCount = await _collection.CountDocumentsAsync(filter);
         
@@ -43,6 +47,11 @@ public class ClientRepository : IClientRepository
         }
 
         var filter = BuildSearchFilter(search);
+        if (filter == null)
+        {
+            return Array.Empty<string>();
+        }
+
         var ids = await _collection.Find(filter)
             .Limit(limit)
             .Project(c => c.Id)
@@ -51,7 +60,54 @@ public class ClientRepository : IClientRepository
         return ids;
     }
 
-    private static FilterDefinition<Client> BuildSearchFilter(string? search)
+    private static bool IsVenezuelanPhonePattern(string token, string digits)
+    {
+        if (string.IsNullOrEmpty(digits)) return false;
+
+        if (digits.StartsWith("58") && digits.Length >= 6) return true;
+
+        string[] mobilePrefixesWithZero = { "0414", "0424", "0412", "0422", "0416", "0426" };
+        string[] mobilePrefixesWithoutZero = { "414", "424", "412", "422", "416", "426" };
+
+        foreach (var p in mobilePrefixesWithZero)
+        {
+            if (digits.StartsWith(p)) return true;
+        }
+
+        if (digits.Length >= 6)
+        {
+            foreach (var p in mobilePrefixesWithoutZero)
+            {
+                if (digits.StartsWith(p)) return true;
+            }
+        }
+
+        if (digits.StartsWith("02") && digits.Length >= 4) return true;
+
+        if (digits.Length >= 10 && digits.Length <= 12) return true;
+
+        return false;
+    }
+
+    private static bool IsCedulaOrRifPattern(string token, string digits)
+    {
+        if (string.IsNullOrEmpty(digits)) return false;
+
+        var trimmed = token.Trim();
+        if (Regex.IsMatch(trimmed, @"^[vVeEjJgGpP][\-\s]?\d+"))
+        {
+            return true;
+        }
+
+        if (digits.Length >= 6 && digits.Length <= 9 && !IsVenezuelanPhonePattern(token, digits))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static FilterDefinition<Client>? BuildSearchFilter(string? search)
     {
         var tokens = AccentInsensitiveRegex.Tokenize(search);
         if (tokens.Length == 0)
@@ -64,27 +120,44 @@ public class ClientRepository : IClientRepository
         foreach (var token in tokens)
         {
             var regex = AccentInsensitiveRegex.ToBsonRegex(token);
-            var fieldFilters = new List<FilterDefinition<Client>>
-            {
-                Builders<Client>.Filter.Regex(x => x.NombreRazonSocial, regex),
-                Builders<Client>.Filter.Regex(x => x.RutId, regex),
-                Builders<Client>.Filter.Regex(x => x.Apodo, regex),
-                Builders<Client>.Filter.Regex(x => x.Telefono, regex),
-                Builders<Client>.Filter.Regex(x => x.Telefono2, regex),
-                Builders<Client>.Filter.Regex(x => x.Email, regex),
-            };
-
             var digits = new string(token.Where(char.IsDigit).ToArray());
-            if (digits.Length >= 3 && digits.Length == token.Length)
+            bool isPhone = IsVenezuelanPhonePattern(token, digits);
+            bool isCedula = IsCedulaOrRifPattern(token, digits);
+            bool isPureDigits = digits.Length == token.Length;
+
+            var fieldFilters = new List<FilterDefinition<Client>>();
+
+            if (isPhone)
+            {
+                var phonePattern = @"(^|\D|\+58\D*)" + string.Join(@"\D*", digits.Select(c => Regex.Escape(c.ToString())));
+                var phoneRegex = new BsonRegularExpression(phonePattern, "i");
+                fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.Telefono, phoneRegex));
+                fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.Telefono2, phoneRegex));
+            }
+            else if (isCedula)
             {
                 var digitPattern = string.Join(@"\D*", digits.Select(c => Regex.Escape(c.ToString())));
                 var digitRegex = new BsonRegularExpression(digitPattern, "i");
                 fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.RutId, digitRegex));
-                fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.Telefono, digitRegex));
-                fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.Telefono2, digitRegex));
+            }
+            else if (!isPureDigits)
+            {
+                // Solo buscar en nombres/apodo/email/rutId cuando el término contiene letras (nombres como "Juan", "Muñoz")
+                fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.NombreRazonSocial, regex));
+                fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.Apodo, regex));
+                fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.Email, regex));
+                fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.RutId, regex));
             }
 
-            tokenFilters.Add(Builders<Client>.Filter.Or(fieldFilters));
+            if (fieldFilters.Count > 0)
+            {
+                tokenFilters.Add(Builders<Client>.Filter.Or(fieldFilters));
+            }
+            else
+            {
+                // Número corto (ej. 208, 690, 2073) que no es teléfono ni cédula: no debe asociar clientes
+                return null;
+            }
         }
 
         return Builders<Client>.Filter.And(tokenFilters);

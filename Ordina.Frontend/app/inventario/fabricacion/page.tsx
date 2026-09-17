@@ -577,6 +577,7 @@ export default function FabricacionPage() {
     notes?: string,
   ): OrderProduct => ({
     ...current,
+    locationStatus: current.locationStatus || "FABRICACION",
     manufacturingStatus: "por_fabricar",
     ...(providerId
       ? {
@@ -599,6 +600,7 @@ export default function FabricacionPage() {
   ): OrderProduct => {
     const updated: OrderProduct = {
       ...current,
+      locationStatus: current.locationStatus || "FABRICACION",
       availabilityStatus: "no_disponible",
       manufacturingStatus: "fabricando",
       manufacturingProviderId: opts.providerId,
@@ -632,6 +634,7 @@ export default function FabricacionPage() {
     current: OrderProduct,
   ): OrderProduct => ({
     ...current,
+    locationStatus: current.locationStatus || "FABRICACION",
     manufacturingStatus: "por_fabricar",
     manufacturingStartedAt: undefined,
     manufacturingCompletedAt: undefined,
@@ -645,7 +648,9 @@ export default function FabricacionPage() {
     current: OrderProduct,
   ): OrderProduct => ({
     ...current,
+    locationStatus: "FABRICACION",
     manufacturingStatus: "debe_fabricar",
+    logisticStatus: "Validado",
     manufacturingProviderId: undefined,
     manufacturingProviderName: undefined,
     manufacturingNotes: undefined,
@@ -769,6 +774,7 @@ export default function FabricacionPage() {
 
       const updatedProduct = {
         ...order.products[productIndex],
+        locationStatus: order.products[productIndex].locationStatus || "FABRICACION",
         manufacturingStatus: "almacen_no_fabricado" as const,
         logisticStatus: "En Almacén", // Sincronizar estado logístico
         manufacturingCompletedAt: new Date().toISOString(),
@@ -1451,7 +1457,7 @@ export default function FabricacionPage() {
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                     <Input
-                      placeholder="Buscar por pedido, cliente, producto o proveedor..."
+                      placeholder="Buscar por #pedido, cliente, CI, teléfono o producto..."
                       className="pl-10"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}

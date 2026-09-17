@@ -127,7 +127,6 @@ export default function PedidosPage() {
     useOnlineSellerVisibility();
   const [orders, setOrders] = useState<UnifiedOrder[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [clientSearch, setClientSearch] = useState("");
   const [filters, setFilters] = useState({
     vendor: "all",
     status: "all",
@@ -150,28 +149,22 @@ export default function PedidosPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const {
     matchingClientIds,
-    isLoading: clientSearchLoading,
-    isTruncated: clientSearchTruncated,
-  } = useClientSearchIds(clientSearch);
+  } = useClientSearchIds(searchTerm);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-  const [debouncedClientSearch, setDebouncedClientSearch] = useState("");
   const offlineFilterToastShown = useRef(false);
 
-  const textFiltersSettled =
-    searchTerm === debouncedSearchTerm &&
-    clientSearch === debouncedClientSearch;
+  const textFiltersSettled = searchTerm === debouncedSearchTerm;
 
   const hasListFilters = useMemo(() => {
     return (
       searchTerm.trim() !== "" ||
-      clientSearch.trim() !== "" ||
       filters.vendor !== "all" ||
       filters.status !== "all" ||
       filters.saleType !== "all" ||
       dateFrom !== "" ||
       dateTo !== ""
     );
-  }, [searchTerm, clientSearch, filters, dateFrom, dateTo]);
+  }, [searchTerm, filters, dateFrom, dateTo]);
 
   const isBrowserOnline =
     typeof navigator !== "undefined" ? navigator.onLine : true;
@@ -182,11 +175,6 @@ export default function PedidosPage() {
     const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 400);
     return () => clearTimeout(timer);
   }, [searchTerm]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedClientSearch(clientSearch), 400);
-    return () => clearTimeout(timer);
-  }, [clientSearch]);
 
   useEffect(() => {
     if (!hasListFilters || isBrowserOnline) return;
@@ -209,7 +197,6 @@ export default function PedidosPage() {
     }
     return {
       search: debouncedSearchTerm.trim() || undefined,
-      clientSearch: debouncedClientSearch.trim() || undefined,
       vendor: filters.vendor !== "all" ? filters.vendor : undefined,
       status: filters.status !== "all" ? filters.status : undefined,
       saleType: filters.saleType !== "all" ? filters.saleType : undefined,
@@ -218,7 +205,7 @@ export default function PedidosPage() {
       includeBudgets: true,
       excludeStatuses: filters.status === "all" ? "Declinado" : undefined,
     };
-  }, [debouncedSearchTerm, debouncedClientSearch, filters, dateFrom, dateTo]);
+  }, [debouncedSearchTerm, filters, dateFrom, dateTo]);
 
   const serverPagination = useServerPagination({
     fetchPage: useCallback(
@@ -318,10 +305,18 @@ export default function PedidosPage() {
     return orders.filter((order) => {
       if (onlineSellerFilter && !isTeamOrder(order)) return false;
 
-      const matchesSearch =
-        textIncludesForSearch(order.orderNumber ?? "", searchTerm) ||
-        textIncludesForSearch(order.clientName, searchTerm) ||
-        textIncludesForSearch(order.vendorName, searchTerm);
+      const searchTrimmed = searchTerm.trim();
+      let matchesSearch = true;
+      if (searchTrimmed) {
+        const tokens = searchTrimmed.split(/\s+/).filter(Boolean);
+        matchesSearch = tokens.every(
+          (token) =>
+            textIncludesForSearch(order.orderNumber ?? "", token) ||
+            textIncludesForSearch(order.clientName, token) ||
+            textIncludesForSearch(order.vendorName, token) ||
+            matchingClientIds?.has(order.clientId),
+        );
+      }
 
       const matchesVendor =
         filters.vendor === "all" || order.vendorName === filters.vendor;
@@ -337,11 +332,6 @@ export default function PedidosPage() {
       const orderDay = toLocalDateKey(order.createdAt);
       const matchesDateFrom = !rangeFrom || orderDay >= rangeFrom;
       const matchesDateTo = !rangeTo || orderDay <= rangeTo;
-
-      const matchesClient =
-        clientSearch.trim() === "" ||
-        matchingClientIds?.has(order.clientId) ||
-        textIncludesForSearch(order.clientName, clientSearch);
 
       const isConvertedBudget =
         order.type === "budget" &&
@@ -360,7 +350,6 @@ export default function PedidosPage() {
         matchesSaleType &&
         matchesDateFrom &&
         matchesDateTo &&
-        matchesClient &&
         !isConvertedBudget &&
         !hideReservation
       );
@@ -371,7 +360,6 @@ export default function PedidosPage() {
     filters,
     rangeFrom,
     rangeTo,
-    clientSearch,
     matchingClientIds,
     onlineSellerFilter,
     isTeamOrder,
@@ -658,13 +646,14 @@ export default function PedidosPage() {
 
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row gap-4 justify-between">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none" />
                   <Input
-                    placeholder="Buscar pedidos..."
+                    placeholder="Buscar por N° pedido, cliente, CI, teléfono o vendedor..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
+                    aria-label="Buscar pedidos por número, cliente, CI, teléfono o vendedor"
                   />
                 </div>
                 <Button onClick={() => setIsNewOrderOpen(true)}>
@@ -675,25 +664,6 @@ export default function PedidosPage() {
 
               {/* Filtros por columna */}
               <div className="flex flex-wrap gap-2 items-center">
-                <div className="relative w-[200px] min-w-[160px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none" />
-                  <Input
-                    placeholder="Cliente: nombre, teléfono, CI, apodo..."
-                    value={clientSearch}
-                    onChange={(e) => setClientSearch(e.target.value)}
-                    className="pl-10 pr-9"
-                    aria-label="Filtrar por cliente: nombre, teléfono, CI o apodo"
-                  />
-                  {clientSearchLoading && (
-                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground pointer-events-none" />
-                  )}
-                </div>
-                {clientSearchTruncated && (
-                  <span className="text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap">
-                    Más de 100 coincidencias; refina la búsqueda
-                  </span>
-                )}
-
                 <Select
                   value={filters.vendor}
                   onValueChange={(value) =>
@@ -776,7 +746,7 @@ export default function PedidosPage() {
                   />
                 </div>
 
-                {(clientSearch !== "" ||
+                {(searchTerm !== "" ||
                   filters.vendor !== "all" ||
                   filters.status !== "all" ||
                   filters.saleType !== "all" ||
@@ -786,12 +756,12 @@ export default function PedidosPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
+                      setSearchTerm("");
                       setFilters({
                         vendor: "all",
                         status: "all",
                         saleType: "all",
                       });
-                      setClientSearch("");
                       setDateFrom("");
                       setDateTo("");
                     }}

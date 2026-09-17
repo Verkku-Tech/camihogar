@@ -94,6 +94,7 @@ export default function ReservasPage() {
   const { user, hasPermission } = useAuth();
   const { applies: onlineSellerFilter } = useOnlineSellerVisibility();
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -105,6 +106,11 @@ export default function ReservasPage() {
     null,
   );
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const canDeleteReservation = hasPermission("orders.delete");
 
@@ -127,7 +133,7 @@ export default function ReservasPage() {
         vendor?: string;
       } = { status: "Reserva" };
 
-      if (searchTerm.trim()) filters.search = searchTerm.trim();
+      if (debouncedSearchTerm.trim()) filters.search = debouncedSearchTerm.trim();
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (onlineSellerFilter && user?.name) filters.vendor = user.name;
@@ -145,7 +151,7 @@ export default function ReservasPage() {
         totalPages: response.totalPages,
       };
     },
-    [searchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name, itemsPerPage],
+    [debouncedSearchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name, itemsPerPage],
   );
 
   const fetchCount = useCallback(
@@ -158,7 +164,7 @@ export default function ReservasPage() {
         vendor?: string;
       } = { status: "Reserva" };
 
-      if (searchTerm.trim()) filters.search = searchTerm.trim();
+      if (debouncedSearchTerm.trim()) filters.search = debouncedSearchTerm.trim();
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (onlineSellerFilter && user?.name) filters.vendor = user.name;
@@ -169,7 +175,7 @@ export default function ReservasPage() {
         totalPages: response.totalPages,
       };
     },
-    [searchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name],
+    [debouncedSearchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name],
   );
 
   const {

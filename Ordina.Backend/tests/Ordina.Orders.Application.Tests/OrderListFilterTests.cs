@@ -41,6 +41,7 @@ public class OrderListFilterTests
 
     [Theory]
     [InlineData("search")]
+    [InlineData("clientSearch")]
     [InlineData("vendor")]
     [InlineData("status")]
     [InlineData("saleType")]
@@ -50,6 +51,7 @@ public class OrderListFilterTests
         switch (property)
         {
             case "search": filter.Search = "test"; break;
+            case "clientSearch": filter.ClientSearch = "test"; break;
             case "vendor": filter.Vendor = "test"; break;
             case "status": filter.Status = "test"; break;
             case "saleType": filter.SaleType = "test"; break;

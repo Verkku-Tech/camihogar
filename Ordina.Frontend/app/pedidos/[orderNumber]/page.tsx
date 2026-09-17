@@ -904,14 +904,21 @@ export default function OrderDetailPage() {
       (p) => !p.logisticStatus || p.logisticStatus === "Generado",
     );
 
-    if (productsToValidate.length === 0) {
+    const items =
+      productsToValidate.length > 0
+        ? productsToValidate
+        : order.status === "Generado" || order.status === "Generada"
+          ? order.products
+          : [];
+
+    if (items.length === 0) {
       toast.info("Todos los productos ya están validados.");
       return;
     }
 
     try {
       setValidatingOrder(true);
-      for (const p of productsToValidate) {
+      for (const p of items) {
         await apiClient.validateOrderItem(order.id, p.id);
       }
 

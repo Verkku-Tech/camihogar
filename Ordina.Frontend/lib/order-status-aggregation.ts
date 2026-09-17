@@ -75,7 +75,11 @@ export function calculateOrderStatusFromProducts(
       hasFabricandose = true;
     } else if (inManufacturingQueue) {
       hasReporteFabricacion = true;
-    } else if (status === "Validado") {
+    } else if (
+      status === "Validado" ||
+      status === "Por Fabricar" ||
+      (inFabricacion && manufacturing === "debe_fabricar")
+    ) {
       hasValidado = true;
     } else if (status === "En Almacén") {
       hasEnAlmacen = true;

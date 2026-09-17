@@ -208,8 +208,18 @@ public class OrderRepository : IOrderRepository
 
         if (!string.IsNullOrWhiteSpace(listFilter.ManufacturingStatus))
         {
-            filters.Add(fb.ElemMatch(o => o.Products,
-                p => p.ManufacturingStatus == listFilter.ManufacturingStatus.Trim()));
+            var mfgTrimmed = listFilter.ManufacturingStatus.Trim();
+            if (string.Equals(mfgTrimmed, "debe_fabricar", StringComparison.OrdinalIgnoreCase))
+            {
+                filters.Add(fb.ElemMatch(o => o.Products, p =>
+                    (p.LocationStatus == "FABRICACION" || p.LocationStatus == null || p.LocationStatus == "")
+                    && (p.ManufacturingStatus == null || p.ManufacturingStatus == "" || p.ManufacturingStatus == "debe_fabricar")));
+            }
+            else
+            {
+                filters.Add(fb.ElemMatch(o => o.Products,
+                    p => p.ManufacturingStatus == mfgTrimmed));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(listFilter.ExcludeStatuses))
@@ -369,8 +379,18 @@ public class OrderRepository : IOrderRepository
 
         if (!string.IsNullOrWhiteSpace(listFilter.ManufacturingStatus))
         {
-            filters.Add(fb.ElemMatch(o => o.Products,
-                p => p.ManufacturingStatus == listFilter.ManufacturingStatus.Trim()));
+            var mfgTrimmed = listFilter.ManufacturingStatus.Trim();
+            if (string.Equals(mfgTrimmed, "debe_fabricar", StringComparison.OrdinalIgnoreCase))
+            {
+                filters.Add(fb.ElemMatch(o => o.Products, p =>
+                    (p.LocationStatus == "FABRICACION" || p.LocationStatus == null || p.LocationStatus == "")
+                    && (p.ManufacturingStatus == null || p.ManufacturingStatus == "" || p.ManufacturingStatus == "debe_fabricar")));
+            }
+            else
+            {
+                filters.Add(fb.ElemMatch(o => o.Products,
+                    p => p.ManufacturingStatus == mfgTrimmed));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(listFilter.ExcludeStatuses))
