@@ -1165,24 +1165,6 @@ export default function FabricacionPage() {
     setBulkFabricatedDialogOpen(true)
   }
 
-  const mapDispatchActionToManufacturingTargets = (
-    action: string
-  ): { targetManufacturingStatus?: string; targetLocationStatus?: string; targetLogisticStatus?: string } => {
-    switch (action) {
-      case "queue":
-      case "start":
-        return { targetManufacturingStatus: "en_fabricacion", targetLocationStatus: "FABRICACION", targetLogisticStatus: "Fabricándose" }
-      case "fabricated":
-        return { targetManufacturingStatus: "fabricado", targetLocationStatus: "FABRICACION", targetLogisticStatus: "En Almacén" }
-      case "revert":
-        return { targetManufacturingStatus: "debe_fabricar", targetLocationStatus: "FABRICACION", targetLogisticStatus: "Fabricándose" }
-      case "refabrication":
-        return { targetManufacturingStatus: "refabricacion", targetLocationStatus: "FABRICACION", targetLogisticStatus: "Fabricándose" }
-      default:
-        return {}
-    }
-  }
-
   const callBackendBulkStatusUpdate = async (
     action: string,
     selectedKeys: string[],
@@ -1192,30 +1174,26 @@ export default function FabricacionPage() {
     if (!beginProcessing(selectedKeys.length)) return
 
     try {
-      const targets = mapDispatchActionToManufacturingTargets(action)
       const items = selectedKeys.map((key) => {
         const [orderId, productId] = key.split("|")
-        return {
-          orderId,
-          productId,
-          targetManufacturingStatus: targets.targetManufacturingStatus,
-          targetLocationStatus: targets.targetLocationStatus,
-          targetLogisticStatus: targets.targetLogisticStatus,
-          assignedProviderId: opts?.providerId,
-          assignedProviderName: opts?.providerName,
-          notes: opts?.notes,
-          refabricationReason: opts?.refabricationReason,
-        }
+        return { orderId, productId }
       })
 
-      const res = await apiClient.bulkUpdateProductStatus({ items })
+      const res = await apiClient.bulkUpdateProductStatus({
+        items,
+        action,
+        providerId: opts?.providerId,
+        providerName: opts?.providerName,
+        notes: opts?.notes,
+        refabricationReason: opts?.refabricationReason,
+      })
 
       serverRefetch()
       setSelectedProducts(new Set())
       setBulkManufactureDialogOpen(false)
       setBulkSelectedProvider(null)
 
-      toast.success(`Acción realizada exitosamente en ${res.updatedCount} producto(s)`)
+      toast.success(`Acción realizada exitosamente en ${res.successCount} producto(s)`)
     } catch (error) {
       console.error("Error en bulk status update backend:", error)
       toast.error("Error al procesar en el servidor. Por favor intenta nuevamente.")

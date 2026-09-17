@@ -2354,18 +2354,20 @@ public class OrderService : IOrderService
         var itemsByOrder = dto.Items
             .Where(i => !string.IsNullOrWhiteSpace(i.OrderId) && !string.IsNullOrWhiteSpace(i.ProductId))
             .GroupBy(i => i.OrderId)
-            .ToDictionary(g => g.Key, g => g.Select(x => x.ProductId).ToHashSet());
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToDictionary(x => x.ProductId, x => x.DispatchOrigin));
 
         var action = (dto.Action ?? "").Trim().ToLowerInvariant();
 
-        foreach (var (orderId, productIdsSet) in itemsByOrder)
+        foreach (var (orderId, productMap) in itemsByOrder)
         {
             try
             {
                 var order = await _orderRepository.GetByIdAsync(orderId);
                 if (order == null)
                 {
-                    response.ErrorCount += productIdsSet.Count;
+                    response.ErrorCount += productMap.Count;
                     response.Errors.Add($"Pedido con ID {orderId} no encontrado.");
                     continue;
                 }
@@ -2376,7 +2378,7 @@ public class OrderService : IOrderService
 
                 foreach (var product in order.Products)
                 {
-                    if (!productIdsSet.Contains(product.Id)) continue;
+                    if (!productMap.ContainsKey(product.Id)) continue;
 
                     switch (action)
                     {
@@ -2454,6 +2456,7 @@ public class OrderService : IOrderService
                         case "to_dispatch":
                             product.LocationStatus = "EN DESPACHO";
                             product.LogisticStatus = "En Ruta";
+                            product.DispatchOrigin = productMap[product.Id];
                             orderMutated = true;
                             mutatedProductCount++;
                             break;
@@ -2489,16 +2492,7 @@ public class OrderService : IOrderService
 
                 if (orderMutated)
                 {
-                    if (action == "to_delivered")
-                    {
-                        var allDispatched = order.Products.All(p =>
-                            string.Equals(p.LocationStatus, "DESPACHADO", StringComparison.OrdinalIgnoreCase));
-                        if (allDispatched)
-                        {
-                            order.Status = "Completada";
-                        }
-                    }
-
+                    RecalculateOrderStatus(order);
                     order.UpdatedAt = DateTime.UtcNow;
                     await _orderRepository.UpdateAsync(order);
 
@@ -2513,7 +2507,7 @@ public class OrderService : IOrderService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al procesar actualización masiva para pedido {OrderId}", orderId);
-                response.ErrorCount += productIdsSet.Count;
+                response.ErrorCount += productMap.Count;
                 response.Errors.Add($"Error en pedido {orderId}: {ex.Message}");
             }
         }

@@ -2729,22 +2729,22 @@ export interface UpdateStoreDto {
 export interface BulkUpdateProductStatusItemDto {
   orderId: string;
   productId: string;
-  targetManufacturingStatus?: string;
-  targetLocationStatus?: string;
-  targetLogisticStatus?: string;
-  assignedProviderId?: string;
-  assignedProviderName?: string;
   dispatchOrigin?: string;
-  refabricationReason?: string;
-  notes?: string;
 }
 
 export interface BulkUpdateProductStatusRequestDto {
   items: BulkUpdateProductStatusItemDto[];
+  action: string;
+  providerId?: string;
+  providerName?: string;
+  notes?: string;
+  refabricationReason?: string;
 }
 
 export interface BulkUpdateProductStatusResponseDto {
-  updatedCount: number;
+  successCount: number;
+  errorCount: number;
+  errors: string[];
 }
 
 export const apiClient = new ApiClient();

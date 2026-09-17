@@ -846,47 +846,26 @@ export default function DespachosPage() {
     setIsBulkActionDialogOpen(true)
   }
 
-  // Map frontend action types to backend status targets for despachos
-  const mapDispatchActionToBackendStatus = (
-    action: ActionType
-  ): { targetLocationStatus: string; targetLogisticStatus?: string; targetManufacturingStatus?: string } | null => {
-    switch (action) {
-      case "to_dispatch":
-        return { targetLocationStatus: "EN DESPACHO", targetLogisticStatus: "En Ruta" }
-      case "to_delivered":
-        return { targetLocationStatus: "DESPACHADO", targetLogisticStatus: "Completado" }
-      case "to_store":
-        return { targetLocationStatus: "EN TIENDA", targetLogisticStatus: "En Almacén" }
-      case "to_manufacturing":
-        return { targetLocationStatus: "FABRICACION", targetLogisticStatus: "Fabricándose", targetManufacturingStatus: "debe_fabricar" }
-      default:
-        return null
-    }
-  }
-
   // Helper centralizado para llamar al nuevo endpoint backend bulk
   const callBackendDispatchStatusUpdate = async (
     items: { orderId: string; productId: string }[],
     action: ActionType
   ): Promise<number> => {
-    const backendTarget = mapDispatchActionToBackendStatus(action)
-    if (!backendTarget) return 0
-
     const payloadItems = items.map((item) => {
       const order = visibleOrders.find((o) => o.id === item.orderId)
       const prod = order?.products.find((p) => p.id === item.productId)
       return {
         orderId: item.orderId,
         productId: item.productId,
-        targetLocationStatus: backendTarget.targetLocationStatus,
-        targetLogisticStatus: backendTarget.targetLogisticStatus,
-        targetManufacturingStatus: backendTarget.targetManufacturingStatus,
         dispatchOrigin: prod ? (resolveDispatchOrigin(prod) ?? undefined) : undefined,
       }
     })
 
-    const response = await apiClient.bulkUpdateProductStatus({ items: payloadItems })
-    return response.updatedCount
+    const response = await apiClient.bulkUpdateProductStatus({
+      items: payloadItems,
+      action,
+    })
+    return response.successCount
   }
 
   // Ejecuta la acción en BDD de un solo pedido
