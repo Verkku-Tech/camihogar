@@ -66,25 +66,25 @@ export function buildClientFilterHaystack(
 export function filterClientsLocal(clients: Client[], q: string): Client[] {
   const trimmed = q.trim()
   if (!trimmed) return clients
-  const qDigits = digitsOnly(q)
+  const tokens = trimmed.split(/\s+/).filter(Boolean)
+
   return clients.filter((client) => {
-    if (textIncludesForSearch(client.nombreRazonSocial, trimmed)) return true
-    if (client.apodo && textIncludesForSearch(client.apodo, trimmed)) return true
-    if (client.email && textIncludesForSearch(client.email, trimmed)) return true
-    if (textIncludesForSearch(client.rutId, trimmed)) return true
-    if (client.telefono?.includes(trimmed)) return true
-    if (client.telefono2?.includes(trimmed)) return true
-    if (qDigits !== "") {
-      const hayDigits = [
-        client.telefono,
-        client.telefono2,
-        client.rutId,
-      ]
-        .filter(Boolean)
-        .map((s) => digitsOnly(s!))
-        .join("")
-      if (hayDigits.includes(qDigits)) return true
-    }
-    return false
+    return tokens.every((token) => {
+      if (textIncludesForSearch(client.nombreRazonSocial, token)) return true
+      if (client.apodo && textIncludesForSearch(client.apodo, token)) return true
+      if (client.email && textIncludesForSearch(client.email, token)) return true
+      if (textIncludesForSearch(client.rutId, token)) return true
+      if (client.telefono?.includes(token)) return true
+      if (client.telefono2?.includes(token)) return true
+      const tokenDigits = digitsOnly(token)
+      if (tokenDigits !== "") {
+        const hayDigits = [client.telefono, client.telefono2, client.rutId]
+          .filter(Boolean)
+          .map((s) => digitsOnly(s!))
+          .join("")
+        if (hayDigits.includes(tokenDigits)) return true
+      }
+      return false
+    })
   })
 }

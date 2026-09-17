@@ -80,6 +80,12 @@ var paymentsApi = builder.AddProject<Projects.Ordina_Payments_Api>("payments-api
     .WithReference(redis)
     .WithEnvironment("ConnectionStrings__DefaultConnection", ordinaDatabase);
 
+// Stores Service - Schema: stores
+var storesApi = builder.AddProject<Projects.Ordina_Stores_Api>("stores-api")
+    .WithReference(ordinaDatabase)
+    .WithReference(redis)
+    .WithEnvironment("ConnectionStrings__DefaultConnection", ordinaDatabase);
+
 // ================================================================
 // API GATEWAY LAYER
 // ================================================================
@@ -91,6 +97,7 @@ var apiGateway = builder.AddProject<Projects.Ordina_ApiGateway>("api-gateway")
     .WithReference(providersApi)
     .WithReference(ordersApi)
     .WithReference(paymentsApi)
+    .WithReference(storesApi)
     .WithReference(redis);
 
 // ================================================================

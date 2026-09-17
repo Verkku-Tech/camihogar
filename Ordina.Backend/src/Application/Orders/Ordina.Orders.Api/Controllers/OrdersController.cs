@@ -849,5 +849,33 @@ public class OrdersController : ControllerBase
             return StatusCode(500, new { message = "Error interno del servidor al conciliar pagos" });
         }
     }
+
+    /// <summary>
+    /// Actualiza el estado de múltiples productos/pedidos en una sola operación masiva.
+    /// </summary>
+    [HttpPost("bulk-product-status")]
+    [Authorize]
+    [ProducesResponseType(typeof(BulkUpdateProductStatusResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<BulkUpdateProductStatusResponseDto>> BulkUpdateProductStatus([FromBody] BulkUpdateProductStatusRequestDto request)
+    {
+        try
+        {
+            if (request == null || request.Items == null || !request.Items.Any())
+            {
+                return BadRequest(new { message = "Se requiere una lista de productos a actualizar" });
+            }
+
+            var (userId, userName) = GetActor(User);
+            var callerRole = GetCallerRole(User);
+            var result = await _orderService.BulkUpdateProductStatusAsync(request, userId, userName, callerRole);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al actualizar estado de productos en lote");
+            return StatusCode(500, new { message = "Error interno del servidor al actualizar productos en lote" });
+        }
+    }
 }
 

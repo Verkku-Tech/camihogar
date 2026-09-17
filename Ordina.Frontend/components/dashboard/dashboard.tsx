@@ -107,10 +107,18 @@ export function Dashboard() {
       }
 
       try {
-        // SA vencidos tab: all sistema_apartado orders (filtering done client-side)
+        // SA vencidos tab: solo SA con >90 días (filtrado server-side via dateTo)
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        const saDateTo = ninetyDaysAgo.toISOString().split('T')[0];
+
         const saResp = await apiClient.getOrdersPaged(
           1, 200, undefined,
-          { saleType: "sistema_apartado", includeBudgets: false },
+          {
+            saleType: "sistema_apartado",
+            dateTo: saDateTo,
+            includeBudgets: false,
+          },
           controller.signal,
         );
         if (!cancelled) {

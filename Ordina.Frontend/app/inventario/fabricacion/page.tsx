@@ -31,7 +31,8 @@ import {
 import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight, RotateCcw, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { getOrder, getOrdersByIds, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder, orderFromBackendDto } from "@/lib/storage"
-
+import { useRouter } from "next/navigation"
+import { apiClient, type OrderResponseDto } from "@/lib/api-client"
 import {
   HoverCard,
   HoverCardContent,
@@ -42,8 +43,6 @@ import {
   SelectProviderDialog,
   type ManufacturingProviderDialogMode,
 } from "@/components/manufacturing/select-provider-dialog"
-import { useRouter } from "next/navigation"
-import { apiClient, type OrderResponseDto } from "@/lib/api-client"
 import { useServerPagination } from "@/hooks/use-server-pagination"
 
 import { TablePagination } from "@/components/ui/table-pagination"
@@ -1166,92 +1165,50 @@ export default function FabricacionPage() {
     setBulkFabricatedDialogOpen(true)
   }
 
-  const executeBulkSendToQueue = async (
-    providerId: string,
-    providerName: string,
-    notes?: string,
+  const callBackendBulkStatusUpdate = async (
+    action: string,
+    selectedKeys: string[],
+    opts?: { providerId?: string; providerName?: string; notes?: string; refabricationReason?: string },
   ) => {
-    const selectedKeys = getSelectedProductsForManufacture()
+    if (selectedKeys.length === 0) return
     if (!beginProcessing(selectedKeys.length)) return
-    let successCount = 0
-    let errorCount = 0
 
     try {
-      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
-      const ordersMap = await getOrdersByIds(orderIds)
+      const items = selectedKeys.map((key) => {
+        const [orderId, productId] = key.split("|")
+        return { orderId, productId }
+      })
 
-      const productsByOrder = new Map<string, string[]>()
-      for (const key of selectedKeys) {
-        const [oId, pId] = key.split("|")
-        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
-        productsByOrder.get(oId)!.push(pId)
-      }
-
-      let processed = 0
-      const orderEntries = Array.from(productsByOrder.entries())
-      const results = await Promise.allSettled(
-        orderEntries.map(async ([orderId, productIds]) => {
-          try {
-            const order = ordersMap.get(orderId)
-            if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
-              return { success: false, count: 0, errors: productIds.length }
-            }
-
-            const pSet = new Set(productIds)
-            let updatedAny = false
-            const updatedProducts = order.products.map((p) => {
-              if (
-                pSet.has(p.id) &&
-                resolveManufacturingRowStatus(p.manufacturingStatus) === "debe_fabricar"
-              ) {
-                updatedAny = true
-                return buildProductQueuedForManufacturing(
-                  p,
-                  providerId,
-                  providerName,
-                  notes,
-                )
-              }
-              return p
-            })
-
-            if (!updatedAny) return { success: true, count: 0, errors: 0 }
-
-            const synced = await updateOrder(order.id, { products: updatedProducts })
-            ordersMap.set(orderId, synced)
-            return { success: true, count: productIds.length, errors: 0 }
-          } catch (error) {
-            console.error(`Error actualizando orden ${orderId}:`, error)
-            return { success: false, count: 0, errors: productIds.length }
-          } finally {
-            processed += productIds.length
-            reportProcessingProgress(processed, selectedKeys.length)
-          }
-        }),
-      )
-
-      for (const res of results) {
-        if (res.status === "fulfilled") {
-          successCount += res.value.count
-          errorCount += res.value.errors
-        } else {
-          errorCount++
-        }
-      }
+      const res = await apiClient.bulkUpdateProductStatus({
+        items,
+        action,
+        providerId: opts?.providerId,
+        providerName: opts?.providerName,
+        notes: opts?.notes,
+        refabricationReason: opts?.refabricationReason,
+      })
 
       serverRefetch()
       setSelectedProducts(new Set())
       setBulkManufactureDialogOpen(false)
       setBulkSelectedProvider(null)
 
-      if (errorCount === 0) {
-        toast.success(`${successCount} producto(s) enviado(s) a ${REPORTE_FABRICACION_LABEL}`)
-      } else {
-        toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
-      }
+      toast.success(`Acción realizada exitosamente en ${res.successCount} producto(s)`)
+    } catch (error) {
+      console.error("Error en bulk status update backend:", error)
+      toast.error("Error al procesar en el servidor. Por favor intenta nuevamente.")
     } finally {
       endProcessing()
     }
+  }
+
+  const executeBulkSendToQueue = async (
+    providerId: string,
+    providerName: string,
+    notes?: string,
+  ) => {
+    const selectedKeys = getSelectedProductsForManufacture()
+    await callBackendBulkStatusUpdate("queue", selectedKeys, { providerId, providerName, notes })
   }
 
   const executeBulkStartManufactureWithProvider = async (
@@ -1262,177 +1219,13 @@ export default function FabricacionPage() {
       toast.error("Selecciona un proveedor para iniciar la fabricación")
       return
     }
-
-    if (!beginProcessing(selectedKeys.length)) return
-    let successCount = 0
-    let errorCount = 0
-
-    try {
-      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
-      const ordersMap = await getOrdersByIds(orderIds)
-
-      const productsByOrder = new Map<string, string[]>()
-      for (const key of selectedKeys) {
-        const [oId, pId] = key.split("|")
-        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
-        productsByOrder.get(oId)!.push(pId)
-      }
-
-      let processed = 0
-      const orderEntries = Array.from(productsByOrder.entries())
-      const results = await Promise.allSettled(
-        orderEntries.map(async ([orderId, productIds]) => {
-          try {
-            const order = ordersMap.get(orderId)
-            if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
-              return { success: false, count: 0, errors: productIds.length }
-            }
-
-            const pSet = new Set(productIds)
-            let updatedAny = false
-            const updatedProducts = order.products.map((p) => {
-              if (
-                pSet.has(p.id) &&
-                resolveManufacturingRowStatus(p.manufacturingStatus) === "por_fabricar"
-              ) {
-                updatedAny = true
-                return buildProductStartingManufacturing(p, {
-                  providerId: opts.providerId,
-                  providerName: opts.providerName,
-                  notes: opts.notes,
-                })
-              }
-              return p
-            })
-
-            if (!updatedAny) return { success: true, count: 0, errors: 0 }
-
-            const synced = await updateOrder(order.id, { products: updatedProducts })
-            ordersMap.set(orderId, synced)
-            return { success: true, count: productIds.length, errors: 0 }
-          } catch (error) {
-            console.error(`Error actualizando orden ${orderId}:`, error)
-            return { success: false, count: 0, errors: productIds.length }
-          } finally {
-            processed += productIds.length
-            reportProcessingProgress(processed, selectedKeys.length)
-          }
-        }),
-      )
-
-      for (const res of results) {
-        if (res.status === "fulfilled") {
-          successCount += res.value.count
-          errorCount += res.value.errors
-        } else {
-          errorCount++
-        }
-      }
-
-      serverRefetch()
-      setSelectedProducts(new Set())
-      setBulkManufactureDialogOpen(false)
-      setBulkSelectedProvider(null)
-
-      if (errorCount === 0) {
-        toast.success(`${successCount} producto(s) en fabricación`)
-      } else {
-        toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
-      }
-    } finally {
-      endProcessing()
-    }
+    await callBackendBulkStatusUpdate("start", selectedKeys, opts)
   }
 
   const executeBulkStartManufactureWithExistingProviders = async (
     selectedKeys: string[],
   ) => {
-    if (selectedKeys.length === 0) return
-
-    if (!beginProcessing(selectedKeys.length)) return
-    let successCount = 0
-    let errorCount = 0
-
-    try {
-      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
-      const ordersMap = await getOrdersByIds(orderIds)
-
-      const productsByOrder = new Map<string, string[]>()
-      for (const key of selectedKeys) {
-        const [oId, pId] = key.split("|")
-        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
-        productsByOrder.get(oId)!.push(pId)
-      }
-
-      let processed = 0
-      const orderEntries = Array.from(productsByOrder.entries())
-      const results = await Promise.allSettled(
-        orderEntries.map(async ([orderId, productIds]) => {
-          try {
-            const order = ordersMap.get(orderId)
-            if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
-              return { success: false, count: 0, errors: productIds.length }
-            }
-
-            const pSet = new Set(productIds)
-            let updatedAny = false
-            const updatedProducts = order.products.map((p) => {
-              if (
-                pSet.has(p.id) &&
-                resolveManufacturingRowStatus(p.manufacturingStatus) === "por_fabricar"
-              ) {
-                const providerId = p.manufacturingProviderId?.trim()
-                const providerName = p.manufacturingProviderName?.trim()
-                if (providerId && providerName) {
-                  updatedAny = true
-                  return buildProductStartingManufacturing(p, {
-                    providerId,
-                    providerName,
-                  })
-                }
-              }
-              return p
-            })
-
-            if (!updatedAny) return { success: true, count: 0, errors: 0 }
-
-            const synced = await updateOrder(order.id, { products: updatedProducts })
-            ordersMap.set(orderId, synced)
-            return { success: true, count: productIds.length, errors: 0 }
-          } catch (error) {
-            console.error(`Error actualizando orden ${orderId}:`, error)
-            return { success: false, count: 0, errors: productIds.length }
-          } finally {
-            processed += productIds.length
-            reportProcessingProgress(processed, selectedKeys.length)
-          }
-        }),
-      )
-
-      for (const res of results) {
-        if (res.status === "fulfilled") {
-          successCount += res.value.count
-          errorCount += res.value.errors
-        } else {
-          errorCount++
-        }
-      }
-
-      serverRefetch()
-      setSelectedProducts(new Set())
-
-      if (successCount === 0 && errorCount === 0) {
-        return
-      }
-
-      if (errorCount === 0) {
-        toast.success(`${successCount} producto(s) en fabricación`)
-      } else {
-        toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
-      }
-    } finally {
-      endProcessing()
-    }
+    await callBackendBulkStatusUpdate("start", selectedKeys)
   }
 
   const executeBulkStartManufacture = async (
@@ -1452,6 +1245,11 @@ export default function FabricacionPage() {
       )
     })
 
+    if (selectedKeys.length === 0) {
+      toast.error("No hay productos pendientes de proveedor en la selección")
+      return
+    }
+
     await executeBulkStartManufactureWithProvider(selectedKeys, {
       providerId,
       providerName,
@@ -1463,81 +1261,7 @@ export default function FabricacionPage() {
   const executeBulkMarkAsFabricated = async () => {
     const selectedKeys = Array.from(selectedProducts)
     setBulkFabricatedDialogOpen(false)
-    if (!beginProcessing(selectedKeys.length)) return
-    let successCount = 0
-    let errorCount = 0
-
-    try {
-      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
-      const ordersMap = await getOrdersByIds(orderIds)
-
-      const productsByOrder = new Map<string, string[]>()
-      for (const key of selectedKeys) {
-        const [oId, pId] = key.split("|")
-        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
-        productsByOrder.get(oId)!.push(pId)
-      }
-
-      let processed = 0
-      const orderEntries = Array.from(productsByOrder.entries())
-      const results = await Promise.allSettled(
-        orderEntries.map(async ([orderId, productIds]) => {
-          try {
-            const order = ordersMap.get(orderId)
-            if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
-              return { success: false, count: 0, errors: productIds.length }
-            }
-
-            const pSet = new Set(productIds)
-            let updatedAny = false
-            const updatedProducts = order.products.map((p) => {
-              if (pSet.has(p.id) && p.manufacturingStatus === "fabricando") {
-                updatedAny = true
-                return {
-                  ...p,
-                  manufacturingStatus: "almacen_no_fabricado" as const,
-                  logisticStatus: "En Almacén",
-                  manufacturingCompletedAt: new Date().toISOString(),
-                }
-              }
-              return p
-            })
-
-            if (!updatedAny) return { success: true, count: 0, errors: 0 }
-
-            const synced = await updateOrder(order.id, { products: updatedProducts })
-            ordersMap.set(orderId, synced)
-            return { success: true, count: productIds.length, errors: 0 }
-          } catch (error) {
-            console.error(`Error actualizando orden ${orderId}:`, error)
-            return { success: false, count: 0, errors: productIds.length }
-          } finally {
-            processed += productIds.length
-            reportProcessingProgress(processed, selectedKeys.length)
-          }
-        }),
-      )
-
-      for (const res of results) {
-        if (res.status === "fulfilled") {
-          successCount += res.value.count
-          errorCount += res.value.errors
-        } else {
-          errorCount++
-        }
-      }
-
-      serverRefetch()
-      setSelectedProducts(new Set())
-
-      if (errorCount === 0) {
-        toast.success(`${successCount} producto(s) marcado(s) como fabricado(s)`)
-      } else {
-        toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
-      }
-    } finally {
-      endProcessing()
-    }
+    await callBackendBulkStatusUpdate("mark_fabricated", selectedKeys)
   }
 
   const handleBulkRevertToDebeFabricarClick = () => {
@@ -1553,64 +1277,8 @@ export default function FabricacionPage() {
 
   const executeBulkRevertToDebeFabricar = async () => {
     const selectedKeys = getSelectedProductsForStartManufacturing()
-    if (!beginProcessing(selectedKeys.length)) return
-    let successCount = 0
-    let errorCount = 0
-
-    try {
-      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
-      const productsByOrder = new Map<string, string[]>()
-      for (const key of selectedKeys) {
-        const [oId, pId] = key.split("|")
-        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
-        productsByOrder.get(oId)!.push(pId)
-      }
-
-      let processed = 0
-      const orderEntries = Array.from(productsByOrder.entries())
-      const results = await Promise.allSettled(
-        orderEntries.map(async ([orderId, productIds]) => {
-          try {
-            let okCount = 0
-            for (const pId of productIds) {
-              const ok = await revertProductToDebeFabricarInOrder(orderId, pId)
-              if (ok) okCount++
-            }
-            return { success: true, count: okCount, errors: productIds.length - okCount }
-          } catch (error) {
-            console.error(`Error revirtiendo productos en orden ${orderId}:`, error)
-            return { success: false, count: 0, errors: productIds.length }
-          } finally {
-            processed += productIds.length
-            reportProcessingProgress(processed, selectedKeys.length)
-          }
-        }),
-      )
-
-      for (const res of results) {
-        if (res.status === "fulfilled") {
-          successCount += res.value.count
-          errorCount += res.value.errors
-        } else {
-          errorCount++
-        }
-      }
-
-      serverRefetch()
-
-      if (successCount > 0) {
-        toast.success(
-          `${successCount} producto(s) devuelto(s) a Debe fabricar`,
-        )
-      }
-      if (errorCount > 0) {
-        toast.error(`${errorCount} producto(s) no se pudieron devolver`)
-      }
-      setBulkRevertToDebeFabricarDialogOpen(false)
-      setSelectedProducts(new Set())
-    } finally {
-      endProcessing()
-    }
+    setBulkRevertToDebeFabricarDialogOpen(false)
+    await callBackendBulkStatusUpdate("to_manufacturing", selectedKeys)
   }
 
   // Calcular si todos están seleccionados (solo los paginados)
@@ -1710,103 +1378,7 @@ export default function FabricacionPage() {
     }
 
     const selectedKeys = getSelectedProductsForRefabrication()
-    if (!beginProcessing(selectedKeys.length)) return
-    let successCount = 0
-    let errorCount = 0
-
-    try {
-      const orderIds = Array.from(new Set(selectedKeys.map((k) => k.split("|")[0])))
-      const ordersMap = await getOrdersByIds(orderIds)
-
-      const productsByOrder = new Map<string, string[]>()
-      for (const key of selectedKeys) {
-        const [oId, pId] = key.split("|")
-        if (!productsByOrder.has(oId)) productsByOrder.set(oId, [])
-        productsByOrder.get(oId)!.push(pId)
-      }
-
-      let processed = 0
-      const orderEntries = Array.from(productsByOrder.entries())
-      const results = await Promise.allSettled(
-        orderEntries.map(async ([orderId, productIds]) => {
-          try {
-            const order = ordersMap.get(orderId)
-            if (!order || !isSistemaApartadoReadyForNormalFlow(order)) {
-              return { success: false, count: 0, errors: productIds.length }
-            }
-
-            const pSet = new Set(productIds)
-            let updatedAny = false
-            const updatedProducts = order.products.map((p) => {
-              if (
-                pSet.has(p.id) &&
-                (p.manufacturingStatus === "almacen_no_fabricado" || (p.manufacturingStatus as string) === "fabricado")
-              ) {
-                updatedAny = true
-                const historyRecord = {
-                  reason: refabricationReason,
-                  date: new Date().toISOString(),
-                  previousProviderId: p.manufacturingProviderId,
-                  previousProviderName: p.manufacturingProviderName,
-                  newProviderId: providerId,
-                  newProviderName: providerName,
-                }
-                return {
-                  ...p,
-                  availabilityStatus: "no_disponible" as const,
-                  manufacturingStatus: "fabricando" as const,
-                  manufacturingProviderId: providerId,
-                  manufacturingProviderName: providerName,
-                  manufacturingStartedAt: new Date().toISOString(),
-                  manufacturingNotes: notes,
-                  logisticStatus: "Fabricándose",
-                  manufacturingCompletedAt: undefined,
-                  refabricationReason: refabricationReason,
-                  refabricatedAt: new Date().toISOString(),
-                  refabricationHistory: [
-                    ...(p.refabricationHistory || []),
-                    historyRecord,
-                  ],
-                }
-              }
-              return p
-            })
-
-            if (!updatedAny) return { success: true, count: 0, errors: 0 }
-
-            const synced = await updateOrder(order.id, { products: updatedProducts })
-            ordersMap.set(orderId, synced)
-            return { success: true, count: productIds.length, errors: 0 }
-          } catch (error) {
-            console.error(`Error actualizando orden ${orderId}:`, error)
-            return { success: false, count: 0, errors: productIds.length }
-          } finally {
-            processed += productIds.length
-            reportProcessingProgress(processed, selectedKeys.length)
-          }
-        }),
-      )
-
-      for (const res of results) {
-        if (res.status === "fulfilled") {
-          successCount += res.value.count
-          errorCount += res.value.errors
-        } else {
-          errorCount++
-        }
-      }
-
-      serverRefetch()
-      setSelectedProducts(new Set())
-
-      if (errorCount === 0) {
-        toast.success(`${successCount} producto(s) reiniciado(s) a fabricación`)
-      } else {
-        toast.warning(`${successCount} exitoso(s), ${errorCount} error(es)`)
-      }
-    } finally {
-      endProcessing()
-    }
+    await callBackendBulkStatusUpdate("refabrication", selectedKeys, { providerId, providerName, notes, refabricationReason })
   }
 
   if (authLoading) {

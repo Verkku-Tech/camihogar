@@ -73,4 +73,9 @@ public interface IOrderService
     Task<bool> OrderExistsAsync(string id);
     Task<bool> OrderNumberExistsAsync(string orderNumber);
     Task<bool> ConciliatePaymentsAsync(List<ConciliatePaymentRequestDto> requests, string userId, string userName);
+    Task<BulkUpdateProductStatusResponseDto> BulkUpdateProductStatusAsync(
+        BulkUpdateProductStatusRequestDto dto,
+        string userId,
+        string userName,
+        string? callerRole = null);
 }

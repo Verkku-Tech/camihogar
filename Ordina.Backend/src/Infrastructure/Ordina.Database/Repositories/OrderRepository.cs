@@ -128,26 +128,50 @@ public class OrderRepository : IOrderRepository
 
         if (!string.IsNullOrWhiteSpace(listFilter.Search))
         {
-            var regex = AccentInsensitiveRegex.ToBsonRegex(listFilter.Search.Trim());
-            filters.Add(fb.Or(
-                fb.Regex(o => o.OrderNumber, regex),
-                fb.Regex(o => o.ClientName, regex),
-                fb.Regex(o => o.VendorName, regex)));
+            var searchTokens = AccentInsensitiveRegex.Tokenize(listFilter.Search);
+            if (searchTokens.Length > 0)
+            {
+                var tokenFilters = new List<FilterDefinition<Order>>();
+                foreach (var token in searchTokens)
+                {
+                    var regex = AccentInsensitiveRegex.ToBsonRegex(token);
+                    var tokenOr = new List<FilterDefinition<Order>>
+                    {
+                        fb.Regex(o => o.OrderNumber, regex),
+                        fb.Regex(o => o.ClientName, regex),
+                        fb.Regex(o => o.VendorName, regex),
+                    };
+                    if (listFilter.MatchingClientIds is { Count: > 0 })
+                    {
+                        tokenOr.Add(fb.In(o => o.ClientId, listFilter.MatchingClientIds));
+                    }
+                    tokenFilters.Add(fb.Or(tokenOr));
+                }
+                filters.Add(fb.And(tokenFilters));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
         {
-            var trimmed = listFilter.ClientSearch.Trim();
-            var nameRegex = AccentInsensitiveRegex.ToBsonRegex(trimmed);
-            var clientOr = new List<FilterDefinition<Order>>
+            var clientTokens = AccentInsensitiveRegex.Tokenize(listFilter.ClientSearch);
+            if (clientTokens.Length > 0)
             {
-                fb.Regex(o => o.ClientName, nameRegex),
-            };
-            if (listFilter.MatchingClientIds is { Count: > 0 })
-            {
-                clientOr.Add(fb.In(o => o.ClientId, listFilter.MatchingClientIds));
+                var clientTokenFilters = new List<FilterDefinition<Order>>();
+                foreach (var token in clientTokens)
+                {
+                    var nameRegex = AccentInsensitiveRegex.ToBsonRegex(token);
+                    var clientOr = new List<FilterDefinition<Order>>
+                    {
+                        fb.Regex(o => o.ClientName, nameRegex),
+                    };
+                    if (listFilter.MatchingClientIds is { Count: > 0 })
+                    {
+                        clientOr.Add(fb.In(o => o.ClientId, listFilter.MatchingClientIds));
+                    }
+                    clientTokenFilters.Add(fb.Or(clientOr));
+                }
+                filters.Add(fb.And(clientTokenFilters));
             }
-            filters.Add(fb.Or(clientOr));
         }
 
         if (!string.IsNullOrWhiteSpace(listFilter.Vendor))
@@ -265,26 +289,50 @@ public class OrderRepository : IOrderRepository
 
         if (!string.IsNullOrWhiteSpace(listFilter.Search))
         {
-            var regex = AccentInsensitiveRegex.ToBsonRegex(listFilter.Search.Trim());
-            filters.Add(fb.Or(
-                fb.Regex(o => o.OrderNumber, regex),
-                fb.Regex(o => o.ClientName, regex),
-                fb.Regex(o => o.VendorName, regex)));
+            var searchTokens = AccentInsensitiveRegex.Tokenize(listFilter.Search);
+            if (searchTokens.Length > 0)
+            {
+                var tokenFilters = new List<FilterDefinition<Order>>();
+                foreach (var token in searchTokens)
+                {
+                    var regex = AccentInsensitiveRegex.ToBsonRegex(token);
+                    var tokenOr = new List<FilterDefinition<Order>>
+                    {
+                        fb.Regex(o => o.OrderNumber, regex),
+                        fb.Regex(o => o.ClientName, regex),
+                        fb.Regex(o => o.VendorName, regex),
+                    };
+                    if (listFilter.MatchingClientIds is { Count: > 0 })
+                    {
+                        tokenOr.Add(fb.In(o => o.ClientId, listFilter.MatchingClientIds));
+                    }
+                    tokenFilters.Add(fb.Or(tokenOr));
+                }
+                filters.Add(fb.And(tokenFilters));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
         {
-            var trimmed = listFilter.ClientSearch.Trim();
-            var nameRegex = AccentInsensitiveRegex.ToBsonRegex(trimmed);
-            var clientOr = new List<FilterDefinition<Order>>
+            var clientTokens = AccentInsensitiveRegex.Tokenize(listFilter.ClientSearch);
+            if (clientTokens.Length > 0)
             {
-                fb.Regex(o => o.ClientName, nameRegex),
-            };
-            if (listFilter.MatchingClientIds is { Count: > 0 })
-            {
-                clientOr.Add(fb.In(o => o.ClientId, listFilter.MatchingClientIds));
+                var clientTokenFilters = new List<FilterDefinition<Order>>();
+                foreach (var token in clientTokens)
+                {
+                    var nameRegex = AccentInsensitiveRegex.ToBsonRegex(token);
+                    var clientOr = new List<FilterDefinition<Order>>
+                    {
+                        fb.Regex(o => o.ClientName, nameRegex),
+                    };
+                    if (listFilter.MatchingClientIds is { Count: > 0 })
+                    {
+                        clientOr.Add(fb.In(o => o.ClientId, listFilter.MatchingClientIds));
+                    }
+                    clientTokenFilters.Add(fb.Or(clientOr));
+                }
+                filters.Add(fb.And(clientTokenFilters));
             }
-            filters.Add(fb.Or(clientOr));
         }
 
         if (!string.IsNullOrWhiteSpace(listFilter.Vendor))
@@ -440,20 +488,30 @@ public class OrderRepository : IOrderRepository
 
         var fb = Builders<Order>.Filter;
 
-        var regex = AccentInsensitiveRegex.ToBsonRegex(query.Trim());
-
-        var orFilters = new List<FilterDefinition<Order>>
+        var tokens = AccentInsensitiveRegex.Tokenize(query);
+        if (tokens.Length == 0)
         {
-            fb.Regex(o => o.OrderNumber, regex),
-            fb.Regex(o => o.ClientName, regex),
-        };
-
-        if (matchingClientIds is { Count: > 0 })
-        {
-            orFilters.Add(fb.In(o => o.ClientId, matchingClientIds));
+            return Array.Empty<Order>();
         }
 
-        var searchFilter = fb.Or(orFilters);
+        var tokenFilters = new List<FilterDefinition<Order>>();
+        foreach (var token in tokens)
+        {
+            var regex = AccentInsensitiveRegex.ToBsonRegex(token);
+            var orFilters = new List<FilterDefinition<Order>>
+            {
+                fb.Regex(o => o.OrderNumber, regex),
+                fb.Regex(o => o.ClientName, regex),
+            };
+
+            if (matchingClientIds is { Count: > 0 })
+            {
+                orFilters.Add(fb.In(o => o.ClientId, matchingClientIds));
+            }
+            tokenFilters.Add(fb.Or(orFilters));
+        }
+
+        var searchFilter = fb.And(tokenFilters);
         var filter = CombineFilters(searchFilter, onlineSellerTeamIds);
 
         return await _collection.Find(filter)

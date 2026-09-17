@@ -1453,6 +1453,13 @@ export class ApiClient {
     });
   }
 
+  async bulkUpdateProductStatus(dto: BulkUpdateProductStatusRequestDto): Promise<BulkUpdateProductStatusResponseDto> {
+    return this.request<BulkUpdateProductStatusResponseDto>("/api/Orders/bulk-product-status", {
+      method: "POST",
+      body: JSON.stringify(dto),
+    });
+  }
+
   async deleteOrder(id: string) {
     return this.request<void>(`/api/Orders/${id}`, {
       method: "DELETE",
@@ -2717,6 +2724,27 @@ export interface UpdateStoreDto {
   email?: string;
   rif?: string;
   status?: string;
+}
+
+export interface BulkUpdateProductStatusItemDto {
+  orderId: string;
+  productId: string;
+  dispatchOrigin?: string;
+}
+
+export interface BulkUpdateProductStatusRequestDto {
+  items: BulkUpdateProductStatusItemDto[];
+  action: string;
+  providerId?: string;
+  providerName?: string;
+  notes?: string;
+  refabricationReason?: string;
+}
+
+export interface BulkUpdateProductStatusResponseDto {
+  successCount: number;
+  errorCount: number;
+  errors: string[];
 }
 
 export const apiClient = new ApiClient();

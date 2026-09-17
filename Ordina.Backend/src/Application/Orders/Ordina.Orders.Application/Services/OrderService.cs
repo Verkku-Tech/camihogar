@@ -553,10 +553,14 @@ public class OrderService : IOrderService
                     ProductFilterPreset = listFilter.ProductFilterPreset,
                 };
 
-                if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
+                var clientSearchTerm = !string.IsNullOrWhiteSpace(listFilter.ClientSearch)
+                    ? listFilter.ClientSearch.Trim()
+                    : listFilter.Search?.Trim();
+
+                if (!string.IsNullOrWhiteSpace(clientSearchTerm))
                 {
                     repoFilter.MatchingClientIds = await _clientRepository.FindIdsBySearchAsync(
-                        listFilter.ClientSearch.Trim(),
+                        clientSearchTerm,
                         500);
                 }
 
@@ -641,10 +645,14 @@ public class OrderService : IOrderService
                     ProductFilterPreset = listFilter.ProductFilterPreset,
                 };
 
-                if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
+                var clientSearchTerm = !string.IsNullOrWhiteSpace(listFilter.ClientSearch)
+                    ? listFilter.ClientSearch.Trim()
+                    : listFilter.Search?.Trim();
+
+                if (!string.IsNullOrWhiteSpace(clientSearchTerm))
                 {
                     repoFilter.MatchingClientIds = await _clientRepository.FindIdsBySearchAsync(
-                        listFilter.ClientSearch.Trim(), 500);
+                        clientSearchTerm, 500);
                 }
 
                 var totalCount = await _orderRepository.GetFilteredCountAsync(
@@ -2337,6 +2345,182 @@ public class OrderService : IOrderService
 
         // Si ya es un tipo nativo, retornarlo tal cual
         return value;
+    }
+
+    public async Task<BulkUpdateProductStatusResponseDto> BulkUpdateProductStatusAsync(
+        BulkUpdateProductStatusRequestDto dto,
+        string userId,
+        string userName,
+        string? callerRole = null)
+    {
+        var response = new BulkUpdateProductStatusResponseDto();
+        if (dto?.Items == null || dto.Items.Count == 0)
+        {
+            return response;
+        }
+
+        var itemsByOrder = dto.Items
+            .Where(i => !string.IsNullOrWhiteSpace(i.OrderId) && !string.IsNullOrWhiteSpace(i.ProductId))
+            .GroupBy(i => i.OrderId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToDictionary(x => x.ProductId, x => x.DispatchOrigin));
+
+        var action = (dto.Action ?? "").Trim().ToLowerInvariant();
+
+        foreach (var (orderId, productMap) in itemsByOrder)
+        {
+            try
+            {
+                var order = await _orderRepository.GetByIdAsync(orderId);
+                if (order == null)
+                {
+                    response.ErrorCount += productMap.Count;
+                    response.Errors.Add($"Pedido con ID {orderId} no encontrado.");
+                    continue;
+                }
+
+                var oldOrder = JsonSerializer.Deserialize<Order>(JsonSerializer.Serialize(order));
+                bool orderMutated = false;
+                int mutatedProductCount = 0;
+
+                foreach (var product in order.Products)
+                {
+                    if (!productMap.ContainsKey(product.Id)) continue;
+
+                    switch (action)
+                    {
+                        case "queue":
+                            if ((product.ManufacturingStatus ?? "").Trim() == "debe_fabricar")
+                            {
+                                product.ManufacturingStatus = "por_fabricar";
+                                product.ManufacturingProviderId = dto.ProviderId;
+                                product.ManufacturingProviderName = dto.ProviderName;
+                                product.ManufacturingNotes = dto.Notes;
+                                product.AvailabilityStatus = "no_disponible";
+                                orderMutated = true;
+                                mutatedProductCount++;
+                            }
+                            break;
+
+                        case "start":
+                            if ((product.ManufacturingStatus ?? "").Trim() == "por_fabricar")
+                            {
+                                product.ManufacturingStatus = "fabricando";
+                                if (!string.IsNullOrWhiteSpace(dto.ProviderId))
+                                    product.ManufacturingProviderId = dto.ProviderId;
+                                if (!string.IsNullOrWhiteSpace(dto.ProviderName))
+                                    product.ManufacturingProviderName = dto.ProviderName;
+                                if (!string.IsNullOrWhiteSpace(dto.Notes))
+                                    product.ManufacturingNotes = dto.Notes;
+                                product.ManufacturingStartedAt = DateTime.UtcNow;
+                                product.AvailabilityStatus = "no_disponible";
+                                product.LogisticStatus = "Fabricándose";
+                                orderMutated = true;
+                                mutatedProductCount++;
+                            }
+                            break;
+
+                        case "mark_fabricated":
+                            if ((product.ManufacturingStatus ?? "").Trim() == "fabricando")
+                            {
+                                product.ManufacturingStatus = "almacen_no_fabricado";
+                                product.LogisticStatus = "En Almacén";
+                                product.ManufacturingCompletedAt = DateTime.UtcNow;
+                                orderMutated = true;
+                                mutatedProductCount++;
+                            }
+                            break;
+
+                        case "refabrication":
+                            if ((product.ManufacturingStatus ?? "").Trim() == "almacen_no_fabricado" || (product.ManufacturingStatus ?? "").Trim() == "fabricado")
+                            {
+                                var historyRecord = new RefabricationRecord
+                                {
+                                    Reason = dto.RefabricationReason ?? "",
+                                    Date = DateTime.UtcNow,
+                                    PreviousProviderId = product.ManufacturingProviderId,
+                                    PreviousProviderName = product.ManufacturingProviderName,
+                                    NewProviderId = dto.ProviderId,
+                                    NewProviderName = dto.ProviderName
+                                };
+                                product.AvailabilityStatus = "no_disponible";
+                                product.ManufacturingStatus = "fabricando";
+                                product.ManufacturingProviderId = dto.ProviderId;
+                                product.ManufacturingProviderName = dto.ProviderName;
+                                product.ManufacturingStartedAt = DateTime.UtcNow;
+                                product.ManufacturingNotes = dto.Notes;
+                                product.LogisticStatus = "Fabricándose";
+                                product.ManufacturingCompletedAt = null;
+                                product.RefabricationReason = dto.RefabricationReason;
+                                product.RefabricatedAt = DateTime.UtcNow;
+                                product.RefabricationHistory ??= new List<RefabricationRecord>();
+                                product.RefabricationHistory.Add(historyRecord);
+                                orderMutated = true;
+                                mutatedProductCount++;
+                            }
+                            break;
+
+                        case "to_dispatch":
+                            product.LocationStatus = "EN DESPACHO";
+                            product.LogisticStatus = "En Ruta";
+                            product.DispatchOrigin = productMap[product.Id];
+                            orderMutated = true;
+                            mutatedProductCount++;
+                            break;
+
+                        case "to_delivered":
+                            product.LocationStatus = "DESPACHADO";
+                            product.LogisticStatus = "Completado";
+                            product.DeliveredAt = DateTime.UtcNow;
+                            orderMutated = true;
+                            mutatedProductCount++;
+                            break;
+
+                        case "to_store":
+                            product.LocationStatus = "EN TIENDA";
+                            product.LogisticStatus = "En Almacén";
+                            orderMutated = true;
+                            mutatedProductCount++;
+                            break;
+
+                        case "to_manufacturing":
+                            product.LocationStatus = "EN TIENDA";
+                            product.ManufacturingStatus = "debe_fabricar";
+                            product.LogisticStatus = "Por Fabricar";
+                            product.ManufacturingProviderId = null;
+                            product.ManufacturingProviderName = null;
+                            product.ManufacturingStartedAt = null;
+                            product.ManufacturingCompletedAt = null;
+                            orderMutated = true;
+                            mutatedProductCount++;
+                            break;
+                    }
+                }
+
+                if (orderMutated)
+                {
+                    RecalculateOrderStatus(order);
+                    order.UpdatedAt = DateTime.UtcNow;
+                    await _orderRepository.UpdateAsync(order);
+
+                    if (oldOrder != null)
+                    {
+                        await _auditLogService.LogOrderUpdatedAsync(oldOrder, order, userId, userName);
+                    }
+
+                    response.SuccessCount += mutatedProductCount;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al procesar actualización masiva para pedido {OrderId}", orderId);
+                response.ErrorCount += productMap.Count;
+                response.Errors.Add($"Error en pedido {orderId}: {ex.Message}");
+            }
+        }
+
+        return response;
     }
 }
 

@@ -51,4 +51,21 @@ public static class AccentInsensitiveRegex
 
     public static BsonRegularExpression ToBsonRegex(string input) =>
         new(ToPattern(input), "i");
+
+    public static string[] Tokenize(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return Array.Empty<string>();
+
+        return input.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    public static IEnumerable<BsonRegularExpression> ToBsonRegexTokens(string? input)
+    {
+        var tokens = Tokenize(input);
+        foreach (var token in tokens)
+        {
+            yield return ToBsonRegex(token);
+        }
+    }
 }
