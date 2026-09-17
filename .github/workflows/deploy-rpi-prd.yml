@@ -13,17 +13,14 @@ env:
 
 jobs:
   build-and-push:
-    name: Build & Push Docker Images (ARM64)
-    runs-on: ubuntu-latest
+    name: Build & Push Docker Images (Native ARM64)
+    runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -40,7 +37,7 @@ jobs:
           echo "REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Build & Push Security API
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Security/Ordina.Security.Api/Dockerfile
@@ -51,7 +48,7 @@ jobs:
             ghcr.io/${{ env.REPO_LOWER }}-security-api:${{ github.sha }}
 
       - name: Build & Push Users API
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Users/Ordina.Users.Api/Dockerfile
@@ -62,7 +59,7 @@ jobs:
             ghcr.io/${{ env.REPO_LOWER }}-users-api:${{ github.sha }}
 
       - name: Build & Push Providers API
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Providers/Ordina.Providers.Api/Dockerfile
@@ -73,7 +70,7 @@ jobs:
             ghcr.io/${{ env.REPO_LOWER }}-providers-api:${{ github.sha }}
 
       - name: Build & Push Orders API
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Orders/Ordina.Orders.Api/Dockerfile
@@ -84,7 +81,7 @@ jobs:
             ghcr.io/${{ env.REPO_LOWER }}-orders-api:${{ github.sha }}
 
       - name: Build & Push Payments API
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Payments/Ordina.Payments.Api/Dockerfile
@@ -95,7 +92,7 @@ jobs:
             ghcr.io/${{ env.REPO_LOWER }}-payments-api:${{ github.sha }}
 
       - name: Build & Push Stores API
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Application/Stores/Ordina.Stores.Api/Dockerfile
@@ -106,7 +103,7 @@ jobs:
             ghcr.io/${{ env.REPO_LOWER }}-stores-api:${{ github.sha }}
 
       - name: Build & Push API Gateway
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./Ordina.Backend
           file: ./Ordina.Backend/src/Presentation/Ordina.ApiGateway/Dockerfile
@@ -117,7 +114,7 @@ jobs:
             ghcr.io/${{ env.REPO_LOWER }}-apigateway:${{ github.sha }}
 
       - name: Build & Push Frontend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./Ordina.Frontend
           file: ./Ordina.Frontend/Dockerfile
@@ -215,7 +212,7 @@ jobs:
             echo "✓ Frontend está respondiendo"
           else
             echo "✗ Frontend no está respondiendo"
-            failed=$((frontend + 1))
+            failed=$((failed + 1))
           fi
 
           if [ $failed -gt 0 ]; then
