@@ -6,9 +6,11 @@ export function normalizeForSearch(value: string): string {
     .toLowerCase();
 }
 
-/** Coincidencia parcial insensible a mayúsculas y tildes. */
+/** Coincidencia parcial insensible a mayúsculas y tildes (exige que todas las palabras/tokens coincidan). */
 export function textIncludesForSearch(haystack: string, needle: string): boolean {
-  const n = normalizeForSearch(needle.trim());
-  if (!n) return true;
-  return normalizeForSearch(haystack).includes(n);
+  const trimmed = needle.trim();
+  if (!trimmed) return true;
+  const normalizedHaystack = normalizeForSearch(haystack);
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  return tokens.every((token) => normalizedHaystack.includes(normalizeForSearch(token)));
 }

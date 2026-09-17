@@ -553,10 +553,14 @@ public class OrderService : IOrderService
                     ProductFilterPreset = listFilter.ProductFilterPreset,
                 };
 
-                if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
+                var clientSearchTerm = !string.IsNullOrWhiteSpace(listFilter.ClientSearch)
+                    ? listFilter.ClientSearch.Trim()
+                    : listFilter.Search?.Trim();
+
+                if (!string.IsNullOrWhiteSpace(clientSearchTerm))
                 {
                     repoFilter.MatchingClientIds = await _clientRepository.FindIdsBySearchAsync(
-                        listFilter.ClientSearch.Trim(),
+                        clientSearchTerm,
                         500);
                 }
 
@@ -641,10 +645,14 @@ public class OrderService : IOrderService
                     ProductFilterPreset = listFilter.ProductFilterPreset,
                 };
 
-                if (!string.IsNullOrWhiteSpace(listFilter.ClientSearch))
+                var clientSearchTerm = !string.IsNullOrWhiteSpace(listFilter.ClientSearch)
+                    ? listFilter.ClientSearch.Trim()
+                    : listFilter.Search?.Trim();
+
+                if (!string.IsNullOrWhiteSpace(clientSearchTerm))
                 {
                     repoFilter.MatchingClientIds = await _clientRepository.FindIdsBySearchAsync(
-                        listFilter.ClientSearch.Trim(), 500);
+                        clientSearchTerm, 500);
                 }
 
                 var totalCount = await _orderRepository.GetFilteredCountAsync(

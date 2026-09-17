@@ -53,34 +53,41 @@ public class ClientRepository : IClientRepository
 
     private static FilterDefinition<Client> BuildSearchFilter(string? search)
     {
-        if (string.IsNullOrWhiteSpace(search))
+        var tokens = AccentInsensitiveRegex.Tokenize(search);
+        if (tokens.Length == 0)
         {
             return Builders<Client>.Filter.Empty;
         }
 
-        var trimmed = search.Trim();
-        var regex = AccentInsensitiveRegex.ToBsonRegex(trimmed);
-        var filters = new List<FilterDefinition<Client>>
-        {
-            Builders<Client>.Filter.Regex(x => x.NombreRazonSocial, regex),
-            Builders<Client>.Filter.Regex(x => x.RutId, regex),
-            Builders<Client>.Filter.Regex(x => x.Apodo, regex),
-            Builders<Client>.Filter.Regex(x => x.Telefono, regex),
-            Builders<Client>.Filter.Regex(x => x.Telefono2, regex),
-            Builders<Client>.Filter.Regex(x => x.Email, regex),
-        };
+        var tokenFilters = new List<FilterDefinition<Client>>();
 
-        var digits = new string(trimmed.Where(char.IsDigit).ToArray());
-        if (digits.Length >= 3 && digits.Length == trimmed.Length)
+        foreach (var token in tokens)
         {
-            var digitPattern = string.Join(@"\D*", digits.Select(c => Regex.Escape(c.ToString())));
-            var digitRegex = new BsonRegularExpression(digitPattern, "i");
-            filters.Add(Builders<Client>.Filter.Regex(x => x.RutId, digitRegex));
-            filters.Add(Builders<Client>.Filter.Regex(x => x.Telefono, digitRegex));
-            filters.Add(Builders<Client>.Filter.Regex(x => x.Telefono2, digitRegex));
+            var regex = AccentInsensitiveRegex.ToBsonRegex(token);
+            var fieldFilters = new List<FilterDefinition<Client>>
+            {
+                Builders<Client>.Filter.Regex(x => x.NombreRazonSocial, regex),
+                Builders<Client>.Filter.Regex(x => x.RutId, regex),
+                Builders<Client>.Filter.Regex(x => x.Apodo, regex),
+                Builders<Client>.Filter.Regex(x => x.Telefono, regex),
+                Builders<Client>.Filter.Regex(x => x.Telefono2, regex),
+                Builders<Client>.Filter.Regex(x => x.Email, regex),
+            };
+
+            var digits = new string(token.Where(char.IsDigit).ToArray());
+            if (digits.Length >= 3 && digits.Length == token.Length)
+            {
+                var digitPattern = string.Join(@"\D*", digits.Select(c => Regex.Escape(c.ToString())));
+                var digitRegex = new BsonRegularExpression(digitPattern, "i");
+                fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.RutId, digitRegex));
+                fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.Telefono, digitRegex));
+                fieldFilters.Add(Builders<Client>.Filter.Regex(x => x.Telefono2, digitRegex));
+            }
+
+            tokenFilters.Add(Builders<Client>.Filter.Or(fieldFilters));
         }
 
-        return Builders<Client>.Filter.Or(filters);
+        return Builders<Client>.Filter.And(tokenFilters);
     }
 
     public async Task<IEnumerable<Client>> GetAllAsync()
