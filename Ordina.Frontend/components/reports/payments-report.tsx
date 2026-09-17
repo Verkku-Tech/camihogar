@@ -389,20 +389,21 @@ export function PaymentsReport() {
 
   // Cargar pedidos y cuentas
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [loadedOrders, loadedAccounts] = await Promise.all([
-          getOrders(),
-          getAccounts()
-        ])
-        setOrders(loadedOrders)
-        setAccounts(loadedAccounts)
-      } catch (error) {
-        console.error("Error loading data:", error)
-        toast.error("Error al cargar los datos")
-      }
-    }
-    loadData()
+    // Load accounts independently — filter must always be populated
+    getAccounts()
+      .then(setAccounts)
+      .catch((e) => {
+        console.error("Error loading accounts:", e)
+        toast.error("Error al cargar las cuentas")
+      })
+
+    // Load orders independently
+    getOrders()
+      .then(setOrders)
+      .catch((e) => {
+        console.error("Error loading orders:", e)
+        toast.error("Error al cargar los pedidos")
+      })
   }, [])
 
   // Cargar datos del reporte desde el backend
