@@ -241,6 +241,7 @@ export function Dashboard() {
                 }
               }
               isLoading={isLoadingMetrics || !metrics}
+              period={period}
             />
           )}
 

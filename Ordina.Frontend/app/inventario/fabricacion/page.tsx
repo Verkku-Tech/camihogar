@@ -1613,13 +1613,7 @@ export default function FabricacionPage() {
               </Card>
             )}
 
-            {/* Indicador de carga */}
-            {isLoadingServer && (
-              <div className="mb-4 flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100" role="status">
-                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                Cargando pedidos...
-              </div>
-            )}
+
 
             {/* Tabla de productos agrupados por pedido */}
             {productRows.length === 0 ? (
