@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Drawing;
+using DocumentFormat.OpenXml.Spreadsheet;
+using Color = System.Drawing.Color;
 using Microsoft.Extensions.Logging;
 using SpreadsheetLight;
 using Ordina.Database.Entities.Order;
@@ -81,6 +84,8 @@ public interface IReportService
         DateTime? startDate = null,
         DateTime? endDate = null,
         string? location = null);
+
+    Task<Stream> GenerateExpiredLayawaysReportAsync();
 }
 
 public class ReportService : IReportService
@@ -2492,6 +2497,288 @@ public class ReportService : IReportService
         public string DispatchObservations { get; set; } = string.Empty;
         public string InformacionDespacho { get; set; } = string.Empty;
         public string EstadoUbicacion { get; set; } = string.Empty;
+    }
+
+    public async Task<Stream> GenerateExpiredLayawaysReportAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Iniciando generación de reporte de Sistemas de Apartado Vencidos");
+
+            var ninetyDaysAgo = DateTime.UtcNow.AddDays(-90);
+            var excludedStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Cancelado", "Declinado", "Entregado", "Completado", "Completada"
+            };
+
+            var allOrders = await _orderRepository.GetAllAsync();
+            var saOrders = allOrders
+                .Where(o => string.Equals(o.SaleType, "sistema_apartado", StringComparison.OrdinalIgnoreCase))
+                .Where(o => o.CreatedAt < ninetyDaysAgo)
+                .Where(o => !excludedStatuses.Contains(o.Status ?? string.Empty))
+                .ToList();
+
+            var rows = new List<ExpiredLayawayReportRow>();
+            var now = DateTime.UtcNow;
+
+            foreach (var order in saOrders)
+            {
+                decimal usdRate = 1m;
+                try { usdRate = GetUsdExchangeRate(order); } catch { }
+                if (usdRate <= 0) usdRate = 1m;
+
+                decimal totalUsd = OrderCommercialCurrency.IsUsdBaseOrder(order)
+                    ? order.Total
+                    : (usdRate > 0 ? order.Total / usdRate : order.Total);
+                decimal paidUsd = OrderCommercialCurrency.SumPaymentsToUsd(order);
+                decimal pendingUsd = totalUsd - paidUsd;
+
+                if (pendingUsd <= 0.01m)
+                    continue;
+
+                int daysPast = Math.Max(1, (int)Math.Floor((now - order.CreatedAt).TotalDays) - 90);
+
+                rows.Add(new ExpiredLayawayReportRow
+                {
+                    Pedido = order.OrderNumber,
+                    Cliente = order.ClientName ?? "Sin Cliente",
+                    TotalPedido = Math.Round(totalUsd, 2),
+                    MontoCobrado = Math.Round(paidUsd, 2),
+                    DeudaPendiente = Math.Round(pendingUsd, 2),
+                    FechaCreacion = order.CreatedAt.ToString("dd/MM/yyyy"),
+                    DiasVencidos = daysPast,
+                    Estado = order.Status ?? "Pendiente"
+                });
+            }
+
+            rows = rows.OrderByDescending(r => r.DiasVencidos).ToList();
+
+            var stream = new MemoryStream();
+
+            using (var sl = new SLDocument())
+            {
+                // Headers en la fila 1
+                sl.SetCellValue(1, 1, "Pedido");
+                sl.SetCellValue(1, 2, "Cliente");
+                sl.SetCellValue(1, 3, "Total Pedido (USD)");
+                sl.SetCellValue(1, 4, "Monto Cobrado (USD)");
+                sl.SetCellValue(1, 5, "Deuda Pendiente (USD)");
+                sl.SetCellValue(1, 6, "Fecha Creación");
+                sl.SetCellValue(1, 7, "Días Vencidos (mora post 90 d)");
+                sl.SetCellValue(1, 8, "Estado");
+
+                sl.SetRowHeight(1, 26);
+
+                // Estilo Header (Fondo Slate Oscuro / Navy, texto blanco negrita, bordes)
+                var headerBgColor = Color.FromArgb(30, 41, 59); // Slate-800
+                var borderColor = Color.FromArgb(203, 213, 225); // Slate-300
+                var zebraBgColor = Color.FromArgb(241, 245, 249); // Slate-100
+                var whiteBgColor = Color.FromArgb(255, 255, 255);
+
+                var headerStyle = sl.CreateStyle();
+                headerStyle.Fill.SetPattern(PatternValues.Solid, headerBgColor, Color.Empty);
+                headerStyle.Font.FontColor = Color.White;
+                headerStyle.Font.Bold = true;
+                headerStyle.Font.FontSize = 11;
+                headerStyle.Alignment.Vertical = VerticalAlignmentValues.Center;
+                headerStyle.Alignment.Horizontal = HorizontalAlignmentValues.Center;
+                headerStyle.Border.SetTopBorder(BorderStyleValues.Thin, headerBgColor);
+                headerStyle.Border.SetBottomBorder(BorderStyleValues.Thin, headerBgColor);
+                headerStyle.Border.SetLeftBorder(BorderStyleValues.Thin, headerBgColor);
+                headerStyle.Border.SetRightBorder(BorderStyleValues.Thin, headerBgColor);
+
+                for (int col = 1; col <= 8; col++)
+                {
+                    sl.SetCellStyle(1, col, headerStyle);
+                }
+
+                int row = 2;
+                foreach (var item in rows)
+                {
+                    sl.SetRowHeight(row, 20);
+                    var isEven = row % 2 == 0;
+                    var rowBg = isEven ? whiteBgColor : zebraBgColor;
+
+                    // Col 1: Pedido (Centro, Verde/Negrita)
+                    sl.SetCellValue(row, 1, item.Pedido);
+                    var styleCol1 = sl.CreateStyle();
+                    styleCol1.Border.SetTopBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol1.Border.SetBottomBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol1.Border.SetLeftBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol1.Border.SetRightBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol1.Alignment.Vertical = VerticalAlignmentValues.Center;
+                    styleCol1.Fill.SetPattern(PatternValues.Solid, rowBg, Color.Empty);
+                    styleCol1.Alignment.Horizontal = HorizontalAlignmentValues.Center;
+                    styleCol1.Font.Bold = true;
+                    styleCol1.Font.FontColor = Color.FromArgb(22, 101, 52); // Green-800
+                    sl.SetCellStyle(row, 1, styleCol1);
+
+                    // Col 2: Cliente (Izquierda)
+                    sl.SetCellValue(row, 2, item.Cliente);
+                    var styleCol2 = sl.CreateStyle();
+                    styleCol2.Border.SetTopBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol2.Border.SetBottomBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol2.Border.SetLeftBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol2.Border.SetRightBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol2.Alignment.Vertical = VerticalAlignmentValues.Center;
+                    styleCol2.Fill.SetPattern(PatternValues.Solid, rowBg, Color.Empty);
+                    styleCol2.Alignment.Horizontal = HorizontalAlignmentValues.Left;
+                    sl.SetCellStyle(row, 2, styleCol2);
+
+                    // Col 3: Total Pedido (Derecha, Formato Moneda)
+                    sl.SetCellValue(row, 3, (double)item.TotalPedido);
+                    var styleCol3 = sl.CreateStyle();
+                    styleCol3.Border.SetTopBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol3.Border.SetBottomBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol3.Border.SetLeftBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol3.Border.SetRightBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol3.Alignment.Vertical = VerticalAlignmentValues.Center;
+                    styleCol3.Fill.SetPattern(PatternValues.Solid, rowBg, Color.Empty);
+                    styleCol3.Alignment.Horizontal = HorizontalAlignmentValues.Right;
+                    styleCol3.FormatCode = "\"$\"#,##0.00";
+                    sl.SetCellStyle(row, 3, styleCol3);
+
+                    // Col 4: Monto Cobrado (Derecha, Formato Moneda)
+                    sl.SetCellValue(row, 4, (double)item.MontoCobrado);
+                    var styleCol4 = sl.CreateStyle();
+                    styleCol4.Border.SetTopBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol4.Border.SetBottomBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol4.Border.SetLeftBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol4.Border.SetRightBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol4.Alignment.Vertical = VerticalAlignmentValues.Center;
+                    styleCol4.Fill.SetPattern(PatternValues.Solid, rowBg, Color.Empty);
+                    styleCol4.Alignment.Horizontal = HorizontalAlignmentValues.Right;
+                    styleCol4.FormatCode = "\"$\"#,##0.00";
+                    sl.SetCellStyle(row, 4, styleCol4);
+
+                    // Col 5: Deuda Pendiente (Derecha, Formato Moneda, Rojo/Negrita)
+                    sl.SetCellValue(row, 5, (double)item.DeudaPendiente);
+                    var styleCol5 = sl.CreateStyle();
+                    styleCol5.Border.SetTopBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol5.Border.SetBottomBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol5.Border.SetLeftBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol5.Border.SetRightBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol5.Alignment.Vertical = VerticalAlignmentValues.Center;
+                    styleCol5.Fill.SetPattern(PatternValues.Solid, rowBg, Color.Empty);
+                    styleCol5.Alignment.Horizontal = HorizontalAlignmentValues.Right;
+                    styleCol5.FormatCode = "\"$\"#,##0.00";
+                    styleCol5.Font.Bold = true;
+                    styleCol5.Font.FontColor = Color.FromArgb(185, 28, 28); // Red-700
+                    sl.SetCellStyle(row, 5, styleCol5);
+
+                    // Col 6: Fecha Creación (Centro)
+                    sl.SetCellValue(row, 6, item.FechaCreacion);
+                    var styleCol6 = sl.CreateStyle();
+                    styleCol6.Border.SetTopBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol6.Border.SetBottomBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol6.Border.SetLeftBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol6.Border.SetRightBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol6.Alignment.Vertical = VerticalAlignmentValues.Center;
+                    styleCol6.Fill.SetPattern(PatternValues.Solid, rowBg, Color.Empty);
+                    styleCol6.Alignment.Horizontal = HorizontalAlignmentValues.Center;
+                    sl.SetCellStyle(row, 6, styleCol6);
+
+                    // Col 7: Días Vencidos (Centro, Negrita)
+                    sl.SetCellValue(row, 7, item.DiasVencidos);
+                    var styleCol7 = sl.CreateStyle();
+                    styleCol7.Border.SetTopBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol7.Border.SetBottomBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol7.Border.SetLeftBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol7.Border.SetRightBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol7.Alignment.Vertical = VerticalAlignmentValues.Center;
+                    styleCol7.Fill.SetPattern(PatternValues.Solid, rowBg, Color.Empty);
+                    styleCol7.Alignment.Horizontal = HorizontalAlignmentValues.Center;
+                    styleCol7.Font.Bold = true;
+                    sl.SetCellStyle(row, 7, styleCol7);
+
+                    // Col 8: Estado (Centro)
+                    sl.SetCellValue(row, 8, item.Estado);
+                    var styleCol8 = sl.CreateStyle();
+                    styleCol8.Border.SetTopBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol8.Border.SetBottomBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol8.Border.SetLeftBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol8.Border.SetRightBorder(BorderStyleValues.Thin, borderColor);
+                    styleCol8.Alignment.Vertical = VerticalAlignmentValues.Center;
+                    styleCol8.Fill.SetPattern(PatternValues.Solid, rowBg, Color.Empty);
+                    styleCol8.Alignment.Horizontal = HorizontalAlignmentValues.Center;
+                    sl.SetCellStyle(row, 8, styleCol8);
+
+                    row++;
+                }
+
+                // Fila de Total
+                if (rows.Count > 0)
+                {
+                    int totalRow = row;
+                    sl.SetRowHeight(totalRow, 22);
+
+                    sl.SetCellValue(totalRow, 1, "TOTAL");
+                    sl.SetCellValue(totalRow, 2, $"{rows.Count} pedidos vencidos");
+                    sl.SetCellValue(totalRow, 3, (double)rows.Sum(r => r.TotalPedido));
+                    sl.SetCellValue(totalRow, 4, (double)rows.Sum(r => r.MontoCobrado));
+                    sl.SetCellValue(totalRow, 5, (double)rows.Sum(r => r.DeudaPendiente));
+
+                    for (int col = 1; col <= 8; col++)
+                    {
+                        var colTotalStyle = sl.CreateStyle();
+                        colTotalStyle.Font.Bold = true;
+                        colTotalStyle.Fill.SetPattern(PatternValues.Solid, Color.FromArgb(226, 232, 240), Color.Empty);
+                        colTotalStyle.Border.SetTopBorder(BorderStyleValues.Thin, Color.FromArgb(100, 116, 139));
+                        colTotalStyle.Border.SetBottomBorder(BorderStyleValues.Double, Color.FromArgb(100, 116, 139));
+                        colTotalStyle.Border.SetLeftBorder(BorderStyleValues.Thin, borderColor);
+                        colTotalStyle.Border.SetRightBorder(BorderStyleValues.Thin, borderColor);
+                        colTotalStyle.Alignment.Vertical = VerticalAlignmentValues.Center;
+
+                        if (col == 1 || col == 6 || col == 7 || col == 8)
+                            colTotalStyle.Alignment.Horizontal = HorizontalAlignmentValues.Center;
+                        else if (col == 2)
+                            colTotalStyle.Alignment.Horizontal = HorizontalAlignmentValues.Left;
+                        else
+                        {
+                            colTotalStyle.Alignment.Horizontal = HorizontalAlignmentValues.Right;
+                            colTotalStyle.FormatCode = "\"$\"#,##0.00";
+                            if (col == 5)
+                                colTotalStyle.Font.FontColor = Color.FromArgb(185, 28, 28);
+                        }
+
+                        sl.SetCellStyle(totalRow, col, colTotalStyle);
+                    }
+                }
+
+                // Ancho de columnas adaptado
+                sl.SetColumnWidth(1, 16);  // Pedido
+                sl.SetColumnWidth(2, 32);  // Cliente
+                sl.SetColumnWidth(3, 20);  // Total Pedido (USD)
+                sl.SetColumnWidth(4, 20);  // Monto Cobrado (USD)
+                sl.SetColumnWidth(5, 24);  // Deuda Pendiente (USD)
+                sl.SetColumnWidth(6, 18);  // Fecha Creación
+                sl.SetColumnWidth(7, 30);  // Días Vencidos
+                sl.SetColumnWidth(8, 18);  // Estado
+
+                sl.SaveAs(stream);
+            }
+
+            stream.Position = 0;
+            _logger.LogInformation("Reporte de Sistemas de Apartado Vencidos generado exitosamente. Filas: {RowCount}", rows.Count);
+            return stream;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al generar reporte de Sistemas de Apartado Vencidos");
+            throw;
+        }
+    }
+
+    private class ExpiredLayawayReportRow
+    {
+        public string Pedido { get; set; } = string.Empty;
+        public string Cliente { get; set; } = string.Empty;
+        public decimal TotalPedido { get; set; }
+        public decimal MontoCobrado { get; set; }
+        public decimal DeudaPendiente { get; set; }
+        public string FechaCreacion { get; set; } = string.Empty;
+        public int DiasVencidos { get; set; }
+        public string Estado { get; set; } = string.Empty;
     }
 }
 

@@ -259,6 +259,12 @@ public class OrderRepository : IOrderRepository
                 case "despachados":
                     filters.Add(fb.ElemMatch(o => o.Products, p => p.LocationStatus == "DESPACHADO"));
                     break;
+                case "sistema_apartado_vencido":
+                    var ninetyDaysAgo = DateTime.UtcNow.AddDays(-90);
+                    filters.Add(fb.Eq(o => o.SaleType, "sistema_apartado"));
+                    filters.Add(fb.Lt(o => o.CreatedAt, ninetyDaysAgo));
+                    filters.Add(fb.Nin(o => o.Status, new[] { "Declinado", "Cancelado", "Entregado", "Completado", "Completada" }));
+                    break;
             }
         }
 
@@ -434,6 +440,12 @@ public class OrderRepository : IOrderRepository
                     break;
                 case "despachados":
                     filters.Add(fb.ElemMatch(o => o.Products, p => p.LocationStatus == "DESPACHADO"));
+                    break;
+                case "sistema_apartado_vencido":
+                    var ninetyDaysAgo = DateTime.UtcNow.AddDays(-90);
+                    filters.Add(fb.Eq(o => o.SaleType, "sistema_apartado"));
+                    filters.Add(fb.Lt(o => o.CreatedAt, ninetyDaysAgo));
+                    filters.Add(fb.Nin(o => o.Status, new[] { "Declinado", "Cancelado", "Entregado", "Completado", "Completada" }));
                     break;
             }
         }

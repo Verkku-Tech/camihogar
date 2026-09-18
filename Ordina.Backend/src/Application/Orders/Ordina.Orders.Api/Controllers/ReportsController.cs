@@ -666,5 +666,31 @@ public class ReportsController : ControllerBase
             return StatusCode(500, new { message = "Error interno del servidor al obtener los datos del reporte" });
         }
     }
+
+    /// <summary>
+    /// Genera el reporte de Sistemas de Apartado Vencidos en formato Excel (.xlsx)
+    /// </summary>
+    /// <returns>Archivo Excel con el reporte estilizado</returns>
+    [HttpGet("Layaways/Expired/Excel")]
+    [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetExpiredLayawaysReportExcel()
+    {
+        try
+        {
+            var stream = await _reportService.GenerateExpiredLayawaysReportAsync();
+            var fileName = $"SA_Vencidos_{DateTime.UtcNow:yyyyMMdd}.xlsx";
+
+            return File(
+                stream,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al generar reporte de sistemas de apartado vencidos");
+            return StatusCode(500, new { message = "Error interno del servidor al generar el reporte" });
+        }
+    }
 }
 

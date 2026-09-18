@@ -1822,6 +1822,32 @@ export class ApiClient {
       `/api/Reports/Commissions/Referrers?${q.toString()}`,
     );
   }
+
+  async downloadExpiredLayawaysReportExcel(): Promise<Blob> {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const baseUrl = this.getBaseUrl("/api/Reports/Layaways/Expired/Excel");
+    const url = `${baseUrl}/api/Reports/Layaways/Expired/Excel`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let message = `Error ${response.status}`;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.message) message = parsed.message;
+      } catch {
+        if (text) message = text;
+      }
+      throw new Error(message);
+    }
+
+    return response.blob();
+  }
 }
 
 // Product Commission Types

@@ -52,82 +52,107 @@ export function Dashboard() {
     let cancelled = false;
     const controller = new AbortController();
 
+    const isAbort = (err: unknown) => {
+      if (!err || typeof err !== "object") return false;
+      const e = err as { name?: string; message?: string };
+      return (
+        e.name === "AbortError" ||
+        e.name === "CanceledError" ||
+        (typeof e.message === "string" && e.message.toLowerCase().includes("abort"))
+      );
+    };
+
     const loadPerTab = async () => {
-      try {
+      await Promise.all([
         // Orders tab: status Generado/Generada
-        const ordersResp = await apiClient.getOrdersPaged(
-          1, 50, undefined,
-          { status: "Generado", includeBudgets: false },
-          controller.signal,
-        );
-        if (!cancelled) {
-          setGeneratedOrders(ordersResp.orders.map(orderFromBackendDto));
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        console.error("Error loading generated orders:", error);
-        if (!cancelled) setGeneratedOrders([]);
-      }
+        apiClient
+          .getOrdersPaged(
+            1,
+            50,
+            undefined,
+            { status: "Generado", includeBudgets: false },
+            controller.signal,
+          )
+          .then((ordersResp) => {
+            if (!cancelled) {
+              setGeneratedOrders(ordersResp.orders.map(orderFromBackendDto));
+            }
+          })
+          .catch((error) => {
+            if (isAbort(error)) return;
+            console.error("Error loading generated orders:", error);
+            if (!cancelled) setGeneratedOrders([]);
+          }),
 
-      try {
         // Manufacturing tab: locationStatus FABRICACION, exclude Generado/Generada/Declinado
-        const mfgResp = await apiClient.getOrdersPaged(
-          1, 50, undefined,
-          {
-            locationStatus: "FABRICACION",
-            excludeStatuses: "Generado,Generada,Declinado",
-            includeBudgets: false,
-          },
-          controller.signal,
-        );
-        if (!cancelled) {
-          setManufacturingOrders(mfgResp.orders.map(orderFromBackendDto));
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        console.error("Error loading manufacturing orders:", error);
-        if (!cancelled) setManufacturingOrders([]);
-      }
+        apiClient
+          .getOrdersPaged(
+            1,
+            50,
+            undefined,
+            {
+              locationStatus: "FABRICACION",
+              excludeStatuses: "Generado,Generada,Declinado",
+              includeBudgets: false,
+            },
+            controller.signal,
+          )
+          .then((mfgResp) => {
+            if (!cancelled) {
+              setManufacturingOrders(mfgResp.orders.map(orderFromBackendDto));
+            }
+          })
+          .catch((error) => {
+            if (isAbort(error)) return;
+            console.error("Error loading manufacturing orders:", error);
+            if (!cancelled) setManufacturingOrders([]);
+          }),
 
-      try {
         // Dispatches tab: por_despachar preset, no budgets
-        const dispatchResp = await apiClient.getOrdersPaged(
-          1, 50, undefined,
-          { productFilterPreset: "por_despachar", includeBudgets: false },
-          controller.signal,
-        );
-        if (!cancelled) {
-          setDispatchOrders(dispatchResp.orders.map(orderFromBackendDto) as unknown as UnifiedOrder[]);
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        console.error("Error loading dispatch orders:", error);
-        if (!cancelled) setDispatchOrders([]);
-      }
+        apiClient
+          .getOrdersPaged(
+            1,
+            50,
+            undefined,
+            { productFilterPreset: "por_despachar", includeBudgets: false },
+            controller.signal,
+          )
+          .then((dispatchResp) => {
+            if (!cancelled) {
+              setDispatchOrders(
+                dispatchResp.orders.map(orderFromBackendDto) as unknown as UnifiedOrder[],
+              );
+            }
+          })
+          .catch((error) => {
+            if (isAbort(error)) return;
+            console.error("Error loading dispatch orders:", error);
+            if (!cancelled) setDispatchOrders([]);
+          }),
 
-      try {
-        // SA vencidos tab: solo SA con >90 días (filtrado server-side via dateTo)
-        const ninetyDaysAgo = new Date();
-        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-        const saDateTo = ninetyDaysAgo.toISOString().split('T')[0];
-
-        const saResp = await apiClient.getOrdersPaged(
-          1, 200, undefined,
-          {
-            saleType: "sistema_apartado",
-            dateTo: saDateTo,
-            includeBudgets: false,
-          },
-          controller.signal,
-        );
-        if (!cancelled) {
-          setSaOrders(saResp.orders.map(orderFromBackendDto));
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        console.error("Error loading SA orders:", error);
-        if (!cancelled) setSaOrders([]);
-      }
+        // SA vencidos tab: preset exacto sincronizado con KPI y Reporte Excel
+        apiClient
+          .getOrdersPaged(
+            1,
+            200,
+            undefined,
+            {
+              productFilterPreset: "sistema_apartado_vencido",
+              includeBudgets: false,
+            },
+            controller.signal,
+          )
+          .then((saResp) => {
+            if (!cancelled) {
+              setSaOrders(saResp.orders.map(orderFromBackendDto));
+            }
+          })
+          .catch((error) => {
+            if (isAbort(error)) return;
+            console.error("Error loading SA orders:", error);
+            if (!cancelled) setSaOrders([]);
+          }),
+      ]);
     };
 
     void loadPerTab();

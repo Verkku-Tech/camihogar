@@ -6,15 +6,25 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { type Order } from "@/lib/storage"
-import { getActivePaymentsList, getOrderPendingTotal, PAYMENT_BALANCE_EPSILON_BS } from "@/lib/order-payments"
+import {
+  getActivePaymentsList,
+  getOrderPendingTotal,
+  PAYMENT_BALANCE_EPSILON_BS,
+  PAYMENT_BALANCE_EPSILON_USD,
+} from "@/lib/order-payments"
+import { isUsdBaseOrder } from "@/lib/order-line-pricing"
 import { SA_LAYAWAY_DAYS, getDaysSinceOrder, getLayawayDaysPastWindow } from "@/lib/order-sa"
 import { formatCurrency, getActiveExchangeRates } from "@/lib/currency-utils"
 import {
   commercialRatesToExchangeRatesInput,
   formatOrderAmountForDisplay,
 } from "@/lib/order-currency-display"
-import { Eye, Download, AlertTriangle } from "lucide-react"
+import { Eye, Download, AlertTriangle, Loader2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { usePagination } from "@/hooks/use-pagination"
+import { TablePagination } from "@/components/ui/table-pagination"
+import { apiClient } from "@/lib/api-client"
+import { toast } from "sonner"
 
 type ExpiredLayawayOrder = Order & { daysExpired: number; pendingAmount: number }
 
@@ -22,10 +32,14 @@ interface ExpiredLayawaysTableProps {
   prefetchedOrders?: Order[] | null
 }
 
+const DEFAULT_ITEMS_PER_PAGE = 10
+
 export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(!prefetchedOrders)
+  const [isExportingExcel, setIsExportingExcel] = useState(false)
   const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
+  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
 
   const expiredLayaways = useMemo(() => {
     const orders = prefetchedOrders ?? []
@@ -34,18 +48,46 @@ export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableP
     return orders
       .filter((order) => {
         if (order.saleType !== "sistema_apartado") return false
-        if (order.status === "Cancelado") return false
+        const status = (order.status as string) || ""
+        if (
+          status === "Cancelado" ||
+          status === "Declinado" ||
+          status === "Entregado" ||
+          status === "Completado" ||
+          status === "Completada"
+        ) {
+          return false
+        }
         const pendingAmount = getOrderPendingTotal(order)
-        if (pendingAmount <= PAYMENT_BALANCE_EPSILON_BS) return false
-        return getDaysSinceOrder(order.createdAt, now) > SA_LAYAWAY_DAYS
+        const epsilon = isUsdBaseOrder(order)
+          ? PAYMENT_BALANCE_EPSILON_USD
+          : PAYMENT_BALANCE_EPSILON_BS
+        return pendingAmount > epsilon
       })
-      .map((order) => ({
-        ...order,
-        daysExpired: getLayawayDaysPastWindow(order.createdAt, now),
-        pendingAmount: getOrderPendingTotal(order),
-      }))
+      .map((order) => {
+        const orderTime = new Date(order.createdAt).getTime()
+        const daysPast = Math.max(
+          1,
+          Math.floor((now.getTime() - orderTime) / (1000 * 60 * 60 * 24)) - 90,
+        )
+        return {
+          ...order,
+          daysExpired: daysPast,
+          pendingAmount: getOrderPendingTotal(order),
+        }
+      })
       .sort((a, b) => b.daysExpired - a.daysExpired)
   }, [prefetchedOrders])
+
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedExpiredLayaways,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({ data: expiredLayaways, itemsPerPage })
 
   useEffect(() => {
     if (prefetchedOrders !== undefined) {
@@ -100,50 +142,26 @@ export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableP
     router.push(`/pedidos/${orderNumber}`)
   }
 
-  const exportToCSV = () => {
-    const headers = [
-      "Pedido",
-      "Cliente",
-      "Total Pedido",
-      "Monto Cobrado",
-      "Deuda Pendiente",
-      "Fecha Creación",
-      "Días vencidos (mora post 90 d)",
-      "Estado"
-    ]
-
-    const rows = expiredLayaways.map(order => {
-      const paidAmount = getActivePaymentsList(order).reduce((sum, p) => sum + (p.amount || 0), 0)
-      const totalFormatted = `${formatCurrency(order.total, order.baseCurrency || "Bs")}`
-      const paidFormatted = `${formatCurrency(paidAmount, order.baseCurrency || "Bs")}`
-      const pendingFormatted = `${formatCurrency(order.pendingAmount, order.baseCurrency || "Bs")}`
-      
-      return [
-        order.orderNumber,
-        order.clientName,
-        totalFormatted,
-        paidFormatted,
-        pendingFormatted,
-        formatDate(order.createdAt),
-        order.daysExpired.toString(),
-        order.status
-      ]
-    })
-
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
-    ].join("\n")
-
-    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" })
-    const link = document.createElement("a")
-    const url = URL.createObjectURL(blob)
-    link.setAttribute("href", url)
-    link.setAttribute("download", `SA_Vencidos_${new Date().toISOString().split("T")[0]}.csv`)
-    link.style.visibility = "hidden"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  const handleDownloadExcel = async () => {
+    setIsExportingExcel(true)
+    const toastId = toast.loading("Generando reporte Excel...")
+    try {
+      const blob = await apiClient.downloadExpiredLayawaysReportExcel()
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = downloadUrl
+      link.download = `SA_Vencidos_${new Date().toISOString().split("T")[0]}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(downloadUrl)
+      toast.success("Reporte Excel descargado exitosamente", { id: toastId })
+    } catch (error) {
+      console.error("Error downloading expired layaways excel report:", error)
+      toast.error("Error al generar el reporte Excel", { id: toastId })
+    } finally {
+      setIsExportingExcel(false)
+    }
   }
 
   /** `days` = días de mora después de los 90 días de plazo (mismo valor que en métricas). */
@@ -215,11 +233,16 @@ export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableP
           <Button
             variant="outline"
             size="sm"
-            onClick={exportToCSV}
+            onClick={handleDownloadExcel}
+            disabled={isExportingExcel}
             className="gap-2"
           >
-            <Download className="h-4 w-4" />
-            Exportar CSV
+            {isExportingExcel ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {isExportingExcel ? "Generando Excel..." : "Exportar Excel"}
           </Button>
         </div>
         <div className="overflow-x-auto">
@@ -236,7 +259,7 @@ export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableP
               </TableRow>
             </TableHeader>
             <TableBody>
-              {expiredLayaways.map((order) => (
+              {paginatedExpiredLayaways.map((order) => (
                 <TableRow key={order.id} className="hover:bg-muted/50">
                   <TableCell className="font-medium text-green-600">
                     {order.orderNumber}
@@ -270,6 +293,18 @@ export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableP
               ))}
             </TableBody>
           </Table>
+        </div>
+        <div className="border-t px-4 py-3">
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={goToPage}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
         </div>
       </CardContent>
     </Card>
