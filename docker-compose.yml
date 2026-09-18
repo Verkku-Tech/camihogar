@@ -22,9 +22,13 @@ services:
     ports:
       - "18888:18888"
     environment:
+      - ASPNETCORE_URLS=http://+:18888
+      - DOTNET_DASHBOARD_OTLP_ENDPOINT_URL=http://+:4317
+      - DASHBOARD__OTLP__PRIMARYENDPOINTURL=http://+:4317
+      - DOTNET_DASHBOARD_OTLP_AUTH_MODE=Unsecured
+      - DASHBOARD__OTLP__AUTHMODE=Unsecured
       - DASHBOARD__FRONTEND__AUTHMODE=BrowserToken
       - DASHBOARD__FRONTEND__BROWSERTOKEN=Camihogar_Aspire_2026_x89aF72kQz!
-      - DASHBOARD__OTLP__AUTHMODE=Unsecured
     networks:
       - ordina-network
 
@@ -46,6 +50,7 @@ services:
       - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
       - OTEL_SERVICE_NAME=apigateway
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=apigateway
     depends_on:
       security-api:
         condition: service_healthy
@@ -83,6 +88,7 @@ services:
       - MongoDb__DatabaseName=ordina_db
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
       - OTEL_SERVICE_NAME=security-api
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=security-api
     depends_on:
       - mongodb
     networks:
@@ -110,6 +116,7 @@ services:
       - MongoDb__DatabaseName=ordina_db
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
       - OTEL_SERVICE_NAME=users-api
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=users-api
     depends_on:
       - mongodb
     networks:
@@ -137,6 +144,7 @@ services:
       - MongoDb__DatabaseName=ordina_db
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
       - OTEL_SERVICE_NAME=providers-api
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=providers-api
     depends_on:
       - mongodb
     networks:
@@ -164,6 +172,7 @@ services:
       - MongoDb__DatabaseName=ordina_db
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
       - OTEL_SERVICE_NAME=orders-api
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=orders-api
     depends_on:
       - mongodb
     networks:
@@ -191,6 +200,7 @@ services:
       - MongoDb__DatabaseName=ordina_db
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
       - OTEL_SERVICE_NAME=payments-api
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=payments-api
     depends_on:
       - mongodb
     networks:
@@ -218,6 +228,7 @@ services:
       - MongoDb__DatabaseName=ordina_db
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
       - OTEL_SERVICE_NAME=stores-api
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=stores-api
     depends_on:
       - mongodb
     networks:
