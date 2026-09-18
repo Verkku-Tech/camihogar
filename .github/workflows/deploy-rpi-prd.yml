@@ -17,7 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-      has-changes: ${{ steps.set-matrix.outputs.has-changes }}
+      has-build-changes: ${{ steps.set-matrix.outputs.has-build-changes }}
+      should-deploy: ${{ steps.set-matrix.outputs.should-deploy }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,52 +31,39 @@ jobs:
               - 'Ordina.Backend/src/Infrastructure/**'
               - 'Ordina.Backend/*.props'
               - 'Ordina.Backend/*.sln'
-              - 'docker-compose.yml'
-              - '.github/workflows/deploy-rpi-prd.yml'
             users-api:
               - 'Ordina.Backend/src/Application/Users/**'
               - 'Ordina.Backend/src/Infrastructure/**'
               - 'Ordina.Backend/*.props'
               - 'Ordina.Backend/*.sln'
-              - 'docker-compose.yml'
-              - '.github/workflows/deploy-rpi-prd.yml'
             providers-api:
               - 'Ordina.Backend/src/Application/Providers/**'
               - 'Ordina.Backend/src/Infrastructure/**'
               - 'Ordina.Backend/*.props'
               - 'Ordina.Backend/*.sln'
-              - 'docker-compose.yml'
-              - '.github/workflows/deploy-rpi-prd.yml'
             orders-api:
               - 'Ordina.Backend/src/Application/Orders/**'
               - 'Ordina.Backend/src/Infrastructure/**'
               - 'Ordina.Backend/*.props'
               - 'Ordina.Backend/*.sln'
-              - 'docker-compose.yml'
-              - '.github/workflows/deploy-rpi-prd.yml'
             payments-api:
               - 'Ordina.Backend/src/Application/Payments/**'
               - 'Ordina.Backend/src/Infrastructure/**'
               - 'Ordina.Backend/*.props'
               - 'Ordina.Backend/*.sln'
-              - 'docker-compose.yml'
-              - '.github/workflows/deploy-rpi-prd.yml'
             stores-api:
               - 'Ordina.Backend/src/Application/Stores/**'
               - 'Ordina.Backend/src/Infrastructure/**'
               - 'Ordina.Backend/*.props'
               - 'Ordina.Backend/*.sln'
-              - 'docker-compose.yml'
-              - '.github/workflows/deploy-rpi-prd.yml'
             apigateway:
               - 'Ordina.Backend/src/Presentation/Ordina.ApiGateway/**'
               - 'Ordina.Backend/src/Infrastructure/**'
               - 'Ordina.Backend/*.props'
               - 'Ordina.Backend/*.sln'
-              - 'docker-compose.yml'
-              - '.github/workflows/deploy-rpi-prd.yml'
             frontend:
               - 'Ordina.Frontend/**'
+            compose:
               - 'docker-compose.yml'
               - '.github/workflows/deploy-rpi-prd.yml'
 
@@ -110,17 +98,23 @@ jobs:
 
           if [ ${#SERVICES[@]} -eq 0 ]; then
             echo "matrix=[]" >> "$GITHUB_OUTPUT"
-            echo "has-changes=false" >> "$GITHUB_OUTPUT"
+            echo "has-build-changes=false" >> "$GITHUB_OUTPUT"
           else
             JSON=$(IFS=,; echo "[${SERVICES[*]}]")
             echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
-            echo "has-changes=true" >> "$GITHUB_OUTPUT"
+            echo "has-build-changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "${{ steps.filter.outputs.compose }}" == "true" ] || [ ${#SERVICES[@]} -gt 0 ]; then
+            echo "should-deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should-deploy=false" >> "$GITHUB_OUTPUT"
           fi
 
   build-and-push:
     name: Build & Push ${{ matrix.service.name }} (ARM64)
     needs: changes
-    if: needs.changes.outputs.has-changes == 'true'
+    if: needs.changes.outputs.has-build-changes == 'true'
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -161,7 +155,7 @@ jobs:
   deploy:
     name: Deploy to Raspberry Pi 5
     needs: [changes, build-and-push]
-    if: always() && !cancelled() && needs.changes.outputs.has-changes == 'true' && !contains(needs.*.result, 'failure')
+    if: always() && !cancelled() && needs.changes.outputs.should-deploy == 'true' && !contains(needs.*.result, 'failure')
     runs-on: [self-hosted, Linux, ARM64]
     steps:
       - uses: actions/checkout@v4
