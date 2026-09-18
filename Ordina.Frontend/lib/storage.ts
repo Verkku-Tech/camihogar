@@ -2176,11 +2176,23 @@ const LOC_STATUS_MAP: Record<
   | "DISPONIBILIDAD INMEDIATA"
   | "EN TIENDA"
   | "FABRICACION"
+  | "EN DESPACHO"
+  | "DESPACHADO"
   | undefined
 > = {
   en_tienda: "EN TIENDA",
+  "en tienda": "EN TIENDA",
   mandar_a_fabricar: "FABRICACION",
-  "SIN DEFINIR": "DISPONIBILIDAD INMEDIATA",
+  fabricacion: "FABRICACION",
+  "sin definir": "DISPONIBILIDAD INMEDIATA",
+  "disponibilidad inmediata": "DISPONIBILIDAD INMEDIATA",
+  disponibilidad_inmediata: "DISPONIBILIDAD INMEDIATA",
+  en_despacho: "EN DESPACHO",
+  "en despacho": "EN DESPACHO",
+  "en ruta": "EN DESPACHO",
+  despachado: "DESPACHADO",
+  despachados: "DESPACHADO",
+  entregado: "DESPACHADO",
 };
 
 export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
@@ -2206,11 +2218,13 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
         p.manufacturingStatus?.trim().toLowerCase() ?? ""
       ],
       locationStatus:
-        LOC_STATUS_MAP[p.locationStatus?.toLowerCase() ?? ""] ??
+        LOC_STATUS_MAP[p.locationStatus?.trim().toLowerCase() ?? ""] ??
         (p.locationStatus as
           | "DISPONIBILIDAD INMEDIATA"
           | "EN TIENDA"
           | "FABRICACION"
+          | "EN DESPACHO"
+          | "DESPACHADO"
           | undefined) ??
         "DISPONIBILIDAD INMEDIATA",
       dispatchOrigin: p.dispatchOrigin as

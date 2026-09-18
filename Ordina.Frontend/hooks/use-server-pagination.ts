@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface UseServerPaginationOptions<T> {
   /** Function to fetch a single page from API */
@@ -10,18 +10,17 @@ interface UseServerPaginationOptions<T> {
     totalPages: number;
   }>;
   /** Function to fetch total count (fast metadata endpoint) */
-  fetchCount: (signal?: AbortSignal) => Promise<{
+  fetchCount?: (signal?: AbortSignal) => Promise<{
     totalCount: number;
     totalPages: number;
   }>;
-  /** Number of pages to load in parallel (default: 3) */
-  batchPages?: number;
-  /** Prefetch when this many pages from edge (default: 1) */
-  prefetchThreshold?: number;
   /** Enabled flag (default: true) */
   enabled?: boolean;
   /** Items per page – when changed, the hook re-fetches from page 1 */
   itemsPerPage?: number;
+  /** Legacy options preserved for backward compatibility */
+  batchPages?: number;
+  prefetchThreshold?: number;
 }
 
 interface UseServerPaginationResult<T> {
@@ -30,6 +29,7 @@ interface UseServerPaginationResult<T> {
   totalPages: number;
   totalCount: number;
   currentItems: T[];
+  isLoading: boolean;
   isLoadingCount: boolean;
   isLoadingPages: boolean;
   loadingPages: Set<number>;
@@ -40,193 +40,164 @@ interface UseServerPaginationResult<T> {
   refetch: () => void;
 }
 
+const isAbortError = (err: unknown): boolean => {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { name?: string; message?: string };
+  return (
+    e.name === "AbortError" ||
+    e.name === "CanceledError" ||
+    (typeof e.message === "string" && e.message.toLowerCase().includes("abort"))
+  );
+};
+
 export function useServerPagination<T>(
   options: UseServerPaginationOptions<T>,
 ): UseServerPaginationResult<T> {
   const {
     fetchPage,
     fetchCount,
-    batchPages = 3,
-    prefetchThreshold = 1,
     enabled = true,
     itemsPerPage,
   } = options;
 
-  const [pages, setPages] = useState<Map<number, T[]>>(new Map());
+  const [currentItems, setCurrentItems] = useState<T[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [isLoadingCount, setIsLoadingCount] = useState(true);
-  const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set());
+  const [isLoading, setIsLoading] = useState(false);
 
-  const countAbortRef = useRef<AbortController | null>(null);
-  const batchAbortRef = useRef<AbortController | null>(null);
-  const loadedBatchesRef = useRef<Set<number>>(new Set());
+  const abortControllerRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
+
+  // Track latest fetch callbacks to avoid unnecessary effect triggers
+  const fetchPageRef = useRef(fetchPage);
+  fetchPageRef.current = fetchPage;
+
+  const fetchCountRef = useRef(fetchCount);
+  fetchCountRef.current = fetchCount;
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      countAbortRef.current?.abort();
-      batchAbortRef.current?.abort();
+      abortControllerRef.current?.abort();
     };
   }, []);
 
-  // Load count – independent abort controller so refetch() doesn't cancel it
-  useEffect(() => {
-    if (!enabled) return;
+  // Core fetch function for a specific page
+  const loadData = useCallback(
+    async (pageToLoad: number, isNewQuery: boolean) => {
+      if (!enabled) return;
 
-    const controller = new AbortController();
-    countAbortRef.current = controller;
-
-    const loadCount = async () => {
-      setIsLoadingCount(true);
-      try {
-        const count = await fetchCount(controller.signal);
-        if (mountedRef.current && !controller.signal.aborted) {
-          setTotalCount(count.totalCount);
-          setTotalPages(count.totalPages);
-        }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        console.error("Failed to load count:", err);
-      } finally {
-        if (mountedRef.current && !controller.signal.aborted) {
-          setIsLoadingCount(false);
-        }
-      }
-    };
-
-    loadCount();
-    return () => controller.abort();
-  }, [fetchCount, enabled]);
-
-  // Load batch of pages
-  const loadBatch = useCallback(
-    async (startPage: number) => {
-      if (!enabled || totalPages === 0) return;
-
-      const batchKey = Math.floor((startPage - 1) / batchPages);
-      if (loadedBatchesRef.current.has(batchKey)) return;
-
+      // Abort any in-flight request
+      abortControllerRef.current?.abort();
       const controller = new AbortController();
-      batchAbortRef.current = controller;
+      abortControllerRef.current = controller;
 
-      const pagesToLoad = Array.from({ length: batchPages }, (_, i) => startPage + i).filter(
-        (p) => p <= totalPages,
-      );
-
-      if (pagesToLoad.length === 0) return;
-
-      setLoadingPages((prev) => new Set([...prev, ...pagesToLoad]));
+      setIsLoading(true);
+      if (isNewQuery) {
+        setCurrentPage(1);
+      }
 
       try {
-        const results = await Promise.all(
-          pagesToLoad.map((page) =>
-            fetchPage(page, controller.signal).then((result) => ({
-              page,
-              items: result.items,
-            }))
-          ),
-        );
+        if (isNewQuery && fetchCountRef.current) {
+          // Execute count and page 1 in parallel for fresh queries
+          const [countRes, pageRes] = await Promise.all([
+            fetchCountRef.current(controller.signal).catch((err) => {
+              if (isAbortError(err)) throw err;
+              console.error("useServerPagination: fetchCount error:", err);
+              return { totalCount: 0, totalPages: 0 };
+            }),
+            fetchPageRef.current(pageToLoad, controller.signal).catch((err) => {
+              if (isAbortError(err)) throw err;
+              console.error("useServerPagination: fetchPage error:", err);
+              return { items: [], totalCount: 0, totalPages: 0 };
+            }),
+          ]);
 
-        if (mountedRef.current && !controller.signal.aborted) {
-          setPages((prev) => {
-            const next = new Map(prev);
-            for (const result of results) {
-              next.set(result.page, result.items);
-            }
-            return next;
+          if (mountedRef.current && !controller.signal.aborted) {
+            const count =
+              countRes.totalCount > 0 ? countRes.totalCount : pageRes.totalCount;
+            const pages =
+              countRes.totalPages > 0
+                ? countRes.totalPages
+                : pageRes.totalPages || (count > 0 ? 1 : 0);
+
+            setTotalCount(count);
+            setTotalPages(pages);
+            setCurrentItems(pageRes.items ?? []);
+            setCurrentPage(pageToLoad);
+          }
+        } else {
+          // Single page load (page navigation)
+          const pageRes = await fetchPageRef.current(
+            pageToLoad,
+            controller.signal,
+          ).catch((err) => {
+            if (isAbortError(err)) throw err;
+            console.error("useServerPagination: fetchPage error:", err);
+            return { items: [], totalCount: 0, totalPages: 0 };
           });
-          loadedBatchesRef.current.add(batchKey);
+
+          if (mountedRef.current && !controller.signal.aborted) {
+            if (pageRes.totalCount > 0) setTotalCount(pageRes.totalCount);
+            if (pageRes.totalPages > 0) setTotalPages(pageRes.totalPages);
+            setCurrentItems(pageRes.items ?? []);
+            setCurrentPage(pageToLoad);
+          }
         }
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        console.error("Failed to load batch:", err);
+        if (isAbortError(err)) return;
+        console.error("useServerPagination: query execution failed:", err);
       } finally {
-        if (mountedRef.current && !controller.signal.aborted) {
-          setLoadingPages((prev) => {
-            const next = new Set(prev);
-            for (const p of pagesToLoad) next.delete(p);
-            return next;
-          });
+        if (mountedRef.current && abortControllerRef.current === controller) {
+          setIsLoading(false);
         }
       }
     },
-    [fetchPage, totalPages, batchPages, enabled],
+    [enabled],
   );
 
-  // Navigate to page
+  // Trigger new query when fetchPage, fetchCount, or enabled changes
+  useEffect(() => {
+    if (enabled) {
+      void loadData(1, true);
+    } else {
+      abortControllerRef.current?.abort();
+      setIsLoading(false);
+    }
+  }, [loadData, enabled, fetchPage, fetchCount, itemsPerPage]);
+
   const goToPage = useCallback(
     (page: number) => {
-      if (page < 1 || page > totalPages) return;
-      setCurrentPage(page);
-
-      const batchStart = Math.floor((page - 1) / batchPages) * batchPages + 1;
-      loadBatch(batchStart);
-
-      if (page >= batchStart + batchPages - prefetchThreshold) {
-        const nextBatchStart = batchStart + batchPages;
-        if (nextBatchStart <= totalPages) {
-          loadBatch(nextBatchStart);
-        }
-      }
+      if (page < 1 || (totalPages > 0 && page > totalPages)) return;
+      void loadData(page, false);
     },
-    [totalPages, batchPages, prefetchThreshold, loadBatch],
+    [totalPages, loadData],
   );
 
-  // Load initial batch
-  useEffect(() => {
-    if (totalCount > 0 && pages.size === 0 && enabled) {
-      loadBatch(1);
-    }
-  }, [totalCount, pages.size, loadBatch, enabled]);
-
-  // Refetch: abort in-flight requests, clear all cached data and reload from page 1
   const refetch = useCallback(() => {
-    batchAbortRef.current?.abort();
-    countAbortRef.current?.abort();
-    loadedBatchesRef.current.clear();
-    setPages(new Map());
-    setCurrentPage(1);
-  }, []);
+    void loadData(1, true);
+  }, [loadData]);
 
-  // Re-fetch when itemsPerPage changes
-  const prevItemsPerPageRef = useRef(itemsPerPage);
-  useEffect(() => {
-    if (itemsPerPage !== undefined && prevItemsPerPageRef.current !== undefined && itemsPerPage !== prevItemsPerPageRef.current) {
-      refetch();
-    }
-    prevItemsPerPageRef.current = itemsPerPage;
-  }, [itemsPerPage, refetch]);
-
-  // Re-fetch when fetchPage changes (filters changed)
-  const prevFetchPageRef = useRef(fetchPage);
-  useEffect(() => {
-    if (prevFetchPageRef.current !== fetchPage) {
-      refetch();
-    }
-    prevFetchPageRef.current = fetchPage;
-  }, [fetchPage, refetch]);
-
-  const currentItems = useMemo(() => {
-    return pages.get(currentPage) || [];
-  }, [pages, currentPage]);
+  // Backward compatibility: construct pages map from currentItems
+  const pagesMap = new Map<number, T[]>([[currentPage, currentItems]]);
+  const loadingPagesSet = isLoading ? new Set([currentPage]) : new Set<number>();
 
   return {
-    pages,
+    pages: pagesMap,
     currentPage,
     totalPages,
     totalCount,
     currentItems,
-    isLoadingCount,
-    isLoadingPages: loadingPages.size > 0,
-    loadingPages,
+    isLoading,
+    isLoadingCount: isLoading,
+    isLoadingPages: isLoading,
+    loadingPages: loadingPagesSet,
     goToPage,
     nextPage: () => goToPage(currentPage + 1),
     previousPage: () => goToPage(currentPage - 1),
-    cancel: () => batchAbortRef.current?.abort(),
+    cancel: () => abortControllerRef.current?.abort(),
     refetch,
   };
 }

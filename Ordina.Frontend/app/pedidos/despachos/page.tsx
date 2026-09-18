@@ -95,14 +95,15 @@ const getStatusColor = (status: string) => {
 
 // Helper: Determina en qué pestaña cae un producto individual
 const getProductDispatchStatus = (product: OrderProduct): TabType | "none" => {
-  if (product.locationStatus === "DESPACHADO") return "despachados"
-  if (product.locationStatus === "EN DESPACHO") return "en_despacho"
+  const loc = product.locationStatus?.trim().toUpperCase()
+  if (loc === "DESPACHADO" || loc === "DESPACHADOS" || loc === "ENTREGADO") return "despachados"
+  if (loc === "EN DESPACHO" || loc === "EN_DESPACHO" || loc === "EN RUTA") return "en_despacho"
 
   // Condicionales para "por_despachar" (Listos)
-  if (!product.locationStatus) return "por_despachar"
-  if (product.locationStatus === "EN TIENDA") return "por_despachar"
-  if (product.locationStatus === "DISPONIBILIDAD INMEDIATA") return "por_despachar"
-  if (product.locationStatus === "FABRICACION" && product.manufacturingStatus === "almacen_no_fabricado") {
+  if (!loc) return "por_despachar"
+  if (loc === "EN TIENDA" || loc === "EN_TIENDA") return "por_despachar"
+  if (loc === "DISPONIBILIDAD INMEDIATA" || loc === "DISPONIBILIDAD_INMEDIATA") return "por_despachar"
+  if (loc === "FABRICACION" && ((product.manufacturingStatus as string) === "almacen_no_fabricado" || (product.manufacturingStatus as string) === "fabricado")) {
     return "por_despachar"
   }
 
@@ -275,8 +276,8 @@ const isOrderInTab = (order: UnifiedOrder, tab: TabType): boolean => {
   if (isReservationOrder(order)) return false
   if (order.status === "Generado" || order.status === "Generada") return false
 
-  // Si pedimos ver despachados y la orden está completada entera, la mostramos ahí
-  if (tab === "despachados" && (order.status === "Completada" || order.status === "Completado")) return true
+  // Si pedimos ver despachados y la orden está completada/entregada entera, la mostramos ahí
+  if (tab === "despachados" && (order.status === "Completada" || order.status === "Completado" || order.status === "Entregado")) return true
 
   if (!order.products || order.products.length === 0) return false
 
@@ -372,28 +373,30 @@ export default function DespachosPage() {
   // Server-side pagination: fetch pages from API, convert to UnifiedOrder
   const fetchPage = useCallback(async (page: number, signal?: AbortSignal) => {
     const response = await apiClient.getOrdersPaged(page, itemsPerPage, undefined, serverFilters, signal)
-    const unified = response.orders.map(orderDtoToUnifiedOrder)
+    const unified = (response.orders ?? []).map(orderDtoToUnifiedOrder)
     return {
       items: unified,
-      totalCount: response.totalCount,
-      totalPages: response.totalPages,
+      totalCount: response.totalCount ?? 0,
+      totalPages: response.totalPages ?? Math.max(1, Math.ceil((response.totalCount ?? 0) / itemsPerPage)),
     }
   }, [itemsPerPage, serverFilters])
 
   const fetchCount = useCallback(async (signal?: AbortSignal) => {
     const response = await apiClient.getOrderCount(serverFilters, signal, itemsPerPage)
     return {
-      totalCount: response.totalCount,
-      totalPages: response.totalPages,
+      totalCount: response.totalCount ?? 0,
+      totalPages: response.totalPages ?? Math.max(1, Math.ceil((response.totalCount ?? 0) / itemsPerPage)),
     }
   }, [itemsPerPage, serverFilters])
+
+  const textFiltersSettled = searchTerm === debouncedSearchTerm
 
   const pagination = useServerPagination({
     fetchPage,
     fetchCount,
     batchPages: 3,
     prefetchThreshold: 1,
-    enabled: true,
+    enabled: textFiltersSettled,
     itemsPerPage,
   })
 
@@ -432,8 +435,8 @@ export default function DespachosPage() {
   // Sync server-paginated orders with local state
   useEffect(() => {
     setOrders(pagination.currentItems.filter((order) => order.type === "order"))
-    setIsLoading(pagination.isLoadingCount || pagination.isLoadingPages)
-  }, [pagination.currentItems, pagination.isLoadingCount, pagination.isLoadingPages])
+    setIsLoading(!textFiltersSettled || pagination.isLoadingCount || pagination.isLoadingPages)
+  }, [pagination.currentItems, pagination.isLoadingCount, pagination.isLoadingPages, textFiltersSettled])
 
   /** Online Seller: pedidos del equipo online (ver). */
   const visibleOrders = useMemo(() => {
@@ -523,11 +526,26 @@ export default function DespachosPage() {
     const rows: DeliveredRow[] = []
     for (const order of filteredOrders) {
       if (order.type !== "order") continue
+      const isOrderDelivered =
+        order.status === "Completada" ||
+        order.status === "Completado" ||
+        order.status === "Entregado"
+
       for (const product of order.products) {
-        if (getProductDispatchStatus(product) !== "despachados") continue
+        const isProductDelivered =
+          getProductDispatchStatus(product) === "despachados" || isOrderDelivered
+        if (!isProductDelivered) continue
+
+        const itemDeliveredDate =
+          product.deliveredAt ||
+          order.completedAt ||
+          order.dispatchDate ||
+          order.updatedAt ||
+          order.createdAt
+
         if (
           !matchesLocalDateRange(
-            product.deliveredAt,
+            itemDeliveredDate,
             deliveredDateFrom,
             deliveredDateTo,
           )
@@ -585,11 +603,26 @@ export default function DespachosPage() {
           continue
         }
 
+        const isOrderDelivered =
+          order.status === "Completada" ||
+          order.status === "Completado" ||
+          order.status === "Entregado"
+
         for (const product of order.products) {
-          if (getProductDispatchStatus(product) !== "despachados") continue
+          const isProductDelivered =
+            getProductDispatchStatus(product) === "despachados" || isOrderDelivered
+          if (!isProductDelivered) continue
+
+          const itemDeliveredDate =
+            product.deliveredAt ||
+            order.completedAt ||
+            order.dispatchDate ||
+            order.updatedAt ||
+            order.createdAt
+
           if (
             !matchesLocalDateRange(
-              product.deliveredAt,
+              itemDeliveredDate,
               deliveredDateFrom,
               deliveredDateTo,
             )

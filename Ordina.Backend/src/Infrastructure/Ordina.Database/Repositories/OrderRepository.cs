@@ -137,12 +137,17 @@ public class OrderRepository : IOrderRepository
                 foreach (var token in searchTokens)
                 {
                     var regex = AccentInsensitiveRegex.ToBsonRegex(token);
+                    var cleanToken = Regex.Replace(token, @"^(#+|ORD-|PED-)", "", RegexOptions.IgnoreCase).Trim();
                     var tokenOr = new List<FilterDefinition<Order>>
                     {
                         fb.Regex(o => o.OrderNumber, regex),
                         fb.Regex(o => o.ClientName, regex),
                         fb.Regex(o => o.VendorName, regex),
                     };
+                    if (!string.IsNullOrEmpty(cleanToken) && cleanToken != token)
+                    {
+                        tokenOr.Add(fb.Regex(o => o.OrderNumber, AccentInsensitiveRegex.ToBsonRegex(cleanToken)));
+                    }
                     if (listFilter.MatchingClientIds is { Count: > 0 })
                     {
                         tokenOr.Add(fb.In(o => o.ClientId, listFilter.MatchingClientIds));
@@ -308,12 +313,17 @@ public class OrderRepository : IOrderRepository
                 foreach (var token in searchTokens)
                 {
                     var regex = AccentInsensitiveRegex.ToBsonRegex(token);
+                    var cleanToken = Regex.Replace(token, @"^(#+|ORD-|PED-)", "", RegexOptions.IgnoreCase).Trim();
                     var tokenOr = new List<FilterDefinition<Order>>
                     {
                         fb.Regex(o => o.OrderNumber, regex),
                         fb.Regex(o => o.ClientName, regex),
                         fb.Regex(o => o.VendorName, regex),
                     };
+                    if (!string.IsNullOrEmpty(cleanToken) && cleanToken != token)
+                    {
+                        tokenOr.Add(fb.Regex(o => o.OrderNumber, AccentInsensitiveRegex.ToBsonRegex(cleanToken)));
+                    }
                     if (listFilter.MatchingClientIds is { Count: > 0 })
                     {
                         tokenOr.Add(fb.In(o => o.ClientId, listFilter.MatchingClientIds));

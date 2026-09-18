@@ -1,5 +1,5 @@
 // Service Worker — plantilla. prebuild genera public/sw.js con APP_VERSION real.
-const APP_VERSION = "20260917-232010-00d1ac7"
+const APP_VERSION = "20260918-101004-6917612"
 const CACHE_NAME = `camihogar-static-${APP_VERSION}`
 const API_CACHE_NAME = `camihogar-api-${APP_VERSION}`
 const RUNTIME_CACHE = `camihogar-runtime-${APP_VERSION}`
