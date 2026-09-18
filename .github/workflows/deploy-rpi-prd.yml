@@ -16,15 +16,8 @@ jobs:
     name: Detect Changed Services
     runs-on: ubuntu-latest
     outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
-      security-api: ${{ steps.filter.outputs.security-api }}
-      users-api: ${{ steps.filter.outputs.users-api }}
-      providers-api: ${{ steps.filter.outputs.providers-api }}
-      orders-api: ${{ steps.filter.outputs.orders-api }}
-      payments-api: ${{ steps.filter.outputs.payments-api }}
-      stores-api: ${{ steps.filter.outputs.stores-api }}
-      apigateway: ${{ steps.filter.outputs.apigateway }}
-      any-changed: ${{ steps.filter.outputs.any-changed }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      has-changes: ${{ steps.set-matrix.outputs.has-changes }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,10 +25,6 @@ jobs:
         id: filter
         with:
           filters: |
-            frontend:
-              - 'Ordina.Frontend/**'
-              - 'docker-compose.yml'
-              - '.github/workflows/deploy-rpi-prd.yml'
             security-api:
               - 'Ordina.Backend/src/Application/Security/**'
               - 'Ordina.Backend/src/Infrastructure/**'
@@ -85,16 +74,53 @@ jobs:
               - 'Ordina.Backend/*.sln'
               - 'docker-compose.yml'
               - '.github/workflows/deploy-rpi-prd.yml'
-            any-changed:
+            frontend:
               - 'Ordina.Frontend/**'
-              - 'Ordina.Backend/**'
               - 'docker-compose.yml'
               - '.github/workflows/deploy-rpi-prd.yml'
+
+      - name: Build Matrix JSON
+        id: set-matrix
+        run: |
+          SERVICES=()
+          if [ "${{ steps.filter.outputs.security-api }}" == "true" ]; then
+            SERVICES+=('{"name":"security-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Security/Ordina.Security.Api/Dockerfile"}')
+          fi
+          if [ "${{ steps.filter.outputs.users-api }}" == "true" ]; then
+            SERVICES+=('{"name":"users-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Users/Ordina.Users.Api/Dockerfile"}')
+          fi
+          if [ "${{ steps.filter.outputs.providers-api }}" == "true" ]; then
+            SERVICES+=('{"name":"providers-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Providers/Ordina.Providers.Api/Dockerfile"}')
+          fi
+          if [ "${{ steps.filter.outputs.orders-api }}" == "true" ]; then
+            SERVICES+=('{"name":"orders-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Orders/Ordina.Orders.Api/Dockerfile"}')
+          fi
+          if [ "${{ steps.filter.outputs.payments-api }}" == "true" ]; then
+            SERVICES+=('{"name":"payments-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Payments/Ordina.Payments.Api/Dockerfile"}')
+          fi
+          if [ "${{ steps.filter.outputs.stores-api }}" == "true" ]; then
+            SERVICES+=('{"name":"stores-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Stores/Ordina.Stores.Api/Dockerfile"}')
+          fi
+          if [ "${{ steps.filter.outputs.apigateway }}" == "true" ]; then
+            SERVICES+=('{"name":"apigateway","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Presentation/Ordina.ApiGateway/Dockerfile"}')
+          fi
+          if [ "${{ steps.filter.outputs.frontend }}" == "true" ]; then
+            SERVICES+=('{"name":"frontend","context":"./Ordina.Frontend","file":"./Ordina.Frontend/Dockerfile"}')
+          fi
+
+          if [ ${#SERVICES[@]} -eq 0 ]; then
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+            echo "has-changes=false" >> "$GITHUB_OUTPUT"
+          else
+            JSON=$(IFS=,; echo "[${SERVICES[*]}]")
+            echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
+            echo "has-changes=true" >> "$GITHUB_OUTPUT"
+          fi
 
   build-and-push:
     name: Build & Push ${{ matrix.service.name }} (ARM64)
     needs: changes
-    if: needs.changes.outputs[matrix.service.name] == 'true'
+    if: needs.changes.outputs.has-changes == 'true'
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -102,31 +128,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service:
-          - name: security-api
-            context: ./Ordina.Backend
-            file: ./Ordina.Backend/src/Application/Security/Ordina.Security.Api/Dockerfile
-          - name: users-api
-            context: ./Ordina.Backend
-            file: ./Ordina.Backend/src/Application/Users/Ordina.Users.Api/Dockerfile
-          - name: providers-api
-            context: ./Ordina.Backend
-            file: ./Ordina.Backend/src/Application/Providers/Ordina.Providers.Api/Dockerfile
-          - name: orders-api
-            context: ./Ordina.Backend
-            file: ./Ordina.Backend/src/Application/Orders/Ordina.Orders.Api/Dockerfile
-          - name: payments-api
-            context: ./Ordina.Backend
-            file: ./Ordina.Backend/src/Application/Payments/Ordina.Payments.Api/Dockerfile
-          - name: stores-api
-            context: ./Ordina.Backend
-            file: ./Ordina.Backend/src/Application/Stores/Ordina.Stores.Api/Dockerfile
-          - name: apigateway
-            context: ./Ordina.Backend
-            file: ./Ordina.Backend/src/Presentation/Ordina.ApiGateway/Dockerfile
-          - name: frontend
-            context: ./Ordina.Frontend
-            file: ./Ordina.Frontend/Dockerfile
+        service: ${{ fromJson(needs.changes.outputs.matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -159,7 +161,7 @@ jobs:
   deploy:
     name: Deploy to Raspberry Pi 5
     needs: [changes, build-and-push]
-    if: always() && !cancelled() && needs.changes.outputs.any-changed == 'true' && !contains(needs.*.result, 'failure')
+    if: always() && !cancelled() && needs.changes.outputs.has-changes == 'true' && !contains(needs.*.result, 'failure')
     runs-on: [self-hosted, Linux, ARM64]
     steps:
       - uses: actions/checkout@v4
