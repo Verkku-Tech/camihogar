@@ -36,7 +36,7 @@ const DEFAULT_ITEMS_PER_PAGE = 10
 
 export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableProps) {
   const router = useRouter()
-  const [isLoading, setIsLoading] = useState(!prefetchedOrders)
+  const [isLoading, setIsLoading] = useState(prefetchedOrders === null || prefetchedOrders === undefined)
   const [isExportingExcel, setIsExportingExcel] = useState(false)
   const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
@@ -93,7 +93,9 @@ export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableP
   } = usePagination({ data: expiredLayaways, itemsPerPage })
 
   useEffect(() => {
-    if (prefetchedOrders !== undefined) {
+    if (prefetchedOrders === null || prefetchedOrders === undefined) {
+      setIsLoading(true)
+    } else {
       setIsLoading(false)
     }
   }, [prefetchedOrders])
@@ -178,7 +180,7 @@ export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableP
     }
   }
 
-  if (isLoading) {
+  if (isLoading || prefetchedOrders === null || prefetchedOrders === undefined) {
     return (
       <Card>
         <CardContent className="p-0">

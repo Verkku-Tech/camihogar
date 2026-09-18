@@ -10,7 +10,7 @@ import { BudgetsTable } from "./budgets-table";
 import { DispatchesTable } from "./dispatches-table";
 import { ExpiredLayawaysTable } from "./expired-layaways-table";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   DashboardMetrics,
   orderFromBackendDto,
@@ -18,7 +18,6 @@ import {
   type UnifiedOrder,
 } from "@/lib/storage";
 import { apiClient } from "@/lib/api-client";
-import { Card, CardContent } from "@/components/ui/card";
 import { NewOrderDialog } from "@/components/orders/new-order-dialog";
 import { useAuth } from "@/contexts/auth-context";
 
@@ -347,17 +346,9 @@ export function Dashboard() {
             </div>
 
             {/* Tab Content */}
-            {activeTab === "pedidos" &&
-              (generatedOrders === null ? (
-                <Card>
-                  <CardContent className="flex items-center gap-2 p-6 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                    Cargando pedidos…
-                  </CardContent>
-                </Card>
-              ) : (
-                <OrdersTable prefetchedOrders={generatedOrders} />
-              ))}
+            {activeTab === "pedidos" && (
+              <OrdersTable prefetchedOrders={generatedOrders} />
+            )}
             {/* OCULTO TEMPORALMENTE - Presupuestos
             {!isOnlineSeller && activeTab === "presupuestos" && (
               <BudgetsTable />

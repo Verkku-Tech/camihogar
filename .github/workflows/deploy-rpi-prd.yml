@@ -12,8 +12,89 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  changes:
+    name: Detect Changed Services
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      security-api: ${{ steps.filter.outputs.security-api }}
+      users-api: ${{ steps.filter.outputs.users-api }}
+      providers-api: ${{ steps.filter.outputs.providers-api }}
+      orders-api: ${{ steps.filter.outputs.orders-api }}
+      payments-api: ${{ steps.filter.outputs.payments-api }}
+      stores-api: ${{ steps.filter.outputs.stores-api }}
+      apigateway: ${{ steps.filter.outputs.apigateway }}
+      any-changed: ${{ steps.filter.outputs.any-changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'Ordina.Frontend/**'
+              - 'docker-compose.yml'
+              - '.github/workflows/deploy-rpi-prd.yml'
+            security-api:
+              - 'Ordina.Backend/src/Application/Security/**'
+              - 'Ordina.Backend/src/Infrastructure/**'
+              - 'Ordina.Backend/*.props'
+              - 'Ordina.Backend/*.sln'
+              - 'docker-compose.yml'
+              - '.github/workflows/deploy-rpi-prd.yml'
+            users-api:
+              - 'Ordina.Backend/src/Application/Users/**'
+              - 'Ordina.Backend/src/Infrastructure/**'
+              - 'Ordina.Backend/*.props'
+              - 'Ordina.Backend/*.sln'
+              - 'docker-compose.yml'
+              - '.github/workflows/deploy-rpi-prd.yml'
+            providers-api:
+              - 'Ordina.Backend/src/Application/Providers/**'
+              - 'Ordina.Backend/src/Infrastructure/**'
+              - 'Ordina.Backend/*.props'
+              - 'Ordina.Backend/*.sln'
+              - 'docker-compose.yml'
+              - '.github/workflows/deploy-rpi-prd.yml'
+            orders-api:
+              - 'Ordina.Backend/src/Application/Orders/**'
+              - 'Ordina.Backend/src/Infrastructure/**'
+              - 'Ordina.Backend/*.props'
+              - 'Ordina.Backend/*.sln'
+              - 'docker-compose.yml'
+              - '.github/workflows/deploy-rpi-prd.yml'
+            payments-api:
+              - 'Ordina.Backend/src/Application/Payments/**'
+              - 'Ordina.Backend/src/Infrastructure/**'
+              - 'Ordina.Backend/*.props'
+              - 'Ordina.Backend/*.sln'
+              - 'docker-compose.yml'
+              - '.github/workflows/deploy-rpi-prd.yml'
+            stores-api:
+              - 'Ordina.Backend/src/Application/Stores/**'
+              - 'Ordina.Backend/src/Infrastructure/**'
+              - 'Ordina.Backend/*.props'
+              - 'Ordina.Backend/*.sln'
+              - 'docker-compose.yml'
+              - '.github/workflows/deploy-rpi-prd.yml'
+            apigateway:
+              - 'Ordina.Backend/src/Presentation/Ordina.ApiGateway/**'
+              - 'Ordina.Backend/src/Infrastructure/**'
+              - 'Ordina.Backend/*.props'
+              - 'Ordina.Backend/*.sln'
+              - 'docker-compose.yml'
+              - '.github/workflows/deploy-rpi-prd.yml'
+            any-changed:
+              - 'Ordina.Frontend/**'
+              - 'Ordina.Backend/**'
+              - 'docker-compose.yml'
+              - '.github/workflows/deploy-rpi-prd.yml'
+
   build-and-push:
     name: Build & Push ${{ matrix.service.name }} (ARM64)
+    needs: changes
+    if: needs.changes.outputs[matrix.service.name] == 'true'
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -77,7 +158,8 @@ jobs:
 
   deploy:
     name: Deploy to Raspberry Pi 5
-    needs: build-and-push
+    needs: [changes, build-and-push]
+    if: always() && !cancelled() && needs.changes.outputs.any-changed == 'true' && !contains(needs.*.result, 'failure')
     runs-on: [self-hosted, Linux, ARM64]
     steps:
       - uses: actions/checkout@v4

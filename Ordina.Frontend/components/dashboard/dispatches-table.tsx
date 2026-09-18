@@ -38,12 +38,13 @@ function sortDispatchOrders(orders: UnifiedOrder[]): UnifiedOrder[] {
 export function DispatchesTable({ prefetchedOrders }: DispatchesTableProps) {
   const router = useRouter()
   const [dispatches, setDispatches] = useState<UnifiedOrder[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(prefetchedOrders === null || prefetchedOrders === undefined)
   const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
 
   useEffect(() => {
     if (prefetchedOrders === null || prefetchedOrders === undefined) {
+      setIsLoading(true)
       return
     }
     // Los datos ya vienen filtrados del server (productFilterPreset: por_despachar)
@@ -113,7 +114,7 @@ export function DispatchesTable({ prefetchedOrders }: DispatchesTableProps) {
     router.push(`/pedidos/${orderNumber}`)
   }
 
-  if (isLoading) {
+  if (isLoading || prefetchedOrders === null || prefetchedOrders === undefined) {
     return (
       <Card>
         <CardContent className="p-0">

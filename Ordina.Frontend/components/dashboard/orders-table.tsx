@@ -40,7 +40,7 @@ import {
 
 interface OrdersTableProps {
   /** Si el padre ya sincronizó pedidos, evita otro getOrders al montar. */
-  prefetchedOrders?: Order[]
+  prefetchedOrders?: Order[] | null
 }
 
 const DEFAULT_ITEMS_PER_PAGE = 10
@@ -105,7 +105,7 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
   const canValidateOrders =
     user?.role === "Super Administrator" || user?.role === "Administrator"
   const [orders, setOrders] = useState<Order[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(prefetchedOrders === null || prefetchedOrders === undefined)
   const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
   const [validatingIds, setValidatingIds] = useState<Set<string>>(new Set())
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
@@ -142,6 +142,10 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
   }, [user?.role, onlineSellerIds, onlineSellerFilterLoading])
 
   useEffect(() => {
+    if (prefetchedOrders === null) {
+      setIsLoading(true)
+      return
+    }
     if (prefetchedOrders !== undefined) {
       setOrders(
         filterAndSortGeneratedOrders(
@@ -278,7 +282,7 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
   const isGenerated = (order: Order) =>
     order.status === "Generado" || order.status === "Generada"
 
-  if (isLoading) {
+  if (isLoading || prefetchedOrders === null) {
     return (
       <Card>
         <CardContent className="p-0">

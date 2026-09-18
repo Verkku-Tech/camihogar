@@ -28,7 +28,7 @@ interface ManufacturingProductsTableProps {
 export function ManufacturingProductsTable({ prefetchedOrders }: ManufacturingProductsTableProps) {
   const router = useRouter()
   const [products, setProducts] = useState<ManufacturingProduct[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(prefetchedOrders === null || prefetchedOrders === undefined)
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
 
   const {
@@ -42,12 +42,13 @@ export function ManufacturingProductsTable({ prefetchedOrders }: ManufacturingPr
   } = usePagination({ data: products, itemsPerPage })
 
   useEffect(() => {
-    const loadProducts = async () => {
+    if (prefetchedOrders === null || prefetchedOrders === undefined) {
+      setIsLoading(true)
+      return
+    }
+
+    const loadProducts = () => {
       try {
-        // Solo usar datos prefetcheados; no llamar getOrders() independiente
-        if (prefetchedOrders === null || prefetchedOrders === undefined) {
-          return
-        }
         const orders = prefetchedOrders
         const manufacturingProducts: ManufacturingProduct[] = []
 
@@ -119,45 +120,7 @@ export function ManufacturingProductsTable({ prefetchedOrders }: ManufacturingPr
     }
   }
 
-  // Si no hay datos prefetcheados aún, mostrar loading
-  if (prefetchedOrders === null || prefetchedOrders === undefined) {
-    return (
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="font-medium text-muted-foreground">Pedido</TableHead>
-                  <TableHead className="font-medium text-muted-foreground">Producto</TableHead>
-                  <TableHead className="font-medium text-muted-foreground">Cliente</TableHead>
-                  <TableHead className="font-medium text-muted-foreground">Cantidad</TableHead>
-                  <TableHead className="font-medium text-muted-foreground">Estado</TableHead>
-                  <TableHead className="font-medium text-muted-foreground">Proveedor</TableHead>
-                  <TableHead className="font-medium text-muted-foreground">Acción</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {[1, 2, 3, 4, 5].map((index) => (
-                  <TableRow key={index}>
-                    <TableCell className="h-12 animate-pulse bg-muted" />
-                    <TableCell className="h-12 animate-pulse bg-muted" />
-                    <TableCell className="h-12 animate-pulse bg-muted" />
-                    <TableCell className="h-12 animate-pulse bg-muted" />
-                    <TableCell className="h-12 animate-pulse bg-muted" />
-                    <TableCell className="h-12 animate-pulse bg-muted" />
-                    <TableCell className="h-12 animate-pulse bg-muted" />
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (isLoading) {
+  if (isLoading || prefetchedOrders === null || prefetchedOrders === undefined) {
     return (
       <Card>
         <CardContent className="p-0">
