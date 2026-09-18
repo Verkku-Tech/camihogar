@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ArrowLeft, Package, User, Calendar, FileText } from "lucide-react"
-import { getOrders, getCategories, type Order, type Category, type AttributeValue } from "@/lib/storage"
+import { getOrderByOrderNumberPreferBackend, getCategories, type Order, type Category, type AttributeValue } from "@/lib/storage"
 import { useAuth } from "@/contexts/auth-context"
 import { canAccessManufacturing } from "@/lib/user-extra-permissions"
 
@@ -28,12 +28,11 @@ export default function FabricacionOrderDetailPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [loadedOrders, loadedCategories] = await Promise.all([
-          getOrders(),
+        const [foundOrder, loadedCategories] = await Promise.all([
+          getOrderByOrderNumberPreferBackend(orderNumber),
           getCategories()
         ])
 
-        const foundOrder = loadedOrders.find(o => o.orderNumber === orderNumber)
         setOrder(foundOrder || null)
         setCategories(loadedCategories)
       } catch (error) {

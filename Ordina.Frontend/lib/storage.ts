@@ -4414,13 +4414,13 @@ export const calculateDashboardMetrics = async (
     "higher_is_better",
   );
 
-  // 2. Total facturado (subtotal en USD comercial, pedidos creados en el periodo)
+  // 2. Total facturado (total en USD comercial, pedidos creados en el periodo)
   const totalInvoiced = ordersCreatedInPeriod.reduce(
-    (sum, order) => sum + getCommercialSubtotalUsd(order),
+    (sum, order) => sum + getCommercialTotalUsd(order),
     0,
   );
   const previousTotalInvoiced = previousOrdersCreatedInPeriod.reduce(
-    (sum, order) => sum + getCommercialSubtotalUsd(order),
+    (sum, order) => sum + getCommercialTotalUsd(order),
     0,
   );
   const totalInvoicedChange = buildMetricChange(

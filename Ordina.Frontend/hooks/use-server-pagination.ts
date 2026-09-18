@@ -84,7 +84,7 @@ export function useServerPagination<T>(
       setIsLoadingCount(true);
       try {
         const count = await fetchCount(controller.signal);
-        if (mountedRef.current) {
+        if (mountedRef.current && !controller.signal.aborted) {
           setTotalCount(count.totalCount);
           setTotalPages(count.totalPages);
         }
@@ -92,7 +92,7 @@ export function useServerPagination<T>(
         if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("Failed to load count:", err);
       } finally {
-        if (mountedRef.current) {
+        if (mountedRef.current && !controller.signal.aborted) {
           setIsLoadingCount(false);
         }
       }
@@ -131,7 +131,7 @@ export function useServerPagination<T>(
           ),
         );
 
-        if (mountedRef.current) {
+        if (mountedRef.current && !controller.signal.aborted) {
           setPages((prev) => {
             const next = new Map(prev);
             for (const result of results) {
@@ -145,7 +145,7 @@ export function useServerPagination<T>(
         if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("Failed to load batch:", err);
       } finally {
-        if (mountedRef.current) {
+        if (mountedRef.current && !controller.signal.aborted) {
           setLoadingPages((prev) => {
             const next = new Set(prev);
             for (const p of pagesToLoad) next.delete(p);
@@ -186,6 +186,7 @@ export function useServerPagination<T>(
   // Refetch: abort in-flight requests, clear all cached data and reload from page 1
   const refetch = useCallback(() => {
     batchAbortRef.current?.abort();
+    countAbortRef.current?.abort();
     loadedBatchesRef.current.clear();
     setPages(new Map());
     setCurrentPage(1);

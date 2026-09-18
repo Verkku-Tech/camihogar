@@ -112,14 +112,14 @@ public class OrderRepository : IOrderRepository
         if (!isReservationStatusFilter)
         {
             filters.Add(fb.Nin(o => o.Type, new[] { "Reservation", "PendingConfirmation" }));
-            filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^RES-", "i"))));
-            filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^PCF-", "i"))));
+            filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^RES-"))));
+            filters.Add(fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^PCF-"))));
         }
 
         // Presupuestos convertidos
         filters.Add(fb.Not(fb.And(
             fb.Eq(o => o.Type, "Budget"),
-            fb.Regex(o => o.Status, new BsonRegularExpression("^convertido$", "i")))));
+            fb.In(o => o.Status, new[] { "Convertido", "convertido", "CONVERTIDO" }))));
 
         if (!listFilter.IncludeBudgets)
         {
