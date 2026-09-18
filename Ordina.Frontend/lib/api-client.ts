@@ -1357,6 +1357,14 @@ export class ApiClient {
     return this.request<OrderResponseDto[]>("/api/Orders/all");
   }
 
+  /** Obtiene las métricas consolidadas del Dashboard calculadas en backend vía MongoDB. */
+  async getDashboardMetrics(period: string = "day", signal?: AbortSignal) {
+    return this.request<any>(
+      `/api/Orders/metrics?period=${encodeURIComponent(period)}`,
+      { signal },
+    );
+  }
+
   /** IDs de usuarios con rol Online Seller (equipo online). */
   async getOnlineSellerTeamIds() {
     return this.request<OnlineSellerTeamIdsDto>("/api/Orders/online-team-ids");

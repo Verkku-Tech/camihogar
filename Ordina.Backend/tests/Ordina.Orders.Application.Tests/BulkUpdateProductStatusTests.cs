@@ -261,6 +261,15 @@ public class BulkUpdateProductStatusTests
 
         public Task<long> UpdateClientNameByClientIdAsync(string clientId, string newClientName) =>
             Task.FromResult(0L);
+
+        public Task<DashboardMetricsRawData> GetDashboardMetricsRawDataAsync(
+            DateTime periodStart,
+            DateTime periodEnd,
+            DateTime prevPeriodStart,
+            DateTime prevPeriodEnd,
+            IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new DashboardMetricsRawData());
     }
 
     private sealed class FakeClientRepository : IClientRepository

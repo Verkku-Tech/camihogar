@@ -236,6 +236,28 @@ public class OrdersController : ControllerBase
     }
 
     /// <summary>
+    /// Obtiene las métricas consolidadas del Dashboard (Total Ventas, Facturado, Cobrado, Ticket Promedio, Pendientes, SA Vencidos, Fabricación)
+    /// </summary>
+    [HttpGet("metrics")]
+    [ProducesResponseType(typeof(DashboardMetricsDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<DashboardMetricsDto>> GetDashboardMetrics(
+        [FromQuery] string period = "day",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            var metrics = await _orderService.GetDashboardMetricsAsync(period, role, cancellationToken);
+            return Ok(metrics);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al calcular métricas del dashboard para periodo {Period}", period);
+            return StatusCode(500, new { message = "Error interno del servidor al calcular métricas del dashboard" });
+        }
+    }
+
+    /// <summary>
     /// Obtiene todos los pedidos (sin paginación - usar solo para compatibilidad)
     /// </summary>
     /// <returns>Lista de todos los pedidos</returns>

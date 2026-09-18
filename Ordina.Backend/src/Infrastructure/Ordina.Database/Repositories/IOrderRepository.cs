@@ -86,4 +86,15 @@ public interface IOrderRepository
     /// Retorna cantidad de documentos modificados.
     /// </summary>
     Task<long> UpdateClientNameByClientIdAsync(string clientId, string newClientName);
+
+    /// <summary>
+    /// Obtiene los datos consolidados de métricas del Dashboard ejecutando agregaciones directamente en MongoDB.
+    /// </summary>
+    Task<DashboardMetricsRawData> GetDashboardMetricsRawDataAsync(
+        DateTime periodStart,
+        DateTime periodEnd,
+        DateTime prevPeriodStart,
+        DateTime prevPeriodEnd,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+        CancellationToken cancellationToken = default);
 }

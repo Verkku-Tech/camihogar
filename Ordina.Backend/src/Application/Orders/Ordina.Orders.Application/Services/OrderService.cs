@@ -2526,5 +2526,126 @@ public class OrderService : IOrderService
 
         return response;
     }
+
+    public async Task<DashboardMetricsDto> GetDashboardMetricsAsync(
+        string period = "day",
+        string? callerRole = null,
+        CancellationToken cancellationToken = default)
+    {
+        var teamIds = await ResolveTeamFilterAsync(callerRole);
+
+        var nowUtc = DateTime.UtcNow;
+        var caracasOffset = TimeSpan.FromHours(-4);
+        var localNow = nowUtc.Add(caracasOffset);
+        var localTodayStart = localNow.Date;
+        var localTodayEnd = localTodayStart.AddDays(1).AddTicks(-1);
+
+        DateTime periodStart;
+        DateTime periodEnd;
+        DateTime prevPeriodStart;
+        DateTime prevPeriodEnd;
+
+        switch (period?.ToLowerInvariant())
+        {
+            case "week":
+                var localWeekStart = localTodayStart.AddDays(-6);
+                periodStart = localWeekStart.Subtract(caracasOffset);
+                periodEnd = localTodayEnd.Subtract(caracasOffset);
+                prevPeriodStart = localWeekStart.AddDays(-7).Subtract(caracasOffset);
+                prevPeriodEnd = localWeekStart.Subtract(caracasOffset).AddTicks(-1);
+                break;
+            case "month":
+                var localMonthStart = new DateTime(localNow.Year, localNow.Month, 1);
+                periodStart = localMonthStart.Subtract(caracasOffset);
+                periodEnd = localTodayEnd.Subtract(caracasOffset);
+                var localPrevMonthStart = localMonthStart.AddMonths(-1);
+                var localPrevMonthEnd = localMonthStart.AddTicks(-1);
+                prevPeriodStart = localPrevMonthStart.Subtract(caracasOffset);
+                prevPeriodEnd = localPrevMonthEnd.Subtract(caracasOffset);
+                break;
+            case "year":
+                var localYearStart = new DateTime(localNow.Year, 1, 1);
+                periodStart = localYearStart.Subtract(caracasOffset);
+                periodEnd = localTodayEnd.Subtract(caracasOffset);
+                var localPrevYearStart = localYearStart.AddYears(-1);
+                var localPrevYearEnd = localYearStart.AddTicks(-1);
+                prevPeriodStart = localPrevYearStart.Subtract(caracasOffset);
+                prevPeriodEnd = localPrevYearEnd.Subtract(caracasOffset);
+                break;
+            case "day":
+            default:
+                periodStart = localTodayStart.Subtract(caracasOffset);
+                periodEnd = localTodayEnd.Subtract(caracasOffset);
+                prevPeriodStart = localTodayStart.AddDays(-1).Subtract(caracasOffset);
+                prevPeriodEnd = localTodayStart.Subtract(caracasOffset).AddTicks(-1);
+                break;
+        }
+
+        var raw = await _orderRepository.GetDashboardMetricsRawDataAsync(
+            periodStart,
+            periodEnd,
+            prevPeriodStart,
+            prevPeriodEnd,
+            teamIds,
+            cancellationToken);
+
+        MetricChangeDto BuildMetricChange(decimal current, decimal previous, string direction = "higher_is_better")
+        {
+            if (previous == 0)
+            {
+                return new MetricChangeDto
+                {
+                    Current = current,
+                    Previous = previous,
+                    Value = 0,
+                    HasBase = false,
+                    Direction = direction
+                };
+            }
+
+            var changeValue = Math.Round(((current - previous) / previous) * 100m, 1);
+            return new MetricChangeDto
+            {
+                Current = current,
+                Previous = previous,
+                Value = changeValue,
+                HasBase = true,
+                Direction = direction
+            };
+        }
+
+        var avgOrderValue = raw.CurrentOrdersCount > 0
+            ? Math.Round(raw.CurrentInvoicedUsd / raw.CurrentOrdersCount, 2)
+            : 0m;
+
+        var prevAvgOrderValue = raw.PreviousOrdersCount > 0
+            ? Math.Round(raw.PreviousInvoicedUsd / raw.PreviousOrdersCount, 2)
+            : 0m;
+
+        return new DashboardMetricsDto
+        {
+            CompletedOrders = raw.CurrentOrdersCount,
+            CompletedOrdersChange = BuildMetricChange(raw.CurrentOrdersCount, raw.PreviousOrdersCount, "higher_is_better"),
+            TotalSalesCount = raw.CurrentOrdersCount,
+
+            TotalInvoiced = Math.Round(raw.CurrentInvoicedUsd, 2),
+            TotalInvoicedChange = BuildMetricChange(raw.CurrentInvoicedUsd, raw.PreviousInvoicedUsd, "higher_is_better"),
+
+            TotalCollected = Math.Round(raw.CurrentCollectedUsd, 2),
+            TotalCollectedChange = BuildMetricChange(raw.CurrentCollectedUsd, raw.PreviousCollectedUsd, "higher_is_better"),
+
+            AverageOrderValue = avgOrderValue,
+            AverageOrderValueChange = BuildMetricChange(avgOrderValue, prevAvgOrderValue, "higher_is_better"),
+
+            PendingPayments = Math.Round(raw.PendingPaymentsUsd, 2),
+            PendingPaymentsChange = null,
+
+            ExpiredLayawaysCount = raw.ExpiredLayawaysCount,
+            ExpiredLayawaysAmount = Math.Round(raw.ExpiredLayawaysAmountUsd, 2),
+
+            ProductsToManufacture = raw.ProductsToManufactureCount,
+            ProductsToManufactureChange = null
+        };
+    }
 }
 

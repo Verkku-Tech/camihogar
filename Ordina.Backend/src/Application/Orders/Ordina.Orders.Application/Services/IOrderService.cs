@@ -78,4 +78,10 @@ public interface IOrderService
         string userId,
         string userName,
         string? callerRole = null);
+
+    /// <summary>Calcula las métricas consolidadas del Dashboard para el periodo especificado.</summary>
+    Task<DashboardMetricsDto> GetDashboardMetricsAsync(
+        string period = "day",
+        string? callerRole = null,
+        CancellationToken cancellationToken = default);
 }

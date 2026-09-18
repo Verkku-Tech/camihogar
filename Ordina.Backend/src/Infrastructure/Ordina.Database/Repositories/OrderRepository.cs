@@ -10,9 +10,11 @@ namespace Ordina.Database.Repositories;
 public class OrderRepository : IOrderRepository
 {
     private readonly IMongoCollection<Order> _collection;
+    private readonly MongoDbContext _context;
 
     public OrderRepository(MongoDbContext context)
     {
+        _context = context;
         _collection = context.Orders;
     }
 
@@ -626,5 +628,219 @@ public class OrderRepository : IOrderRepository
             return 0;
 
         return maxVal.ToInt32();
+    }
+
+    public async Task<DashboardMetricsRawData> GetDashboardMetricsRawDataAsync(
+        DateTime periodStart,
+        DateTime periodEnd,
+        DateTime prevPeriodStart,
+        DateTime prevPeriodEnd,
+        IReadOnlyCollection<string>? onlineSellerTeamIds = null,
+        CancellationToken cancellationToken = default)
+    {
+        var raw = new DashboardMetricsRawData();
+
+        // 1. Obtener tasa activa del día
+        var activeRateDoc = await _context.ExchangeRates
+            .Find(r => r.ToCurrency == "USD" && r.IsActive)
+            .SortByDescending(r => r.EffectiveDate)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (activeRateDoc == null)
+        {
+            activeRateDoc = await _context.ExchangeRates
+                .Find(r => r.ToCurrency == "USD")
+                .SortByDescending(r => r.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+        decimal liveUsdRate = activeRateDoc?.Rate > 0 ? activeRateDoc.Rate : 1.0m;
+
+        var fb = Builders<Order>.Filter;
+
+        // Filtro base para pedidos válidos (no presupuestos, no reservas, no cancelados)
+        var validOrdersBase = fb.And(
+            fb.Nin(o => o.Type, new[] { "Budget", "Reservation", "PendingConfirmation", "budget", "reservation" }),
+            fb.Nin(o => o.Status, new[] { "Declinado", "Cancelado" }),
+            fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^RES-"))),
+            fb.Not(fb.Regex(o => o.OrderNumber, new BsonRegularExpression("^PCF-")))
+        );
+
+        // Periodo actual: Ventas y Facturado
+        var currentVentasFilter = CombineFilters(
+            fb.And(validOrdersBase, fb.Gte(o => o.CreatedAt, periodStart), fb.Lte(o => o.CreatedAt, periodEnd)),
+            onlineSellerTeamIds);
+
+        var currentVentas = await _collection.Find(currentVentasFilter)
+            .Project(o => new { o.Total })
+            .ToListAsync(cancellationToken);
+
+        raw.CurrentOrdersCount = currentVentas.Count;
+        raw.CurrentInvoicedUsd = currentVentas.Sum(o => o.Total);
+
+        // Periodo previo: Ventas y Facturado
+        var prevVentasFilter = CombineFilters(
+            fb.And(validOrdersBase, fb.Gte(o => o.CreatedAt, prevPeriodStart), fb.Lte(o => o.CreatedAt, prevPeriodEnd)),
+            onlineSellerTeamIds);
+
+        var prevVentas = await _collection.Find(prevVentasFilter)
+            .Project(o => new { o.Total })
+            .ToListAsync(cancellationToken);
+
+        raw.PreviousOrdersCount = prevVentas.Count;
+        raw.PreviousInvoicedUsd = prevVentas.Sum(o => o.Total);
+
+        // Helper para convertir pago a USD
+        decimal ConvertPaymentToUsd(PartialPayment p, Order o)
+        {
+            var det = p.PaymentDetails;
+            var currency = (det?.OriginalCurrency ?? det?.CashCurrency ?? "Bs").Trim();
+            var amount = det?.OriginalAmount ?? p.Amount;
+            if (string.Equals(currency, "USD", StringComparison.OrdinalIgnoreCase))
+                return amount;
+
+            var rate = (det?.ExchangeRate > 0 ? det.ExchangeRate.Value : 0m);
+            if (rate <= 0 && o.ExchangeRatesAtCreation?.Usd?.Rate > 0)
+                rate = o.ExchangeRatesAtCreation.Usd.Rate;
+            if (rate <= 0 && o.PaymentDetails?.ExchangeRate > 0)
+                rate = o.PaymentDetails.ExchangeRate.Value;
+            if (rate <= 0)
+                rate = liveUsdRate;
+
+            if (rate > 0)
+                return amount / rate;
+            return 0m;
+        }
+
+        // Cobros en periodo actual
+        var paymentsCurrentFilter = CombineFilters(
+            fb.And(
+                fb.Nin(o => o.Status, new[] { "Declinado", "Cancelado" }),
+                fb.Or(
+                    fb.ElemMatch(o => o.PartialPayments, p => p.Date >= periodStart && p.Date <= periodEnd),
+                    fb.ElemMatch(o => o.MixedPayments, p => p.Date >= periodStart && p.Date <= periodEnd)
+                )
+            ),
+            onlineSellerTeamIds);
+
+        var ordersWithCurrentPayments = await _collection.Find(paymentsCurrentFilter)
+            .ToListAsync(cancellationToken);
+
+        foreach (var order in ordersWithCurrentPayments)
+        {
+            var allPayments = (order.PartialPayments ?? Enumerable.Empty<PartialPayment>())
+                .Concat(order.MixedPayments ?? Enumerable.Empty<PartialPayment>());
+            foreach (var p in allPayments)
+            {
+                if (p.Date >= periodStart && p.Date <= periodEnd)
+                {
+                    raw.CurrentCollectedUsd += ConvertPaymentToUsd(p, order);
+                }
+            }
+        }
+
+        // Cobros en periodo previo
+        var paymentsPrevFilter = CombineFilters(
+            fb.And(
+                fb.Nin(o => o.Status, new[] { "Declinado", "Cancelado" }),
+                fb.Or(
+                    fb.ElemMatch(o => o.PartialPayments, p => p.Date >= prevPeriodStart && p.Date <= prevPeriodEnd),
+                    fb.ElemMatch(o => o.MixedPayments, p => p.Date >= prevPeriodStart && p.Date <= prevPeriodEnd)
+                )
+            ),
+            onlineSellerTeamIds);
+
+        var ordersWithPrevPayments = await _collection.Find(paymentsPrevFilter)
+            .ToListAsync(cancellationToken);
+
+        foreach (var order in ordersWithPrevPayments)
+        {
+            var allPayments = (order.PartialPayments ?? Enumerable.Empty<PartialPayment>())
+                .Concat(order.MixedPayments ?? Enumerable.Empty<PartialPayment>());
+            foreach (var p in allPayments)
+            {
+                if (p.Date >= prevPeriodStart && p.Date <= prevPeriodEnd)
+                {
+                    raw.PreviousCollectedUsd += ConvertPaymentToUsd(p, order);
+                }
+            }
+        }
+
+        // Abonos por recaudar (pedidos activos no cancelados ni completados con saldo)
+        var activePendingFilter = CombineFilters(
+            fb.And(
+                fb.Nin(o => o.Type, new[] { "Budget", "Reservation", "PendingConfirmation", "budget", "reservation" }),
+                fb.Nin(o => o.Status, new[] { "Declinado", "Cancelado", "Entregado", "Completado", "Completada" })
+            ),
+            onlineSellerTeamIds);
+
+        var activeOrders = await _collection.Find(activePendingFilter)
+            .ToListAsync(cancellationToken);
+
+        foreach (var order in activeOrders)
+        {
+            var allPayments = (order.PartialPayments ?? Enumerable.Empty<PartialPayment>())
+                .Concat(order.MixedPayments ?? Enumerable.Empty<PartialPayment>());
+            decimal paidUsd = allPayments.Sum(p => ConvertPaymentToUsd(p, order));
+            decimal pending = order.Total - paidUsd;
+            if (pending > 0.01m)
+            {
+                raw.PendingPaymentsUsd += pending;
+            }
+        }
+
+        // SA Vencidos (> 90 días)
+        var ninetyDaysAgo = DateTime.UtcNow.AddDays(-90);
+        var saVencidosFilter = CombineFilters(
+            fb.And(
+                fb.Eq(o => o.SaleType, "sistema_apartado"),
+                fb.Lt(o => o.CreatedAt, ninetyDaysAgo),
+                fb.Nin(o => o.Status, new[] { "Declinado", "Cancelado", "Entregado", "Completado", "Completada" })
+            ),
+            onlineSellerTeamIds);
+
+        var saOrders = await _collection.Find(saVencidosFilter)
+            .ToListAsync(cancellationToken);
+
+        foreach (var order in saOrders)
+        {
+            var allPayments = (order.PartialPayments ?? Enumerable.Empty<PartialPayment>())
+                .Concat(order.MixedPayments ?? Enumerable.Empty<PartialPayment>());
+            decimal paidUsd = allPayments.Sum(p => ConvertPaymentToUsd(p, order));
+            decimal pending = order.Total - paidUsd;
+            if (pending > 0.01m)
+            {
+                raw.ExpiredLayawaysCount++;
+                raw.ExpiredLayawaysAmountUsd += pending;
+            }
+        }
+
+        // Productos por fabricar
+        var mfgFilter = CombineFilters(
+            fb.And(
+                fb.Nin(o => o.Type, new[] { "Budget", "Reservation", "PendingConfirmation", "budget", "reservation" }),
+                fb.Nin(o => o.Status, new[] { "Declinado", "Cancelado" }),
+                fb.ElemMatch(o => o.Products, p =>
+                    p.LocationStatus == "FABRICACION" ||
+                    p.ManufacturingStatus == "por_fabricar" ||
+                    p.ManufacturingStatus == "debe_fabricar")
+            ),
+            onlineSellerTeamIds);
+
+        var mfgOrders = await _collection.Find(mfgFilter)
+            .ToListAsync(cancellationToken);
+
+        foreach (var order in mfgOrders)
+        {
+            foreach (var prod in order.Products ?? Enumerable.Empty<OrderProduct>())
+            {
+                if (prod.LocationStatus == "FABRICACION" ||
+                    prod.ManufacturingStatus == "por_fabricar" ||
+                    prod.ManufacturingStatus == "debe_fabricar")
+                {
+                    raw.ProductsToManufactureCount += prod.Quantity > 0 ? prod.Quantity : 1;
+                }
+            }
+        }
+
+        return raw;
     }
 }
