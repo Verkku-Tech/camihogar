@@ -44,9 +44,11 @@ export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableP
   const expiredLayaways = useMemo(() => {
     const orders = prefetchedOrders ?? []
     const now = new Date()
+    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000
 
     return orders
       .filter((order) => {
+        if (order.type && order.type.toLowerCase() !== "order") return false
         if (order.saleType !== "sistema_apartado") return false
         const status = (order.status as string) || ""
         if (
@@ -62,14 +64,15 @@ export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableP
         const epsilon = isUsdBaseOrder(order)
           ? PAYMENT_BALANCE_EPSILON_USD
           : PAYMENT_BALANCE_EPSILON_BS
-        return pendingAmount > epsilon
+        if (pendingAmount <= epsilon) return false
+
+        const orderTime = new Date(order.createdAt).getTime()
+        return now.getTime() - orderTime >= ninetyDaysMs
       })
       .map((order) => {
         const orderTime = new Date(order.createdAt).getTime()
-        const daysPast = Math.max(
-          1,
-          Math.floor((now.getTime() - orderTime) / (1000 * 60 * 60 * 24)) - 90,
-        )
+        const exactDays = (now.getTime() - orderTime) / (1000 * 60 * 60 * 24)
+        const daysPast = Math.max(1, Math.ceil(exactDays - 90))
         return {
           ...order,
           daysExpired: daysPast,

@@ -137,6 +137,8 @@ export function Dashboard() {
             200,
             undefined,
             {
+              saleType: "sistema_apartado",
+              excludeStatuses: "Declinado,Cancelado,Entregado,Completado,Completada",
               productFilterPreset: "sistema_apartado_vencido",
               includeBudgets: false,
             },

@@ -161,6 +161,19 @@ public class ExpiredLayawaysReportTests
                 BaseCurrency = "USD",
                 Total = 600m,
                 CreatedAt = now.AddDays(-150),
+            },
+            // 5. Expired Reservation -> MUST BE EXCLUDED (only Orders count)
+            new()
+            {
+                Id = "res-1",
+                OrderNumber = "RES-001",
+                Type = "Reservation",
+                ClientName = "Reserva Vencida",
+                SaleType = "sistema_apartado",
+                Status = "Reserva",
+                BaseCurrency = "USD",
+                Total = 800m,
+                CreatedAt = now.AddDays(-120),
             }
         };
 

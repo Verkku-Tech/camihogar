@@ -261,6 +261,7 @@ public class OrderRepository : IOrderRepository
                     break;
                 case "sistema_apartado_vencido":
                     var ninetyDaysAgo = DateTime.UtcNow.AddDays(-90);
+                    filters.Add(fb.Nin(o => o.Type, new[] { "Budget", "Reservation", "PendingConfirmation", "budget", "reservation" }));
                     filters.Add(fb.Eq(o => o.SaleType, "sistema_apartado"));
                     filters.Add(fb.Lt(o => o.CreatedAt, ninetyDaysAgo));
                     filters.Add(fb.Nin(o => o.Status, new[] { "Declinado", "Cancelado", "Entregado", "Completado", "Completada" }));
@@ -443,6 +444,7 @@ public class OrderRepository : IOrderRepository
                     break;
                 case "sistema_apartado_vencido":
                     var ninetyDaysAgo = DateTime.UtcNow.AddDays(-90);
+                    filters.Add(fb.Nin(o => o.Type, new[] { "Budget", "Reservation", "PendingConfirmation", "budget", "reservation" }));
                     filters.Add(fb.Eq(o => o.SaleType, "sistema_apartado"));
                     filters.Add(fb.Lt(o => o.CreatedAt, ninetyDaysAgo));
                     filters.Add(fb.Nin(o => o.Status, new[] { "Declinado", "Cancelado", "Entregado", "Completado", "Completada" }));
@@ -813,6 +815,7 @@ public class OrderRepository : IOrderRepository
         var ninetyDaysAgo = DateTime.UtcNow.AddDays(-90);
         var saVencidosFilter = CombineFilters(
             fb.And(
+                fb.Nin(o => o.Type, new[] { "Budget", "Reservation", "PendingConfirmation", "budget", "reservation" }),
                 fb.Eq(o => o.SaleType, "sistema_apartado"),
                 fb.Lt(o => o.CreatedAt, ninetyDaysAgo),
                 fb.Nin(o => o.Status, new[] { "Declinado", "Cancelado", "Entregado", "Completado", "Completada" })

@@ -2510,9 +2510,14 @@ public class ReportService : IReportService
             {
                 "Cancelado", "Declinado", "Entregado", "Completado", "Completada"
             };
+            var excludedTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Budget", "Reservation", "PendingConfirmation"
+            };
 
             var allOrders = await _orderRepository.GetAllAsync();
             var saOrders = allOrders
+                .Where(o => !excludedTypes.Contains(o.Type ?? string.Empty))
                 .Where(o => string.Equals(o.SaleType, "sistema_apartado", StringComparison.OrdinalIgnoreCase))
                 .Where(o => o.CreatedAt < ninetyDaysAgo)
                 .Where(o => !excludedStatuses.Contains(o.Status ?? string.Empty))
