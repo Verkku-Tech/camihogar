@@ -73,6 +73,7 @@ Para consultar los detalles técnicos, guías de implementación y estándares d
 - 🐍 **[Ordina.Scrappers/README.md](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/Ordina.Scrappers/README.md):** Guía de ejecución y requisitos de los scripts de extracción y transformación de datos legacy desde SysAbbaco.
 
 ### Estándares y Especificaciones
+- 📚 **[Reglas de Negocio por Módulo](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/docs/Business%20Rules/00-index.md):** Documentación técnica y funcional de las políticas de Pedidos, Taller, Despacho, Finanzas (BCV), Clientes (RUT), Seguridad y Métricas del ERP.
 - 📋 **[AGENTS.md](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/AGENTS.md):** Manual maestro de ingeniería y directrices para agentes de IA y desarrolladores, con directrices modulares en `.agents/rules/`.
 - 📐 **[Spec de Diseño del Refactor](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/docs/superpowers/specs/2026-09-18-modular-monolith-spa-refactor-design.md):** Especificación técnica aprobada que define la consolidación hacia el monolito modular y la SPA estática.
 - 📝 **[Plan de Implementación del Refactor](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/docs/superpowers/plans/2026-09-18-modular-monolith-spa-refactor-plan.md):** Plan paso a paso con criterios de verificación y cobertura TDD.
