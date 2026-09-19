@@ -1,0 +1,48 @@
+using Microsoft.Extensions.Configuration;
+using MongoDB.Driver;
+using Ordina.Domain.Catalog;
+using Ordina.Domain.Common;
+using Ordina.Domain.Dispatch;
+using Ordina.Domain.Finance;
+using Ordina.Domain.Manufacturing;
+using Ordina.Domain.Orders;
+using Ordina.Domain.Security;
+using Ordina.Domain.Stores;
+using Ordina.Domain.Users;
+
+namespace Ordina.Infrastructure.Mongo;
+
+public class MongoDbContext
+{
+    private readonly IMongoDatabase _database;
+
+    public MongoDbContext(IMongoClient client, IConfiguration configuration)
+    {
+        var dbName = configuration["MongoDb:DatabaseName"]
+                     ?? configuration["DatabaseName"]
+                     ?? "OrdinaDb";
+        _database = client.GetDatabase(dbName);
+    }
+
+    public IMongoDatabase Database => _database;
+
+    public IMongoCollection<Order> Orders => _database.GetCollection<Order>("orders");
+    public IMongoCollection<User> Users => _database.GetCollection<User>("users");
+    public IMongoCollection<Role> Roles => _database.GetCollection<Role>("roles");
+    public IMongoCollection<Client> Clients => _database.GetCollection<Client>("clients");
+    public IMongoCollection<Product> Products => _database.GetCollection<Product>("products");
+    public IMongoCollection<Category> Categories => _database.GetCollection<Category>("categories");
+    public IMongoCollection<Provider> Providers => _database.GetCollection<Provider>("providers");
+    public IMongoCollection<Payment> Payments => _database.GetCollection<Payment>("payments");
+    public IMongoCollection<PaymentMethod> PaymentMethods => _database.GetCollection<PaymentMethod>("payment_methods");
+    public IMongoCollection<ExchangeRate> ExchangeRates => _database.GetCollection<ExchangeRate>("exchange_rates");
+    public IMongoCollection<Commission> Commissions => _database.GetCollection<Commission>("commissions");
+    public IMongoCollection<ProductCommission> ProductCommissions => _database.GetCollection<ProductCommission>("product_commissions");
+    public IMongoCollection<SaleTypeCommissionRule> SaleTypeCommissionRules => _database.GetCollection<SaleTypeCommissionRule>("sale_type_commission_rules");
+    public IMongoCollection<Store> Stores => _database.GetCollection<Store>("stores");
+    public IMongoCollection<Account> Accounts => _database.GetCollection<Account>("accounts");
+    public IMongoCollection<DispatchRoute> DispatchRoutes => _database.GetCollection<DispatchRoute>("dispatch_routes");
+    public IMongoCollection<WorkOrder> WorkOrders => _database.GetCollection<WorkOrder>("work_orders");
+    public IMongoCollection<RefreshToken> RefreshTokens => _database.GetCollection<RefreshToken>("refresh_tokens");
+    public IMongoCollection<IdempotencyRecord> IdempotencyRecords => _database.GetCollection<IdempotencyRecord>("idempotency_keys");
+}

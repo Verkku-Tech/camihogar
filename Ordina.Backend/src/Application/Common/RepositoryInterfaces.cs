@@ -1,0 +1,49 @@
+using Ordina.Domain.Catalog;
+using Ordina.Domain.Common;
+using Ordina.Domain.Finance;
+using Ordina.Domain.Orders;
+using Ordina.Domain.Security;
+using Ordina.Domain.Stores;
+using Ordina.Domain.Users;
+
+namespace Ordina.Application.Common;
+
+public interface IOrderRepository : IRepository<Order>
+{
+    Task<Order?> GetByOrderNumberAsync(string orderNumber, CancellationToken cancellationToken = default);
+    Task<string> GenerateOrderNumberAsync(string prefix, CancellationToken cancellationToken = default);
+}
+
+public interface IUserRepository : IRepository<User>
+{
+    Task<User?> GetByEmailAsync(string email, CancellationToken cancellationToken = default);
+    Task<User?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default);
+}
+
+public interface IClientRepository : IRepository<Client>
+{
+    Task<Client?> GetByRutAsync(string rutId, CancellationToken cancellationToken = default);
+}
+
+public interface IProductRepository : IRepository<Product>
+{
+    Task<Product?> GetBySkuAsync(string sku, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Product>> GetByCategoryIdAsync(string categoryId, CancellationToken cancellationToken = default);
+}
+
+public interface IExchangeRateRepository : IRepository<ExchangeRate>
+{
+    Task<ExchangeRate?> GetLatestRateAsync(string fromCurrency, string toCurrency, CancellationToken cancellationToken = default);
+}
+
+public interface IRefreshTokenRepository : IRepository<RefreshToken>
+{
+    Task<RefreshToken?> GetByTokenAsync(string token, CancellationToken cancellationToken = default);
+    Task RevokeByUserIdAsync(string userId, CancellationToken cancellationToken = default);
+}
+
+public interface IIdempotencyRepository
+{
+    Task<IdempotencyRecord?> GetByMutationIdAsync(string mutationId, CancellationToken cancellationToken = default);
+    Task SaveAsync(IdempotencyRecord record, CancellationToken cancellationToken = default);
+}
