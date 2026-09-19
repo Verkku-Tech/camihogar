@@ -18,7 +18,7 @@ interface AuthContextType {
   token: string | null
   isAuthenticated: boolean
   isLoading: boolean
-  login: (username: string, password: string) => Promise<void>
+  login: (username: string, password: string, rememberMe?: boolean) => Promise<void>
   logout: () => Promise<void>
   hasPermission: (permission: string) => boolean
 }
@@ -68,8 +68,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener('auth:expired', handleAuthExpired)
   }, [])
 
-  const login = async (username: string, password: string) => {
-    const res = await apiFetch<{ token: string; user: User }>('auth/login', {
+  const login = async (username: string, password: string, _rememberMe = false) => {
+    const res = await apiFetch<{ token: string; user: User }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password })
     })

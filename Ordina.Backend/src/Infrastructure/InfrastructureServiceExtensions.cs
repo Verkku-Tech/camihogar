@@ -22,6 +22,13 @@ public static class InfrastructureServiceExtensions
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        // 0. Register Mongo Conventions (Ignore extra elements globally for backward compatibility with production dumps)
+        var pack = new MongoDB.Bson.Serialization.Conventions.ConventionPack
+        {
+            new MongoDB.Bson.Serialization.Conventions.IgnoreExtraElementsConvention(true)
+        };
+        MongoDB.Bson.Serialization.Conventions.ConventionRegistry.Register("GlobalConventionPack", pack, _ => true);
+
         // 1. Singleton MongoClient (Cero EF Core, cero Postgres, cero Redis)
         var connectionString = configuration.GetConnectionString("MongoDB")
                                ?? configuration["MongoDb:ConnectionString"]
@@ -29,7 +36,7 @@ public static class InfrastructureServiceExtensions
                                ?? "mongodb://localhost:27017";
 
         services.AddSingleton<IMongoClient>(_ => new MongoClient(connectionString));
-        services.AddSingleton<MongoDbContext>();
+        services.AddSingleton(sp => new MongoDbContext(sp.GetRequiredService<IMongoClient>(), configuration));
 
         // 2. Generic and Specialized Repositories
         services.AddScoped<IOrderRepository, OrderRepository>();

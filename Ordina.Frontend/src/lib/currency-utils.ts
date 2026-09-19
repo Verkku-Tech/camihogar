@@ -1,0 +1,264 @@
+// Utilidades para manejo de monedas y tasas de cambio
+import { getAll } from "./indexeddb";
+
+export type Currency = "Bs" | "USD" | "EUR";
+
+export interface ExchangeRate {
+  id: string;
+  fromCurrency: "Bs";
+  toCurrency: "USD" | "EUR";
+  rate: number;
+  effectiveDate: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Tasas al crear pedido/presupuesto (forma estable en la app) */
+export type ExchangeRatesAtCreationNormalized = {
+  USD?: { rate: number; effectiveDate: string };
+  EUR?: { rate: number; effectiveDate: string };
+};
+
+/** Payload API/backend puede usar USD/EUR o usd/eur */
+export type ExchangeRatesAtCreationRaw =
+  | {
+      USD?: { rate: number; effectiveDate: string } | null;
+      EUR?: { rate: number; effectiveDate: string } | null;
+      usd?: { rate: number; effectiveDate: string } | null;
+      eur?: { rate: number; effectiveDate: string } | null;
+    }
+  | null
+  | undefined;
+
+/**
+ * Unifica claves usd/eur y USD/EUR a la forma { USD, EUR } usada en el frontend.
+ */
+export function normalizeExchangeRatesAtCreation(
+  raw: ExchangeRatesAtCreationRaw
+): ExchangeRatesAtCreationNormalized | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, { rate?: number; effectiveDate?: string } | null | undefined>;
+  const usd = r.USD ?? r.usd;
+  const eur = r.EUR ?? r.eur;
+  const out: ExchangeRatesAtCreationNormalized = {};
+  if (
+    usd &&
+    typeof usd.rate === "number" &&
+    usd.rate > 0 &&
+    typeof usd.effectiveDate === "string"
+  ) {
+    out.USD = { rate: usd.rate, effectiveDate: usd.effectiveDate };
+  }
+  if (
+    eur &&
+    typeof eur.rate === "number" &&
+    eur.rate > 0 &&
+    typeof eur.effectiveDate === "string"
+  ) {
+    out.EUR = { rate: eur.rate, effectiveDate: eur.effectiveDate };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+// Obtener la tasa de cambio más reciente para una moneda
+export const getLatestExchangeRate = async (
+  toCurrency: "USD" | "EUR"
+): Promise<ExchangeRate | null> => {
+  try {
+    const { ApiClient } = await import("./api-client");
+    const client = new ApiClient();
+    const rate = await client.getLatestExchangeRate(toCurrency);
+    return rate || null;
+  } catch (error) {
+    console.error("Error getting exchange rate:", error);
+    return null;
+  }
+};
+
+const ACTIVE_RATES_TTL_MS = 45_000;
+let inflightActiveRates: Promise<{ USD?: ExchangeRate; EUR?: ExchangeRate }> | null = null;
+let cachedActiveRates: { USD?: ExchangeRate; EUR?: ExchangeRate } | null = null;
+let cachedActiveRatesAt = 0;
+
+// Obtener todas las tasas activas (inflight + caché en memoria para no martillar la API)
+export const getActiveExchangeRates = async (): Promise<{
+  USD?: ExchangeRate;
+  EUR?: ExchangeRate;
+}> => {
+  const now = Date.now();
+  if (cachedActiveRates && now - cachedActiveRatesAt < ACTIVE_RATES_TTL_MS) {
+    return cachedActiveRates;
+  }
+  if (inflightActiveRates) {
+    return await inflightActiveRates;
+  }
+
+  inflightActiveRates = (async () => {
+    try {
+      const { ApiClient } = await import("./api-client");
+      const client = new ApiClient();
+      const rates = await client.getActiveExchangeRates();
+
+      const result: { USD?: ExchangeRate; EUR?: ExchangeRate } = {};
+
+      if (Array.isArray(rates)) {
+        const usdRate = rates.find((r) => r.toCurrency === "USD");
+        if (usdRate) result.USD = usdRate;
+
+        const eurRate = rates.find((r) => r.toCurrency === "EUR");
+        if (eurRate) result.EUR = eurRate;
+      }
+
+      cachedActiveRates = result;
+      cachedActiveRatesAt = Date.now();
+      return result;
+    } catch (error) {
+      console.error("Error getting active exchange rates:", error);
+      return {};
+    } finally {
+      inflightActiveRates = null;
+    }
+  })();
+
+  return await inflightActiveRates;
+};
+
+// Convertir de Bs a otra moneda
+export const convertFromBs = (
+  amount: number,
+  toCurrency: "USD" | "EUR",
+  rate: number
+): number => {
+  if (rate <= 0) return amount;
+  return amount / rate;
+};
+
+// Convertir a Bs desde otra moneda
+export const convertToBs = (
+  amount: number,
+  fromCurrency: "USD" | "EUR",
+  rate: number
+): number => {
+  if (rate <= 0) return amount;
+  return amount * rate;
+};
+
+/**
+ * Convierte entre monedas usando tasas Bs↔USD/EUR.
+ * @returns `null` si falta alguna tasa necesaria (no devolver el número sin convertir).
+ */
+export const convertCurrency = async (
+  amount: number,
+  fromCurrency: Currency,
+  toCurrency: Currency,
+  rates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
+): Promise<number | null> => {
+  if (fromCurrency === toCurrency) return amount;
+
+  // Si no se proporcionan las tasas, obtenerlas
+  if (!rates) {
+    rates = await getActiveExchangeRates();
+  }
+
+  // Convertir a Bs primero
+  let amountInBs = amount;
+  if (fromCurrency !== "Bs") {
+    const fromRate = rates[fromCurrency];
+    if (!fromRate || !fromRate.rate || fromRate.rate <= 0) {
+      console.warn(`No se encontró tasa de cambio para ${fromCurrency}`);
+      return null;
+    }
+    amountInBs = convertToBs(amount, fromCurrency, fromRate.rate);
+  }
+
+  // Convertir de Bs a moneda destino
+  if (toCurrency === "Bs") return amountInBs;
+
+  const toRate = rates[toCurrency];
+  if (!toRate || !toRate.rate || toRate.rate <= 0) {
+    console.warn(`No se encontró tasa de cambio para ${toCurrency}`);
+    return null;
+  }
+  return convertFromBs(amountInBs, toCurrency, toRate.rate);
+};
+
+// Formatear moneda
+export const formatCurrency = (amount: number, currency: Currency): string => {
+  const symbols: Record<Currency, string> = {
+    Bs: "Bs.",
+    USD: "$",
+    EUR: "€",
+  };
+
+  // Formatear con separadores de miles y 2 decimales
+  const formattedAmount = new Intl.NumberFormat("es-VE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+
+  return `${symbols[currency]}${formattedAmount}`;
+};
+
+// Obtener el símbolo de moneda
+export const getCurrencySymbol = (currency: Currency): string => {
+  const symbols: Record<Currency, string> = {
+    Bs: "Bs.",
+    USD: "$",
+    EUR: "€",
+  };
+  return symbols[currency];
+};
+
+/**
+ * Convierte precio de catálogo a Bs.
+ * @returns `null` si la moneda es USD/EUR y no hay tasa (evita guardar Bs falsos).
+ */
+export const convertProductPriceToBs = async (
+  price: number,
+  currency: Currency,
+  rates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
+): Promise<number | null> => {
+  if (currency === "Bs") return price;
+
+  // Si no se proporcionan las tasas, obtenerlas
+  if (!rates) {
+    rates = await getActiveExchangeRates();
+  }
+
+  if (currency === "USD") {
+    const rate = rates.USD?.rate;
+    if (!rate || rate <= 0) {
+      console.warn("No se encontró tasa de cambio para USD");
+      return null;
+    }
+    return price * rate;
+  }
+
+  if (currency === "EUR") {
+    const rate = rates.EUR?.rate;
+    if (!rate || rate <= 0) {
+      console.warn("No se encontró tasa de cambio para EUR");
+      return null;
+    }
+    return price * rate;
+  }
+
+  return price;
+};
+
+/** Igual criterio que convertProductPriceToBs: `null` si no se puede convertir. */
+export const convertAttributeAdjustmentToBs = async (
+  adjustment: number,
+  currency: Currency,
+  rates?: { USD?: ExchangeRate; EUR?: ExchangeRate }
+): Promise<number | null> => {
+  if (currency === "Bs" || !currency) return adjustment;
+  return convertProductPriceToBs(adjustment, currency, rates);
+};
+
+export {
+  formatCurrencyWithUsdPrimaryFromOrder,
+  formatUsdOnlyFromOrderTotal,
+} from "@/lib/order-currency-display";
+

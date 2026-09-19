@@ -9,7 +9,7 @@ public record PaymentResponseDto(
     string? TransactionId,
     string PaymentMethodId,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime? UpdatedAt);
 
 public record CreatePaymentDto(
     string OrderId,
@@ -44,7 +44,7 @@ public record CommissionResponseDto(
     decimal Value,
     string Currency,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime? UpdatedAt);
 
 public record CreateCommissionDto(
     string CommissionType,

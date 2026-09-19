@@ -54,13 +54,14 @@ public class JwtTokenGenerator : ITokenService
 
     public string GenerateToken(User user, IEnumerable<string> permissions)
     {
-        var secretKey = _configuration["Jwt:Key"]
+        var secretKey = _configuration["Jwt:SecretKey"]
+                        ?? _configuration["Jwt:Key"]
                         ?? _configuration["Jwt:Secret"]
-                        ?? "OrdinaSecureSecretKeyForDevelopmentAndTestingOnly!123456789";
+                        ?? "YourSuperSecretKeyForJWTTokenGenerationThatShouldBeAtLeast32CharactersLong";
 
-        var issuer = _configuration["Jwt:Issuer"] ?? "Ordina.Api";
-        var audience = _configuration["Jwt:Audience"] ?? "OrdinaApp";
-        var expiryMinutes = int.TryParse(_configuration["Jwt:ExpiryInMinutes"], out var mins) ? mins : 15;
+        var issuer = _configuration["Jwt:Issuer"] ?? "OrdinaApi";
+        var audience = _configuration["Jwt:Audience"] ?? "OrdinaClients";
+        var expiryMinutes = int.TryParse(_configuration["Jwt:ExpirationMinutes"] ?? _configuration["Jwt:ExpiryInMinutes"], out var mins) ? mins : 60;
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

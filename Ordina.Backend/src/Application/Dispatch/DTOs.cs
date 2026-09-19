@@ -38,7 +38,7 @@ public record DispatchRouteResponseDto(
     IReadOnlyList<DispatchItemDto> Items,
     string? Observations,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime? UpdatedAt);
 
 public record CreateDispatchRouteDto(
     string Name,

@@ -144,6 +144,21 @@ export class SyncManager {
       this.isSyncing = false
     }
   }
+
+  // Backward compatibility methods for legacy UI components
+  async addToQueue(op: any): Promise<void> {
+    const endpoint = `/api/${op.entity || 'orders'}`
+    const method = op.type === 'create' ? 'POST' : op.type === 'update' ? 'PUT' : 'DELETE'
+    await this.enqueueMutation({ endpoint, method, payload: op.data })
+  }
+
+  async getPendingOperations(): Promise<any[]> {
+    return []
+  }
+
+  async syncPendingOperations(): Promise<void> {
+    await this.drainOutbox()
+  }
 }
 
 export const syncManager = new SyncManager()

@@ -14,7 +14,7 @@ public record ProductResponseDto(
     string? ProviderId,
     string? Description,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime? UpdatedAt);
 
 public record CreateProductDto(
     string Name,
@@ -70,7 +70,7 @@ public record CategoryResponseDto(
     string? MaxDiscountCurrency,
     IReadOnlyList<CategoryAttributeDto> Attributes,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime? UpdatedAt);
 
 public record CreateCategoryDto(
     string Name,
@@ -98,7 +98,7 @@ public record ProviderResponseDto(
     string? Tipo,
     string Estado,
     DateTime FechaCreacion,
-    DateTime FechaActualizacion);
+    DateTime? FechaActualizacion);
 
 public record CreateProviderDto(
     string Nombre,

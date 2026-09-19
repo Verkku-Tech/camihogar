@@ -1,30 +1,51 @@
-import React, { useEffect } from 'react'
+import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient } from '@tanstack/react-query'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { createIdbPersister } from './lib/persister'
 import { syncManager } from './lib/sync-manager'
-import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { AuthProvider } from './contexts/auth-context'
+import { CurrencyProvider } from './contexts/currency-context'
+import { NavigationProvider } from './contexts/navigation-context'
+import { ThemeProvider } from './components/theme-provider'
+import { Toaster } from './components/ui/sonner'
 
-import { Layout } from './modules/common/Layout'
-import { LoginPage } from './modules/auth/LoginPage'
-import { DashboardPage } from './modules/dashboard/DashboardPage'
-import { OrdersPage } from './modules/orders/OrdersPage'
-import { CreateOrderPage } from './modules/orders/CreateOrderPage'
-import { OrderDetailPage } from './modules/orders/OrderDetailPage'
-import { ManufacturingKanbanPage } from './modules/manufacturing/ManufacturingKanbanPage'
-import { DispatchPage } from './modules/dispatch/DispatchPage'
-import { ClientsPage } from './modules/clients/ClientsPage'
-import { ProductsPage } from './modules/catalog/ProductsPage'
-import { FinancePage } from './modules/finance/FinancePage'
+// Extracted Real Business Pages
+import HomePage from './app/page'
+import LoginPage from './app/login/page'
+import PedidosPage from './app/pedidos/page'
+import PedidoDetailPage from './app/pedidos/[orderNumber]/page'
+import ReservasPage from './app/pedidos/reservas/page'
+import DespachosPage from './app/pedidos/despachos/page'
+import PresupuestoDetailPage from './app/presupuestos/[budgetNumber]/page'
+import ProductosPage from './app/inventario/productos/page'
+import CategoriasPage from './app/inventario/categorias/page'
+import FabricacionPage from './app/inventario/fabricacion/page'
+import FabricacionDetailPage from './app/inventario/fabricacion/[orderNumber]/page'
+import ClientesPage from './app/clientes/page'
+import ProveedoresPage from './app/proveedores/page'
+import TiendasPage from './app/tiendas/page'
+import CuentasPage from './app/cuentas/page'
+import ReportesPage from './app/reportes/page'
+import ReporteComisionesPage from './app/reportes/comisiones/page'
+import ReporteDespachoPage from './app/reportes/despacho/page'
+import ReporteFabricacionPage from './app/reportes/fabricacion/page'
+import ReportePagosPage from './app/reportes/pagos/page'
+import UsuariosConfigPage from './app/configuracion/usuarios/page'
+import RolesConfigPage from './app/configuracion/roles/page'
+import TasasConfigPage from './app/configuracion/tasas/page'
+import ComisionesConfigPage from './app/configuracion/comisiones/page'
+import PinAccesoConfigPage from './app/configuracion/pin-acceso/page'
+import NavegacionConfigPage from './app/configuracion/navegacion/page'
+import SistemaConfigPage from './app/configuracion/sistema/page'
+import AbbacoPage from './app/abbaco/page'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       gcTime: 1000 * 60 * 60 * 24, // 24 hours offline cache
-      staleTime: 1000 * 60 * 5,     // 5 minutes freshness
+      staleTime: 1000 * 60 * 5, // 5 minutes freshness
       retry: (failureCount, error: any) => {
-        // Don't retry client errors (4xx)
         if (error?.statusCode >= 400 && error?.statusCode < 500) return false
         return failureCount < 2
       }
@@ -35,64 +56,87 @@ const queryClient = new QueryClient({
 syncManager.setQueryClient(queryClient)
 const persister = createIdbPersister()
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth()
-
-  if (isLoading) {
-    return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'var(--bg-canvas)',
-          color: 'var(--text-muted)'
-        }}
-      >
-        Inicializando sesión en Ordina ERP...
-      </div>
-    )
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
-  }
-
-  return <>{children}</>
-}
-
 export function App() {
   return (
     <PersistQueryClientProvider client={queryClient} persistOptions={{ persister }}>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="light"
+        enableSystem={false}
+        disableTransitionOnChange
+        storageKey="camihogar-theme"
+      >
+        <CurrencyProvider>
+          <NavigationProvider>
+            <AuthProvider>
+              <BrowserRouter>
+                <Routes>
+                  {/* Public routes */}
+                  <Route path="/login" element={<LoginPage />} />
 
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Layout />
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<DashboardPage />} />
-              <Route path="orders" element={<OrdersPage />} />
-              <Route path="orders/new" element={<CreateOrderPage />} />
-              <Route path="orders/:id" element={<OrderDetailPage />} />
-              <Route path="manufacturing" element={<ManufacturingKanbanPage />} />
-              <Route path="dispatch" element={<DispatchPage />} />
-              <Route path="clients" element={<ClientsPage />} />
-              <Route path="products" element={<ProductsPage />} />
-              <Route path="finance" element={<FinancePage />} />
-            </Route>
+                  {/* Dashboard */}
+                  <Route path="/" element={<HomePage />} />
 
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
+                  {/* Orders / Pedidos */}
+                  <Route path="/pedidos" element={<PedidosPage />} />
+                  <Route path="/pedidos/reservas" element={<ReservasPage />} />
+                  <Route path="/pedidos/despachos" element={<DespachosPage />} />
+                  <Route path="/pedidos/:orderNumber" element={<PedidoDetailPage />} />
+                  <Route path="/presupuestos/:budgetNumber" element={<PresupuestoDetailPage />} />
+
+                  {/* Inventory / Inventario */}
+                  <Route path="/inventario/productos" element={<ProductosPage />} />
+                  <Route path="/inventario/categorias" element={<CategoriasPage />} />
+                  <Route path="/inventario/fabricacion" element={<FabricacionPage />} />
+                  <Route path="/inventario/fabricacion/:orderNumber" element={<FabricacionDetailPage />} />
+
+                  {/* Management */}
+                  <Route path="/clientes" element={<ClientesPage />} />
+                  <Route path="/proveedores" element={<ProveedoresPage />} />
+                  <Route path="/tiendas" element={<TiendasPage />} />
+                  <Route path="/cuentas" element={<CuentasPage />} />
+                  <Route path="/abbaco" element={<AbbacoPage />} />
+
+                  {/* Reports */}
+                  <Route path="/reportes" element={<ReportesPage />} />
+                  <Route path="/reportes/comisiones" element={<ReporteComisionesPage />} />
+                  <Route path="/reportes/despacho" element={<ReporteDespachoPage />} />
+                  <Route path="/reportes/fabricacion" element={<ReporteFabricacionPage />} />
+                  <Route path="/reportes/pagos" element={<ReportePagosPage />} />
+
+                  {/* Configuration */}
+                  <Route path="/configuracion/usuarios" element={<UsuariosConfigPage />} />
+                  <Route path="/configuracion/roles" element={<RolesConfigPage />} />
+                  <Route path="/configuracion/tasas" element={<TasasConfigPage />} />
+                  <Route path="/configuracion/comisiones" element={<ComisionesConfigPage />} />
+                  <Route path="/configuracion/pin-acceso" element={<PinAccesoConfigPage />} />
+                  <Route path="/configuracion/navegacion" element={<NavegacionConfigPage />} />
+                  <Route path="/configuracion/sistema" element={<SistemaConfigPage />} />
+
+                  {/* Aliases for legacy or refactored paths */}
+                  <Route path="/orders" element={<Navigate to="/pedidos" replace />} />
+                  <Route path="/despachos" element={<Navigate to="/pedidos/despachos" replace />} />
+                  <Route path="/reservas" element={<Navigate to="/pedidos/reservas" replace />} />
+                  <Route path="/fabricacion" element={<Navigate to="/inventario/fabricacion" replace />} />
+                  <Route path="/manufacturing" element={<Navigate to="/inventario/fabricacion" replace />} />
+                  <Route path="/productos" element={<Navigate to="/inventario/productos" replace />} />
+                  <Route path="/products" element={<Navigate to="/inventario/productos" replace />} />
+                  <Route path="/categorias" element={<Navigate to="/inventario/categorias" replace />} />
+                  <Route path="/clients" element={<Navigate to="/clientes" replace />} />
+                  <Route path="/providers" element={<Navigate to="/proveedores" replace />} />
+                  <Route path="/stores" element={<Navigate to="/tiendas" replace />} />
+                  <Route path="/accounts" element={<Navigate to="/cuentas" replace />} />
+                  <Route path="/reports" element={<Navigate to="/reportes" replace />} />
+
+                  {/* Fallback */}
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </BrowserRouter>
+              <Toaster />
+            </AuthProvider>
+          </NavigationProvider>
+        </CurrencyProvider>
+      </ThemeProvider>
     </PersistQueryClientProvider>
   )
 }

@@ -97,9 +97,9 @@ builder.Services.AddRateLimiter(options =>
 });
 
 // 5. JWT Authentication & Authorization
-var jwtKey = builder.Configuration["Jwt:SecretKey"] ?? "OrdinaSuperSecretKeyForDevelopmentMustBeAtLeast32CharsLong!";
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "OrdinaApi";
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "OrdinaClients";
+var jwtKey = builder.Configuration["Jwt:SecretKey"];
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+var jwtAudience = builder.Configuration["Jwt:Audience"];
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

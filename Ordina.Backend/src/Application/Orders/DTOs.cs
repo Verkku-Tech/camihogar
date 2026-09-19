@@ -133,7 +133,7 @@ public record OrderResponseDto(
     string? BaseCurrency,
     string Type,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime? UpdatedAt);
 
 public record CreateOrderDto(
     string ClientId,

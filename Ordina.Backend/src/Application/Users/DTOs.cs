@@ -50,7 +50,7 @@ public record RoleResponseDto(
     IReadOnlyList<string> Permissions,
     bool IsSystem,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime? UpdatedAt);
 
 public record CreateRoleDto(
     string Name,

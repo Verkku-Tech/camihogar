@@ -1,0 +1,942 @@
+"use client";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Plus, Edit, Trash2, KeyRound } from "lucide-react";
+import { PinValidationPanel } from "@/components/orders/pin-validation-panel";
+import { Badge } from "@/components/ui/badge";
+import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
+import type { UseOrderFormReturn } from "../hooks/use-order-form";
+import { formatCurrency, type Currency } from "@/lib/currency-utils";
+import {
+  commercialRatesToExchangeRatesInput,
+  formatCommercialDualDisplay,
+} from "@/lib/order-currency-display";
+import {
+  getLineDiscountInBaseCurrency,
+  getLinePriceCurrency,
+  getProductDiscountCurrencyForTotals,
+  normalizeMonetaryAmountFromLegacy,
+  ORDER_BASE_CURRENCY,
+} from "@/lib/order-line-pricing";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useCurrency } from "@/contexts/currency-context";
+import { useAuth } from "@/contexts/auth-context";
+
+function roundDisplayAmount(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+type Step1OrderForm = UseOrderFormReturn & {
+  commercialExchangeRates?: { USD?: { rate: number }; EUR?: { rate: number } };
+  formBaseCurrency?: Currency;
+};
+
+function formatStep1Money(
+  orderForm: Step1OrderForm,
+  amount: number,
+  amountCurrency: Currency,
+): string {
+  const commercial = orderForm.commercialExchangeRates
+    ? commercialRatesToExchangeRatesInput(orderForm.commercialExchangeRates)
+    : undefined;
+  return formatCommercialDualDisplay(amount, amountCurrency, {
+    commercialRates: commercial,
+    liveRates: orderForm.exchangeRates,
+  });
+}
+
+function getStep1TotalsCurrency(orderForm: Step1OrderForm): Currency {
+  return orderForm.formBaseCurrency ?? ORDER_BASE_CURRENCY;
+}
+
+interface Step1BudgetProps {
+  orderForm: UseOrderFormReturn;
+  onClientLookup: () => void;
+  onProductSelection: () => void;
+  onEditProduct: (product: any) => void;
+  onRemoveProduct: (product: any) => void;
+  /** Si true, el referidor se muestra solo lectura (p. ej. confirmación de reserva en tienda). */
+  referrerLocked?: boolean;
+  /** Requiere PIN para editar productos (confirmación de reserva, vendedor tienda). */
+  pinEditMode?: boolean;
+  pinSessionActive?: boolean;
+  pinRemainingFormatted?: string;
+  showPinPanel?: boolean;
+  onTogglePinPanel?: () => void;
+  onValidatePin?: (pin: string) => Promise<boolean>;
+  isValidatingPin?: boolean;
+}
+
+export function Step1Budget({
+  orderForm,
+  onClientLookup,
+  onProductSelection,
+  onEditProduct,
+  onRemoveProduct,
+  referrerLocked = false,
+  pinEditMode = false,
+  pinSessionActive = false,
+  pinRemainingFormatted,
+  showPinPanel = false,
+  onTogglePinPanel,
+  onValidatePin,
+  isValidatingPin = false,
+}: Step1BudgetProps) {
+  const { preferredCurrency } = useCurrency();
+  const { user } = useAuth();
+  const isStoreSeller = user?.role === "Store Seller";
+  const isOnlineSeller = user?.role === "Online Seller";
+
+  const canEditProducts = !pinEditMode || pinSessionActive;
+  const showPinGate = pinEditMode && !pinSessionActive;
+
+  const vendorDisplayName =
+    orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)?.name ?? "";
+  const referrerDisplayName =
+    orderForm.mockReferrers.find((r) => r.id === orderForm.formData.referrer)?.name ??
+    user?.name ??
+    "";
+
+  return (
+    <div className="space-y-5 sm:space-y-6">
+      <Card>
+        <CardHeader className="p-4 sm:p-6 pb-4 sm:pb-6">
+          <CardTitle className="text-base sm:text-lg">Presupuesto</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5 p-4 sm:p-6">
+          {/* Vendedor / Referidor (según rol) */}
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="vendor">Vendedor</Label>
+                {isStoreSeller ||
+                (isOnlineSeller && orderForm.onlineSellerMode !== "referrer") ? (
+                  <Input readOnly id="vendor" value={vendorDisplayName} />
+                ) : isOnlineSeller && orderForm.onlineSellerMode === "referrer" ? (
+                  <Input
+                    readOnly
+                    id="vendor"
+                    value=""
+                    placeholder="Asignado en tienda al aprobar"
+                  />
+                ) : (
+                  <Select
+                    value={orderForm.formData.vendor}
+                    onValueChange={(value) =>
+                      orderForm.setFormData((prev) => ({ ...prev, vendor: value }))
+                    }
+                  >
+                    <SelectTrigger id="vendor">
+                      <SelectValue placeholder="Seleccionar vendedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {orderForm.mockVendors
+                        .filter((vendor) => vendor.id && vendor.id.trim() !== "")
+                        .map((vendor) => (
+                          <SelectItem key={vendor.id} value={vendor.id}>
+                            {vendor.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="referrer">Referidor</Label>
+                {referrerLocked ? (
+                  <Input readOnly id="referrer" value={referrerDisplayName || "—"} />
+                ) : isOnlineSeller && orderForm.onlineSellerMode === "referrer" ? (
+                  <Input readOnly id="referrer" value={referrerDisplayName} />
+                ) : (
+                  <Select
+                    value={orderForm.formData.referrer}
+                    onValueChange={(value) =>
+                      orderForm.setFormData((prev) => ({ ...prev, referrer: value }))
+                    }
+                  >
+                    <SelectTrigger id="referrer">
+                      <SelectValue placeholder="Seleccionar referidor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {orderForm.mockReferrers
+                        .filter((referrer) => referrer.id && referrer.id.trim() !== "")
+                        .map((referrer) => (
+                          <SelectItem key={referrer.id} value={referrer.id}>
+                            {referrer.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Client Selection */}
+          <div className="space-y-2">
+            <Label>Cliente</Label>
+            <Input
+              readOnly
+              value={orderForm.selectedClient?.name || ""}
+              placeholder="Seleccionar cliente..."
+              onClick={onClientLookup}
+              className="cursor-pointer"
+            />
+          </div>
+
+          {/* Products Table */}
+          <div className="space-y-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center">
+              <div className="flex flex-wrap items-center gap-2">
+                <Label>Productos</Label>
+                {pinEditMode && pinSessionActive && pinRemainingFormatted && (
+                  <Badge variant="secondary" className="text-xs">
+                    Edición habilitada — {pinRemainingFormatted}
+                  </Badge>
+                )}
+              </div>
+              {showPinGate ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={onTogglePinPanel}
+                >
+                  <KeyRound className="w-4 h-4 mr-2" />
+                  Editar reserva
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={onProductSelection}
+                  disabled={!orderForm.canAddProduct || !canEditProducts}
+                  title={
+                    showPinGate
+                      ? "Solicita un PIN al administrador para modificar productos"
+                      : !orderForm.selectedClient
+                        ? "Selecciona un cliente para agregar productos"
+                        : !orderForm.step1SellerReady
+                          ? "Selecciona vendedor o activa modo referidor (Online) para agregar productos"
+                          : ""
+                  }
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Agregar Producto
+                </Button>
+              )}
+            </div>
+            {showPinGate && (
+              <p className="text-xs text-muted-foreground">
+                Solicita un PIN al administrador para modificar productos de esta
+                reserva.
+              </p>
+            )}
+            {showPinGate && showPinPanel && onValidatePin && (
+              <PinValidationPanel
+                onValidate={onValidatePin}
+                isValidating={isValidatingPin}
+                onCancel={onTogglePinPanel}
+              />
+            )}
+            {!orderForm.canAddProduct && (
+              <p className="text-xs text-muted-foreground">
+                {!orderForm.selectedClient
+                  ? "⚠️ Debes seleccionar un cliente para agregar productos"
+                  : !orderForm.step1SellerReady
+                  ? "⚠️ Debes indicar vendedor o modo referidor antes de agregar productos"
+                  : ""}
+              </p>
+            )}
+
+            {orderForm.selectedProducts.length > 0 ? (
+              <>
+                {/* Vista de tarjetas: móvil y tablet (&lt; lg) */}
+                <div className="space-y-4 lg:hidden">
+                  {orderForm.selectedProducts.map((product) => {
+                    const lineBase = orderForm.getProductLineBase(product);
+                    const lineSurcharge = orderForm.getProductLineSurcharge(product);
+                    const discount = product.discount || 0;
+                    const discountInputCurrency =
+                      orderForm.productDiscountCurrencies[product.id] || preferredCurrency;
+                    const rates = commercialRatesToExchangeRatesInput(
+                      orderForm.commercialExchangeRates ?? orderForm.exchangeRates,
+                    );
+                    const formBase = getStep1TotalsCurrency(
+                      orderForm as Step1OrderForm,
+                    );
+                    const discCurrency = getProductDiscountCurrencyForTotals(
+                      product,
+                      {
+                        productDiscountTypes: orderForm.productDiscountTypes,
+                        productDiscountCurrencies:
+                          orderForm.productDiscountCurrencies,
+                        preferredCurrency,
+                      },
+                    );
+                    const discountInBase = getLineDiscountInBaseCurrency(
+                      product,
+                      discount,
+                      discCurrency,
+                      formBase,
+                      rates,
+                    );
+                    const finalTotal = orderForm.getProductBaseTotal(product);
+
+                    return (
+                      <Card key={product.id} className="p-4 sm:p-5">
+                        <div className="space-y-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <div className="flex flex-wrap items-center gap-2 mb-1">
+                                <span className="font-medium text-base">
+                                  {product.name}
+                                </span>
+                                <CommissionLineSourceBadge
+                                  source={product.commissionLineSource}
+                                />
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-lg font-semibold">
+                                {orderForm.formattedProductFinalTotals[product.id] ||
+                                  formatStep1Money(
+                                    orderForm,
+                                    finalTotal,
+                                    getStep1TotalsCurrency(orderForm),
+                                  )}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Total final
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Precio:</span>
+                              <span className="ml-2 font-medium">
+                                {orderForm.formattedProductPrices[product.id] ||
+                                  formatStep1Money(
+                                    orderForm,
+                                    product.price,
+                                    getLinePriceCurrency(product),
+                                  )}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Cantidad:</span>
+                              <span className="ml-2 font-medium">{product.quantity}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Sobreprecio:</span>
+                              <span className="ml-2 font-medium">
+                                {lineSurcharge > 0
+                                  ? formatStep1Money(
+                                      orderForm,
+                                      lineSurcharge,
+                                      formBase,
+                                    )
+                                  : "—"}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Subtotal:</span>
+                              <span className="ml-2 font-medium">
+                                {orderForm.formattedProductTotals[product.id] ||
+                                  formatStep1Money(
+                                    orderForm,
+                                    lineBase,
+                                    formBase,
+                                  )}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2.5 pt-3 border-t">
+                            <Label className="text-sm font-medium">Descuento</Label>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:gap-2.5">
+                              <Select
+                                value={
+                                  orderForm.productDiscountTypes[product.id] || "monto"
+                                }
+                                onValueChange={(value: "monto" | "porcentaje") =>
+                                  orderForm.handleProductDiscountTypeChange(
+                                    product.id,
+                                    value
+                                  )
+                                }
+                              >
+                                <SelectTrigger className="w-28">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="monto">Monto</SelectItem>
+                                  <SelectItem value="porcentaje">Porcentaje</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {orderForm.productDiscountTypes[product.id] === "monto" && (
+                                <Select
+                                  value={
+                                    orderForm.productDiscountCurrencies[product.id] ||
+                                    preferredCurrency
+                                  }
+                                  onValueChange={(value: Currency) => {
+                                    orderForm.setProductDiscountCurrencies((prev) => ({
+                                      ...prev,
+                                      [product.id]: value,
+                                    }));
+                                    // Recalcular el descuento mostrado
+                                    const currentDiscount = product.discount || 0;
+                                    const currentCurrency =
+                                      orderForm.productDiscountCurrencies[product.id] ||
+                                      preferredCurrency;
+                                    const newCurrency = value;
+                                    if (currentCurrency !== newCurrency) {
+                                      // Convertir el descuento actual a la nueva moneda
+                                      let discountInNewCurrency = currentDiscount;
+                                      if (currentCurrency === "Bs") {
+                                        const rate =
+                                          newCurrency === "USD"
+                                            ? orderForm.exchangeRates.USD?.rate
+                                            : orderForm.exchangeRates.EUR?.rate;
+                                        if (rate && rate > 0) {
+                                          discountInNewCurrency = currentDiscount / rate;
+                                        }
+                                      } else if (newCurrency === "Bs") {
+                                        const rate =
+                                          currentCurrency === "USD"
+                                            ? orderForm.exchangeRates.USD?.rate
+                                            : orderForm.exchangeRates.EUR?.rate;
+                                        if (rate && rate > 0) {
+                                          discountInNewCurrency = currentDiscount * rate;
+                                        }
+                                      } else {
+                                        const currentRate =
+                                          currentCurrency === "USD"
+                                            ? orderForm.exchangeRates.USD?.rate
+                                            : orderForm.exchangeRates.EUR?.rate;
+                                        const newRate =
+                                          newCurrency === "USD"
+                                            ? orderForm.exchangeRates.USD?.rate
+                                            : orderForm.exchangeRates.EUR?.rate;
+                                        if (
+                                          currentRate &&
+                                          newRate &&
+                                          currentRate > 0
+                                        ) {
+                                          discountInNewCurrency =
+                                            (currentDiscount * currentRate) / newRate;
+                                        }
+                                      }
+                                      orderForm.handleProductDiscountChange(
+                                        product.id,
+                                        discountInNewCurrency,
+                                        { inputCurrency: newCurrency }
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="w-20">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="Bs">Bs</SelectItem>
+                                    <SelectItem value="USD">USD</SelectItem>
+                                    <SelectItem value="EUR">EUR</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
+                              <div className="flex items-center gap-1 flex-1 min-w-[100px]">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step={
+                                    orderForm.productDiscountTypes[product.id] ===
+                                    "porcentaje"
+                                      ? "1"
+                                      : "0.01"
+                                  }
+                                  max={(() => {
+                                    const discountType =
+                                      orderForm.productDiscountTypes[product.id] || "monto";
+                                    if (discountType === "porcentaje") {
+                                      return 100;
+                                    }
+
+                                    // Para monto, considerar el maxDiscount de la categoría
+                                    const category = orderForm.categories.find(
+                                      (cat) => cat.name === product.category
+                                    );
+                                    if (category && category.maxDiscount > 0) {
+                                      // Convertir maxDiscount a Bs si está en otra moneda
+                                      let maxDiscountInBs = category.maxDiscount;
+                                      if (
+                                        category.maxDiscountCurrency &&
+                                        category.maxDiscountCurrency !== "Bs"
+                                      ) {
+                                        const rate =
+                                          category.maxDiscountCurrency === "USD"
+                                            ? orderForm.exchangeRates.USD?.rate
+                                            : orderForm.exchangeRates.EUR?.rate;
+                                        if (rate && rate > 0) {
+                                          maxDiscountInBs = category.maxDiscount * rate;
+                                        }
+                                      }
+                                      return Math.min(lineBase, maxDiscountInBs);
+                                    }
+                                    return lineBase;
+                                  })()}
+                                  value={(() => {
+                                    const discountType =
+                                      orderForm.productDiscountTypes[product.id] || "monto";
+                                    if (discount === 0) return "";
+                                    if (discountType === "porcentaje") {
+                                      const percentage =
+                                        lineBase > 0 ? (discount / lineBase) * 100 : 0;
+                                      return Math.round(percentage * 100) / 100;
+                                    }
+                                    // Para monto, convertir a la moneda seleccionada
+                                    const discountCurrency =
+                                      orderForm.productDiscountCurrencies[product.id] ||
+                                      preferredCurrency;
+                                    return roundDisplayAmount(
+                                      normalizeMonetaryAmountFromLegacy(
+                                        discount,
+                                        discountCurrency,
+                                        rates,
+                                      ),
+                                    );
+                                  })()}
+                                  onChange={(e) =>
+                                    orderForm.handleProductDiscountChange(
+                                      product.id,
+                                      Number.parseFloat(e.target.value) || 0,
+                                      { inputCurrency: discountInputCurrency }
+                                    )
+                                  }
+                                  className="flex-1 min-w-0 text-sm"
+                                  placeholder={
+                                    orderForm.productDiscountTypes[product.id] ===
+                                    "porcentaje"
+                                      ? "0%"
+                                      : "0.00"
+                                  }
+                                />
+                                {(orderForm.productDiscountTypes[product.id] ||
+                                  "monto") === "porcentaje" && (
+                                  <span className="text-sm text-muted-foreground shrink-0">
+                                    %
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {(orderForm.productDiscountTypes[product.id] || "monto") ===
+                              "porcentaje" &&
+                              discount > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                  Equivalente: −{formatCurrency(discount, "Bs")}
+                                </p>
+                              )}
+                          </div>
+
+                          {canEditProducts && (
+                            <div className="flex gap-2 pt-2 border-t">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEditProduct(product);
+                                }}
+                                className="flex-1"
+                              >
+                                <Edit className="w-4 h-4 mr-2" />
+                                Editar
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onRemoveProduct(product);
+                                }}
+                                className="flex-1"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Eliminar
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+
+                {/* Vista de tabla: solo pantallas grandes (lg+) */}
+                <div className="hidden lg:block overflow-x-auto">
+                  <div className="w-full min-w-0">
+                    <Table className="w-full table-fixed">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[18%]">Producto</TableHead>
+                          <TableHead className="w-[9%]">Precio</TableHead>
+                          <TableHead className="w-[9%]">Sobreprecio</TableHead>
+                          <TableHead className="w-[7%] text-center">Cant.</TableHead>
+                          <TableHead className="w-[9%]">Subtotal</TableHead>
+                          <TableHead className="w-[22%]">Descuento</TableHead>
+                          <TableHead className="w-[9%]">Total final</TableHead>
+                          <TableHead className="w-[11%] text-right">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {orderForm.selectedProducts.map((product) => {
+                          const lineBase = orderForm.getProductLineBase(product);
+                          const lineSurcharge =
+                            orderForm.getProductLineSurcharge(product);
+                          const discount = product.discount || 0;
+                          const discountInputCurrency =
+                            orderForm.productDiscountCurrencies[product.id] || preferredCurrency;
+                          const rates = commercialRatesToExchangeRatesInput(
+                            orderForm.commercialExchangeRates ??
+                              orderForm.exchangeRates,
+                          );
+                          const formBase = getStep1TotalsCurrency(
+                            orderForm as Step1OrderForm,
+                          );
+                          const discCurrency = getProductDiscountCurrencyForTotals(
+                            product,
+                            {
+                              productDiscountTypes: orderForm.productDiscountTypes,
+                              productDiscountCurrencies:
+                                orderForm.productDiscountCurrencies,
+                              preferredCurrency,
+                            },
+                          );
+                          const discountInBase = getLineDiscountInBaseCurrency(
+                            product,
+                            discount,
+                            discCurrency,
+                            formBase,
+                            rates,
+                          );
+                          const finalTotal = orderForm.getProductBaseTotal(product);
+
+                          return (
+                            <TableRow key={product.id}>
+                              <TableCell className="w-[20%]">
+                                <div className="flex flex-col gap-1 min-w-0">
+                                  <span className="truncate text-sm">{product.name}</span>
+                                  <CommissionLineSourceBadge
+                                    source={product.commissionLineSource}
+                                  />
+                                </div>
+                              </TableCell>
+                              <TableCell className="w-[9%] text-right text-sm">
+                                {orderForm.formattedProductPrices[product.id] ||
+                                  formatStep1Money(
+                                    orderForm,
+                                    product.price,
+                                    getLinePriceCurrency(product),
+                                  )}
+                              </TableCell>
+                              <TableCell className="w-[9%] text-right text-sm">
+                                {lineSurcharge > 0
+                                  ? formatStep1Money(
+                                      orderForm,
+                                      lineSurcharge,
+                                      formBase,
+                                    )
+                                  : "—"}
+                              </TableCell>
+                              <TableCell className="w-[7%] text-center text-sm font-medium">
+                                {product.quantity || 1}
+                              </TableCell>
+                              <TableCell className="w-[9%] text-right text-sm">
+                                {orderForm.formattedProductTotals[product.id] ||
+                                  formatStep1Money(
+                                    orderForm,
+                                    lineBase,
+                                    formBase,
+                                  )}
+                              </TableCell>
+                              <TableCell className="w-[24%]">
+                                <div className="flex flex-col gap-1 min-w-0">
+                                <div className="flex gap-1.5 items-center flex-wrap">
+                                  <Select
+                                    value={
+                                      orderForm.productDiscountTypes[product.id] || "monto"
+                                    }
+                                    onValueChange={(value: "monto" | "porcentaje") =>
+                                      orderForm.handleProductDiscountTypeChange(
+                                        product.id,
+                                        value
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-28 h-8 text-xs px-2">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="monto">Monto</SelectItem>
+                                      <SelectItem value="porcentaje">Porcentaje</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  {orderForm.productDiscountTypes[product.id] === "monto" && (
+                                    <Select
+                                      value={
+                                        orderForm.productDiscountCurrencies[product.id] ||
+                                        preferredCurrency
+                                      }
+                                      onValueChange={(value: Currency) => {
+                                        orderForm.setProductDiscountCurrencies((prev) => ({
+                                          ...prev,
+                                          [product.id]: value,
+                                        }));
+                                        // Recalcular el descuento mostrado
+                                        const currentDiscount = product.discount || 0;
+                                        const currentCurrency =
+                                          orderForm.productDiscountCurrencies[product.id] ||
+                                          preferredCurrency;
+                                        const newCurrency = value;
+                                        if (currentCurrency !== newCurrency) {
+                                          // Convertir el descuento actual a la nueva moneda
+                                          let discountInNewCurrency = currentDiscount;
+                                          if (currentCurrency === "Bs") {
+                                            const rate =
+                                              newCurrency === "USD"
+                                                ? orderForm.exchangeRates.USD?.rate
+                                                : orderForm.exchangeRates.EUR?.rate;
+                                            if (rate && rate > 0) {
+                                              discountInNewCurrency = currentDiscount / rate;
+                                            }
+                                          } else if (newCurrency === "Bs") {
+                                            const rate =
+                                              currentCurrency === "USD"
+                                                ? orderForm.exchangeRates.USD?.rate
+                                                : orderForm.exchangeRates.EUR?.rate;
+                                            if (rate && rate > 0) {
+                                              discountInNewCurrency = currentDiscount * rate;
+                                            }
+                                          } else {
+                                            const currentRate =
+                                              currentCurrency === "USD"
+                                                ? orderForm.exchangeRates.USD?.rate
+                                                : orderForm.exchangeRates.EUR?.rate;
+                                            const newRate =
+                                              newCurrency === "USD"
+                                                ? orderForm.exchangeRates.USD?.rate
+                                                : orderForm.exchangeRates.EUR?.rate;
+                                            if (
+                                              currentRate &&
+                                              newRate &&
+                                              currentRate > 0
+                                            ) {
+                                              discountInNewCurrency =
+                                                (currentDiscount * currentRate) / newRate;
+                                            }
+                                          }
+                                          orderForm.handleProductDiscountChange(
+                                            product.id,
+                                            discountInNewCurrency,
+                                            { inputCurrency: newCurrency }
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      <SelectTrigger className="w-16 h-7 text-xs px-1">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="Bs">Bs</SelectItem>
+                                        <SelectItem value="USD">USD</SelectItem>
+                                        <SelectItem value="EUR">EUR</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  )}
+                                  <div className="flex items-center gap-1 flex-1 min-w-[80px]">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step={
+                                        orderForm.productDiscountTypes[product.id] ===
+                                        "porcentaje"
+                                          ? "1"
+                                          : "0.01"
+                                      }
+                                      max={(() => {
+                                        const discountType =
+                                          orderForm.productDiscountTypes[product.id] || "monto";
+                                        if (discountType === "porcentaje") {
+                                          return 100;
+                                        }
+
+                                        // Para monto, considerar el maxDiscount de la categoría
+                                        const category = orderForm.categories.find(
+                                          (cat) => cat.name === product.category
+                                        );
+                                        if (category && category.maxDiscount > 0) {
+                                          // Convertir maxDiscount a Bs si está en otra moneda
+                                          let maxDiscountInBs = category.maxDiscount;
+                                          if (
+                                            category.maxDiscountCurrency &&
+                                            category.maxDiscountCurrency !== "Bs"
+                                          ) {
+                                            const rate =
+                                              category.maxDiscountCurrency === "USD"
+                                                ? orderForm.exchangeRates.USD?.rate
+                                                : orderForm.exchangeRates.EUR?.rate;
+                                            if (rate && rate > 0) {
+                                              maxDiscountInBs = category.maxDiscount * rate;
+                                            }
+                                          }
+                                          return Math.min(lineBase, maxDiscountInBs);
+                                        }
+                                        return lineBase;
+                                      })()}
+                                      value={(() => {
+                                        const discountType =
+                                          orderForm.productDiscountTypes[product.id] || "monto";
+                                        if (discount === 0) return "";
+                                        if (discountType === "porcentaje") {
+                                          const percentage =
+                                            lineBase > 0
+                                              ? (discount / lineBase) * 100
+                                              : 0;
+                                          return Math.round(percentage * 100) / 100;
+                                        }
+                                        const discountCurrency =
+                                          orderForm.productDiscountCurrencies[product.id] ||
+                                          preferredCurrency;
+                                        return roundDisplayAmount(
+                                          normalizeMonetaryAmountFromLegacy(
+                                            discount,
+                                            discountCurrency,
+                                            rates,
+                                          ),
+                                        );
+                                      })()}
+                                      onChange={(e) =>
+                                        orderForm.handleProductDiscountChange(
+                                          product.id,
+                                          Number.parseFloat(e.target.value) || 0,
+                                          { inputCurrency: discountInputCurrency }
+                                        )
+                                      }
+                                      className="flex-1 min-w-0 h-7 text-sm"
+                                      placeholder={
+                                        orderForm.productDiscountTypes[product.id] ===
+                                        "porcentaje"
+                                          ? "0%"
+                                          : "0.00"
+                                      }
+                                    />
+                                    {(orderForm.productDiscountTypes[product.id] ||
+                                      "monto") === "porcentaje" && (
+                                      <span className="text-sm text-muted-foreground shrink-0">
+                                        %
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                {(orderForm.productDiscountTypes[product.id] || "monto") ===
+                                  "porcentaje" &&
+                                  discount > 0 && (
+                                    <p className="text-xs text-muted-foreground leading-tight">
+                                      Equivalente: −{formatCurrency(discount, "Bs")}
+                                    </p>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="w-[10%] font-semibold text-right text-sm">
+                                {orderForm.formattedProductFinalTotals[product.id] ||
+                                  formatStep1Money(
+                                    orderForm,
+                                    finalTotal,
+                                    getStep1TotalsCurrency(orderForm),
+                                  )}
+                              </TableCell>
+                              <TableCell className="w-[12%] text-right">
+                                {canEditProducts && (
+                                  <div className="flex justify-end gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => onEditProduct(product)}
+                                      className="h-7 w-7 p-0"
+                                    >
+                                      <Edit className="w-3.5 h-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => onRemoveProduct(product)}
+                                      className="h-7 w-7 p-0"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8 text-sm sm:text-base text-muted-foreground">
+                No hay productos seleccionados
+              </div>
+            )}
+          </div>
+
+          {/* Subtotal */}
+          <div className="flex justify-end">
+            <div className="text-right">
+              <div className="text-sm sm:text-lg font-semibold">
+                <span className="block sm:inline">
+                  Subtotal (después de descuentos):
+                </span>
+                <span className="block sm:inline sm:ml-1">
+                  {formatStep1Money(
+                    orderForm,
+                    orderForm.subtotalAfterProductDiscounts +
+                      orderForm.productSurchargeTotal,
+                    getStep1TotalsCurrency(orderForm),
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

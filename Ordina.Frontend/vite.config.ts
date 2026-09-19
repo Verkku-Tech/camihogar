@@ -65,7 +65,12 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(import.meta.dirname, './src')
+      '@': path.resolve(import.meta.dirname, './src'),
+      'next/link': path.resolve(import.meta.dirname, './src/lib/next-shims/link.tsx'),
+      'next/navigation': path.resolve(import.meta.dirname, './src/lib/next-shims/navigation.tsx'),
+      'next/image': path.resolve(import.meta.dirname, './src/lib/next-shims/image.tsx'),
+      'next/dynamic': path.resolve(import.meta.dirname, './src/lib/next-shims/dynamic.tsx'),
+      'next-themes': path.resolve(import.meta.dirname, './src/lib/next-shims/themes.tsx')
     }
   },
   server: {

@@ -23,6 +23,14 @@ csharp_style_namespace_declarations = file_scoped:suggestion
 csharp_style_pattern_matching = true:suggestion
 dotnet_style_readonly_struct = true:suggestion
 
+# Test Files
+[*{Test,Tests}.cs]
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.IDE0008.severity = none
+dotnet_diagnostic.IDE0039.severity = none
+dotnet_diagnostic.xUnit1051.severity = none
+
 # TypeScript, JavaScript, JSON, Web & Config Files
 [*.{ts,tsx,js,jsx,mjs,cjs,json,css,scss,html,yml,yaml,md}]
 indent_style = space
@@ -31,3 +39,4 @@ indent_size = 2
 # Makefiles & specific configs
 [Makefile]
 indent_style = tab
+

@@ -2,6 +2,7 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Ordina.Domain.Orders;
 
+[BsonIgnoreExtraElements]
 public class ProductImage
 {
     [BsonElement("id")]

@@ -10,7 +10,7 @@ public record StoreResponseDto(
     string Rif,
     string Status,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime? UpdatedAt);
 
 public record CreateStoreDto(
     string Name,
@@ -41,7 +41,7 @@ public record AccountResponseDto(
     string? Wallet,
     bool IsActive,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime? UpdatedAt);
 
 public record CreateAccountDto(
     string Code,

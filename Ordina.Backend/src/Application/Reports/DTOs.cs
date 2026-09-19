@@ -28,3 +28,31 @@ public record PaymentsDetailedReportRowDto(
     string? Bank,
     string? Reference,
     bool IsConciliated);
+
+public record ManufacturingReportPreviewDto(
+    string Pedido,
+    DateTime Fecha,
+    string Cliente,
+    string Fabricante,
+    string Descripcion,
+    int Cantidad,
+    string Estado,
+    string ObservacionesVendedor,
+    string ObservacionesFabricante,
+    string NotasRefabricacion);
+
+public record DispatchReportPreviewDto(
+    string NotaDespacho,
+    string Cliente,
+    string Telefono1,
+    string Telefono2,
+    int CantidadTotal,
+    string Descripcion,
+    string Direccion,
+    string EstadoPago,
+    decimal ImporteTotal,
+    decimal SaldoPendiente,
+    string InformacionDespacho,
+    string DispatchObservations,
+    string EstadoUbicacion);
+

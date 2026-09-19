@@ -59,17 +59,17 @@ public class TelemetryController : ControllerBase
                 {
                     case "ERROR":
                     case "CRITICAL":
-                        _logger.LogError("Client Log: {Message} | Stack: {Stack}", log.Message, log.Stack);
+                        TelemetryLogMessages.LogClientError(_logger, log.Message, log.Stack ?? string.Empty);
                         break;
                     case "WARN":
                     case "WARNING":
-                        _logger.LogWarning("Client Log: {Message}", log.Message);
+                        TelemetryLogMessages.LogClientWarning(_logger, log.Message);
                         break;
                     case "INFO":
-                        _logger.LogInformation("Client Log: {Message}", log.Message);
+                        TelemetryLogMessages.LogClientInformation(_logger, log.Message);
                         break;
                     default:
-                        _logger.LogDebug("Client Log: {Message}", log.Message);
+                        TelemetryLogMessages.LogClientDebug(_logger, log.Message);
                         break;
                 }
             }
@@ -77,4 +77,19 @@ public class TelemetryController : ControllerBase
 
         return Accepted(new { count = request.Logs.Count });
     }
+}
+
+internal static partial class TelemetryLogMessages
+{
+    [LoggerMessage(EventId = 2001, Level = LogLevel.Error, Message = "Client Log: {Message} | Stack: {Stack}")]
+    public static partial void LogClientError(ILogger logger, string message, string stack);
+
+    [LoggerMessage(EventId = 2002, Level = LogLevel.Warning, Message = "Client Log: {Message}")]
+    public static partial void LogClientWarning(ILogger logger, string message);
+
+    [LoggerMessage(EventId = 2003, Level = LogLevel.Information, Message = "Client Log: {Message}")]
+    public static partial void LogClientInformation(ILogger logger, string message);
+
+    [LoggerMessage(EventId = 2004, Level = LogLevel.Debug, Message = "Client Log: {Message}")]
+    public static partial void LogClientDebug(ILogger logger, string message);
 }

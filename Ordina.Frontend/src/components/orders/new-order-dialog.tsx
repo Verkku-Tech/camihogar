@@ -1,0 +1,1456 @@
+"use client";
+
+import { useRef, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { ChevronLeft, ChevronRight, FileText, Loader2 } from "lucide-react";
+import { useOrderForm } from "./hooks/use-order-form";
+import { Step1Budget } from "./steps/step-1-budget";
+import { Step2ProductStatus } from "./steps/step-2-product-status";
+import { Step3OrderDetails } from "./steps/step-3-order-details";
+import { ClientLookupDialog } from "./client-lookup-dialog";
+import { ProductSelectionDialog } from "./product-selection-dialog";
+import { ProductEditDialog } from "./product-edit-dialog";
+import { RemoveProductDialog } from "./remove-product-dialog";
+import { OrderConfirmationDialog } from "./order-confirmation-dialog";
+import { EditOrderDialog } from "./edit-order-dialog";
+import {
+  addOrder,
+  addBudget,
+  addReservationOrder,
+  orderFromBackendDto,
+  type Order,
+  type OrderProduct,
+  type PartialPayment,
+  type ProductImage,
+  type Account,
+} from "@/lib/storage";
+import { buildGeneralDiscountPersistPayload, resolveGeneralDiscountAmountForSave } from "@/lib/general-discount-meta";
+import { resolveOptionalAmountForSave } from "@/lib/order-commercial-persist";
+import { mapOrderProductForSave } from "@/lib/product-discount-ui";
+import { apiClient, type OrderResponseDto } from "@/lib/api-client";
+import {
+  isActiveReservation,
+  ORDER_STATUS_RESERVA,
+  ORDER_TYPE_RESERVATION,
+} from "@/lib/order-document-types";
+import { Currency } from "@/lib/currency-utils";
+import { ORDER_BASE_CURRENCY } from "@/lib/order-line-pricing";
+import { buildExchangeRatesAtCreationPayload } from "@/lib/order-currency-display";
+import {
+  normalizePaymentsForSave,
+  buildCasheaPaymentsForSave,
+  casheaInStorePaymentsExceedTotal,
+  getCasheaFullPaymentBlockMessage,
+  getCasheaTotalDueBs,
+} from "@/lib/order-payments";
+import { useNestedModalGuard } from "@/hooks/use-nested-modal-guard";
+import { useCurrency } from "@/contexts/currency-context";
+import { useAuth } from "@/contexts/auth-context";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { paymentMethodsRequiringReceivingAccount } from "@/components/orders/constants";
+import { todayPaymentDateYyyyMmDd } from "@/lib/exchange-rate-for-date";
+
+type OrderFormSelectedClient = {
+  id: string;
+  name: string;
+  address?: string;
+  telefono?: string;
+  telefono2?: string;
+  email?: string;
+  rutId?: string;
+};
+
+interface NewOrderDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+// Constantes
+export const PAYMENT_CONDITIONS = [
+  { value: "cashea", label: "Cashea" },
+  { value: "pagara_en_tienda", label: "Pagará en Tienda" },
+  { value: "pago_a_entrega", label: "Pago a la entrega" },
+  { value: "pago_parcial", label: "Pago Parcial" },
+  { value: "todo_pago", label: "Todo Pago" },
+] as const;
+
+export const DELIVERY_TYPES = [
+  { value: "entrega_programada", label: "Entrega programada" },
+  { value: "delivery_express", label: "Delivery Express" },
+  { value: "retiro_tienda", label: "Retiro por Tienda" },
+  { value: "retiro_almacen", label: "Retiro por almacén" },
+] as const;
+
+export const DELIVERY_ZONES = [
+  { value: "caracas", label: "Caracas" },
+  { value: "g_g", label: "G&G" },
+  { value: "san_antonio_los_teques", label: "San Antonio-Los Teques" },
+  { value: "caucagua_higuerote", label: "Caucagua-Higuerote" },
+  { value: "la_guaira", label: "La Guaira" },
+  { value: "charallave_cua", label: "Charallave-Cua" },
+  { value: "interior_pais", label: "Interior del País" },
+] as const;
+
+// Las constantes de métodos de pago se importan desde constants.ts
+// y se usan en step-3-order-details.tsx
+
+export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
+  const { preferredCurrency } = useCurrency();
+  const { user } = useAuth();
+  const orderForm = useOrderForm(open, user?.id);
+
+  // Estados locales para diálogos modales
+  const [isClientLookupOpen, setIsClientLookupOpen] = useState(false);
+  const [isProductSelectionOpen, setIsProductSelectionOpen] = useState(false);
+  const [isProductEditOpen, setIsProductEditOpen] = useState(false);
+  const [isRemoveProductOpen, setIsRemoveProductOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<OrderProduct | null>(
+    null,
+  );
+  const [productToRemove, setProductToRemove] = useState<OrderProduct | null>(
+    null,
+  );
+  const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
+  const [pendingOrderData, setPendingOrderData] = useState<any>(null);
+
+  const [isReservationSaving, setIsReservationSaving] = useState(false);
+  const [isCheckingClientReservation, setIsCheckingClientReservation] =
+    useState(false);
+  const [pendingReservationPrompt, setPendingReservationPrompt] = useState<{
+    client: OrderFormSelectedClient;
+    reservationDto: OrderResponseDto;
+  } | null>(null);
+  const [reservationToOpen, setReservationToOpen] = useState<Order | null>(
+    null,
+  );
+  const reservationPromptClosingForLoadRef = useRef(false);
+
+  const nestedModalOpen =
+    isRemoveProductOpen ||
+    isProductEditOpen ||
+    isClientLookupOpen ||
+    isProductSelectionOpen ||
+    isConfirmationOpen ||
+    orderForm.needsDraftPrompt ||
+    pendingReservationPrompt !== null ||
+    isCheckingClientReservation;
+
+  const { preventClose, closeNested } = useNestedModalGuard(nestedModalOpen);
+
+  const applySelectedClientToForm = (client: OrderFormSelectedClient) => {
+    orderForm.setSelectedClient(client);
+    if (orderForm.hasDelivery && client.address) {
+      orderForm.setFormData((prev) => ({
+        ...prev,
+        deliveryAddress: client.address || prev.deliveryAddress,
+      }));
+    }
+  };
+
+  // Handlers de productos
+  const handleEditProduct = (product: OrderProduct) => {
+    setEditingProduct(product);
+    setIsProductEditOpen(true);
+  };
+
+  const handleUpdateProduct = (updatedProduct: OrderProduct) => {
+    orderForm.setSelectedProducts((products) =>
+      products.map((p) =>
+        p.id === updatedProduct.id
+          ? {
+              ...updatedProduct,
+              locationStatus: updatedProduct.locationStatus, //?? "DISPONIBILIDAD INMEDIATA",
+            }
+          : p,
+      ),
+    );
+    closeNested(() => {
+      setIsProductEditOpen(false);
+      setEditingProduct(null);
+    });
+  };
+
+  const handleRemoveProduct = (product: OrderProduct) => {
+    setProductToRemove(product);
+    setIsRemoveProductOpen(true);
+  };
+
+  const confirmRemoveProduct = () => {
+    if (!productToRemove) return;
+    const id = productToRemove.id;
+    orderForm.setSelectedProducts((products) =>
+      products.filter((p) => p.id !== id),
+    );
+    closeNested(() => setIsRemoveProductOpen(false));
+  };
+
+  // Handlers de pagos (mantener aquí por ahora, pueden moverse al hook después)
+  const addPayment = () => {
+    const defaultCurrency = orderForm.getDefaultCurrencyFromSelection();
+    const newPayment: PartialPayment = {
+      id: Date.now().toString(),
+      amount: 0,
+      method: "",
+      date: todayPaymentDateYyyyMmDd(),
+      currency: defaultCurrency,
+      paymentDetails: {},
+    };
+    orderForm.setPayments([...orderForm.payments, newPayment]);
+  };
+
+  const updatePayment = (
+    id: string,
+    field: keyof PartialPayment,
+    value: string | number | Currency,
+  ) => {
+    orderForm.setPayments((paymentsList) =>
+      paymentsList.map((payment) =>
+        payment.id === id ? { ...payment, [field]: value } : payment,
+      ),
+    );
+  };
+
+  const updatePaymentDetails = (
+    id: string,
+    field: string,
+    value: string | number | boolean | undefined,
+  ) => {
+    orderForm.setPayments((paymentsList) =>
+      paymentsList.map((payment) => {
+        if (payment.id === id) {
+          const updatedDetails = { ...payment.paymentDetails } as any;
+          if (value === undefined) {
+            delete updatedDetails[field];
+          } else {
+            updatedDetails[field] = value;
+          }
+          return {
+            ...payment,
+            paymentDetails: updatedDetails,
+          };
+        }
+        return payment;
+      }),
+    );
+  };
+
+  const getAccountsForPaymentMethod = (method: string): Account[] => {
+    if (method === "Paypal") {
+      return orderForm.accounts.filter(
+        (acc) => acc.accountType === "Cuentas Digitales",
+      );
+    } else if (
+      [
+        "Banesco Panamá",
+        "Mercantil Panamá",
+        "Pago Móvil",
+        "Transferencia",
+        "Facebank",
+        "Zelle",
+      ].includes(method)
+    ) {
+      return orderForm.accounts.filter(
+        (acc) =>
+          acc.accountType === "Ahorro" || acc.accountType === "Corriente",
+      );
+    }
+    return [];
+  };
+
+  const saveAccountInfoToPayment = (
+    paymentId: string,
+    account: Account,
+  ): void => {
+    updatePaymentDetails(paymentId, "accountId", account.id);
+
+    if (account.accountType === "Cuentas Digitales") {
+      updatePaymentDetails(paymentId, "email", account.email || undefined);
+      updatePaymentDetails(paymentId, "wallet", account.wallet || undefined);
+      updatePaymentDetails(paymentId, "accountNumber", undefined);
+      updatePaymentDetails(paymentId, "bank", undefined);
+    } else {
+      // Para cuentas tradicionales, usar el código como referencia y el label puede contener el banco
+      updatePaymentDetails(
+        paymentId,
+        "accountNumber",
+        account.code || undefined,
+      );
+      updatePaymentDetails(paymentId, "bank", account.label || undefined);
+      updatePaymentDetails(paymentId, "email", undefined);
+      updatePaymentDetails(paymentId, "wallet", undefined);
+    }
+
+    // Si la etiqueta contiene información del banco, intentar extraerla para Pago Móvil/Transferencia
+    const currentPayment = orderForm.payments.find((p) => p.id === paymentId);
+    if (
+      account.label &&
+      (currentPayment?.method === "Pago Móvil" ||
+        currentPayment?.method === "Transferencia")
+    ) {
+      // Intentar extraer el banco del label si es posible (ej: "Punto de Venta Banesco" -> "Banesco")
+      const bankMatch = account.label.match(
+        /\b(Banesco|Mercantil|Venezuela|Provincial|BOD|100% Banco|Banco del Tesoro|Banco de Venezuela)\b/i,
+      );
+      if (bankMatch) {
+        const bankName = bankMatch[1];
+        if (currentPayment?.method === "Pago Móvil") {
+          updatePaymentDetails(paymentId, "pagomovilBank", bankName);
+        } else if (currentPayment?.method === "Transferencia") {
+          updatePaymentDetails(paymentId, "transferenciaBank", bankName);
+        }
+      }
+    }
+  };
+
+  const removePayment = (id: string) => {
+    const payment = orderForm.payments.find((p) => p.id === id);
+    if (payment?.paymentDetails?.isConciliated) {
+      toast.error("No se puede eliminar un pago ya conciliado.");
+      return;
+    }
+    orderForm.setPayments((paymentsList) =>
+      paymentsList.filter((p) => p.id !== id),
+    );
+  };
+
+  const updatePaymentImages = (paymentId: string, images: ProductImage[]) => {
+    orderForm.setPayments((paymentsList) =>
+      paymentsList.map((payment) =>
+        payment.id === paymentId
+          ? { ...payment, images: images.length > 0 ? images : undefined }
+          : payment,
+      ),
+    );
+  };
+
+  // Handler para crear presupuesto
+  const handleCreateBudget = async () => {
+    try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
+      if (!orderForm.canCreateBudget) {
+        toast.error("Por favor completa la información requerida");
+        return;
+      }
+
+      if (!orderForm.selectedClient) {
+        toast.error("Por favor selecciona un cliente");
+        return;
+      }
+
+      const orderData = {
+        clientId: orderForm.selectedClient.id,
+        clientName: orderForm.selectedClient.name,
+        vendorId: orderForm.formData.vendor || "",
+        vendorName:
+          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)
+            ?.name || "",
+        referrerId: orderForm.formData.referrer || undefined,
+        referrerName: orderForm.formData.referrer
+          ? orderForm.mockReferrers.find(
+              (r) => r.id === orderForm.formData.referrer,
+            )?.name
+          : undefined,
+        products: orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({ ...product }),
+        ),
+        subtotalBeforeDiscounts: orderForm.productSubtotalBase,
+        productDiscountTotal: resolveOptionalAmountForSave(
+          orderForm.productDiscountTotal,
+        ),
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
+        ...buildGeneralDiscountPersistPayload(orderForm),
+        subtotal: orderForm.subtotal,
+        taxAmount: orderForm.taxAmount,
+        deliveryCost: resolveOptionalAmountForSave(
+          orderForm.hasDelivery ? orderForm.deliveryCost : 0,
+        ),
+        total: orderForm.total,
+        hasDelivery: orderForm.hasDelivery,
+        deliveryAddress: orderForm.hasDelivery
+          ? orderForm.formData.deliveryAddress
+          : undefined,
+        deliveryServices: orderForm.hasDelivery
+          ? {
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.deliveryExpress.cost,
+                    currency:
+                      orderForm.deliveryServices.deliveryExpress.currency,
+                  }
+                : undefined,
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioAcarreo.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioAcarreo.currency,
+                  }
+                : undefined,
+              servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioArmado.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioArmado.currency,
+                  }
+                : undefined,
+            }
+          : undefined,
+        observations: orderForm.generalObservations.trim() || undefined,
+        dispatchObservations:
+          orderForm.dispatchObservations.trim() || undefined,
+        baseCurrency: ORDER_BASE_CURRENCY,
+        exchangeRatesAtCreation: orderForm.exchangeRates,
+        validForDays: 30,
+      };
+
+      const budget = await addBudget(orderData);
+      toast.success(`Presupuesto ${budget.budgetNumber} creado exitosamente`);
+      orderForm.clearDraftStorage();
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error creating budget:", error);
+      toast.error(
+        "Error al crear el presupuesto. Por favor intenta nuevamente.",
+      );
+    }
+  };
+
+  const handleCreateReservation = async () => {
+    if (isReservationSaving) {
+      return;
+    }
+    setIsReservationSaving(true);
+    try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
+      if (!user?.id) {
+        toast.error("Debes iniciar sesión");
+        return;
+      }
+      if (!orderForm.selectedClient) {
+        toast.error("Por favor selecciona un cliente");
+        return;
+      }
+      if (orderForm.selectedProducts.length === 0) {
+        toast.error("Por favor agrega al menos un producto");
+        return;
+      }
+      if (!orderForm.saleType) {
+        toast.error("Por favor selecciona el tipo de venta");
+        return;
+      }
+      if (!orderForm.deliveryType) {
+        toast.error("Por favor selecciona el tipo de entrega");
+        return;
+      }
+      if (!orderForm.deliveryZone) {
+        toast.error("Por favor selecciona la zona de entrega");
+        return;
+      }
+      if (
+        orderForm.hasDelivery &&
+        orderForm.deliveryServices.servicioArmado?.enabled
+      ) {
+        if (
+          !orderForm.deliveryServices.servicioArmado.cost ||
+          orderForm.deliveryServices.servicioArmado.cost <= 0
+        ) {
+          toast.error("El precio del Servicio de Armado es obligatorio");
+          return;
+        }
+      }
+
+      const onlineName =
+        orderForm.mockVendors.find((v) => v.id === user.id)?.name ||
+        orderForm.mockReferrers.find((r) => r.id === user.id)?.name ||
+        user.name ||
+        "";
+
+      const orderData: Omit<
+        Order,
+        "id" | "orderNumber" | "createdAt" | "updatedAt"
+      > = {
+        clientId: orderForm.selectedClient.id,
+        clientName: orderForm.selectedClient.name,
+        vendorId: user.id,
+        vendorName: onlineName,
+        referrerId: user.id,
+        referrerName: onlineName,
+        products: orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({
+            ...product,
+            locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+          }),
+        ),
+        subtotalBeforeDiscounts: orderForm.productSubtotalBase,
+        productDiscountTotal: resolveOptionalAmountForSave(
+          orderForm.productDiscountTotal,
+        ),
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
+        ...buildGeneralDiscountPersistPayload(orderForm),
+        subtotal: orderForm.subtotal,
+        taxAmount: orderForm.taxAmount,
+        deliveryCost: resolveOptionalAmountForSave(
+          orderForm.hasDelivery ? orderForm.deliveryCost : 0,
+        ),
+        total: orderForm.total,
+        paymentType: "directo",
+        paymentMethod: "N/A",
+        paymentCondition: orderForm.paymentCondition as
+          | "cashea"
+          | "pagara_en_tienda"
+          | "pago_a_entrega"
+          | "pago_parcial"
+          | "todo_pago",
+        saleType: orderForm.saleType as Order["saleType"],
+        deliveryType: orderForm.deliveryType as Order["deliveryType"],
+        deliveryZone: orderForm.deliveryZone as Order["deliveryZone"],
+        hasDelivery: orderForm.hasDelivery,
+        deliveryAddress: orderForm.hasDelivery
+          ? orderForm.formData.deliveryAddress
+          : undefined,
+        deliveryServices: orderForm.hasDelivery
+          ? {
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.deliveryExpress.cost,
+                    currency:
+                      orderForm.deliveryServices.deliveryExpress.currency,
+                  }
+                : undefined,
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioAcarreo.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioAcarreo.currency,
+                  }
+                : undefined,
+              servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioArmado.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioArmado.currency,
+                  }
+                : undefined,
+            }
+          : undefined,
+        observations: orderForm.generalObservations.trim() || undefined,
+        dispatchObservations:
+          orderForm.dispatchObservations.trim() || undefined,
+        baseCurrency: ORDER_BASE_CURRENCY,
+        exchangeRatesAtCreation: orderForm.exchangeRates,
+        productMarkups: orderForm.productMarkups,
+        createSupplierOrder: orderForm.createSupplierOrder,
+        status: ORDER_STATUS_RESERVA,
+        type: ORDER_TYPE_RESERVATION,
+      };
+
+      const created = await addReservationOrder(orderData);
+      toast.success(
+        `Se ha generado la reserva ${created.orderNumber}. Visible en el historial del cliente.`,
+      );
+      orderForm.clearDraftStorage();
+      orderForm.resetForm();
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error creating reservation:", error);
+      toast.error("Error al guardar la reserva. Intenta de nuevo.");
+    } finally {
+      setIsReservationSaving(false);
+    }
+  };
+
+  // Handler para submit del pedido
+  const handleSubmit = async () => {
+    try {
+      if (typeof document !== "undefined") {
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      }
+      if (!orderForm.selectedClient) {
+        toast.error("Por favor selecciona un cliente");
+        return;
+      }
+
+      if (
+        orderForm.hasDelivery &&
+        orderForm.deliveryServices.servicioArmado?.enabled
+      ) {
+        if (
+          !orderForm.deliveryServices.servicioArmado.cost ||
+          orderForm.deliveryServices.servicioArmado.cost <= 0
+        ) {
+          toast.error("El precio del Servicio de Armado es obligatorio");
+          return;
+        }
+      }
+
+      if (orderForm.selectedProducts.length === 0) {
+        toast.error("Por favor agrega al menos un producto");
+        return;
+      }
+
+      if (!orderForm.paymentCondition) {
+        toast.error("Por favor selecciona la condición de pago");
+        return;
+      }
+
+      if (orderForm.paymentCondition === "pago_a_entrega") {
+        // Sin líneas de pago en tienda
+      }
+      // else if (orderForm.paymentCondition === "cashea") {
+      //   if (orderForm.payments.length !== 1) {
+      //     toast.error(
+      //       "Cashea: registre exactamente un pago inicial en tienda.",
+      //     );
+      //     return;
+      //   }
+      // }
+      else if (orderForm.payments.length === 0) {
+        toast.error("Por favor agrega al menos un pago");
+        return;
+      }
+
+      if (orderForm.paymentCondition !== "pago_a_entrega") {
+        for (let i = 0; i < orderForm.payments.length; i++) {
+          const payment = orderForm.payments[i];
+          const paymentLabel = `Pago ${i + 1}`;
+
+          if (!payment.method) {
+            toast.error(`${paymentLabel}: Debe seleccionar un método de pago`);
+            return;
+          }
+          if (!payment.amount || payment.amount <= 0) {
+            toast.error(`${paymentLabel}: Debe ingresar un monto mayor a 0`);
+            return;
+          }
+          if (!payment.date) {
+            toast.error(`${paymentLabel}: Debe seleccionar una fecha de pago`);
+            return;
+          }
+
+          if (payment.method === "Pago Móvil") {
+            if (!payment.paymentDetails?.pagomovilReference) {
+              toast.error(
+                `${paymentLabel} (Pago Móvil): Debe ingresar el número de referencia`,
+              );
+              return;
+            }
+            if (!payment.paymentDetails?.accountId) {
+              toast.error(
+                `${paymentLabel} (Pago Móvil): Debe seleccionar el banco receptor`,
+              );
+              return;
+            }
+          } else if (payment.method === "Transferencia") {
+            if (!payment.paymentDetails?.transferenciaReference) {
+              toast.error(
+                `${paymentLabel} (Transferencia): Debe ingresar el número de referencia`,
+              );
+              return;
+            }
+            if (!payment.paymentDetails?.accountId) {
+              toast.error(
+                `${paymentLabel} (Transferencia): Debe seleccionar el banco receptor`,
+              );
+              return;
+            }
+          } else if (payment.method === "Tarjeta de débito") {
+            if (!payment.paymentDetails?.bank) {
+              toast.error(
+                `${paymentLabel} (Tarjeta de débito): Debe seleccionar el banco`,
+              );
+              return;
+            }
+          } else if (payment.method === "Tarjeta de Crédito") {
+            if (!payment.paymentDetails?.bank) {
+              toast.error(
+                `${paymentLabel} (Tarjeta de Crédito): Debe seleccionar el banco`,
+              );
+              return;
+            }
+          } else if (payment.method === "Zelle") {
+            if (!payment.paymentDetails?.envia) {
+              toast.error(`${paymentLabel} (Zelle): Debe ingresar quién envía`);
+              return;
+            }
+          } else if (
+            (
+              paymentMethodsRequiringReceivingAccount as readonly string[]
+            ).includes(payment.method)
+          ) {
+            if (!payment.paymentDetails?.accountId) {
+              toast.error(
+                `${paymentLabel} (${payment.method}): Debe seleccionar la cuenta receptora`,
+              );
+              return;
+            }
+          }
+        }
+        if (orderForm.paymentCondition === "cashea") {
+          const paymentCtx = {
+            baseCurrency: ORDER_BASE_CURRENCY,
+            exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+              orderForm.exchangeRates,
+            ),
+          };
+          if (
+            casheaInStorePaymentsExceedTotal(orderForm.payments, {
+              totalDueUsd: Math.max(
+                0,
+                orderForm.total,
+              ),
+              useUsdTotals: true,
+              order: paymentCtx,
+              usdRate: orderForm.exchangeRates.USD?.rate,
+            })
+          ) {
+            toast.error(
+              "El monto del pago inicial no puede superar el total del pedido.",
+            );
+            return;
+          }
+          const casheaFullMsg = getCasheaFullPaymentBlockMessage(
+            orderForm.payments,
+            {
+              totalDueUsd: Math.max(
+                0,
+                orderForm.total,
+              ),
+              useUsdTotals: true,
+              order: paymentCtx,
+              usdRate: orderForm.exchangeRates.USD?.rate,
+            },
+          );
+          if (casheaFullMsg) {
+            toast.error(casheaFullMsg);
+            return;
+          }
+        }
+      }
+
+      if (
+        orderForm.paymentCondition !== "pago_a_entrega" &&
+        orderForm.paymentCondition !== "pagara_en_tienda" &&
+        orderForm.paymentCondition !== "pago_parcial" &&
+        orderForm.paymentCondition !== "todo_pago" &&
+        !orderForm.isPaymentsValid
+      ) {
+        toast.error(
+          "Los cobros no coinciden con el total del pedido (incluye crédito aplicado).",
+        );
+        return;
+      }
+
+      if (!orderForm.saleType) {
+        toast.error("Por favor selecciona el tipo de venta");
+        return;
+      }
+
+      if (!orderForm.deliveryType) {
+        toast.error("Por favor selecciona el tipo de entrega");
+        return;
+      }
+
+      if (!orderForm.deliveryZone) {
+        toast.error("Por favor selecciona la zona de entrega");
+        return;
+      }
+
+      // Preparar datos para confirmación
+      const orderDataForConfirmation = {
+        clientName: orderForm.selectedClient.name,
+        clientTelefono: orderForm.selectedClient.telefono,
+        clientTelefono2: orderForm.selectedClient.telefono2,
+        clientEmail: orderForm.selectedClient.email,
+        clientRutId: orderForm.selectedClient.rutId,
+        clientDireccion: orderForm.selectedClient.address,
+        vendorName:
+          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)
+            ?.name || "",
+        referrerName: orderForm.formData.referrer
+          ? orderForm.mockReferrers.find(
+              (r) => r.id === orderForm.formData.referrer,
+            )?.name
+          : undefined,
+        products: orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({
+            ...product,
+            locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+          }),
+        ),
+        subtotal: orderForm.subtotal,
+        productSurchargeTotal:
+          orderForm.productSurchargeTotal > 0
+            ? orderForm.productSurchargeTotal
+            : undefined,
+        productDiscountTotal: resolveOptionalAmountForSave(
+          orderForm.productDiscountTotal,
+        ),
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
+        ...buildGeneralDiscountPersistPayload(orderForm),
+        taxAmount: orderForm.taxAmount,
+        deliveryCost: resolveOptionalAmountForSave(
+          orderForm.hasDelivery ? orderForm.deliveryCost : 0,
+        ),
+        total: orderForm.total,
+        payments: orderForm.payments,
+        paymentCondition: orderForm.paymentCondition,
+        saleType: orderForm.saleType,
+        deliveryType: orderForm.deliveryType,
+        deliveryZone: orderForm.deliveryZone,
+        hasDelivery: orderForm.hasDelivery,
+        deliveryAddress: orderForm.formData.deliveryAddress,
+        deliveryServices: orderForm.hasDelivery
+          ? {
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.deliveryExpress.cost,
+                    currency:
+                      orderForm.deliveryServices.deliveryExpress.currency,
+                  }
+                : undefined,
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioAcarreo.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioAcarreo.currency,
+                  }
+                : undefined,
+              servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioArmado.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioArmado.currency,
+                  }
+                : undefined,
+            }
+          : undefined,
+        observations: orderForm.generalObservations.trim() || undefined,
+        dispatchObservations:
+          orderForm.dispatchObservations.trim() || undefined,
+        baseCurrency: ORDER_BASE_CURRENCY,
+        exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+          orderForm.exchangeRates,
+        ),
+      };
+
+      setPendingOrderData(orderDataForConfirmation);
+      setIsConfirmationOpen(true);
+    } catch (error) {
+      console.error("Error preparing order:", error);
+      toast.error("Error al preparar el pedido. Por favor intenta nuevamente.");
+    }
+  };
+
+  // Handler para confirmar el pedido
+  const handleConfirmOrder = async () => {
+    try {
+      if (!pendingOrderData || !orderForm.selectedClient) return;
+
+      let paymentsNorm = normalizePaymentsForSave(orderForm.payments);
+      if (orderForm.paymentCondition === "cashea") {
+        const dueUsd = Math.max(
+          0,
+          orderForm.total,
+        );
+        const casheaFullMsg = getCasheaFullPaymentBlockMessage(
+          orderForm.payments,
+          {
+            totalDueUsd: dueUsd,
+            useUsdTotals: true,
+            usdRate: orderForm.exchangeRates.USD?.rate,
+            order: {
+              baseCurrency: ORDER_BASE_CURRENCY,
+              exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+                orderForm.exchangeRates,
+              ),
+            },
+          },
+        );
+        if (casheaFullMsg) {
+          toast.error(casheaFullMsg);
+          return;
+        }
+        paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, {
+          orderTotalBs: getCasheaTotalDueBs({
+            totalDueUsd: dueUsd,
+            useUsdTotals: true,
+            usdRate: orderForm.exchangeRates.USD?.rate,
+          }),
+          useUsdTotals: true,
+          totalDueUsd: dueUsd,
+          usdRate: orderForm.exchangeRates.USD?.rate,
+          order: {
+            baseCurrency: ORDER_BASE_CURRENCY,
+            exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
+              orderForm.exchangeRates,
+            ),
+          },
+        });
+      }
+      const multi = paymentsNorm.length > 1;
+
+      const orderData: Omit<
+        Order,
+        "id" | "orderNumber" | "createdAt" | "updatedAt"
+      > = {
+        clientId: orderForm.selectedClient.id,
+        clientName: orderForm.selectedClient.name,
+        vendorId: orderForm.formData.vendor,
+        vendorName:
+          orderForm.mockVendors.find((v) => v.id === orderForm.formData.vendor)
+            ?.name || "",
+        referrerId: orderForm.formData.referrer || undefined,
+        referrerName: orderForm.formData.referrer
+          ? orderForm.mockReferrers.find(
+              (r) => r.id === orderForm.formData.referrer,
+            )?.name
+          : undefined,
+        products: orderForm.selectedProducts.map((product) =>
+          mapOrderProductForSave({
+            ...product,
+            locationStatus: product.locationStatus ?? "DISPONIBILIDAD INMEDIATA",
+          }),
+        ),
+        subtotalBeforeDiscounts: orderForm.productSubtotalBase,
+        productDiscountTotal: resolveOptionalAmountForSave(
+          orderForm.productDiscountTotal,
+        ),
+        generalDiscountAmount: resolveGeneralDiscountAmountForSave(
+          orderForm.generalDiscountAmount,
+        ),
+        ...buildGeneralDiscountPersistPayload(orderForm),
+        subtotal: orderForm.subtotal,
+        taxAmount: orderForm.taxAmount,
+        deliveryCost: resolveOptionalAmountForSave(
+          orderForm.hasDelivery ? orderForm.deliveryCost : 0,
+        ),
+        total: orderForm.total,
+        paymentType:
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.paymentCondition === "cashea"
+            ? "directo"
+            : orderForm.paymentCondition === "todo_pago"
+              ? "directo"
+              : orderForm.paymentCondition === "pago_parcial"
+                ? "apartado"
+                : "apartado",
+        paymentCondition: orderForm.paymentCondition as
+          | "cashea"
+          | "pagara_en_tienda"
+          | "pago_a_entrega"
+          | "pago_parcial"
+          | "todo_pago",
+        saleType: orderForm.saleType as
+          | "delivery_express"
+          | "encargo"
+          | "encargo_entrega"
+          | "entrega"
+          | "retiro_almacen"
+          | "retiro_tienda"
+          | "sistema_apartado",
+        deliveryType: orderForm.deliveryType as
+          | "entrega_programada"
+          | "delivery_express"
+          | "retiro_tienda"
+          | "retiro_almacen",
+        deliveryZone: orderForm.deliveryZone as
+          | "caracas"
+          | "g_g"
+          | "san_antonio_los_teques"
+          | "caucagua_higuerote"
+          | "la_guaira"
+          | "charallave_cua"
+          | "interior_pais",
+        paymentMethod:
+          orderForm.paymentCondition === "pago_a_entrega"
+            ? "Pago a la entrega"
+            : orderForm.paymentCondition === "cashea"
+              ? "Cashea"
+              : multi
+                ? "Mixto"
+                : paymentsNorm[0]?.method || "",
+        paymentDetails:
+          orderForm.paymentCondition === "pago_a_entrega" ||
+          orderForm.payments.length === 0
+            ? undefined
+            : !multi
+              ? paymentsNorm[0]?.paymentDetails
+              : undefined,
+        partialPayments:
+          orderForm.paymentCondition === "pago_a_entrega"
+            ? undefined
+            : multi
+              ? []
+              : paymentsNorm,
+        mixedPayments:
+          orderForm.paymentCondition === "pago_a_entrega"
+            ? undefined
+            : multi
+              ? paymentsNorm
+              : undefined,
+        deliveryAddress: orderForm.hasDelivery
+          ? orderForm.formData.deliveryAddress
+          : undefined,
+        hasDelivery: orderForm.hasDelivery,
+        deliveryServices: orderForm.hasDelivery
+          ? {
+              deliveryExpress: orderForm.deliveryServices.deliveryExpress
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.deliveryExpress.cost,
+                    currency:
+                      orderForm.deliveryServices.deliveryExpress.currency,
+                  }
+                : undefined,
+              servicioAcarreo: orderForm.deliveryServices.servicioAcarreo
+                ?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioAcarreo.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioAcarreo.currency,
+                  }
+                : undefined,
+              servicioArmado: orderForm.deliveryServices.servicioArmado?.enabled
+                ? {
+                    enabled: true,
+                    cost: orderForm.deliveryServices.servicioArmado.cost,
+                    currency:
+                      orderForm.deliveryServices.servicioArmado.currency,
+                  }
+                : undefined,
+            }
+          : undefined,
+        status: "Generado",
+        productMarkups: orderForm.productMarkups,
+        createSupplierOrder: orderForm.createSupplierOrder,
+        observations: orderForm.generalObservations.trim() || undefined,
+        dispatchObservations:
+          orderForm.dispatchObservations.trim() || undefined,
+        baseCurrency: ORDER_BASE_CURRENCY,
+        exchangeRatesAtCreation: {
+          USD: orderForm.exchangeRates.USD
+            ? {
+                rate: orderForm.exchangeRates.USD.rate,
+                effectiveDate: orderForm.exchangeRates.USD.effectiveDate,
+              }
+            : undefined,
+          EUR: orderForm.exchangeRates.EUR
+            ? {
+                rate: orderForm.exchangeRates.EUR.rate,
+                effectiveDate: orderForm.exchangeRates.EUR.effectiveDate,
+              }
+            : undefined,
+        },
+      };
+
+      const createdOrder = await addOrder(orderData);
+
+      setIsConfirmationOpen(false);
+      onOpenChange(false);
+      toast.success("Pedido creado exitosamente");
+
+      orderForm.clearDraftStorage();
+      // Reset form
+      orderForm.resetForm();
+      setPendingOrderData(null);
+
+      window.location.href = `/pedidos/${createdOrder.orderNumber}`;
+    } catch (error) {
+      console.error("Error creating order:", error);
+      toast.error("Error al crear el pedido. Por favor intenta nuevamente.");
+      setIsConfirmationOpen(false);
+    }
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4"
+          onInteractOutside={preventClose}
+          onPointerDownOutside={preventClose}
+        >
+          {/* relative solo en wrapper interno: evita que tailwind-merge quite position:fixed del DialogContent base */}
+          <div className="relative flex min-h-0 flex-1 flex-col gap-4">
+            {isCheckingClientReservation && (
+              <div
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-lg bg-background/70 backdrop-blur-sm"
+                aria-busy="true"
+                aria-live="polite"
+              >
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Verificando pedidos del cliente…
+                </p>
+              </div>
+            )}
+            <DialogHeader className="pb-2 sm:pb-4">
+              <DialogTitle className="text-lg sm:text-xl">
+                Nuevo Pedido - Paso {orderForm.currentStep} de 3
+              </DialogTitle>
+              <DialogDescription>
+                {orderForm.currentStep === 1 &&
+                  "Configura el presupuesto, cliente y productos"}
+                {orderForm.currentStep === 2 &&
+                  "Define el estado de los productos"}
+                {orderForm.currentStep === 3 &&
+                  "Completa los detalles finales del pedido"}
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* Renderizar paso actual */}
+            {orderForm.currentStep === 1 && (
+              <Step1Budget
+                orderForm={orderForm}
+                onClientLookup={() => setIsClientLookupOpen(true)}
+                onProductSelection={() => setIsProductSelectionOpen(true)}
+                onEditProduct={handleEditProduct}
+                onRemoveProduct={handleRemoveProduct}
+              />
+            )}
+
+            {orderForm.currentStep === 2 && (
+              <Step2ProductStatus orderForm={orderForm} />
+            )}
+
+            {orderForm.currentStep === 3 && (
+              <Step3OrderDetails
+                orderForm={orderForm}
+                onSubmit={handleSubmit}
+                addPayment={
+                  // orderForm.paymentCondition === "cashea" &&
+                  // orderForm.payments.length >= 1
+                  //   ? undefined
+                  //   :
+                  addPayment
+                }
+                updatePayment={updatePayment}
+                updatePaymentDetails={updatePaymentDetails}
+                removePayment={removePayment}
+                getAccountsForPaymentMethod={getAccountsForPaymentMethod}
+                saveAccountInfoToPayment={saveAccountInfoToPayment}
+                updatePaymentImages={updatePaymentImages}
+              />
+            )}
+
+            {/* Footer con botones de navegación */}
+            <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={orderForm.handleBack}
+                disabled={orderForm.currentStep === 1}
+                className="w-full sm:w-auto"
+              >
+                <ChevronLeft className="w-4 h-4 mr-2" />
+                Anterior
+              </Button>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                {/* OCULTO TEMPORALMENTE - creación de presupuestos desde paso 1
+                {orderForm.currentStep === 1 && (
+                  <Button
+                    onClick={handleCreateBudget}
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    disabled={!orderForm.canCreateBudget}
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    Presupuesto
+                  </Button>
+                )}
+                */}
+
+                {orderForm.currentStep < 3 ? (
+                  <Button
+                    onClick={orderForm.handleNext}
+                    className="w-full sm:w-auto"
+                    disabled={!orderForm.canGoToNextStep}
+                  >
+                    Siguiente
+                    <ChevronRight className="w-4 h-4 ml-2" />
+                  </Button>
+                ) : user?.role === "Online Seller" ? (
+                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleCreateReservation}
+                      className="w-full sm:w-auto"
+                      disabled={isReservationSaving}
+                    >
+                      {isReservationSaving ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 shrink-0 animate-spin" />
+                          Guardando…
+                        </>
+                      ) : (
+                        "Guardar Reserva"
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleSubmit}
+                      className="w-full sm:w-auto"
+                      disabled={isReservationSaving}
+                    >
+                      Crear Pedido
+                    </Button>
+                  </div>
+                ) : (
+                  <Button onClick={handleSubmit} className="w-full sm:w-auto">
+                    Crear Pedido
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogos modales */}
+      <ClientLookupDialog
+        open={isClientLookupOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setIsClientLookupOpen(true);
+          else closeNested(() => setIsClientLookupOpen(false));
+        }}
+        onClientSelect={(client) => {
+          void (async () => {
+            setIsCheckingClientReservation(true);
+            try {
+              const list = await apiClient.getOrdersByClient(client.id);
+              const pending = list
+                .filter((o) =>
+                  isActiveReservation({
+                    type: o.type,
+                    status: o.status,
+                    orderNumber: o.orderNumber,
+                  }),
+                )
+                .sort(
+                  (a, b) =>
+                    new Date(b.createdAt).getTime() -
+                    new Date(a.createdAt).getTime(),
+                );
+              if (pending.length === 0) {
+                applySelectedClientToForm(client);
+              } else {
+                setPendingReservationPrompt({
+                  client,
+                  reservationDto: pending[0]!,
+                });
+              }
+            } catch (e) {
+              console.error(e);
+              toast.error(
+                "No se pudo comprobar el historial del cliente. Se continúa con el cliente seleccionado.",
+              );
+              applySelectedClientToForm(client);
+            } finally {
+              setIsCheckingClientReservation(false);
+            }
+          })();
+        }}
+      />
+
+      <ProductSelectionDialog
+        open={isProductSelectionOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setIsProductSelectionOpen(true);
+          else closeNested(() => setIsProductSelectionOpen(false));
+        }}
+        onProductsSelect={orderForm.handleProductsSelect}
+        selectedProducts={orderForm.selectedProducts}
+        preloadedProducts={orderForm.allProducts}
+        preloadedCategories={orderForm.categories}
+        productSales={orderForm.productSales}
+        preloadedExchangeRates={orderForm.exchangeRates}
+      />
+
+      <ProductEditDialog
+        open={isProductEditOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setIsProductEditOpen(true);
+          else {
+            closeNested(() => {
+              setIsProductEditOpen(false);
+              setEditingProduct(null);
+            });
+          }
+        }}
+        product={editingProduct}
+        onProductUpdate={handleUpdateProduct}
+      />
+
+      <RemoveProductDialog
+        open={isRemoveProductOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setIsRemoveProductOpen(true);
+          else {
+            closeNested(() => {
+              setIsRemoveProductOpen(false);
+              setProductToRemove(null);
+            });
+          }
+        }}
+        product={productToRemove}
+        onConfirm={confirmRemoveProduct}
+      />
+
+      {pendingOrderData && (
+        <OrderConfirmationDialog
+          open={isConfirmationOpen}
+          onOpenChange={setIsConfirmationOpen}
+          onConfirm={handleConfirmOrder}
+          onCancel={() => {
+            setIsConfirmationOpen(false);
+            setPendingOrderData(null);
+          }}
+          orderData={pendingOrderData}
+        />
+      )}
+
+      <AlertDialog
+        open={pendingReservationPrompt !== null}
+        onOpenChange={(nextOpen) => {
+          if (
+            !nextOpen &&
+            pendingReservationPrompt &&
+            !reservationPromptClosingForLoadRef.current
+          ) {
+            applySelectedClientToForm(pendingReservationPrompt.client);
+            setPendingReservationPrompt(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="z-[110]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reserva existente</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-left text-sm text-muted-foreground">
+                <p>
+                  {pendingReservationPrompt?.client.name} tiene una reserva
+                  pendiente (
+                  <span className="font-mono font-medium text-foreground">
+                    {pendingReservationPrompt?.reservationDto.orderNumber}
+                  </span>
+                  ).
+                </p>
+                <p>
+                  ¿Quieres cargarla para revisarla o confirmarla en tienda, o
+                  prefieres crear un pedido nuevo desde cero?
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:space-x-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (!pendingReservationPrompt) return;
+                const { client } = pendingReservationPrompt;
+                setPendingReservationPrompt(null);
+                applySelectedClientToForm(client);
+              }}
+            >
+              Pedido nuevo
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!pendingReservationPrompt) return;
+                const { reservationDto } = pendingReservationPrompt;
+                reservationPromptClosingForLoadRef.current = true;
+                setPendingReservationPrompt(null);
+                onOpenChange(false);
+                setReservationToOpen(orderFromBackendDto(reservationDto));
+                queueMicrotask(() => {
+                  reservationPromptClosingForLoadRef.current = false;
+                });
+              }}
+            >
+              Cargar reserva
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <EditOrderDialog
+        open={reservationToOpen !== null}
+        onOpenChange={(next) => {
+          if (!next) setReservationToOpen(null);
+        }}
+        order={reservationToOpen}
+        mode="confirm-reservation"
+      />
+
+      {/* Después del Dialog principal para que el portal quede encima (mismo z-index) */}
+      <AlertDialog open={orderForm.needsDraftPrompt}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tienes un pedido en borrador</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Deseas continuar donde lo dejaste?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => orderForm.discardDraftAndStartFresh()}
+            >
+              Nuevo pedido
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => orderForm.applyDraftAndContinue()}
+            >
+              Continuar borrador
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}

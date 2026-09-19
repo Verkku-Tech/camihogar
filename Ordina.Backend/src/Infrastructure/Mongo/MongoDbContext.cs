@@ -18,9 +18,23 @@ public class MongoDbContext
 
     public MongoDbContext(IMongoClient client, IConfiguration configuration)
     {
-        var dbName = configuration["MongoDb:DatabaseName"]
-                     ?? configuration["DatabaseName"]
-                     ?? "OrdinaDb";
+        var connectionString = configuration.GetConnectionString("MongoDB");
+
+        string? dbFromUrl = null;
+        try
+        {
+            var url = new MongoUrl(connectionString);
+            dbFromUrl = url.DatabaseName;
+        }
+        catch
+        {
+            // Fallback if not a standard URL
+        }
+
+        var dbName = !string.IsNullOrWhiteSpace(dbFromUrl)
+            ? dbFromUrl
+            : configuration["ConnectionStrings:DatabaseName"];
+
         _database = client.GetDatabase(dbName);
     }
 
