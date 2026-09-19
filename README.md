@@ -1,123 +1,258 @@
-# Camihogar / Ordina ERP — Plataforma de Gestión Integral
+# Camihogar Monorepo
 
-Plataforma empresarial de alto rendimiento diseñada específicamente para **Camihogar**, cubriendo la gestión integral del ciclo de vida comercial: presupuestos, ventas omnicanal, fabricación a medida en taller, logística de despachos y administración financiera bimonetaria (USD / Bs.).
+Monorepo para la aplicación Camihogar que contiene el frontend (Next.js) y el backend (.NET).
 
-El sistema está concebido bajo una premisa de **resiliencia operativa extrema**, garantizando continuidad de trabajo aun en condiciones de conectividad inestable o caídas de energía gracias a una arquitectura híbrida de **Monolito Modular en .NET 10**, **persistencia nativa 100% en MongoDB** y un **Frontend SPA PWA Offline-First en Bun + Vite + React 19**.
-
----
-
-## 🏛️ Visión Conceptual de la Infraestructura
+## 📁 Estructura del Proyecto.
 
 ```
-                                    🌐 CLIENTES & USUARIOS
-                                  (Laptops, Tablets, Móviles)
-                                              │
-                     ┌────────────────────────┴────────────────────────┐
-                     │                                                 │
-          [ Conexión Online ]                                [ Caída de Red / Offline ]
-                     ▼                                                 ▼
-        Cloudflare Pages (Edge CDN)                         App Shell en Cache PWA
-         SPA Estática (Bun + Vite)                        3 Almacenes IndexedDB Locales
-                     │                                   (tanstack_cache / outbox / logs)
-                     │ (WireGuard / Cloudflare Tunnel)                 │
-                     ▼                                                 │ (Al reconectar)
-          Raspberry Pi 5 (Host Local)                                  │ Reintento FIFO
-   ┌──────────────────────────────────────────────┐                    │
-   │  Docker Engine                               │ ◄──────────────────┘
-   │                                              │
-   │  ├── Backend (.NET 10 ReadyToRun ARM64)      │
-   │  │   └── Monolito Modular Clean              │
-   │  │                                           │
-   │  ├── Base de Datos (MongoDB 7+)              │
-   │  │   └── Persistencia 100% Nativa            │
-   │  │                                           │
-   │  └── Observabilidad (.NET Aspire Dashboard)  │
-   │      └── Telemetría OTLP unificada (:18888)  │
-   └──────────────────────────────────────────────┘
+camihogar/
+├── Ordina.Frontend/       # Frontend Next.js
+│   ├── app/               # Páginas y rutas de Next.js
+│   ├── components/        # Componentes React
+│   ├── lib/               # Utilidades y clientes API
+│   └── ...
+├── Ordina.Backend/        # Backend .NET
+│   ├── src/
+│   │   ├── Application/   # Módulos de aplicación (Orders, Payments, Providers, Security, Users)
+│   │   ├── Infrastructure/# Infraestructura compartida
+│   │   └── Presentation/  # API Gateway y AppHost
+│   └── ...
+├── package.json           # Configuración del monorepo
+├── pnpm-workspace.yaml    # Configuración de workspaces de pnpm
+└── turbo.json            # Configuración de Turbo para builds
 ```
 
-### 1. Despliegue Híbrido Edge & On-Premise
-- **Servidor Local (Raspberry Pi 5 - 8 GB RAM):** Aloja el núcleo transaccional en un entorno de muy bajo consumo eléctrico (~5-12W). El backend se ejecuta sobre contenedores optimizados con **Ubuntu Chiseled** y compilación **ReadyToRun (R2R)**, logrando arranques instantáneos y consumos de memoria mínimos (< 120 MB).
-- **Frontend en el Edge (Cloudflare Pages):** La aplicación cliente se sirve desde más de 300 puntos de presencia global con 100% de tiempo de actividad y latencia despreciable, sin requerir ningún servidor Node.js en producción.
-- **Canal Seguro:** La comunicación entre Cloudflare Pages y el servidor local se realiza mediante un túnel cifrado (WireGuard o Cloudflare Tunnel), eliminando la necesidad de abrir puertos o exponer IPs públicas directamente a internet.
+## 🚀 Inicio Rápido
 
-### 2. Persistencia 100% MongoDB (Cero Dependencias Relacionales ni Redis)
-- Se eliminaron por completo las dependencias de PostgreSQL, Supabase y Redis, consolidando **toda la persistencia de forma nativa en MongoDB**.
-- Esto simplifica la operación, reduce la huella de memoria RAM en ~700 MB y aprovecha la flexibilidad del modelo de documentos para pedidos que combinan pagos mixtos, tasas históricas y seguimiento de productos en confección.
+### Prerrequisitos
 
-### 3. Observabilidad Unificada con .NET Aspire Dashboard
-- Un único contenedor standalone de **.NET Aspire Dashboard** (`http://localhost:18888`) centraliza trazas distribuidas, métricas de rendimiento y logs estructurados del Backend, complementado con la ingesta de errores del Frontend reportados vía `/api/telemetry/client-logs`.
+- Node.js >= 18.0.0
+- pnpm >= 8.0.0
+- .NET SDK (para el backend)
+- Docker (opcional, para desarrollo local)
 
----
+### Instalación
 
-## 💼 Módulos de Negocio
-
-| Módulo | Alcance y Responsabilidad |
-| :--- | :--- |
-| **🛍️ Ventas & Pedidos** | Facturación directa, presupuestos, reservas y sistemas de apartado con conversión bimonetaria instantánea y soporte de tasas históricas. |
-| **🔨 Taller & Manufactura** | Tablero de producción por etapas (Corte, Armado, Tapicería, Acabado), órdenes de trabajo y gestión de devoluciones por refabricación. |
-| **🚚 Bodega & Despacho** | Control de stock final, planificación de rutas de entrega, inspección de calidad y confirmación de entrega al cliente. |
-| **💵 Finanzas & Cobranzas** | Abonos parciales y combinados, control de apartados vencidos (> 90 días), integración con tasas BCV y arqueo de caja. |
-| **👥 Clientes & Catálogo** | Directorio centralizado de clientes con validación de RUT/cédula venezolana, gestión de productos, categorías y proveedores. |
-| **🐍 Scrappers & Migración** | Procesos automatizados en Python para extraer datos maestros y ventas del sistema legacy Abbaco hacia fuentes estructuradas. |
-
----
-
-## 📚 Índice de Documentación del Repositorio
-
-Para consultar los detalles técnicos, guías de implementación y estándares de cada subsistema, revisa los documentos dedicados:
-
-### Componentes de Software
-- 🖥️ **[Ordina.Backend/README.md](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/Ordina.Backend/README.md):** Manual técnico del Monolito Modular en .NET 10, capas de Clean Architecture, inyección de MongoDB, middlewares de seguridad (Idempotencia, Anti-CSRF, Concurrencia Optimista) y suite de pruebas TDD.
-- 🌐 **[Ordina.Frontend/README.md](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/Ordina.Frontend/README.md):** Especificación del cliente SPA en Bun + Vite + React 19, Service Worker resiliente ante errores de Cloudflare, los 3 almacenes de IndexedDB y el sistema de diseño Verkku Precision Atelier.
-- 🐍 **[Ordina.Scrappers/README.md](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/Ordina.Scrappers/README.md):** Guía de ejecución y requisitos de los scripts de extracción y transformación de datos legacy desde SysAbbaco.
-
-### Estándares y Especificaciones
-- 📚 **[Reglas de Negocio por Módulo](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/docs/Business%20Rules/00-index.md):** Documentación técnica y funcional de las políticas de Pedidos, Taller, Despacho, Finanzas (BCV), Clientes (RUT), Seguridad y Métricas del ERP.
-- 📋 **[AGENTS.md](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/AGENTS.md):** Manual maestro de ingeniería y directrices para agentes de IA y desarrolladores, con directrices modulares en `.agents/rules/`.
-- 📐 **[Spec de Diseño del Refactor](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/docs/superpowers/specs/2026-09-18-modular-monolith-spa-refactor-design.md):** Especificación técnica aprobada que define la consolidación hacia el monolito modular y la SPA estática.
-- 📝 **[Plan de Implementación del Refactor](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/docs/superpowers/plans/2026-09-18-modular-monolith-spa-refactor-plan.md):** Plan paso a paso con criterios de verificación y cobertura TDD.
-- 📊 **[Guía de Métricas en MongoDB (mongosh)](file:///F:/Verkku/Camihogar/.worktrees/refactor-modular-monolith/docs/Queries/dashboard-metrics-queries.md):** Scripts para auditar y verificar directamente en consola las 7 métricas clave del Dashboard de administración.
-
----
-
-## 🚀 Inicio Rápido en Desarrollo Local
-
-### 1. Levantar Base de Datos y Telemetría
+1. Instalar dependencias:
 ```bash
-# Inicia MongoDB (puerto 27017) y Aspire Dashboard (puerto 18888)
-docker compose up -d mongodb aspire-dashboard
+pnpm install
 ```
-- MongoDB disponible en `mongodb://localhost:27017/ordina_db`
-- Aspire Dashboard en `http://localhost:18888` (Token: `Camihogar_Aspire_2026_x89aF72kQz!`)
 
-### 2. Iniciar el Backend (.NET 10)
+2. Ejecutar el frontend en modo desarrollo:
 ```bash
-cd Ordina.Backend
-dotnet run --project src/Api/Ordina.Api.csproj
+pnpm dev
 ```
-El API iniciará en `http://localhost:5000` con Swagger UI en `http://localhost:5000/swagger`.
 
-### 3. Iniciar el Frontend (Bun + Vite)
-```bash
-cd Ordina.Frontend
-bun install
-bun dev
-```
-La aplicación web estará disponible en `http://localhost:5173`.
+El frontend estará disponible en `http://localhost:3000`
 
----
+### Scripts Disponibles
 
-## 🧪 Comandos Esenciales de Verificación (TDD)
+Desde la raíz del monorepo:
+
+- `pnpm dev` - Inicia el servidor de desarrollo del frontend
+- `pnpm build` - Construye el frontend para producción
+- `pnpm start` - Inicia el frontend en modo producción
+- `pnpm lint` - Ejecuta el linter del frontend
+- `pnpm clean` - Limpia todos los node_modules
+
+Para ejecutar comandos en un workspace específico:
 
 ```bash
-# Backend: Ejecutar pruebas unitarias y de integración
-dotnet test Ordina.Backend/tests/Ordina.Application.Tests
-dotnet test Ordina.Backend/tests/Ordina.Api.Tests
-
-# Frontend: Probar, verificar tipos y compilar bundle de producción
-cd Ordina.Frontend
-bun test
-bun run typecheck
-bun run build
+pnpm --filter Ordina.Frontend <comando>
 ```
+
+## 🏗️ Workspaces
+
+Este monorepo utiliza pnpm workspaces para gestionar múltiples paquetes:
+
+- **Ordina.Frontend**: Aplicación Next.js con TypeScript y Tailwind CSS
+
+## 🔧 Desarrollo
+
+### Frontend
+
+El frontend está construido con:
+- Next.js 14
+- React 19
+- TypeScript
+- Tailwind CSS
+- Radix UI
+- React Hook Form + Zod
+
+### Backend
+
+El backend está construido con:
+- .NET (múltiples proyectos)
+- Arquitectura modular (Orders, Payments, Providers, Security, Users)
+- API Gateway
+- Supabase (base de datos)
+
+## 📦 Gestión de Dependencias
+
+Este proyecto usa `pnpm` como gestor de paquetes. Las dependencias se instalan desde la raíz:
+
+```bash
+pnpm install
+```
+
+Para agregar una dependencia a un workspace específico:
+
+```bash
+pnpm --filter Ordina.Frontend add <paquete>
+```
+
+## 🐳 Docker
+
+### Configuración Docker
+
+El proyecto utiliza Docker Compose unificado para gestionar todos los servicios:
+
+- **Frontend:** `Ordina.Frontend/Dockerfile`
+- **Backend:** `Ordina.Backend/` (múltiples Dockerfiles para cada API)
+- **Unificado:** `docker-compose.yml` (raíz del proyecto)
+
+### Servicios Incluidos
+
+El `docker-compose.yml` incluye:
+
+- **Frontend:** Next.js (puerto 3000)
+- **API Gateway:** .NET (puertos 8080-8081)
+- **Microservicios .NET:**
+  - Security API (8082)
+  - Users API (8083)
+  - Providers API (8084)
+  - Orders API (8085)
+  - Payments API (8086)
+- **Bases de Datos:**
+  - PostgreSQL (5432)
+  - MongoDB (27017)
+  - Redis (6379)
+- **Supabase Stack:**
+  - Kong (8000, 8443)
+  - Auth (Gotrue)
+  - Studio (3001)
+
+### Uso de Docker Compose
+
+**Desplegar todos los servicios:**
+```bash
+docker compose up -d --build
+```
+
+**Ver estado de los servicios:**
+```bash
+docker compose ps
+```
+
+**Ver logs:**
+```bash
+docker compose logs -f
+```
+
+**Detener todos los servicios:**
+```bash
+docker compose down
+```
+
+**Reconstruir y desplegar:**
+```bash
+docker compose up -d --build --remove-orphans
+```
+
+### Health Checks
+
+Todos los servicios tienen health checks configurados que verifican:
+- **APIs .NET:** Endpoint `/health` usando `curl`
+- **Frontend:** Verificación de disponibilidad en puerto 3000
+- **PostgreSQL:** Health check nativo de la imagen
+
+Los health checks se ejecutan cada 30 segundos con un período de inicio de 60 segundos.
+
+## 🚀 CI/CD Pipeline
+
+### Despliegue Automático en Raspberry Pi
+
+El proyecto incluye un pipeline de CI/CD configurado con GitHub Actions para despliegue automático en Raspberry Pi.
+
+**Archivo:** `.github/workflows/deploy-rpi.yml`
+
+**Configuración:**
+- **Trigger:** Push a la rama `develop`
+- **Runner:** Self-hosted en Linux ARM64 (Raspberry Pi)
+- **Concurrencia:** Un solo despliegue a la vez
+
+**Proceso del Pipeline:**
+1. Sanity checks (Docker, espacio en disco, permisos)
+2. Configuración de permisos Docker
+3. Instalación de dependencias (curl)
+4. Despliegue con `docker compose up`
+5. Espera de servicios
+6. Health checks post-despliegue
+7. Cleanup de imágenes no utilizadas
+
+**Para desplegar:**
+```bash
+git checkout develop
+git push origin develop
+```
+
+El workflow se ejecutará automáticamente y desplegará todos los servicios en el RPI.
+
+### Requisitos del Runner
+
+- Docker y Docker Compose instalados
+- Usuario en el grupo docker o con permisos sudo
+- Espacio en disco suficiente
+- Etiquetas: `[self-hosted, Linux, ARM64]`
+
+## 📝 Notas
+
+- El `pnpm-lock.yaml` se encuentra en cada workspace individual
+- Los builds se pueden optimizar usando Turbo (ver `turbo.json`)
+- El backend usa .NET Solution para gestionar múltiples proyectos
+- Las imágenes Docker de las APIs .NET incluyen `curl` para health checks
+- El docker-compose.yml usa variables de entorno con valores por defecto para RPI
+
+## 🤝 Contribución
+
+1. Crear una rama desde `main`
+2. Realizar los cambios
+3. Ejecutar `pnpm lint` antes de hacer commit
+4. Crear un Pull Request
+5. Para desplegar: hacer push a la rama `develop` (despliegue automático)
+
+## 🔍 Troubleshooting
+
+### Problemas con Docker
+
+**Permisos de Docker:**
+```bash
+# Agregar usuario al grupo docker
+sudo usermod -aG docker $USER
+# Reiniciar sesión o ejecutar:
+newgrp docker
+```
+
+**Verificar servicios:**
+```bash
+# Ver estado de contenedores
+docker compose ps
+
+# Ver logs de un servicio específico
+docker compose logs <nombre-servicio>
+
+# Verificar health checks
+docker inspect <container-name> | grep -A 10 Health
+```
+
+### Problemas con el Pipeline
+
+- Verificar que el runner esté en línea y disponible
+- Revisar logs en GitHub Actions
+- Verificar permisos del usuario en el runner
+- Asegurar que hay espacio en disco suficiente
+
+## 📄 Licencia
+
+[Especificar licencia si aplica]
+

@@ -1,137 +1,342 @@
-# Ordina.Backend — Monolito Modular Clean en .NET 10
+# 🚀 Ordina - Monorepo .NET 9 con Supabase Local
 
-Backend de alto rendimiento para **Camihogar / Ordina ERP**, diseñado bajo los principios de **Clean Architecture** y **Monolito Modular**, optimizado para ejecutarse en **Raspberry Pi 5 (ARM64)** con compilación **ReadyToRun (R2R)** y persistencia directa en **MongoDB** (100% libre de dependencias de bases relacionales, Supabase o Redis).
+![.NET](https://img.shields.io/badge/.NET-9.0-purple)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
+![Supabase](https://img.shields.io/badge/Supabase-Local-green)
+![Docker](https://img.shields.io/badge/Docker-Compose-blue)
+![Aspire](https://img.shields.io/badge/.NET_Aspire-Orchestration-orange)
 
----
+**Ordina** es un monorepo moderno de microservicios construido con **.NET 9 Aspire**, **PostgreSQL**, **Supabase local** y **Docker**. Optimizado para tiendas locales con arquitectura pragmática que usa una base de datos única con schemas separados.
 
-## 🏛️ Arquitectura y Estructura de Proyectos
+## 🌟 Características Principales
 
-La solución `Ordina.sln` se estructura en 4 capas limpias y desacopladas:
+- **🏗️ Arquitectura de Microservicios**: 5 servicios independientes
+- **🐘 PostgreSQL + Supabase**: Base de datos única con schemas separados e interfaz moderna
+- **🐳 Docker Compose**: Orquestación completa de servicios
+- **📊 .NET Aspire**: Observabilidad y gestión de servicios
+- **🔄 Entity Framework**: Migraciones automatizadas
+- **🔒 Clean Architecture**: Separación clara de responsabilidades
+- **📱 Swagger/OpenAPI**: Documentación automática de APIs
+
+## 🏛️ Arquitectura del Sistema
 
 ```
-Ordina.Backend/
-├── src/
-│   ├── Domain/                 # Ordina.Domain.csproj
-│   │   ├── Security/           # Role, Permission, RolePermission
-│   │   ├── Users/              # User, UserProfile, Client, Permissions constants
-│   │   ├── Catalog/            # Provider, Product, Category
-│   │   ├── Orders/             # Order, OrderItem, OrderHistory, Payment, Enums
-│   │   ├── Manufacturing/      # WorkOrder, ManufacturingStage, RefabricationRecord
-│   │   ├── Dispatch/           # DispatchRoute, DeliveryStatus, DispatchItem
-│   │   ├── Finance/            # ExchangeRate, BankAccount, CashRegister
-│   │   └── Stores/             # Store
-│   │
-│   ├── Application/            # Ordina.Application.csproj
-│   │   ├── Security/           # DTOs, IAuthService, ITokenService
-│   │   ├── Users/              # DTOs, IUserService, IRoleService
-│   │   ├── Clients/            # DTOs, IClientService, RutValidator
-│   │   ├── Catalog/            # DTOs, IProductService, ICategoryService
-│   │   ├── Orders/             # DTOs, IOrderCoreService, IPagedResult
-│   │   ├── Manufacturing/      # DTOs, IManufacturingService
-│   │   ├── Dispatch/           # DTOs, IDispatchService
-│   │   ├── Finance/            # DTOs, IFinanceService, IBcvExchangeRateService
-│   │   └── Common/             # PagedRequest, PagedResult<T>, Exceptions
-│   │
-│   ├── Infrastructure/         # Ordina.Infrastructure.csproj
-│   │   ├── Persistence/        # MongoDbContext (Singleton MongoClient), Mappings BSON
-│   │   ├── Repositories/       # OrderRepository, ClientRepository, etc.
-│   │   ├── Caching/            # In-Memory Cache IMemoryCache con TTL
-│   │   └── External/           # BCV Scraper / API Client con reintentos
-│   │
-│   └── Api/                    # Ordina.Api.csproj
-│       ├── Controllers/        # Controladores especializados por caso de uso
-│       ├── Middlewares/        # Idempotency, GlobalException, AntiCsrf
-│       ├── Extensions/         # OpenTelemetry, Swagger, Cors, DependencyInjection
-│       └── Program.cs          # Pipeline ASP.NET Core minimalista (.NET 10)
-│
-└── tests/
-    ├── Ordina.Application.Tests/ # Pruebas unitarias de casos de uso y cálculo financiero
-    └── Ordina.Api.Tests/         # Pruebas de middlewares, idempotencia y seguridad
+Ordina/
+├── 🎯 Presentation Layer
+│   ├── API Gateway (8080-8081)
+│   └── Aspire AppHost (Orchestration)
+├── 🔧 Infrastructure Layer
+│   ├── ServiceDefaults (Configuración compartida)
+│   └── Database (PostgreSQL + Supabase)
+└── 📦 Application Layer (Microservicios)
+    ├── 🔐 Security (8082) - Roles & Permisos
+    ├── 👥 Users (8083) - Gestión de usuarios
+    ├── 🏪 Providers (8084) - Proveedores y productos
+    ├── 📦 Orders (8085) - Gestión de pedidos
+    └── 💳 Payments (8086) - Procesamiento de pagos
 ```
 
----
+### 🗄️ Modelo de Datos (Base Única con Schemas)
 
-## ⚡ Principios de Diseño Técnico
+| Microservicio | Schema | Entidades Principales |
+|---------------|--------|----------------------|
+| **Security** | `security` | Role, Permission, RolePermission |
+| **Users** | `users` | User, UserProfile |
+| **Providers** | `providers` | Provider, Product |
+| **Orders** | `orders` | Order, OrderItem |
+| **Payments** | `payments` | Payment, PaymentMethod |
 
-1. **Monolito Modular Orientado a Casos de Uso:**
-   - En lugar de controladores monolíticos sobrecargados, los endpoints están compartimentados según el rol operativo:
-     - `ManufacturingController`: Enfocado en órdenes de trabajo de taller, avance de etapas y refabricación.
-     - `DispatchController`: Rutas de entrega, guías de despacho y confirmación en bodega.
-     - `OrdersController`: Creación de ventas, presupuestos, reservas y control de pagos.
-   - Proyecciones de consulta estrictas (`BsonProjectionDefinition`) para evitar sobrecarga de red y serialización innecesaria.
+> 📋 **Database**: `ordina_main` - Todos los microservicios comparten una BD con schemas aislados
 
-2. **Persistencia Directa en MongoDB (Cero EF / Cero Redis):**
-   - Inyección de `IMongoClient` como **Singleton**.
-   - Índices compuestos preconfigurados (`OrderNumber`, `Status`, `CreatedAt`, `Client.DocumentNumber`).
-   - Caché local en memoria (`IMemoryCache`) para datos de alta frecuencia y baja mutación (tasas de cambio BCV, roles).
-
-3. **Inmutabilidad y Concurrencia:**
-   - DTOs definidos como `public record` o `public readonly record struct`.
-   - Control de concurrencia optimista mediante `updatedAt` / cabecera `If-Match`: cambios conflictivos retornan `409 Conflict`.
-   - Idempotencia distribuida vía cabecera `X-Mutation-Id: <UUIDv4>` con registro de resultado y TTL de 24 horas.
-
-4. **Seguridad y Anti-CSRF:**
-   - Autenticación híbrida: Token JWT de corta duración (15 min) en memoria; refresh token en Cookie `HttpOnly`, `Secure`, `SameSite=Strict`.
-   - Validación estricta de cabecera `X-Requested-With: XMLHttpRequest` para mitigar ataques CSRF en endpoints sensibles.
-
-5. **Observabilidad y Telemetría:**
-   - Instrumentación nativa con OpenTelemetry (`Ordina.Backend` ActivitySource y Meter).
-   - Exportación OTLP (`grpc://aspire-dashboard:4317`) hacia el dashboard de Aspire.
-   - Registro estructurado con `_logger.BeginScope` inyectando contexto de negocio (`OrderId`, `UserId`, `Module`).
-
----
-
-## 🚀 Requisitos y Comandos de Ejecución
+## 🚀 Inicio Rápido
 
 ### Prerrequisitos
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- Instancia de MongoDB activa (local o Docker en `localhost:27017`)
 
-### Restauración y Compilación
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop)
+- [PowerShell](https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell) (Windows/Linux/macOS)
+
+### 1. 📥 Clonar y Configurar
+
 ```bash
-# Restaurar paquetes de la solución
-dotnet restore Ordina.sln
+git clone <repository-url>
+cd Ordina
 
-# Compilar en modo Release
-dotnet build src/Api/Ordina.Api.csproj -c Release
+# Instalar herramientas EF Core (si no las tienes)
+dotnet tool install --global dotnet-ef
 ```
 
-### Ejecución Local
+### 2. 🐳 Iniciar Infraestructura (Supabase Local)
+
 ```bash
-# Iniciar el API en desarrollo
-dotnet run --project src/Api/Ordina.Api.csproj
+# Iniciar todos los servicios con Docker Compose
+docker-compose up -d
+
+# Verificar que todos los servicios estén ejecutándose
+docker-compose ps
 ```
-El servicio iniciará en `http://localhost:5000` con Swagger disponible en `/swagger`.
+
+### 3. 🗃️ Configurar Base de Datos
+
+```powershell
+# Crear migraciones para todos los microservicios (schemas separados)
+.\scripts\manage-migrations.ps1 -Action create-all
+
+# Aplicar migraciones a la base de datos
+.\scripts\manage-migrations.ps1 -Action update-all
+```
+
+### 4. 🌐 Ejecutar con Aspire
+
+```bash
+# Opción A: Con Aspire (Recomendado)
+dotnet run --project src/Presentation/Ordina.AppHost
+
+# Opción B: Solo APIs con Docker
+docker-compose up --build
+```
+
+## 🌐 Servicios y Puertos
+
+| Servicio | Puerto | Descripción | URL |
+|----------|--------|-------------|-----|
+| **Supabase Studio** | 3000 | Interfaz de gestión DB | http://localhost:3000 |
+| **API Gateway** | 8080-8081 | Gateway principal | http://localhost:8080 |
+| **Security API** | 8082 | Autenticación y autorización | http://localhost:8082/swagger |
+| **Users API** | 8083 | Gestión de usuarios | http://localhost:8083/swagger |
+| **Providers API** | 8084 | Proveedores y productos | http://localhost:8084/swagger |
+| **Orders API** | 8085 | Gestión de pedidos | http://localhost:8085/swagger |
+| **Payments API** | 8086 | Procesamiento de pagos | http://localhost:8086/swagger |
+| **PostgreSQL** | 5432 | Base de datos principal | localhost:5432 |
+| **Redis** | 6379 | Cache distribuido | localhost:6379 |
+
+## 🔧 Gestión de Migraciones
+
+### Script PowerShell Automatizado
+
+```powershell
+# ✨ Comandos principales
+.\scripts\manage-migrations.ps1 -Action create-all                    # Crear todas las migraciones
+.\scripts\manage-migrations.ps1 -Action update-all                    # Aplicar todas las migraciones
+.\scripts\manage-migrations.ps1 -Action list -Service Security        # Listar migraciones de Security
+.\scripts\manage-migrations.ps1 -Action add -Service Users -MigrationName "AddNewField"
+
+# 🎯 Servicios disponibles: security, users, providers, orders, payments, all
+# 🗄️ Base de datos única: ordina_main con schemas separados
+```
+
+### Comandos EF Core Manuales
+
+```bash
+# Ejemplo para Security service
+dotnet ef migrations add InitialCreate \
+  -p src/Application/Security/Ordina.Security.Infrastructure \
+  -s src/Application/Security/Ordina.Security.Api
+
+dotnet ef database update \
+  -p src/Application/Security/Ordina.Security.Infrastructure \
+  -s src/Application/Security/Ordina.Security.Api
+```
+
+## 📊 Supabase Local
+
+### 🔑 Credenciales de Acceso
+
+```bash
+# PostgreSQL (Base de datos única)
+Host: localhost
+Port: 5432
+Database: ordina_main
+Username: postgres
+Password: OrdinaPassword123!
+
+# Supabase Studio
+URL: http://localhost:3000
+Anon Key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+### 🎯 Características Incluidas
+
+- **Dashboard Web**: Gestión visual de la base de datos
+- **Editor SQL**: Ejecutar consultas directamente
+- **API Explorer**: Probar APIs REST generadas automáticamente
+- **Gestión de Usuarios**: Sistema de autenticación integrado
+- **Logs en Tiempo Real**: Monitoreo de queries y eventos
+
+Ver [📖 Guía Completa de Supabase Local](docs/SUPABASE_LOCAL_SETUP.md) para más detalles.
+
+## 🛠️ Scripts Útiles
+
+### Gestión de Paquetes
+
+```powershell
+# Agregar paquetes PostgreSQL y EF Core
+.\scripts\add-postgresql-packages.ps1
+```
+
+### Docker Commands
+
+```bash
+# 🔄 Reiniciar servicios
+docker-compose down && docker-compose up -d
+
+# 📋 Ver logs
+docker-compose logs -f [service-name]
+
+# 🗑️ Reset completo (⚠️ elimina datos)
+docker-compose down -v
+docker-compose up --build -d
+```
+
+## 🧪 Desarrollo y Testing
+
+### Estructura de Cada Microservicio
+
+```
+Ordina.[Service]/
+├── Ordina.[Service].Api/          # Controllers, Middleware, Configuración
+├── Ordina.[Service].Application/  # Casos de uso, CQRS, Handlers
+├── Ordina.[Service].Domain/       # Entidades, Value Objects, Interfaces
+└── Ordina.[Service].Infrastructure/ # DbContext, Repositories, Services externos
+```
+
+### Flujo de Desarrollo
+
+1. **🔄 Modificar entidades** en `Domain/`
+2. **📝 Crear migración**: `.\scripts\manage-migrations.ps1 -Action add -Service [Name] -MigrationName "[Description]"`
+3. **✅ Aplicar cambios**: `.\scripts\manage-migrations.ps1 -Action update -Service [Name]`
+4. **🔍 Verificar en Supabase Studio**: http://localhost:3000
+
+### Testing APIs
+
+```bash
+# Usando curl
+curl -X GET http://localhost:8082/swagger/index.html
+
+# Usando HTTPie
+http GET localhost:8083/api/users
+
+# Importar colecciones Postman desde:
+# src/Application/[Service]/Ordina.[Service].Api/Ordina.[Service].Api.http
+```
+
+## 📂 Estructura del Proyecto
+
+```
+Ordina/
+├── 📄 docker-compose.yml                    # Configuración Docker
+├── 📄 Ordina.sln                           # Solución principal
+├── 📁 docs/                                # Documentación
+│   ├── SUPABASE_LOCAL_SETUP.md             # Guía Supabase local
+│   └── POSTGRESQL_MIGRATION_COMPLETE.md    # Migración PostgreSQL
+├── 📁 scripts/                             # Scripts de automatización
+│   ├── manage-migrations.ps1               # Gestión de migraciones
+│   └── add-postgresql-packages.ps1         # Instalación de paquetes
+├── 📁 supabase/                            # Configuración Supabase
+│   ├── kong.yml                            # Configuración API Gateway
+│   └── init.sql                            # Script inicialización
+└── 📁 src/                                 # Código fuente
+    ├── 📁 Application/                     # Microservicios
+    │   ├── 📁 Security/                    # 🔐 Autenticación
+    │   ├── 📁 Users/                       # 👥 Usuarios
+    │   ├── 📁 Providers/                   # 🏪 Proveedores
+    │   ├── 📁 Orders/                      # 📦 Pedidos
+    │   └── 📁 Payments/                    # 💳 Pagos
+    ├── 📁 Infrastructure/                  # Infraestructura compartida
+    │   ├── 📁 Ordina.Database/             # Configuraciones DB
+    │   └── 📁 Ordina.ServiceDefaults/      # Configuración común
+    └── 📁 Presentation/                    # Capa de presentación
+        ├── 📁 Ordina.ApiGateway/           # API Gateway
+        └── 📁 Ordina.AppHost/              # Aspire Host
+```
+
+## 🚨 Troubleshooting
+
+### Problemas Comunes
+
+#### 🐳 Docker no inicia
+
+```bash
+# Verificar Docker Desktop
+docker --version
+docker-compose --version
+
+# Liberar puertos ocupados
+docker-compose down
+netstat -ano | findstr :5432  # Windows
+lsof -ti:5432 | xargs kill    # macOS/Linux
+```
+
+#### 🗃️ Error de migración
+
+```bash
+# Verificar conexión a DB
+docker exec -it ordina-postgres psql -U postgres -c "\l"
+
+# Reset migraciones (⚠️ elimina datos)
+.\scripts\manage-migrations.ps1 -Action remove -Service [Name]
+.\scripts\manage-migrations.ps1 -Action add -Service [Name]
+```
+
+#### 🌐 API no responde
+
+```bash
+# Verificar logs del servicio
+docker-compose logs [service-name]
+
+# Rebuild específico
+docker-compose up --build [service-name]
+```
+
+Ver [🔍 Guía Completa de Troubleshooting](docs/SUPABASE_LOCAL_SETUP.md#troubleshooting) para más soluciones.
+
+## 🤝 Contribución
+
+1. **Fork** el repositorio
+2. **Crear rama**: `git checkout -b feature/nueva-funcionalidad`
+3. **Commit**: `git commit -am 'Agregar nueva funcionalidad'`
+4. **Push**: `git push origin feature/nueva-funcionalidad`
+5. **Pull Request**: Crear PR con descripción detallada
+
+### Estándares de Código
+
+- **Clean Architecture** para todos los microservicios
+- **CQRS** para operaciones complejas
+- **Entity Framework** para acceso a datos
+- **Swagger/OpenAPI** para documentación
+- **Docker** para containerización
+
+## 📚 Recursos y Enlaces
+
+- [📖 Documentación .NET Aspire](https://learn.microsoft.com/en-us/dotnet/aspire/)
+- [🐘 PostgreSQL Documentation](https://www.postgresql.org/docs/)
+- [🚀 Supabase Documentation](https://supabase.com/docs)
+- [🐳 Docker Compose Reference](https://docs.docker.com/compose/)
+- [🔄 Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/)
+
+## 📋 TODO & Roadmap
+
+- [ ] **Autenticación JWT** con Supabase Auth
+- [ ] **API Rate Limiting** en el Gateway
+- [ ] **Health Checks** para todos los servicios
+- [ ] **Logging estructurado** con Serilog
+- [ ] **Tests de integración** automatizados
+- [ ] **CI/CD Pipeline** con GitHub Actions
+- [ ] **Métricas y observabilidad** con Prometheus
+- [ ] **Message Bus** con RabbitMQ o Azure Service Bus
+
+## 📜 Licencia
+
+Este proyecto está bajo la licencia MIT. Ver [LICENSE](LICENSE) para más detalles.
 
 ---
 
-## 🧪 Pruebas Automatizadas (TDD)
+**🎉 ¡Construido con ❤️ y las mejores prácticas de .NET!**
 
-El proyecto sigue una estricta política de pruebas unitarias y de integración para flujos críticos:
-
-```bash
-# Ejecutar pruebas de lógica de aplicación (ventas, cálculos, validaciones)
-dotnet test tests/Ordina.Application.Tests
-
-# Ejecutar pruebas de middlewares de API (idempotencia, excepciones globales, anti-CSRF)
-dotnet test tests/Ordina.Api.Tests
-
-# Ejecutar con reporte de cobertura de código
-dotnet test --collect:"XPlat Code Coverage"
-```
+> **¿Tienes preguntas?** Abre un [Issue](../../issues) o revisa la [documentación completa](docs/).
 
 ---
 
-## 📦 Compilación para Producción (Raspberry Pi 5 ARM64)
+### ⭐ Si te gusta este proyecto, ¡dale una estrella!
 
-Para el despliegue en la Raspberry Pi 5 con runtime optimizado:
-
-```bash
-dotnet publish src/Api/Ordina.Api.csproj \
-  -c Release \
-  -r linux-arm64 \
-  --self-contained false \
-  -p:PublishReadyToRun=true \
-  -o ./publish/rpi-arm64
-```
-Esto genera binarios precompilados AOT/ReadyToRun que reducen a milisegundos el tiempo de arranque (JIT startup) y minimizan el uso de memoria RAM.
+[![GitHub stars](https://img.shields.io/github/stars/tu-usuario/ordina?style=social)](https://github.com/tu-usuario/ordina/stargazers)
