@@ -1,5 +1,5 @@
 services:
-  # MongoDB Database
+  # 1. Base de Datos MongoDB (Única fuente de verdad)
   mongodb:
     image: mongo:7.0
     container_name: ordina-mongodb
@@ -13,14 +13,20 @@ services:
       - mongodb_data:/data/db
     networks:
       - ordina-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # .NET Aspire Standalone Dashboard
+  # 2. .NET Aspire Standalone Dashboard (Monitoreo OTLP & Logs centralizados)
   aspire-dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:9.0
     container_name: ordina-aspire-dashboard
     restart: unless-stopped
     ports:
-      - "18888:18888"
+      - "18888:18888" # UI Dashboard
+      - "4317:4317"   # OTLP gRPC
     environment:
       - ASPNETCORE_URLS=http://+:18888
       - DOTNET_DASHBOARD_OTLP_ENDPOINT_URL=http://+:4317
@@ -32,246 +38,55 @@ services:
     networks:
       - ordina-network
 
-  # API Gateway
-  apigateway:
-    image: ghcr.io/verkku-tech/camihogar-apigateway:latest
+  # 3. Monolito Modular Backend (.NET 10 ReadyToRun)
+  backend-api:
+    image: ghcr.io/verkku-tech/camihogar-backend-api:latest
     build:
       context: ./Ordina.Backend
-      dockerfile: src/Presentation/Ordina.ApiGateway/Dockerfile
-    container_name: ordina-apigateway
+      dockerfile: src/Api/Dockerfile
+    container_name: ordina-backend-api
     restart: unless-stopped
     ports:
       - "8080:8080"
-      - "8081:8081"
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=https://+:8081;http://+:8080
-      - ASPNETCORE_Kestrel__Certificates__Default__Password=password
-      - ASPNETCORE_Kestrel__Certificates__Default__Path=/https/aspnetapp.pfx
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__MongoDB=mongodb://admin:OrdinaPassword123!@mongodb:27017/camihogar?authSource=admin
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
-      - OTEL_SERVICE_NAME=apigateway
-      - OTEL_RESOURCE_ATTRIBUTES=service.name=apigateway
+      - OTEL_SERVICE_NAME=Ordina.Api
+      - Jwt__SecretKey=OrdinaSuperSecretKeyForDevelopmentMustBeAtLeast32CharsLong!
+      - Jwt__Issuer=OrdinaApi
+      - Jwt__Audience=OrdinaClients
+      - Cors__AllowedOrigins__0=http://localhost:5173
+      - Cors__AllowedOrigins__1=http://localhost:3000
+      - Cors__AllowedOrigins__2=https://camihogar.pages.dev
     depends_on:
-      - security-api
-      - users-api
-      - providers-api
-      - orders-api
-      - payments-api
+      mongodb:
+        condition: service_healthy
+      aspire-dashboard:
+        condition: service_started
     networks:
       - ordina-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || curl -f http://localhost:8080 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
-  # Microservices (All using MongoDB)
-  security-api:
-    image: ghcr.io/verkku-tech/camihogar-security-api:latest
-    build:
-      context: ./Ordina.Backend
-      dockerfile: src/Application/Security/Ordina.Security.Api/Dockerfile
-    container_name: ordina-security-api
-    restart: unless-stopped
-    ports:
-      - "8082:8082"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:8082
-      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
-      - MongoDb__DatabaseName=ordina_db
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
-      - OTEL_SERVICE_NAME=security-api
-      - OTEL_RESOURCE_ATTRIBUTES=service.name=security-api
-    depends_on:
-      - mongodb
-    networks:
-      - ordina-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8082/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  users-api:
-    image: ghcr.io/verkku-tech/camihogar-users-api:latest
-    build:
-      context: ./Ordina.Backend
-      dockerfile: src/Application/Users/Ordina.Users.Api/Dockerfile
-    container_name: ordina-users-api
-    restart: unless-stopped
-    ports:
-      - "8083:8083"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:8083
-      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
-      - MongoDb__DatabaseName=ordina_db
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
-      - OTEL_SERVICE_NAME=users-api
-      - OTEL_RESOURCE_ATTRIBUTES=service.name=users-api
-    depends_on:
-      - mongodb
-    networks:
-      - ordina-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8083/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  providers-api:
-    image: ghcr.io/verkku-tech/camihogar-providers-api:latest
-    build:
-      context: ./Ordina.Backend
-      dockerfile: src/Application/Providers/Ordina.Providers.Api/Dockerfile
-    container_name: ordina-providers-api
-    restart: unless-stopped
-    ports:
-      - "8084:8084"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:8084
-      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
-      - MongoDb__DatabaseName=ordina_db
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
-      - OTEL_SERVICE_NAME=providers-api
-      - OTEL_RESOURCE_ATTRIBUTES=service.name=providers-api
-    depends_on:
-      - mongodb
-    networks:
-      - ordina-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8084/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  orders-api:
-    image: ghcr.io/verkku-tech/camihogar-orders-api:latest
-    build:
-      context: ./Ordina.Backend
-      dockerfile: src/Application/Orders/Ordina.Orders.Api/Dockerfile
-    container_name: ordina-orders-api
-    restart: unless-stopped
-    ports:
-      - "8085:8085"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:8085
-      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
-      - MongoDb__DatabaseName=ordina_db
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
-      - OTEL_SERVICE_NAME=orders-api
-      - OTEL_RESOURCE_ATTRIBUTES=service.name=orders-api
-    depends_on:
-      - mongodb
-    networks:
-      - ordina-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8085/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  payments-api:
-    image: ghcr.io/verkku-tech/camihogar-payments-api:latest
-    build:
-      context: ./Ordina.Backend
-      dockerfile: src/Application/Payments/Ordina.Payments.Api/Dockerfile
-    container_name: ordina-payments-api
-    restart: unless-stopped
-    ports:
-      - "8086:8086"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:8086
-      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
-      - MongoDb__DatabaseName=ordina_db
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
-      - OTEL_SERVICE_NAME=payments-api
-      - OTEL_RESOURCE_ATTRIBUTES=service.name=payments-api
-    depends_on:
-      - mongodb
-    networks:
-      - ordina-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8086/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  stores-api:
-    image: ghcr.io/verkku-tech/camihogar-stores-api:latest
-    build:
-      context: ./Ordina.Backend
-      dockerfile: src/Application/Stores/Ordina.Stores.Api/Dockerfile
-    container_name: ordina-stores-api
-    restart: unless-stopped
-    ports:
-      - "8087:8087"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:8087
-      - MongoDb__ConnectionString=mongodb://admin:OrdinaPassword123!@mongodb:27017
-      - MongoDb__DatabaseName=ordina_db
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:4317
-      - OTEL_SERVICE_NAME=stores-api
-      - OTEL_RESOURCE_ATTRIBUTES=service.name=stores-api
-    depends_on:
-      - mongodb
-    networks:
-      - ordina-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8087/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  # Frontend Application
+  # 4. Frontend SPA PWA (Vite + React 19)
   frontend:
     image: ghcr.io/verkku-tech/camihogar-frontend:latest
     build:
       context: ./Ordina.Frontend
       dockerfile: Dockerfile
-    container_name: camihogar-app
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - NEXT_TELEMETRY_DISABLED=1
-      # URLs internas: el proxy del frontend corre dentro del contenedor y debe usar nombres de servicio Docker
-      - NEXT_PUBLIC_SECURITY_API_URL=${NEXT_PUBLIC_SECURITY_API_URL:-http://security-api:8082}
-      - NEXT_PUBLIC_USERS_API_URL=${NEXT_PUBLIC_USERS_API_URL:-http://users-api:8083}
-      - NEXT_PUBLIC_PROVIDERS_API_URL=${NEXT_PUBLIC_PROVIDERS_API_URL:-http://providers-api:8084}
-      - NEXT_PUBLIC_ORDERS_API_URL=${NEXT_PUBLIC_ORDERS_API_URL:-http://orders-api:8085}
-      - NEXT_PUBLIC_PAYMENTS_API_URL=${NEXT_PUBLIC_PAYMENTS_API_URL:-http://payments-api:8086}
-      - NEXT_PUBLIC_STORES_API_URL=${NEXT_PUBLIC_STORES_API_URL:-http://stores-api:8087}
+    container_name: ordina-frontend
     restart: unless-stopped
+    ports:
+      - "3000:80"
     depends_on:
-      - security-api
-      - users-api
-      - providers-api
-      - payments-api
+      - backend-api
     networks:
       - ordina-network
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-volumes:
-  mongodb_data:
 
 networks:
   ordina-network:
     driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local

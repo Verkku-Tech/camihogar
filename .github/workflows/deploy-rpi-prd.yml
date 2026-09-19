@@ -16,9 +16,10 @@ jobs:
     name: Detect Changed Services
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      has-build-changes: ${{ steps.set-matrix.outputs.has-build-changes }}
-      should-deploy: ${{ steps.set-matrix.outputs.should-deploy }}
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      compose: ${{ steps.filter.outputs.compose }}
+      should-deploy: ${{ steps.filter.outputs.backend == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.compose == 'true' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,238 +27,167 @@ jobs:
         id: filter
         with:
           filters: |
-            security-api:
-              - 'Ordina.Backend/src/Application/Security/**'
-              - 'Ordina.Backend/src/Infrastructure/**'
-              - 'Ordina.Backend/*.props'
-              - 'Ordina.Backend/*.sln'
-            users-api:
-              - 'Ordina.Backend/src/Application/Users/**'
-              - 'Ordina.Backend/src/Infrastructure/**'
-              - 'Ordina.Backend/*.props'
-              - 'Ordina.Backend/*.sln'
-            providers-api:
-              - 'Ordina.Backend/src/Application/Providers/**'
-              - 'Ordina.Backend/src/Infrastructure/**'
-              - 'Ordina.Backend/*.props'
-              - 'Ordina.Backend/*.sln'
-            orders-api:
-              - 'Ordina.Backend/src/Application/Orders/**'
-              - 'Ordina.Backend/src/Infrastructure/**'
-              - 'Ordina.Backend/*.props'
-              - 'Ordina.Backend/*.sln'
-            payments-api:
-              - 'Ordina.Backend/src/Application/Payments/**'
-              - 'Ordina.Backend/src/Infrastructure/**'
-              - 'Ordina.Backend/*.props'
-              - 'Ordina.Backend/*.sln'
-            stores-api:
-              - 'Ordina.Backend/src/Application/Stores/**'
-              - 'Ordina.Backend/src/Infrastructure/**'
-              - 'Ordina.Backend/*.props'
-              - 'Ordina.Backend/*.sln'
-            apigateway:
-              - 'Ordina.Backend/src/Presentation/Ordina.ApiGateway/**'
-              - 'Ordina.Backend/src/Infrastructure/**'
-              - 'Ordina.Backend/*.props'
-              - 'Ordina.Backend/*.sln'
+            backend:
+              - 'Ordina.Backend/**'
             frontend:
               - 'Ordina.Frontend/**'
             compose:
               - 'docker-compose.yml'
               - '.github/workflows/deploy-rpi-prd.yml'
 
-      - name: Build Matrix JSON
-        id: set-matrix
+  test:
+    name: Run Backend & Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run Backend Tests
         run: |
-          SERVICES=()
-          if [ "${{ steps.filter.outputs.security-api }}" == "true" ]; then
-            SERVICES+=('{"name":"security-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Security/Ordina.Security.Api/Dockerfile"}')
-          fi
-          if [ "${{ steps.filter.outputs.users-api }}" == "true" ]; then
-            SERVICES+=('{"name":"users-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Users/Ordina.Users.Api/Dockerfile"}')
-          fi
-          if [ "${{ steps.filter.outputs.providers-api }}" == "true" ]; then
-            SERVICES+=('{"name":"providers-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Providers/Ordina.Providers.Api/Dockerfile"}')
-          fi
-          if [ "${{ steps.filter.outputs.orders-api }}" == "true" ]; then
-            SERVICES+=('{"name":"orders-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Orders/Ordina.Orders.Api/Dockerfile"}')
-          fi
-          if [ "${{ steps.filter.outputs.payments-api }}" == "true" ]; then
-            SERVICES+=('{"name":"payments-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Payments/Ordina.Payments.Api/Dockerfile"}')
-          fi
-          if [ "${{ steps.filter.outputs.stores-api }}" == "true" ]; then
-            SERVICES+=('{"name":"stores-api","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Application/Stores/Ordina.Stores.Api/Dockerfile"}')
-          fi
-          if [ "${{ steps.filter.outputs.apigateway }}" == "true" ]; then
-            SERVICES+=('{"name":"apigateway","context":"./Ordina.Backend","file":"./Ordina.Backend/src/Presentation/Ordina.ApiGateway/Dockerfile"}')
-          fi
-          if [ "${{ steps.filter.outputs.frontend }}" == "true" ]; then
-            SERVICES+=('{"name":"frontend","context":"./Ordina.Frontend","file":"./Ordina.Frontend/Dockerfile"}')
-          fi
+          dotnet test Ordina.Backend/tests/Ordina.Application.Tests
+          dotnet test Ordina.Backend/tests/Ordina.Api.Tests
 
-          if [ ${#SERVICES[@]} -eq 0 ]; then
-            echo "matrix=[]" >> "$GITHUB_OUTPUT"
-            echo "has-build-changes=false" >> "$GITHUB_OUTPUT"
-          else
-            JSON=$(IFS=,; echo "[${SERVICES[*]}]")
-            echo "matrix=$JSON" >> "$GITHUB_OUTPUT"
-            echo "has-build-changes=true" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
-          if [ "${{ steps.filter.outputs.compose }}" == "true" ] || [ ${#SERVICES[@]} -gt 0 ]; then
-            echo "should-deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should-deploy=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Run Frontend Tests & Build
+        run: |
+          cd Ordina.Frontend
+          bun install
+          bun test
+          bun run build
 
-  build-and-push:
-    name: Build & Push ${{ matrix.service.name }} (ARM64)
-    needs: changes
-    if: needs.changes.outputs.has-build-changes == 'true'
-    runs-on: ubuntu-24.04-arm
+  build-backend:
+    name: Build & Push Backend API (ARM64 & AMD64)
+    needs: [changes, test]
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        service: ${{ fromJson(needs.changes.outputs.matrix) }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU (for ARM64)
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Lowercase Repository Name
-        run: |
-          echo "REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/verkku-tech/camihogar-backend-api
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
 
-      - name: Build & Push Docker Image
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.service.context }}
-          file: ${{ matrix.service.file }}
-          platforms: linux/arm64
+          context: ./Ordina.Backend
+          file: ./Ordina.Backend/src/Api/Dockerfile
+          platforms: linux/arm64,linux/amd64
           push: true
-          tags: |
-            ghcr.io/${{ env.REPO_LOWER }}-${{ matrix.service.name }}:latest
-            ghcr.io/${{ env.REPO_LOWER }}-${{ matrix.service.name }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-  deploy:
-    name: Deploy to Raspberry Pi 5
-    needs: [changes, build-and-push]
-    if: always() && !cancelled() && needs.changes.outputs.should-deploy == 'true' && !contains(needs.*.result, 'failure')
-    runs-on: [self-hosted, Linux, ARM64]
+  build-frontend:
+    name: Build & Push Frontend (ARM64 & AMD64)
+    needs: [changes, test]
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
+      - name: Set up QEMU (for ARM64)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/verkku-tech/camihogar-frontend
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Ordina.Frontend
+          file: ./Ordina.Frontend/Dockerfile
+          platforms: linux/arm64,linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Raspberry Pi 5
+    needs: [changes, build-backend, build-frontend]
+    if: always() && needs.changes.outputs.should-deploy == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup WireGuard VPN
+        uses: egor-tensin/setup-wireguard@v1
+        with:
+          endpoint: ${{ secrets.WG_ENDPOINT }}
+          endpoint_public_key: ${{ secrets.WG_ENDPOINT_PUBLIC_KEY }}
+          ips: ${{ secrets.WG_CLIENT_IPS }}
+          private_key: ${{ secrets.WG_CLIENT_PRIVATE_KEY }}
+          preshared_key: ${{ secrets.WG_PRESHARED_KEY }}
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.RPI_SSH_PRIVATE_KEY }}
+
+      - name: Sync docker-compose.yml to RPi
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          scp -o StrictHostKeyChecking=no docker-compose.yml ${{ secrets.RPI_USER }}@${{ secrets.RPI_HOST }}:/opt/camihogar/docker-compose.yml
 
-      - name: Setup Docker Permissions
-        run: |
-          set -euo pipefail
-          echo "=== Verificando acceso a Docker ==="
-          echo "Usuario: $(whoami) | Grupos: $(groups)"
-          if docker ps >/dev/null 2>&1; then
-            echo "✓ Docker accesible (usuario en grupo docker)"
-          else
-            echo "✗ El usuario no puede usar Docker. En la RPi ejecuta:"
-            echo "  sudo usermod -aG docker runner"
-            echo "  sudo systemctl restart actions.runner.Verkku-Tech-camihogar.camihogar-prd.service"
-            docker ps
-            exit 1
-          fi
-
-      - name: Ensure curl exists
-        run: |
-          set -euo pipefail
-          command -v curl >/dev/null 2>&1 || (echo "curl no encontrado; instálalo en la RPi con: sudo apt-get install -y curl" && exit 1)
-
-      - name: Pull Latest Docker Images
-        run: |
-          set -euo pipefail
-          echo "=== Descargando capas modificadas desde GHCR ==="
-          docker compose pull
-
-      - name: Deploy Services
-        run: |
-          set -euo pipefail
-          echo "=== Desplegando todos los servicios ==="
-          docker compose up -d --remove-orphans
-
-      - name: Wait for Services Warmup
-        run: |
-          set -euo pipefail
-          echo "=== Esperando a que los servicios estén listos ==="
-          timeout=60
-          interval=2
-          elapsed=0
-
-          while [ $elapsed -lt $timeout ]; do
-            if curl -fsS "http://localhost:8082/health" >/dev/null 2>&1 && \
-               curl -fsS "http://localhost:3000" >/dev/null 2>&1; then
-              echo "Contenedores listos y respondiendo. Continuando..."
-              break
-            fi
-            echo "Aún iniciando servicios... ($elapsed/$timeout)"
-            sleep $interval
-            elapsed=$((elapsed + interval))
-          done
-
-          echo "=== Estado de contenedores ==="
-          docker compose ps
-
-      - name: Health Check
-        run: |
-          set -euo pipefail
-          echo "=== Verificando salud de los servicios ==="
-
-          apis=("8082:security-api" "8083:users-api" "8084:providers-api" "8085:orders-api" "8086:payments-api" "8087:stores-api")
-          failed=0
-
-          for api in "${apis[@]}"; do
-            port="${api%%:*}"
-            name="${api##*:}"
-            if curl -fsS "http://localhost:$port/health" >/dev/null 2>&1 || curl -fsS "http://localhost:$port" >/dev/null 2>&1; then
-              echo "✓ $name (puerto $port) está respondiendo"
-            else
-              echo "✗ $name (puerto $port) no está respondiendo"
-              failed=$((failed + 1))
-            fi
-          done
-
-          if curl -fsS "http://localhost:3000" >/dev/null 2>&1; then
-            echo "✓ Frontend está respondiendo"
-          else
-            echo "✗ Frontend no está respondiendo"
-            failed=$((failed + 1))
-          fi
-
-          if [ $failed -gt 0 ]; then
-            echo "⚠️  Algunos servicios no están respondiendo correctamente"
-            docker compose ps || true
-            docker compose logs --tail=80 || true
-            exit 1
-          fi
-
-          echo "✓ Todos los servicios están funcionando correctamente"
-
-      - name: Cleanup
-        if: always()
-        run: |
-          set -euo pipefail
-          echo "=== Limpiando imágenes huérfanas (preservando caché de capas) ==="
-          docker image prune -f || true
-          echo "=== Espacio en disco después de limpieza ==="
-          df -h
+      - name: Pull and Deploy on RPi
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.RPI_HOST }}
+          username: ${{ secrets.RPI_USER }}
+          key: ${{ secrets.RPI_SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/camihogar
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker system prune -f --filter "until=48h"
