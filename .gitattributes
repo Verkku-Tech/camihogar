@@ -1,0 +1,42 @@
+# Auto normalize line endings
+* text=auto
+
+# C# and .NET
+*.cs text diff=csharp
+*.csproj text
+*.sln text
+*.props text
+*.targets text
+
+# Web & TypeScript / JavaScript
+*.ts text
+*.tsx text
+*.js text
+*.jsx text
+*.mjs text
+*.json text
+*.css text
+*.html text
+*.svg text
+
+# Shell and Scripts
+*.sh text eol=lf
+*.ps1 text
+
+# Markdown & Configs
+*.md text
+*.yml text
+*.yaml text
+*.dockerignore text
+Dockerfile text
+
+# Binaries
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.pfx binary
+*.dll binary
+*.exe binary

@@ -1,7 +1,0 @@
-__pycache__/
-*.pyc
-*.log
-*.err
-data/
-backup_*/
-assets/
