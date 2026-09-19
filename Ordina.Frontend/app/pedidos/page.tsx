@@ -203,7 +203,7 @@ export default function PedidosPage() {
       dateFrom: rangeFrom || undefined,
       dateTo: rangeTo || undefined,
       includeBudgets: true,
-      excludeStatuses: filters.status === "all" ? "Declinado" : undefined,
+      excludeStatuses: filters.status === "all" && !debouncedSearchTerm.trim() ? "Declinado" : undefined,
     };
   }, [debouncedSearchTerm, filters, dateFrom, dateTo]);
 
