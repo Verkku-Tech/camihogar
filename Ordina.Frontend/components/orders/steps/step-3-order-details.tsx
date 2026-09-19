@@ -23,7 +23,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { DollarSign, Plus, Trash2 } from "lucide-react";
+import { DollarSign, Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import type { UseOrderFormReturn } from "../hooks/use-order-form";
 import { DeliveryServiceCostInput } from "../delivery-service-cost-input";
 import { formatCurrency, type Currency } from "@/lib/currency-utils";
@@ -160,7 +162,7 @@ function syncCardCommissionForPayment(
 interface Step3OrderDetailsProps {
   orderForm: UseOrderFormReturn;
   onSubmit: () => void;
-  addPayment?: () => void;
+  addPayment?: () => string;
   updatePayment?: (id: string, field: any, value: any) => void;
   updatePaymentDetails?: (id: string, field: string, value: any) => void;
   removePayment?: (id: string) => void;
@@ -173,6 +175,8 @@ interface Step3OrderDetailsProps {
   allowRemovePayment?: boolean;
   /** Si true, admin (orders.update) puede editar pagos marcados como conciliados. */
   canEditConciliatedPayments?: boolean;
+  /** Incrementar después de guardar para indicar que se guardó. */
+  paymentSavedTrigger?: number;
 }
 
 export function Step3OrderDetails({
@@ -188,9 +192,54 @@ export function Step3OrderDetails({
   paymentsOnly = false,
   allowRemovePayment = true,
   canEditConciliatedPayments = false,
+  paymentSavedTrigger,
 }: Step3OrderDetailsProps) {
   const generalPctFocusedRef = useRef(false);
   const [generalPctDraft, setGeneralPctDraft] = useState("");
+  const [collapsedPayments, setCollapsedPayments] = useState<Set<string>>(new Set());
+  const [newPaymentId, setNewPaymentId] = useState<string | null>(null);
+  const [paymentSaved, setPaymentSaved] = useState(false);
+
+  const toggleCollapse = (id: string) => {
+    setCollapsedPayments((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Colapsar todos excepto el último cuando cambian los pagos
+  useEffect(() => {
+    const payments = orderForm.payments;
+    if (payments.length > 1) {
+      const lastId = payments[payments.length - 1].id;
+      setCollapsedPayments(new Set(payments.filter((p) => p.id !== lastId).map((p) => p.id)));
+    }
+  }, [orderForm.payments.length]);
+
+  const handleAddPayment = () => {
+    if (!addPayment) return;
+    const id = addPayment();
+    setNewPaymentId(id);
+    // Auto-expand el nuevo pago
+    setCollapsedPayments((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  // Scroll al pago nuevo cuando se agrega
+  const newPaymentRef = useRef<HTMLFieldSetElement>(null);
+  useEffect(() => {
+    if (newPaymentId && newPaymentRef.current) {
+      newPaymentRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [newPaymentId]);
 
   useEffect(() => {
     if (orderForm.generalDiscountType !== "porcentaje") {
@@ -205,6 +254,18 @@ export function Step3OrderDetails({
         : "",
     );
   }, [orderForm.generalDiscountType, orderForm.generalDiscount]);
+
+  // Marcar como guardado cuando se incrementa el trigger
+  useEffect(() => {
+    if (paymentSavedTrigger && paymentSavedTrigger > 0) {
+      setPaymentSaved(true);
+    }
+  }, [paymentSavedTrigger]);
+
+  // Resetear estado guardado cuando cambian los pagos (el usuario modificó algo)
+  useEffect(() => {
+    setPaymentSaved(false);
+  }, [orderForm.payments]);
 
   const porcentajeEquivalentPreviewBs = useMemo(() => {
     if (orderForm.generalDiscountType !== "porcentaje") return 0;
@@ -927,7 +988,7 @@ export function Step3OrderDetails({
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={addPayment}
+                      onClick={handleAddPayment}
                       className="w-full sm:w-auto"
                     >
                       <Plus className="w-4 h-4 mr-2" />
@@ -949,13 +1010,55 @@ export function Step3OrderDetails({
                     payment,
                     canEditConciliatedPayments,
                   );
+                  const isNewPayment = newPaymentId === payment.id;
+                  const isCollapsed = collapsedPayments.has(payment.id);
+                  const paymentMethod = payment.method || "Sin método";
+                  const paymentAmount = payment.amount || 0;
+                  const paymentCurrency = payment.currency || "Bs";
+                  const paymentIdx = orderForm.payments.findIndex((p) => p.id === payment.id) + 1;
                   return (
-                  <fieldset
+                  <Collapsible
                     key={payment.id}
-                    className="space-y-3 sm:space-y-4 p-3 sm:p-4 border rounded-lg min-w-0 border-border"
+                    open={!isCollapsed}
+                    onOpenChange={() => toggleCollapse(payment.id)}
                   >
+                  <fieldset
+                    ref={isNewPayment ? newPaymentRef : undefined}
+                    className={cn(
+                      "border rounded-lg min-w-0",
+                      isNewPayment
+                        ? "border-primary shadow-lg ring-2 ring-primary/20 scroll-mt-20"
+                        : "border-border"
+                    )}
+                  >
+                    <CollapsibleTrigger asChild>
+                      <button
+                        type="button"
+                        className="w-full flex items-center justify-between p-3 sm:p-4 text-left hover:bg-muted/50 transition-colors rounded-t-lg"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium">Pago {paymentIdx}</span>
+                          <span className="text-sm text-muted-foreground">—</span>
+                          <span className="text-sm font-medium">{paymentMethod}</span>
+                          {paymentAmount > 0 && (
+                            <>
+                              <span className="text-sm text-muted-foreground">—</span>
+                              <span className="text-sm font-semibold">
+                                {formatCurrency(paymentAmount, paymentCurrency)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        {isCollapsed ? (
+                          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+                        )}
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                    <div className="space-y-3 sm:space-y-4 p-3 sm:p-4 pt-0">
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:items-end">
-                      {/* Método primero */}
                       <div className="flex-1 w-full">
                         <Label className="text-xs">Método</Label>
                         <Select
@@ -2741,7 +2844,21 @@ export function Step3OrderDetails({
                         </div>
                       </div>
                     )}
+                    </div>
+                    {paymentsOnly && (
+                      <div className="flex justify-end pt-2 px-3 sm:px-4 pb-3 sm:pb-4">
+                        <Button
+                          onClick={onSubmit}
+                          disabled={paymentSaved}
+                          className="w-full sm:w-auto"
+                        >
+                          {paymentSaved ? "Guardado" : "Guardar pagos"}
+                        </Button>
+                      </div>
+                    )}
+                    </CollapsibleContent>
                   </fieldset>
+                  </Collapsible>
                 );
                 })}
 

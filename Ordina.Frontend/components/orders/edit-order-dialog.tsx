@@ -256,6 +256,7 @@ export function EditOrderDialog({
   );
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
+  const [paymentSavedTrigger, setPaymentSavedTrigger] = useState(0);
 
   const nestedModalOpen =
     isRemoveProductOpen ||
@@ -305,10 +306,11 @@ export function EditOrderDialog({
   };
 
   // Handlers de pagos (mantener aquí por ahora, pueden moverse al hook después)
-  const addPayment = () => {
+  const addPayment = (): string => {
     const defaultCurrency = orderForm.getDefaultCurrencyFromSelection();
+    const newId = Date.now().toString();
     const newPayment: PartialPayment = {
-      id: Date.now().toString(),
+      id: newId,
       amount: 0,
       method: "",
       date: todayPaymentDateYyyyMmDd(),
@@ -316,6 +318,7 @@ export function EditOrderDialog({
       paymentDetails: {},
     };
     orderForm.setPayments([...orderForm.payments, newPayment]);
+    return newId;
   };
 
   const updatePayment = (
@@ -669,9 +672,7 @@ export function EditOrderDialog({
         mixedPayments: multi ? paymentsNorm : [],
       });
       toast.success("Pagos actualizados correctamente");
-      onOpenChange(false);
-      orderForm.resetForm();
-      window.location.reload();
+      setPaymentSavedTrigger((t) => t + 1);
     } catch (error) {
       console.error("Error updating payments:", error);
       toast.error("Error al guardar los pagos. Por favor intenta nuevamente.");
@@ -1585,6 +1586,7 @@ export function EditOrderDialog({
               paymentsOnly={isPaymentsOnly}
               allowRemovePayment={allowRemovePayment}
               canEditConciliatedPayments={canEditConciliatedPayments}
+              paymentSavedTrigger={paymentSavedTrigger}
             />
           )}
 
@@ -1630,25 +1632,6 @@ export function EditOrderDialog({
                     {isEditingBudget ? "Guardar como pedido" : "Crear Pedido"}
                   </Button>
                 )}
-              </div>
-            </div>
-          )}
-
-          {isPaymentsOnly && (
-            <div className="flex flex-col gap-3 pt-4 border-t">
-              {order?.paymentCondition === "cashea" && (
-                <p className="text-sm text-muted-foreground">
-                  Cashea: edite el pago inicial en tienda. Al guardar, el saldo
-                  restante se registrará como financiación Cashea.
-                </p>
-              )}
-              <div className="flex justify-end">
-                <Button
-                  onClick={handleSavePaymentsOnly}
-                  className="w-full sm:w-auto"
-                >
-                  Guardar pagos
-                </Button>
               </div>
             </div>
           )}

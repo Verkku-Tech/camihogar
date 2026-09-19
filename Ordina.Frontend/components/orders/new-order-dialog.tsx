@@ -202,10 +202,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   };
 
   // Handlers de pagos (mantener aquí por ahora, pueden moverse al hook después)
-  const addPayment = () => {
+  const addPayment = (): string => {
     const defaultCurrency = orderForm.getDefaultCurrencyFromSelection();
+    const newId = Date.now().toString();
     const newPayment: PartialPayment = {
-      id: Date.now().toString(),
+      id: newId,
       amount: 0,
       method: "",
       date: todayPaymentDateYyyyMmDd(),
@@ -213,6 +214,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       paymentDetails: {},
     };
     orderForm.setPayments([...orderForm.payments, newPayment]);
+    return newId;
   };
 
   const updatePayment = (
