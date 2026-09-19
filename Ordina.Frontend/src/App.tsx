@@ -17,6 +17,7 @@ import PedidosPage from './app/pedidos/page'
 import PedidoDetailPage from './app/pedidos/[orderNumber]/page'
 import ReservasPage from './app/pedidos/reservas/page'
 import DespachosPage from './app/pedidos/despachos/page'
+import PresupuestosPage from './app/presupuestos/page'
 import PresupuestoDetailPage from './app/presupuestos/[budgetNumber]/page'
 import ProductosPage from './app/inventario/productos/page'
 import CategoriasPage from './app/inventario/categorias/page'
@@ -82,6 +83,7 @@ export function App() {
                   <Route path="/pedidos/reservas" element={<ReservasPage />} />
                   <Route path="/pedidos/despachos" element={<DespachosPage />} />
                   <Route path="/pedidos/:orderNumber" element={<PedidoDetailPage />} />
+                  <Route path="/presupuestos" element={<PresupuestosPage />} />
                   <Route path="/presupuestos/:budgetNumber" element={<PresupuestoDetailPage />} />
 
                   {/* Inventory / Inventario */}

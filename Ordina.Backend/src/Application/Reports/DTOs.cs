@@ -17,7 +17,23 @@ public record CommissionReportRowDto(
     string ClientName,
     decimal OrderTotal,
     decimal CommissionAmount,
-    string CommissionMode);
+    string CommissionMode,
+    string? Description = null,
+    int? ItemsCount = null,
+    string? SaleType = null,
+    decimal? ComisionFamiliaUsdPorUnidad = null,
+    decimal? Comision = null,
+    decimal? ComisionPostventa = null,
+    decimal? ComisionSecundaria = null,
+    string? VendedorPostventa = null,
+    string? VendedorSecundario = null,
+    string? Fecha = null,
+    string? Cliente = null,
+    string? Pedido = null,
+    string? Vendedor = null,
+    string? Descripcion = null,
+    int? CantidadArticulos = null,
+    string? TipoVenta = null);
 
 public record PaymentsDetailedReportRowDto(
     string OrderNumber,

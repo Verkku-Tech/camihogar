@@ -58,4 +58,32 @@ public class CategoriesController : ControllerBase
         }
         return NoContent();
     }
+
+    [HttpPost("bulk-delete")]
+    public async Task<ActionResult<object>> BulkDelete([FromBody] BulkDeleteRequest request, CancellationToken cancellationToken)
+    {
+        var deleted = 0;
+        var failed = 0;
+        var errors = new List<string>();
+
+        if (request?.Ids != null)
+        {
+            foreach (var id in request.Ids)
+            {
+                try
+                {
+                    var success = await _categoryService.DeleteAsync(id, cancellationToken);
+                    if (success) deleted++;
+                    else failed++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    errors.Add($"Error al eliminar categoría {id}: {ex.Message}");
+                }
+            }
+        }
+
+        return Ok(new { deleted, failed, errors });
+    }
 }

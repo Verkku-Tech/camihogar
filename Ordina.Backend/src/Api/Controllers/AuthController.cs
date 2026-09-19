@@ -82,7 +82,7 @@ public class AuthController : ControllerBase
             return Unauthorized();
         }
 
-        var user = await _userService.GetUserByIdAsync(userId, cancellationToken);
+        var user = await _authService.GetCurrentUserDtoAsync(userId, cancellationToken);
         if (user == null)
         {
             return NotFound();

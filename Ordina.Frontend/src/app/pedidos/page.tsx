@@ -218,7 +218,7 @@ export default function PedidosPage() {
           signal,
         );
         return {
-          items: (response.orders ?? []).map((dto) =>
+          items: ((response.orders ?? (response as any).items ?? [])).map((dto) =>
             orderDtoToUnifiedOrder(dto),
           ),
           totalCount: response.totalCount ?? 0,

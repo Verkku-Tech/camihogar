@@ -191,4 +191,33 @@ public class AuthService : IAuthService
             await _refreshTokenRepository.UpdateAsync(storedToken, cancellationToken);
         }
     }
+
+    public async Task<UserDto?> GetCurrentUserDtoAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var user = await _userRepository.GetByIdAsync(userId, cancellationToken);
+        if (user == null) return null;
+
+        var rolePermissions = new List<string>();
+        if (!string.IsNullOrEmpty(user.RoleString))
+        {
+            var roles = await _roleRepository.FindAsync(r => r.Name == user.RoleString, cancellationToken);
+            var role = roles.FirstOrDefault();
+            if (role != null)
+            {
+                rolePermissions = role.Permissions;
+            }
+        }
+
+        var permissions = UserPermissionResolver.Merge(rolePermissions, user.ExtraPermissions);
+        return new UserDto(
+            user.Id,
+            user.Username,
+            user.Email,
+            user.RoleString,
+            user.Name,
+            user.StatusString,
+            permissions,
+            user.StoreId,
+            user.StoreName);
+    }
 }

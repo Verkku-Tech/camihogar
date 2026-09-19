@@ -74,7 +74,8 @@ export function Dashboard() {
           )
           .then((ordersResp) => {
             if (!cancelled) {
-              setGeneratedOrders(ordersResp.orders.map(orderFromBackendDto));
+              const list = ordersResp?.orders ?? (ordersResp as any)?.items ?? [];
+              setGeneratedOrders(list.map(orderFromBackendDto));
             }
           })
           .catch((error) => {
@@ -98,7 +99,8 @@ export function Dashboard() {
           )
           .then((mfgResp) => {
             if (!cancelled) {
-              setManufacturingOrders(mfgResp.orders.map(orderFromBackendDto));
+              const list = mfgResp?.orders ?? (mfgResp as any)?.items ?? [];
+              setManufacturingOrders(list.map(orderFromBackendDto));
             }
           })
           .catch((error) => {
@@ -118,8 +120,9 @@ export function Dashboard() {
           )
           .then((dispatchResp) => {
             if (!cancelled) {
+              const list = dispatchResp?.orders ?? (dispatchResp as any)?.items ?? [];
               setDispatchOrders(
-                dispatchResp.orders.map(orderFromBackendDto) as unknown as UnifiedOrder[],
+                list.map(orderFromBackendDto) as unknown as UnifiedOrder[],
               );
             }
           })
@@ -145,7 +148,8 @@ export function Dashboard() {
           )
           .then((saResp) => {
             if (!cancelled) {
-              setSaOrders(saResp.orders.map(orderFromBackendDto));
+              const list = saResp?.orders ?? (saResp as any)?.items ?? [];
+              setSaOrders(list.map(orderFromBackendDto));
             }
           })
           .catch((error) => {

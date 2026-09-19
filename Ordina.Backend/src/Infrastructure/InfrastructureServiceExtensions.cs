@@ -51,14 +51,15 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IRepository<Provider>>(sp => new MongoRepository<Provider>(sp.GetRequiredService<MongoDbContext>().Database, "providers"));
         services.AddScoped<IRepository<Role>>(sp => new MongoRepository<Role>(sp.GetRequiredService<MongoDbContext>().Database, "roles"));
         services.AddScoped<IRepository<Payment>>(sp => new MongoRepository<Payment>(sp.GetRequiredService<MongoDbContext>().Database, "payments"));
-        services.AddScoped<IRepository<PaymentMethod>>(sp => new MongoRepository<PaymentMethod>(sp.GetRequiredService<MongoDbContext>().Database, "payment_methods"));
+        services.AddScoped<IRepository<PaymentMethod>>(sp => new MongoRepository<PaymentMethod>(sp.GetRequiredService<MongoDbContext>().Database, "paymentMethods"));
         services.AddScoped<IRepository<Commission>>(sp => new MongoRepository<Commission>(sp.GetRequiredService<MongoDbContext>().Database, "commissions"));
-        services.AddScoped<IRepository<ProductCommission>>(sp => new MongoRepository<ProductCommission>(sp.GetRequiredService<MongoDbContext>().Database, "product_commissions"));
-        services.AddScoped<IRepository<SaleTypeCommissionRule>>(sp => new MongoRepository<SaleTypeCommissionRule>(sp.GetRequiredService<MongoDbContext>().Database, "sale_type_commission_rules"));
+        services.AddScoped<IRepository<ProductCommission>>(sp => new MongoRepository<ProductCommission>(sp.GetRequiredService<MongoDbContext>().Database, "productCommissions"));
+        services.AddScoped<IRepository<SaleTypeCommissionRule>>(sp => new MongoRepository<SaleTypeCommissionRule>(sp.GetRequiredService<MongoDbContext>().Database, "saleTypeCommissionRules"));
         services.AddScoped<IRepository<Store>>(sp => new MongoRepository<Store>(sp.GetRequiredService<MongoDbContext>().Database, "stores"));
         services.AddScoped<IRepository<Account>>(sp => new MongoRepository<Account>(sp.GetRequiredService<MongoDbContext>().Database, "accounts"));
         services.AddScoped<IRepository<DispatchRoute>>(sp => new MongoRepository<DispatchRoute>(sp.GetRequiredService<MongoDbContext>().Database, "dispatch_routes"));
         services.AddScoped<IRepository<WorkOrder>>(sp => new MongoRepository<WorkOrder>(sp.GetRequiredService<MongoDbContext>().Database, "work_orders"));
+        services.AddScoped<IRepository<AccessPin>>(sp => new MongoRepository<AccessPin>(sp.GetRequiredService<MongoDbContext>().Database, "accessPins"));
 
         // 3. Security & Caching
         services.AddSingleton<IPasswordHasher, PasswordHasher>();

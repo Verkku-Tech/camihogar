@@ -55,21 +55,21 @@ function filterSellersByStore(sellers: User[], storeFilter: string): User[] {
   return sellers.filter((u) => u.storeId === storeFilter)
 }
 
-function mapDtoToTableRows(dtos: CommissionReportRowDto[]): CommissionReportRow[] {
-  return dtos.map((row) => ({
-    fecha: row.fecha,
-    cliente: row.cliente,
-    pedido: row.pedido,
-    vendedor: row.vendedor,
-    descripcion: row.descripcion,
-    cantidadArticulos: row.cantidadArticulos,
-    tipoVenta: row.tipoVenta,
-    comisionFamiliaUsdPorUnidad: row.comisionFamiliaUsdPorUnidad,
-    comisionVendedor: row.comision,
-    comisionPostventa: row.comisionPostventa ?? 0,
-    comisionReferido: row.comisionSecundaria ?? 0,
+function mapDtoToTableRows(dtos: any[]): CommissionReportRow[] {
+  return (dtos || []).map((row) => ({
+    fecha: row.fecha || row.date || "",
+    cliente: row.cliente || row.clientName || "—",
+    pedido: row.pedido || row.orderNumber || "—",
+    vendedor: row.vendedor || row.sellerName || "—",
+    descripcion: row.descripcion || row.description || "—",
+    cantidadArticulos: Number(row.cantidadArticulos ?? row.itemsCount ?? 1),
+    tipoVenta: row.tipoVenta || row.saleType || "Directo",
+    comisionFamiliaUsdPorUnidad: Number(row.comisionFamiliaUsdPorUnidad ?? 0),
+    comisionVendedor: Number(row.comision ?? row.commissionAmount ?? 0),
+    comisionPostventa: Number(row.comisionPostventa ?? 0),
+    comisionReferido: Number(row.comisionSecundaria ?? row.secondaryCommission ?? 0),
     vendedorPostventa: row.vendedorPostventa ?? undefined,
-    vendedorReferido: row.vendedorSecundario ?? undefined,
+    vendedorReferido: row.vendedorSecundario ?? row.secondarySeller ?? undefined,
   }))
 }
 
@@ -303,9 +303,11 @@ export function CommissionsReport() {
     }).format(amount)
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "—"
     try {
       const date = new Date(dateString)
+      if (isNaN(date.getTime())) return dateString || "—"
       return date.toLocaleDateString("es-VE", {
         year: "numeric",
         month: "2-digit",
@@ -314,7 +316,7 @@ export function CommissionsReport() {
         minute: "2-digit",
       })
     } catch {
-      return dateString
+      return dateString || "—"
     }
   }
 

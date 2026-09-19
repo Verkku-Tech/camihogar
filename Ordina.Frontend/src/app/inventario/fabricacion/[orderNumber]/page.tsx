@@ -17,7 +17,8 @@ export default function FabricacionOrderDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { user, hasPermission, isLoading: authLoading } = useAuth()
-  const hasManufacturingAccess = canAccessManufacturing(hasPermission)
+  const isAdmin = user?.role === "Super Administrator" || user?.role === "Administrator"
+  const hasManufacturingAccess = isAdmin || canAccessManufacturing(hasPermission)
   const orderNumber = params.orderNumber as string
 
   const [order, setOrder] = useState<Order | null>(null)

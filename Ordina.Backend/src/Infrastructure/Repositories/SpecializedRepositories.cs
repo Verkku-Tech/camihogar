@@ -86,7 +86,7 @@ public class ProductRepository : MongoRepository<Product>, IProductRepository
 
 public class ExchangeRateRepository : MongoRepository<ExchangeRate>, IExchangeRateRepository
 {
-    public ExchangeRateRepository(MongoDbContext context) : base(context.Database, "exchange_rates")
+    public ExchangeRateRepository(MongoDbContext context) : base(context.Database, "exchangeRates")
     {
     }
 
@@ -105,7 +105,7 @@ public class ExchangeRateRepository : MongoRepository<ExchangeRate>, IExchangeRa
 
 public class RefreshTokenRepository : MongoRepository<RefreshToken>, IRefreshTokenRepository
 {
-    public RefreshTokenRepository(MongoDbContext context) : base(context.Database, "refresh_tokens")
+    public RefreshTokenRepository(MongoDbContext context) : base(context.Database, "refreshTokens")
     {
     }
 

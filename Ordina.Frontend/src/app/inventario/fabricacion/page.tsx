@@ -104,7 +104,7 @@ export default function FabricacionPage() {
   const isAdmin =
     user?.role === "Super Administrator" ||
     user?.role === "Administrator"
-  const hasManufacturingAccess = canAccessManufacturing(hasPermission)
+  const hasManufacturingAccess = isAdmin || canAccessManufacturing(hasPermission)
   const canRevertManufacturing =
     isAdmin || hasPermission(MANUFACTURING_MANAGE)
   const [sidebarOpen, setSidebarOpen] = useState(false)

@@ -19,19 +19,35 @@ public class OrdersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<PagedResult<OrderResponseDto>>> GetPaged(
-        [FromQuery] int pageNumber = 1,
+    public async Task<ActionResult<object>> GetPaged(
+        [FromQuery] int? page = null,
+        [FromQuery] int? pageNumber = null,
         [FromQuery] int pageSize = 50,
         [FromQuery] string? type = null,
         [FromQuery] string? status = null,
+        [FromQuery] string? search = null,
         [FromQuery] string? searchTerm = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] bool isDescending = false,
         CancellationToken cancellationToken = default)
     {
-        var request = new PagedRequest(Page: pageNumber, PageSize: pageSize, SearchTerm: searchTerm, SortBy: sortBy, SortDescending: isDescending);
+        var currentPage = page ?? pageNumber ?? 1;
+        var querySearch = !string.IsNullOrWhiteSpace(search) ? search : searchTerm;
+        var request = new PagedRequest(Page: Math.Max(1, currentPage), PageSize: Math.Clamp(pageSize, 1, 200), SearchTerm: querySearch, SortBy: sortBy, SortDescending: isDescending);
         var result = await _orderService.GetPagedAsync(request, type, status, cancellationToken);
-        return Ok(result);
+        var totalPages = result.PageSize > 0 ? (int)Math.Ceiling((double)result.TotalCount / result.PageSize) : 1;
+
+        return Ok(new
+        {
+            orders = result.Items,
+            items = result.Items,
+            totalCount = result.TotalCount,
+            page = result.Page,
+            pageSize = result.PageSize,
+            totalPages,
+            hasNextPage = result.Page < totalPages,
+            hasPreviousPage = result.Page > 1
+        });
     }
 
     [HttpGet("{id}")]

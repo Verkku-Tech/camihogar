@@ -175,6 +175,14 @@ export async function apiFetch<T>(endpoint: string, options: RequestOptions = {}
 
     return await res.json()
   } catch (err: any) {
+    if (
+      err?.name === 'AbortError' ||
+      (typeof DOMException !== 'undefined' && err instanceof DOMException && err.name === 'AbortError') ||
+      options.signal?.aborted ||
+      (typeof err?.message === 'string' && err.message.toLowerCase().includes('aborted'))
+    ) {
+      throw err
+    }
     if (err instanceof ApiError) {
       throw err
     }
@@ -368,10 +376,10 @@ export class ApiClientClass {
     return apiFetch<ProviderResponseDto[]>('/api/providers/all')
   }
 
-  async getProvidersPaged(page = 1, pageSize = 20, search?: string): Promise<PagedResult<ProviderResponseDto>> {
+  async getProvidersPaged(page = 1, pageSize = 20, search?: string, signal?: AbortSignal): Promise<PagedResult<ProviderResponseDto>> {
     const query = new URLSearchParams({ page: page.toString(), pageSize: pageSize.toString() })
     if (search) query.set('search', search)
-    return apiFetch<PagedResult<ProviderResponseDto>>(`/api/providers?${query.toString()}`)
+    return apiFetch<PagedResult<ProviderResponseDto>>(`/api/providers?${query.toString()}`, { signal })
   }
 
   async getProviderById(id: string): Promise<ProviderResponseDto> {
@@ -397,10 +405,10 @@ export class ApiClientClass {
   }
 
   // Clients
-  async getClientsPaged(page = 1, pageSize = 20, search?: string): Promise<PagedResult<ClientResponseDto>> {
+  async getClientsPaged(page = 1, pageSize = 20, search?: string, signal?: AbortSignal): Promise<PagedResult<ClientResponseDto>> {
     const query = new URLSearchParams({ page: page.toString(), pageSize: pageSize.toString() })
     if (search) query.set('search', search)
-    return apiFetch<PagedResult<ClientResponseDto>>(`/api/clients?${query.toString()}`)
+    return apiFetch<PagedResult<ClientResponseDto>>(`/api/clients?${query.toString()}`, { signal })
   }
 
   async getClientById(id: string): Promise<ClientResponseDto> {
@@ -874,7 +882,8 @@ export class ApiClientClass {
       search?: string
       categoryId?: string
       status?: string
-    } = {}
+    } = {},
+    signal?: AbortSignal
   ): Promise<PaginatedResultDto<ProductListItemDto>> {
     const query = new URLSearchParams()
     if (params.page) query.set('page', params.page.toString())
@@ -884,7 +893,8 @@ export class ApiClientClass {
     if (params.status) query.set('status', params.status)
     const qs = query.toString()
     return this.request<PaginatedResultDto<ProductListItemDto>>(
-      `/api/products/paginated${qs ? `?${qs}` : ''}`
+      `/api/products/paginated${qs ? `?${qs}` : ''}`,
+      { signal }
     )
   }
 

@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Ordina.Application.Common;
 using Ordina.Application.Reports;
+using Ordina.Domain.Orders;
 
 namespace Ordina.Api.Controllers;
 
@@ -14,10 +17,12 @@ namespace Ordina.Api.Controllers;
 public class ReportsController : ControllerBase
 {
     private readonly IReportService _reportService;
+    private readonly IOrderRepository _orderRepository;
 
-    public ReportsController(IReportService reportService)
+    public ReportsController(IReportService reportService, IOrderRepository orderRepository)
     {
         _reportService = reportService;
+        _orderRepository = orderRepository;
     }
 
     [HttpGet("dashboard")]
@@ -31,11 +36,31 @@ public class ReportsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<CommissionReportRowDto>>> GetCommissionsReport(
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
         [FromQuery] string? vendorId = null,
         CancellationToken cancellationToken = default)
     {
-        var report = await _reportService.GetCommissionReportAsync(from, to, vendorId, cancellationToken);
+        var fromDate = startDate ?? from;
+        var toDate = endDate ?? to;
+        var report = await _reportService.GetCommissionReportAsync(fromDate, toDate, vendorId, cancellationToken);
         return Ok(report);
+    }
+
+    [HttpGet("commission-referrers")]
+    [HttpGet("commissionreferrers")]
+    public async Task<ActionResult<IEnumerable<object>>> GetCommissionReferrers(
+        [FromQuery] string? startDate = null,
+        [FromQuery] string? endDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        var orders = await _orderRepository.GetAllAsync(cancellationToken);
+        var referrers = orders
+            .Where(o => !string.IsNullOrWhiteSpace(o.ReferrerId) || !string.IsNullOrWhiteSpace(o.ReferrerName))
+            .Select(o => new { id = o.ReferrerId ?? o.ReferrerName, name = o.ReferrerName ?? o.ReferrerId })
+            .DistinctBy(r => r.id)
+            .ToList();
+        return Ok(referrers);
     }
 
     [HttpGet("commissions/excel")]

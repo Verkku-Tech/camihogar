@@ -48,15 +48,16 @@ public class MongoDbContext
     public IMongoCollection<Category> Categories => _database.GetCollection<Category>("categories");
     public IMongoCollection<Provider> Providers => _database.GetCollection<Provider>("providers");
     public IMongoCollection<Payment> Payments => _database.GetCollection<Payment>("payments");
-    public IMongoCollection<PaymentMethod> PaymentMethods => _database.GetCollection<PaymentMethod>("payment_methods");
-    public IMongoCollection<ExchangeRate> ExchangeRates => _database.GetCollection<ExchangeRate>("exchange_rates");
+    public IMongoCollection<PaymentMethod> PaymentMethods => _database.GetCollection<PaymentMethod>("paymentMethods");
+    public IMongoCollection<ExchangeRate> ExchangeRates => _database.GetCollection<ExchangeRate>("exchangeRates");
     public IMongoCollection<Commission> Commissions => _database.GetCollection<Commission>("commissions");
-    public IMongoCollection<ProductCommission> ProductCommissions => _database.GetCollection<ProductCommission>("product_commissions");
-    public IMongoCollection<SaleTypeCommissionRule> SaleTypeCommissionRules => _database.GetCollection<SaleTypeCommissionRule>("sale_type_commission_rules");
+    public IMongoCollection<ProductCommission> ProductCommissions => _database.GetCollection<ProductCommission>("productCommissions");
+    public IMongoCollection<SaleTypeCommissionRule> SaleTypeCommissionRules => _database.GetCollection<SaleTypeCommissionRule>("saleTypeCommissionRules");
     public IMongoCollection<Store> Stores => _database.GetCollection<Store>("stores");
     public IMongoCollection<Account> Accounts => _database.GetCollection<Account>("accounts");
     public IMongoCollection<DispatchRoute> DispatchRoutes => _database.GetCollection<DispatchRoute>("dispatch_routes");
     public IMongoCollection<WorkOrder> WorkOrders => _database.GetCollection<WorkOrder>("work_orders");
-    public IMongoCollection<RefreshToken> RefreshTokens => _database.GetCollection<RefreshToken>("refresh_tokens");
+    public IMongoCollection<RefreshToken> RefreshTokens => _database.GetCollection<RefreshToken>("refreshTokens");
     public IMongoCollection<IdempotencyRecord> IdempotencyRecords => _database.GetCollection<IdempotencyRecord>("idempotency_keys");
+    public IMongoCollection<AccessPin> AccessPins => _database.GetCollection<AccessPin>("accessPins");
 }

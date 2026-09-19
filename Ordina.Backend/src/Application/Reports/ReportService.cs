@@ -93,14 +93,34 @@ public class ReportService : IReportService
         var rows = new List<CommissionReportRowDto>();
         foreach (var order in orders)
         {
+            var firstProdDesc = order.Products.FirstOrDefault()?.Name ?? "Venta de productos";
+            var itemCount = order.Products.Sum(p => p.Quantity);
+            var commission = Math.Round(order.Total * 0.03m, 2);
+
             rows.Add(new CommissionReportRowDto(
-                order.OrderNumber,
-                order.CreatedAt,
-                order.VendorName,
-                order.ClientName,
-                order.Total,
-                Math.Round(order.Total * 0.03m, 2),
-                "Standard"));
+                OrderNumber: order.OrderNumber,
+                Date: order.CreatedAt,
+                SellerName: string.IsNullOrWhiteSpace(order.VendorName) ? "Sin Asignar" : order.VendorName,
+                ClientName: string.IsNullOrWhiteSpace(order.ClientName) ? "Cliente" : order.ClientName,
+                OrderTotal: order.Total,
+                CommissionAmount: commission,
+                CommissionMode: "Standard",
+                Description: firstProdDesc,
+                ItemsCount: itemCount,
+                SaleType: order.SaleTypeString,
+                ComisionFamiliaUsdPorUnidad: 0,
+                Comision: commission,
+                ComisionPostventa: 0,
+                ComisionSecundaria: 0,
+                VendedorPostventa: order.PostventaName,
+                VendedorSecundario: order.ReferrerName,
+                Fecha: order.CreatedAt.ToString("o"),
+                Cliente: string.IsNullOrWhiteSpace(order.ClientName) ? "Cliente" : order.ClientName,
+                Pedido: order.OrderNumber,
+                Vendedor: string.IsNullOrWhiteSpace(order.VendorName) ? "Sin Asignar" : order.VendorName,
+                Descripcion: firstProdDesc,
+                CantidadArticulos: itemCount,
+                TipoVenta: order.SaleTypeString));
         }
 
         return rows;
