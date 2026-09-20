@@ -29,7 +29,7 @@ export function PipelineChart({ data, isLoading }: Props) {
   const totalPieces = chartData.reduce((s, d) => s + d.value, 0)
 
   return (
-    <Card className="h-full flex flex-col justify-between border-border/70 shadow-sm hover:shadow-md transition-shadow duration-300">
+    <Card className="h-full min-h-[335px] flex flex-col justify-between border-border/70 shadow-sm hover:shadow-md transition-shadow duration-300">
       <CardHeader className="pb-3 border-b border-border/40 bg-muted/20">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2.5">
@@ -50,7 +50,7 @@ export function PipelineChart({ data, isLoading }: Props) {
           )}
         </div>
       </CardHeader>
-      <CardContent className="pt-4 flex-1 flex flex-col justify-center">
+      <CardContent className="pt-4 flex-1 flex flex-col justify-center min-h-[270px]">
         {isLoading ? (
           <div className="h-56 bg-muted/40 rounded-xl animate-pulse" />
         ) : (
