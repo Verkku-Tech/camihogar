@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 export function TrendChartSkeleton() {
   return (
     <Card className="h-full flex flex-col justify-between border-border/70 shadow-sm">
-      <CardHeader className="pb-3 border-b border-border/40 bg-muted/20">
+      <CardHeader className="p-4 sm:p-5 border-b border-border/40 bg-muted/20">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
@@ -41,7 +41,7 @@ export function TrendChartSkeleton() {
 export function SaleTypeDonutSkeleton() {
   return (
     <Card className="h-full flex flex-col justify-between border-border/70 shadow-sm">
-      <CardHeader className="pb-3 border-b border-border/40 bg-muted/20">
+      <CardHeader className="p-4 sm:p-5 border-b border-border/40 bg-muted/20">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
           <div className="space-y-1.5">
@@ -74,7 +74,7 @@ export function SaleTypeDonutSkeleton() {
 export function InvoicedVsCollectedSkeleton() {
   return (
     <Card className="h-full flex flex-col justify-between border-border/70 shadow-sm">
-      <CardHeader className="pb-3 border-b border-border/40 bg-muted/20">
+      <CardHeader className="p-4 sm:p-5 border-b border-border/40 bg-muted/20">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
           <div className="space-y-1.5">
@@ -112,7 +112,7 @@ export function InvoicedVsCollectedSkeleton() {
 export function PipelineChartSkeleton() {
   return (
     <Card className="h-full flex flex-col justify-between border-border/70 shadow-sm">
-      <CardHeader className="pb-3 border-b border-border/40 bg-muted/20">
+      <CardHeader className="p-4 sm:p-5 border-b border-border/40 bg-muted/20">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
@@ -147,7 +147,7 @@ export function PipelineChartSkeleton() {
 export function TopSellersSkeleton() {
   return (
     <Card className="h-full flex flex-col justify-between border-border/70 shadow-sm">
-      <CardHeader className="pb-3 border-b border-border/40 bg-muted/20">
+      <CardHeader className="p-4 sm:p-5 border-b border-border/40 bg-muted/20">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
           <div className="space-y-1.5">
@@ -178,7 +178,7 @@ export function TopSellersSkeleton() {
 export function ExpiredAgeSkeleton() {
   return (
     <Card className="h-full flex flex-col justify-between border-border/70 shadow-sm">
-      <CardHeader className="pb-3 border-b border-rose-500/10 bg-rose-500/[0.03]">
+      <CardHeader className="p-4 sm:p-5 border-b border-rose-500/10 bg-rose-500/[0.03]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-rose-500/10 animate-pulse" />

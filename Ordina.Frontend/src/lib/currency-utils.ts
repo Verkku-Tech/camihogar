@@ -103,10 +103,10 @@ export const getActiveExchangeRates = async (): Promise<{
       const result: { USD?: ExchangeRate; EUR?: ExchangeRate } = {};
 
       if (Array.isArray(rates)) {
-        const usdRate = rates.find((r) => r.toCurrency === "USD");
+        const usdRate = rates.find((r) => r.toCurrency?.toUpperCase() === "USD");
         if (usdRate) result.USD = usdRate;
 
-        const eurRate = rates.find((r) => r.toCurrency === "EUR");
+        const eurRate = rates.find((r) => r.toCurrency?.toUpperCase() === "EUR");
         if (eurRate) result.EUR = eurRate;
       }
 

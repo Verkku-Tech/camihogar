@@ -103,7 +103,7 @@ const defaultNavigationItems: NavigationItem[] = [
   {
     id: "fabricacion",
     name: "Fabricación",
-    href: "/inventario/fabricacion",
+    href: "/pedidos/fabricacion",
     category: "orders",
     active: true,
     description: "Gestión de órdenes de fabricación",

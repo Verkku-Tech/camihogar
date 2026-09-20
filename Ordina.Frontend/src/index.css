@@ -145,6 +145,13 @@
   code, pre, .mono {
     font-family: var(--font-mono);
   }
+  [data-boneyard],
+  [data-boneyard-content] {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0%;
+    height: 100%;
+  }
 }
 
 /* Custom checkbox */

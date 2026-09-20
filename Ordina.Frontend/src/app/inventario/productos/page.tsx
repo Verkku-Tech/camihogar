@@ -23,6 +23,8 @@ import { getCategories, productListItemDtoToProduct, type Product, type Category
 import { apiClient, type ProductListItemDto, type PaginatedResultDto } from "@/lib/api-client"
 import { useCurrency } from "@/contexts/currency-context"
 import { Currency } from "@/lib/currency-utils"
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 const PAGE_SIZE = 20
 
@@ -219,14 +221,9 @@ export default function ProductosPage() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="w-full">
-            <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
-              <span className="text-green-600 font-medium">Home</span>
-              <span>/</span>
-              <span>Inventario</span>
-              <span>/</span>
-              <span>Productos</span>
-            </nav>
+        <AppBreadcrumb />
+<div className="w-full">
+            
             <div className="flex flex-col gap-4 mb-6">
               <div className="flex items-start gap-4">
                 <Button variant="ghost" onClick={() => router.back()} className="w-full sm:w-auto shrink-0">

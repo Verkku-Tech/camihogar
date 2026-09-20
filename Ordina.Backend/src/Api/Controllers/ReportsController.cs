@@ -25,12 +25,6 @@ public class ReportsController : ControllerBase
         _orderRepository = orderRepository;
     }
 
-    [HttpGet("dashboard")]
-    public async Task<ActionResult<DashboardMetricsDto>> GetDashboardMetrics(CancellationToken cancellationToken)
-    {
-        var metrics = await _reportService.GetDashboardMetricsAsync(cancellationToken);
-        return Ok(metrics);
-    }
 
     [HttpGet("commissions")]
     public async Task<ActionResult<IReadOnlyList<CommissionReportRowDto>>> GetCommissionsReport(
@@ -155,5 +149,6 @@ public class ReportsController : ControllerBase
         var preview = await _reportService.GetDispatchPreviewAsync(fromDate, toDate, deliveryZone, location, cancellationToken);
         return Ok(preview);
     }
+
 }
 

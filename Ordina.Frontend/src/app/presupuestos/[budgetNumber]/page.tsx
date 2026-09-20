@@ -42,6 +42,8 @@ import type { AttributeValue } from "@/lib/storage"
 import { getAll } from "@/lib/indexeddb"
 import { getProductLineSurchargeInBaseCurrency } from "@/lib/order-line-pricing"
 import { DeliveryServicesSummaryLines } from "@/components/orders/delivery-services-summary-lines"
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 const formatBudgetDual = (
   amount: number,
   baseCurrency: Currency,
@@ -533,6 +535,7 @@ export default function BudgetDetailPage() {
           <DashboardHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
           <main className="flex-1 overflow-y-auto p-4 lg:p-6">
             <div className="max-w-6xl mx-auto space-y-6">
+              <AppBreadcrumb />
               {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">

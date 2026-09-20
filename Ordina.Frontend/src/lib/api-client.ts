@@ -78,6 +78,47 @@ export function getAuthToken(): string | null {
   return inMemoryToken
 }
 
+let refreshTokenPromise: Promise<string | null> | null = null
+
+export async function requestTokenRefresh(): Promise<string | null> {
+  if (refreshTokenPromise) {
+    return refreshTokenPromise
+  }
+
+  refreshTokenPromise = (async () => {
+    try {
+      const refreshRes = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'include'
+      })
+
+      if (refreshRes.ok) {
+        const data = await refreshRes.json()
+        if (data?.token) {
+          setAuthToken(data.token)
+          return data.token as string
+        }
+      }
+      setAuthToken(null)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:expired'))
+      }
+      return null
+    } catch {
+      setAuthToken(null)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:expired'))
+      }
+      return null
+    } finally {
+      refreshTokenPromise = null
+    }
+  })()
+
+  return refreshTokenPromise
+}
+
 export class ApiError extends Error {
   statusCode: number
   data?: any
@@ -130,24 +171,9 @@ export async function apiFetch<T>(endpoint: string, options: RequestOptions = {}
     })
 
     if (res.status === 401 && !options.skipAuthRefresh && !endpoint.includes('/api/auth/')) {
-      try {
-        const refreshRes = await fetch('/api/auth/refresh', {
-          method: 'POST',
-          headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          credentials: 'include'
-        })
-
-        if (refreshRes.ok) {
-          const data = await refreshRes.json()
-          setAuthToken(data.token)
-          return await apiFetch<T>(endpoint, { ...options, skipAuthRefresh: true })
-        } else {
-          setAuthToken(null)
-          window.dispatchEvent(new CustomEvent('auth:expired'))
-        }
-      } catch {
-        setAuthToken(null)
-        window.dispatchEvent(new CustomEvent('auth:expired'))
+      const refreshedToken = await requestTokenRefresh()
+      if (refreshedToken) {
+        return await apiFetch<T>(endpoint, { ...options, skipAuthRefresh: true })
       }
     }
 
@@ -266,16 +292,8 @@ export class ApiClientClass {
   }
 
   async refreshToken(): Promise<boolean> {
-    try {
-      const res = await apiFetch<{ token: string }>('/api/auth/refresh', { method: 'POST', skipAuthRefresh: true })
-      if (res?.token) {
-        setAuthToken(res.token)
-        return true
-      }
-      return false
-    } catch {
-      return false
-    }
+    const token = await requestTokenRefresh()
+    return !!token
   }
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {

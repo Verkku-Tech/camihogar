@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -187,7 +188,9 @@ export function AnalyticsDashboard() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <DashboardHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+          <AppBreadcrumb />
+          
           {/* Header & Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card/60 backdrop-blur-sm p-4 rounded-2xl border border-border/70 shadow-sm">
             <div>
@@ -220,11 +223,10 @@ export function AnalyticsDashboard() {
                   <button
                     key={key}
                     onClick={() => setPeriod(key)}
-                    className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
-                      period === key
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground hover:bg-background/60"
-                    }`}
+                    className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${period === key
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/60"
+                      }`}
                   >
                     {label}
                   </button>
@@ -246,7 +248,36 @@ export function AnalyticsDashboard() {
           </div>
 
           {/* Top KPI Cards (Curated Palette & Visual Weight) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 items-stretch">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4 items-stretch">
+
+            {/* Pedidos */}
+            <BoneyardSkeleton
+              className="h-full flex flex-col"
+              loading={isLoading}
+              name="kpi-orders"
+              fallback={<KpiCardSkeleton accentClass="bg-amber-500" />}
+            >
+              <Card className="h-full flex flex-col justify-between border-border/70 hover:border-amber-500/40 hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 shadow-sm overflow-hidden relative">
+                <div className="h-1 w-full bg-amber-500 absolute top-0 left-0" />
+                <CardContent className="p-4 pt-4 flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between text-muted-foreground mb-1.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90">Pedidos</span>
+                      <div className="w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-amber-500">
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                      </div>
+                    </div>
+                    <div className="text-xl font-black tracking-tight text-foreground font-mono">
+                      {totalOrders}
+                    </div>
+                  </div>
+                  <div className="mt-2 min-h-[34px] flex flex-col justify-end">
+                    <p className="text-[11px] text-muted-foreground">Órdenes generadas</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </BoneyardSkeleton>
+
             {/* Facturado */}
             <BoneyardSkeleton
               className="h-full flex flex-col"
@@ -298,15 +329,6 @@ export function AnalyticsDashboard() {
                   </div>
                   <div className="mt-2 min-h-[34px] flex flex-col justify-end">
                     <p className="text-[11px] text-muted-foreground">Recaudo real efectivo/banco</p>
-                    {casheaFinanced > 0 ? (
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium truncate max-w-full">
-                          +${casheaFinanced.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Cashea
-                        </Badge>
-                      </div>
-                    ) : (
-                      <p className="text-[10px] text-muted-foreground/70">Excluye crédito Cashea</p>
-                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -340,34 +362,6 @@ export function AnalyticsDashboard() {
                         style={{ width: `${Math.min(Number(collectionRate), 100)}%` }}
                       />
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </BoneyardSkeleton>
-
-            {/* Pedidos */}
-            <BoneyardSkeleton
-              className="h-full flex flex-col"
-              loading={isLoading}
-              name="kpi-orders"
-              fallback={<KpiCardSkeleton accentClass="bg-amber-500" />}
-            >
-              <Card className="h-full flex flex-col justify-between border-border/70 hover:border-amber-500/40 hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 shadow-sm overflow-hidden relative">
-                <div className="h-1 w-full bg-amber-500 absolute top-0 left-0" />
-                <CardContent className="p-4 pt-4 flex-1 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between text-muted-foreground mb-1.5">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90">Pedidos</span>
-                      <div className="w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-amber-500">
-                        <ShoppingCart className="w-3.5 h-3.5" />
-                      </div>
-                    </div>
-                    <div className="text-xl font-black tracking-tight text-foreground font-mono">
-                      {totalOrders}
-                    </div>
-                  </div>
-                  <div className="mt-2 min-h-[34px] flex flex-col justify-end">
-                    <p className="text-[11px] text-muted-foreground">Órdenes generadas</p>
                   </div>
                 </CardContent>
               </Card>
@@ -461,94 +455,102 @@ export function AnalyticsDashboard() {
                 </CardContent>
               </Card>
             </BoneyardSkeleton>
+
+            {/* Cashea */}
+            <BoneyardSkeleton
+              className="h-full flex flex-col"
+              loading={isLoading}
+              name="kpi-collected"
+              fallback={<KpiCardSkeleton accentClass="bg-yellow-500" />}
+            >
+              <Card className="h-full flex flex-col justify-between border-border/70 hover:border-yellow-500/40 hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 shadow-sm overflow-hidden relative">
+                <div className="h-1 w-full bg-yellow-500 absolute top-0 left-0" />
+                <CardContent className="p-4 pt-4 flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between text-muted-foreground mb-1.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90">Cashea</span>
+                      <div className="w-6 h-6 rounded-md bg-yellow-500/10 flex items-center justify-center text-yellow-500">
+                        <Receipt className="w-3.5 h-3.5" />
+                      </div>
+                    </div>
+                    <div className="text-xl font-black tracking-tight text-foreground font-mono">
+                      +${casheaFinanced.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                  <div className="mt-2 min-h-[34px] flex flex-col justify-end">
+                    <p className="text-[11px] text-muted-foreground">Financiado con cashea</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </BoneyardSkeleton>
           </div>
 
           {/* Charts Row 1: Sales Trend & Distribution */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-            <div className="lg:col-span-2 flex flex-col">
-              <BoneyardSkeleton
-                loading={isLoading}
-                name="analytics-trend"
-                fallback={<TrendChartSkeleton />}
-                className="h-full flex flex-col"
-              >
+            <div className="lg:col-span-2 h-full flex flex-col">
+              {isLoading ? (
+                <TrendChartSkeleton />
+              ) : (
                 <TrendChart
                   data={trendData}
                   forecast={forecastData}
                   period={period}
                   isLoading={isLoading}
                 />
-              </BoneyardSkeleton>
+              )}
             </div>
-            <div className="flex flex-col">
-              <BoneyardSkeleton
-                loading={isLoading}
-                name="analytics-sale-type"
-                fallback={<SaleTypeDonutSkeleton />}
-                className="h-full flex flex-col"
-              >
+            <div className="h-full flex flex-col">
+              {isLoading ? (
+                <SaleTypeDonutSkeleton />
+              ) : (
                 <SaleTypeDonut data={saleTypeData} isLoading={isLoading} />
-              </BoneyardSkeleton>
+              )}
             </div>
           </div>
 
           {/* Charts Row 2: Invoiced vs Collected & Production Pipeline */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-            <div className="flex flex-col">
-              <BoneyardSkeleton
-                loading={isLoading}
-                name="analytics-invoiced-vs-collected"
-                fallback={<InvoicedVsCollectedSkeleton />}
-                className="h-full flex flex-col"
-              >
+            <div className="h-full flex flex-col">
+              {isLoading ? (
+                <InvoicedVsCollectedSkeleton />
+              ) : (
                 <InvoicedVsCollectedChart data={trendData} isLoading={isLoading} />
-              </BoneyardSkeleton>
+              )}
             </div>
-            <div className="flex flex-col">
-              <BoneyardSkeleton
-                loading={isLoading}
-                name="analytics-pipeline"
-                fallback={<PipelineChartSkeleton />}
-                className="h-full flex flex-col"
-              >
+            <div className="h-full flex flex-col">
+              {isLoading ? (
+                <PipelineChartSkeleton />
+              ) : (
                 <PipelineChart data={pipelineData} isLoading={isLoading} />
-              </BoneyardSkeleton>
+              )}
             </div>
           </div>
 
           {/* Charts Row 3: Top Sellers & Expired Layaway Aging */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-            <div className="flex flex-col">
-              <BoneyardSkeleton
-                loading={isLoading}
-                name="analytics-top-sellers"
-                fallback={<TopSellersSkeleton />}
-                className="h-full flex flex-col"
-              >
+            <div className="h-full flex flex-col">
+              {isLoading ? (
+                <TopSellersSkeleton />
+              ) : (
                 <TopSellersChart data={topSellers} isLoading={isLoading} />
-              </BoneyardSkeleton>
+              )}
             </div>
-            <div className="flex flex-col">
-              <BoneyardSkeleton
-                loading={isLoading}
-                name="analytics-expired-aging"
-                fallback={<ExpiredAgeSkeleton />}
-                className="h-full flex flex-col"
-              >
+            <div className="h-full flex flex-col">
+              {isLoading ? (
+                <ExpiredAgeSkeleton />
+              ) : (
                 <ExpiredAgeChart data={expiredAging} isLoading={isLoading} />
-              </BoneyardSkeleton>
+              )}
             </div>
           </div>
 
           {/* Top Products Table */}
           <div>
-            <BoneyardSkeleton
-              loading={isLoading}
-              name="analytics-top-products"
-              fallback={<TopProductsTableSkeleton />}
-            >
+            {isLoading ? (
+              <TopProductsTableSkeleton />
+            ) : (
               <TopProductsTable data={topProducts} isLoading={isLoading} />
-            </BoneyardSkeleton>
+            )}
           </div>
         </main>
       </div>

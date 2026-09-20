@@ -4,6 +4,8 @@ import { useState } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { BudgetsTable } from "@/components/dashboard/budgets-table"
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 export default function PresupuestosPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -16,13 +18,10 @@ export default function PresupuestosPage() {
         <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
-            <span className="text-green-600 font-medium">Home</span>
-            <span>/</span>
-            <span>Presupuestos</span>
-          </nav>
+          
 
-          <div className="space-y-6">
+          <AppBreadcrumb />
+<div className="space-y-6">
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-foreground">Presupuestos</h1>
               <p className="text-muted-foreground mt-1">

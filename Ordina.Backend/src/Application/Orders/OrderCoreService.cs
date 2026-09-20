@@ -33,19 +33,14 @@ public class OrderCoreService : IOrderCoreService
 
     public async Task<PagedResult<OrderResponseDto>> GetPagedAsync(
         PagedRequest request,
-        string? type = null,
-        string? status = null,
+        OrderQueryFilter? filter = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _orderRepository.GetPagedAsync(
+        var queryFilter = (filter ?? new OrderQueryFilter()) with { SearchTerm = request.SearchTerm };
+        var result = await _orderRepository.GetFilteredPagedAsync(
             request.Page,
             request.PageSize,
-            o => (string.IsNullOrWhiteSpace(type) || o.TypeString == type) &&
-                 (string.IsNullOrWhiteSpace(status) || o.StatusString == status) &&
-                 (string.IsNullOrWhiteSpace(request.SearchTerm) ||
-                  o.OrderNumber.Contains(request.SearchTerm) ||
-                  o.ClientName.Contains(request.SearchTerm) ||
-                  o.VendorName.Contains(request.SearchTerm)),
+            queryFilter,
             cancellationToken);
 
         return new PagedResult<OrderResponseDto>(
@@ -53,6 +48,15 @@ public class OrderCoreService : IOrderCoreService
             result.TotalCount,
             result.Page,
             result.PageSize);
+    }
+
+    public Task<PagedResult<OrderResponseDto>> GetPagedAsync(
+        PagedRequest request,
+        string? type,
+        string? status,
+        CancellationToken cancellationToken = default)
+    {
+        return GetPagedAsync(request, new OrderQueryFilter(Type: type, Status: status), cancellationToken);
     }
 
     public async Task<OrderResponseDto> CreateOrderAsync(CreateOrderDto createDto, CancellationToken cancellationToken = default)

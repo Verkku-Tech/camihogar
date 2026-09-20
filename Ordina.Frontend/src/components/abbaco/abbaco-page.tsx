@@ -1,3 +1,4 @@
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -151,11 +152,7 @@ export function AbbacoPage() {
           <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
           <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-            <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-4">
-              <span className="text-green-600 font-medium">Home</span>
-              <span>/</span>
-              <span>Pedidos Abbaco</span>
-            </nav>
+            <AppBreadcrumb />
 
             <div className="space-y-4">
               <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">

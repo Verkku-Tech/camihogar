@@ -11,7 +11,6 @@ namespace Ordina.Application.Reports;
 
 public interface IReportService
 {
-    Task<DashboardMetricsDto> GetDashboardMetricsAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CommissionReportRowDto>> GetCommissionReportAsync(DateTime? from = null, DateTime? to = null, string? vendorId = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PaymentsDetailedReportRowDto>> GetPaymentsDetailedReportAsync(DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default);
     Task<byte[]> GenerateCommissionsReportExcelAsync(DateTime? from = null, DateTime? to = null, string? vendorId = null, CancellationToken cancellationToken = default);
@@ -28,53 +27,20 @@ public class ReportService : IReportService
     private readonly IOrderRepository _orderRepository;
     private readonly IClientRepository _clientRepository;
     private readonly IProductRepository _productRepository;
+    private readonly IExchangeRateRepository _exchangeRateRepository;
 
     public ReportService(
         IOrderRepository orderRepository,
         IClientRepository clientRepository,
-        IProductRepository productRepository)
+        IProductRepository productRepository,
+        IExchangeRateRepository exchangeRateRepository)
     {
         _orderRepository = orderRepository;
         _clientRepository = clientRepository;
         _productRepository = productRepository;
+        _exchangeRateRepository = exchangeRateRepository;
     }
 
-    public async Task<DashboardMetricsDto> GetDashboardMetricsAsync(CancellationToken cancellationToken = default)
-    {
-        var orders = await _orderRepository.FindAsync(o => o.TypeString == "Order", cancellationToken);
-        var clients = await _clientRepository.GetAllAsync(cancellationToken);
-        var products = await _productRepository.GetAllAsync(cancellationToken);
-
-        var totalOrders = orders.Count;
-        var pendingOrders = orders.Count(o => o.StatusString == "Pendiente");
-        var completedOrders = orders.Count(o => o.StatusString == "Completado");
-        var totalSales = orders.Where(o => o.StatusString != "Cancelado").Sum(o => o.Total);
-        var totalStock = products.Sum(p => p.Stock);
-
-        int mfgPending = 0;
-        int dispatchPending = 0;
-
-        foreach (var o in orders.Where(o => o.StatusString != "Cancelado"))
-        {
-            foreach (var p in o.Products)
-            {
-                if (p.ManufacturingStatusString is "debe_fabricar" or "por_fabricar" or "fabricando")
-                    mfgPending++;
-                if (p.LocationStatusString is "EN TIENDA" or "ALMACEN" && p.LogisticStatusString != "Completado")
-                    dispatchPending++;
-            }
-        }
-
-        return new DashboardMetricsDto(
-            totalOrders,
-            pendingOrders,
-            completedOrders,
-            totalSales,
-            clients.Count,
-            totalStock,
-            mfgPending,
-            dispatchPending);
-    }
 
     public async Task<IReadOnlyList<CommissionReportRowDto>> GetCommissionReportAsync(
         DateTime? from = null,
@@ -281,7 +247,12 @@ public class ReportService : IReportService
     public async Task<byte[]> GenerateExpiredLayawaysReportExcelAsync(CancellationToken cancellationToken = default)
     {
         var orders = await _orderRepository.FindAsync(
-            o => o.TypeString == "Order" && o.SaleTypeString == "sistema_apartado" && o.StatusString != "Cancelado",
+            o => o.TypeString == "Order" &&
+                 o.SaleTypeString == "sistema_apartado" &&
+                 !o.OrderNumber.StartsWith("RES-") &&
+                 !o.OrderNumber.StartsWith("PCF-") &&
+                 o.StatusString != "Declinado" && o.StatusString != "Cancelado" &&
+                 o.StatusString != "Entregado" && o.StatusString != "Completado" && o.StatusString != "Completada",
             cancellationToken);
 
         var now = DateTime.UtcNow;
@@ -420,6 +391,8 @@ public class ReportService : IReportService
 
         return rows;
     }
+
+
 }
 
 public record ManufacturingReportExportRow(

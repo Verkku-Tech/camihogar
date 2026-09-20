@@ -82,6 +82,8 @@ import { useClientSearchIds } from "@/hooks/use-client-search-ids";
 import { toLocalDateKey } from "@/lib/date-utils";
 import { textIncludesForSearch } from "@/lib/text-search";
 import { isReservationOrderNumber } from "@/lib/order-document-types";
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 const EMPTY_ORDERS: UnifiedOrder[] = [];
 
@@ -638,13 +640,10 @@ export default function PedidosPage() {
           <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
           <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-            <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
-              <span className="text-green-600 font-medium">Home</span>
-              <span>/</span>
-              <span>Pedidos</span>
-            </nav>
+            
 
-            <div className="space-y-6">
+            <AppBreadcrumb />
+<div className="space-y-6">
               <div className="flex flex-col sm:flex-row gap-4 justify-between">
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none" />

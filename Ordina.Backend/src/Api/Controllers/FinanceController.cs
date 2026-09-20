@@ -24,6 +24,7 @@ public class FinanceController : ControllerBase
     }
 
     [HttpGet("exchange-rates/latest")]
+    [HttpGet("/api/ExchangeRates/latest")]
     [AllowAnonymous] // Allow offline clients or public catalog to fetch exchange rate without bearer token
     public async Task<ActionResult<ExchangeRateResponseDto>> GetLatestRate(
         [FromQuery] string fromCurrency = "Bs",
@@ -38,7 +39,17 @@ public class FinanceController : ControllerBase
         return Ok(rate);
     }
 
+    [HttpGet("exchange-rates/active")]
+    [HttpGet("/api/ExchangeRates/active")]
+    [AllowAnonymous]
+    public async Task<ActionResult<IReadOnlyList<ExchangeRateResponseDto>>> GetActiveRates(CancellationToken cancellationToken = default)
+    {
+        var rates = await _exchangeRateService.GetActiveRatesAsync(cancellationToken);
+        return Ok(rates);
+    }
+
     [HttpGet("exchange-rates/history")]
+    [HttpGet("/api/ExchangeRates/history")]
     public async Task<ActionResult<IReadOnlyList<ExchangeRateResponseDto>>> GetRateHistory(CancellationToken cancellationToken)
     {
         var history = await _exchangeRateService.GetRateHistoryAsync(cancellationToken);

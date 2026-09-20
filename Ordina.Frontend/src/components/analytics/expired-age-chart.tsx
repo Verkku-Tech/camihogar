@@ -16,8 +16,8 @@ export function ExpiredAgeChart({ data, isLoading }: Props) {
   const totalExpiredOrders = data.reduce((s, d) => s + d.count, 0)
 
   return (
-    <Card className="h-full min-h-[325px] flex flex-col justify-between border-rose-500/20 bg-rose-500/[0.015] shadow-sm hover:shadow-md transition-shadow duration-300">
-      <CardHeader className="pb-3 border-b border-rose-500/10 bg-rose-500/[0.03]">
+    <Card className="h-full flex-1 flex flex-col justify-between border-rose-500/20 bg-rose-500/[0.015] shadow-sm hover:shadow-md transition-shadow duration-300">
+      <CardHeader className="p-4 sm:p-5 border-b border-rose-500/10 bg-rose-500/[0.03]">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-500">
@@ -37,7 +37,7 @@ export function ExpiredAgeChart({ data, isLoading }: Props) {
           )}
         </div>
       </CardHeader>
-      <CardContent className="pt-4 flex-1 flex flex-col justify-center min-h-[260px]">
+      <CardContent className="pt-4 flex-1 flex flex-col justify-center">
         {isLoading ? (
           <div className="h-56 bg-muted/40 rounded-xl animate-pulse" />
         ) : data.every(d => d.count === 0) ? (

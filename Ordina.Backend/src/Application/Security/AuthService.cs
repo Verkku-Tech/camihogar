@@ -8,6 +8,9 @@ namespace Ordina.Application.Security;
 
 public class AuthService : IAuthService
 {
+    private const int AccessTokenExpirationMinutes = 60;
+    private const int RefreshTokenExpirationDays = 30;
+
     private readonly IUserRepository _userRepository;
     private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly IRepository<Role> _roleRepository;
@@ -29,6 +32,21 @@ public class AuthService : IAuthService
         _tokenService = tokenService;
         _passwordHasher = passwordHasher;
         _logger = logger;
+    }
+
+    private async Task<List<string>> GetUserPermissionsAsync(User user, CancellationToken cancellationToken)
+    {
+        var rolePermissions = new List<string>();
+        if (!string.IsNullOrEmpty(user.RoleString))
+        {
+            var roles = await _roleRepository.FindAsync(r => r.Name == user.RoleString, cancellationToken);
+            var role = roles.FirstOrDefault();
+            if (role != null)
+            {
+                rolePermissions = role.Permissions;
+            }
+        }
+        return UserPermissionResolver.Merge(rolePermissions, user.ExtraPermissions);
     }
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
@@ -60,23 +78,12 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("Usuario o contraseña incorrectos");
         }
 
-        var rolePermissions = new List<string>();
-        if (!string.IsNullOrEmpty(user.RoleString))
-        {
-            var roles = await _roleRepository.FindAsync(r => r.Name == user.RoleString, cancellationToken);
-            var role = roles.FirstOrDefault();
-            if (role != null)
-            {
-                rolePermissions = role.Permissions;
-            }
-        }
-
-        var permissions = UserPermissionResolver.Merge(rolePermissions, user.ExtraPermissions);
+        var permissions = await GetUserPermissionsAsync(user, cancellationToken);
         var token = _tokenService.GenerateToken(user, permissions);
         var refreshTokenValue = _tokenService.GenerateRefreshToken();
 
-        var expiresAt = DateTime.UtcNow.AddMinutes(15);
-        var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
+        var expiresAt = DateTime.UtcNow.AddMinutes(AccessTokenExpirationMinutes);
+        var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(RefreshTokenExpirationDays);
 
         var refreshTokenEntity = new RefreshToken
         {
@@ -111,6 +118,27 @@ public class AuthService : IAuthService
     {
         var storedToken = await _refreshTokenRepository.GetByTokenAsync(refreshToken, cancellationToken);
 
+        // Grace period for concurrent requests if already rotated
+        if (storedToken != null && storedToken.IsRevoked && !string.IsNullOrEmpty(storedToken.ReplacedByToken))
+        {
+            var tokenAge = DateTime.UtcNow - (storedToken.UpdatedAt ?? storedToken.CreatedAt);
+            if (tokenAge.TotalSeconds <= 60)
+            {
+                var replacement = await _refreshTokenRepository.GetByTokenAsync(storedToken.ReplacedByToken, cancellationToken);
+                if (replacement != null && !replacement.IsRevoked && replacement.ExpiresAt > DateTime.UtcNow)
+                {
+                    var repUser = await _userRepository.GetByIdAsync(replacement.UserId, cancellationToken);
+                    if (repUser != null && repUser.Status == UserStatus.Active)
+                    {
+                        var repPerms = await GetUserPermissionsAsync(repUser, cancellationToken);
+                        var repToken = _tokenService.GenerateToken(repUser, repPerms);
+                        var repExpiresAt = DateTime.UtcNow.AddMinutes(AccessTokenExpirationMinutes);
+                        return new RefreshTokenResponse(repToken, replacement.Token, repExpiresAt, replacement.ExpiresAt);
+                    }
+                }
+            }
+        }
+
         if (storedToken == null || storedToken.IsRevoked || storedToken.ExpiresAt < DateTime.UtcNow)
         {
             throw new UnauthorizedAccessException("Refresh token inválido o expirado");
@@ -122,26 +150,17 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("Usuario no encontrado o inactivo");
         }
 
+        var newRefreshTokenValue = _tokenService.GenerateRefreshToken();
+        var expiresAt = DateTime.UtcNow.AddMinutes(AccessTokenExpirationMinutes);
+        var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(RefreshTokenExpirationDays);
+
         storedToken.IsRevoked = true;
+        storedToken.ReplacedByToken = newRefreshTokenValue;
+        storedToken.UpdatedAt = DateTime.UtcNow;
         await _refreshTokenRepository.UpdateAsync(storedToken, cancellationToken);
 
-        var rolePermissions = new List<string>();
-        if (!string.IsNullOrEmpty(user.RoleString))
-        {
-            var roles = await _roleRepository.FindAsync(r => r.Name == user.RoleString, cancellationToken);
-            var role = roles.FirstOrDefault();
-            if (role != null)
-            {
-                rolePermissions = role.Permissions;
-            }
-        }
-
-        var permissions = UserPermissionResolver.Merge(rolePermissions, user.ExtraPermissions);
+        var permissions = await GetUserPermissionsAsync(user, cancellationToken);
         var newToken = _tokenService.GenerateToken(user, permissions);
-        var newRefreshTokenValue = _tokenService.GenerateRefreshToken();
-
-        var expiresAt = DateTime.UtcNow.AddMinutes(15);
-        var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
 
         var newStoredToken = new RefreshToken
         {

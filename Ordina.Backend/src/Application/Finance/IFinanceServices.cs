@@ -13,6 +13,7 @@ public interface IPaymentService
 public interface IExchangeRateService
 {
     Task<ExchangeRateResponseDto?> GetLatestRateAsync(string fromCurrency = "Bs", string toCurrency = "USD", CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ExchangeRateResponseDto>> GetActiveRatesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ExchangeRateResponseDto>> GetRateHistoryAsync(CancellationToken cancellationToken = default);
     Task<ExchangeRateResponseDto> SetRateAsync(SetExchangeRateDto setDto, CancellationToken cancellationToken = default);
 }

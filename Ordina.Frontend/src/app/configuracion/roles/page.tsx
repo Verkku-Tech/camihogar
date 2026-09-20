@@ -25,6 +25,8 @@ import { Badge } from "@/components/ui/badge"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { RoleForm } from "./role-form"
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 export default function RolesPage() {
     const [roles, setRoles] = useState<RoleResponseDto[]>([])
@@ -99,7 +101,9 @@ export default function RolesPage() {
             <div className="flex-1 flex flex-col overflow-hidden">
                 <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
                 <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-                    <div className="container mx-auto max-w-6xl">
+                    <AppBreadcrumb />
+
+<div className="container mx-auto max-w-6xl">
                         <div className="flex justify-between items-center mb-6">
                             <div>
                                 <h1 className="text-3xl font-bold tracking-tight">Gestión de Roles</h1>

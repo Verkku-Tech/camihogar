@@ -20,14 +20,18 @@ public class ClientsController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<PagedResult<ClientResponseDto>>> GetAll(
-        [FromQuery] int pageNumber = 1,
+        [FromQuery] int? page = null,
+        [FromQuery] int? pageNumber = null,
         [FromQuery] int pageSize = 50,
+        [FromQuery] string? search = null,
         [FromQuery] string? searchTerm = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] bool isDescending = false,
         CancellationToken cancellationToken = default)
     {
-        var request = new PagedRequest(Page: pageNumber, PageSize: pageSize, SearchTerm: searchTerm, SortBy: sortBy, SortDescending: isDescending);
+        var curPage = page ?? pageNumber ?? 1;
+        var querySearch = !string.IsNullOrWhiteSpace(search) ? search : searchTerm;
+        var request = new PagedRequest(Page: Math.Max(1, curPage), PageSize: Math.Clamp(pageSize, 1, 1000), SearchTerm: querySearch, SortBy: sortBy, SortDescending: isDescending);
         var result = await _clientService.GetAllAsync(request, cancellationToken);
         return Ok(result);
     }

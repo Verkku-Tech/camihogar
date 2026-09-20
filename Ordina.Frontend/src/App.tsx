@@ -12,6 +12,7 @@ import { Toaster } from './components/ui/sonner'
 
 // Extracted Real Business Pages
 import HomePage from './app/page'
+import DashboardAnalyticsPage from './app/dashboard/page'
 import LoginPage from './app/login/page'
 import PedidosPage from './app/pedidos/page'
 import PedidoDetailPage from './app/pedidos/[orderNumber]/page'
@@ -21,8 +22,8 @@ import PresupuestosPage from './app/presupuestos/page'
 import PresupuestoDetailPage from './app/presupuestos/[budgetNumber]/page'
 import ProductosPage from './app/inventario/productos/page'
 import CategoriasPage from './app/inventario/categorias/page'
-import FabricacionPage from './app/inventario/fabricacion/page'
-import FabricacionDetailPage from './app/inventario/fabricacion/[orderNumber]/page'
+import FabricacionPage from './app/pedidos/fabricacion/page'
+import FabricacionDetailPage from './app/pedidos/fabricacion/[orderNumber]/page'
 import ClientesPage from './app/clientes/page'
 import ProveedoresPage from './app/proveedores/page'
 import TiendasPage from './app/tiendas/page'
@@ -75,12 +76,15 @@ export function App() {
                   {/* Public routes */}
                   <Route path="/login" element={<LoginPage />} />
 
-                  {/* Dashboard */}
+                  {/* Home & Analytics Dashboard */}
                   <Route path="/" element={<HomePage />} />
+                  <Route path="/dashboard" element={<DashboardAnalyticsPage />} />
 
                   {/* Orders / Pedidos */}
                   <Route path="/pedidos" element={<PedidosPage />} />
                   <Route path="/pedidos/reservas" element={<ReservasPage />} />
+                  <Route path="/pedidos/fabricacion" element={<FabricacionPage />} />
+                  <Route path="/pedidos/fabricacion/:orderNumber" element={<FabricacionDetailPage />} />
                   <Route path="/pedidos/despachos" element={<DespachosPage />} />
                   <Route path="/pedidos/:orderNumber" element={<PedidoDetailPage />} />
                   <Route path="/presupuestos" element={<PresupuestosPage />} />
@@ -89,8 +93,6 @@ export function App() {
                   {/* Inventory / Inventario */}
                   <Route path="/inventario/productos" element={<ProductosPage />} />
                   <Route path="/inventario/categorias" element={<CategoriasPage />} />
-                  <Route path="/inventario/fabricacion" element={<FabricacionPage />} />
-                  <Route path="/inventario/fabricacion/:orderNumber" element={<FabricacionDetailPage />} />
 
                   {/* Management */}
                   <Route path="/clientes" element={<ClientesPage />} />
@@ -119,8 +121,10 @@ export function App() {
                   <Route path="/orders" element={<Navigate to="/pedidos" replace />} />
                   <Route path="/despachos" element={<Navigate to="/pedidos/despachos" replace />} />
                   <Route path="/reservas" element={<Navigate to="/pedidos/reservas" replace />} />
-                  <Route path="/fabricacion" element={<Navigate to="/inventario/fabricacion" replace />} />
-                  <Route path="/manufacturing" element={<Navigate to="/inventario/fabricacion" replace />} />
+                  <Route path="/inventario/fabricacion" element={<Navigate to="/pedidos/fabricacion" replace />} />
+                  <Route path="/inventario/fabricacion/:orderNumber" element={<Navigate to="/pedidos/fabricacion" replace />} />
+                  <Route path="/fabricacion" element={<Navigate to="/pedidos/fabricacion" replace />} />
+                  <Route path="/manufacturing" element={<Navigate to="/pedidos/fabricacion" replace />} />
                   <Route path="/productos" element={<Navigate to="/inventario/productos" replace />} />
                   <Route path="/products" element={<Navigate to="/inventario/productos" replace />} />
                   <Route path="/categorias" element={<Navigate to="/inventario/categorias" replace />} />

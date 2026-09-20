@@ -60,6 +60,8 @@ import { useServerPagination } from "@/hooks/use-server-pagination";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { EditOrderDialog } from "@/components/orders/edit-order-dialog";
 import { isActiveReservation } from "@/lib/order-document-types";
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -261,15 +263,10 @@ export default function ReservasPage() {
           <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
           <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 lg:p-6">
-            <nav className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground sm:mb-6">
-              <span className="text-green-600 font-medium">Home</span>
-              <span>/</span>
-              <span>Pedidos</span>
-              <span>/</span>
-              <span>Reservas</span>
-            </nav>
+            
 
-            <div className="space-y-4 sm:space-y-6">
+            <AppBreadcrumb />
+<div className="space-y-4 sm:space-y-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
                 <div className="relative w-full lg:max-w-md lg:flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

@@ -20,6 +20,7 @@ import {
 import { apiClient } from "@/lib/api-client";
 import { NewOrderDialog } from "@/components/orders/new-order-dialog";
 import { useAuth } from "@/contexts/auth-context";
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb";
 
 type Period = "day" | "week" | "month" | "year";
 type Tab =
@@ -220,11 +221,7 @@ export function Dashboard() {
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           {/* Breadcrumb */}
-          <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
-            <span className="text-green-600 font-medium">Home</span>
-            <span>/</span>
-            <span>Dashboard</span>
-          </nav>
+          <AppBreadcrumb />
 
           {/* Dashboard Title */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">

@@ -663,8 +663,9 @@ export const userFromBackendDto = (dto: UserResponseDto): User => ({
 
 export const getUsers = async (): Promise<User[]> => {
   try {
-    const list = await apiClient.getUsers()
-    return (list || []).map(userFromBackendDto)
+    const res: any = await apiClient.getUsers()
+    const list = Array.isArray(res) ? res : (res?.items ?? [])
+    return list.map(userFromBackendDto)
   } catch {
     return []
   }

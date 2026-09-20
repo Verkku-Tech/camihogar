@@ -110,6 +110,8 @@ import {
   getLineDiscountLabelLead,
 } from "@/lib/product-discount-ui";
 import { formatPaymentDateForDisplay } from "@/lib/exchange-rate-for-date";
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 const OrderPdfDownloadButton = dynamic(
   () =>
@@ -1735,6 +1737,7 @@ export default function OrderDetailPage() {
           <DashboardHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
           <main className="flex-1 overflow-y-auto p-4 lg:p-6">
             <div className="max-w-6xl mx-auto space-y-6">
+              <AppBreadcrumb />
               {/* Header */}
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 {/* Barra de acciones — solo móvil */}

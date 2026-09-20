@@ -572,12 +572,11 @@ public class DashboardService : IDashboardService
             }
         }
 
-        // Monthly time series for past 36 months to run Holt-Winters
+        // Monthly time series for past 36 months up to the previous year to run Holt-Winters
         var monthlyHistory = new List<TimeSeriesPoint>();
-        for (int yr = threeYearsAgo; yr <= currentYear; yr++)
+        for (int yr = threeYearsAgo; yr < currentYear; yr++)
         {
-            int maxMonth = (yr == currentYear) ? currentMonth : 12;
-            for (int m = 1; m <= maxMonth; m++)
+            for (int m = 1; m <= 12; m++)
             {
                 var dt = new DateTime(yr, m, 1, 0, 0, 0, DateTimeKind.Utc);
                 decimal monthInv = orders
@@ -587,10 +586,9 @@ public class DashboardService : IDashboardService
             }
         }
 
-        int remainingMonthsInYear = 12 - currentMonth;
         var forecastResult = _forecaster.Forecast(
             monthlyHistory,
-            horizonSteps: Math.Max(remainingMonthsInYear, 1),
+            horizonSteps: 12,
             seasonalPeriod: 12,
             damping: 0.92);
 
@@ -605,6 +603,13 @@ public class DashboardService : IDashboardService
             string label = $"{monthNames[m]} {currentYear}";
             decimal benchVal = benchmarkByMonth[m];
 
+            decimal projInv = Math.Round(forecastResult.ProjectedValues[m], 2);
+            if (benchVal > 0)
+            {
+                projInv = Math.Round((0.6m * projInv) + (0.4m * benchVal), 2);
+            }
+            decimal projCol = Math.Round(projInv * collectionRate, 2);
+
             if (monthNum < currentMonth)
             {
                 decimal realInv = Math.Round(currentYearInvoiced[m], 2);
@@ -617,8 +622,8 @@ public class DashboardService : IDashboardService
                     label,
                     realInv,
                     realCol,
-                    null,
-                    null,
+                    projInv,
+                    projCol,
                     benchVal > 0 ? benchVal : null));
             }
             else if (monthNum == currentMonth)
@@ -643,24 +648,12 @@ public class DashboardService : IDashboardService
                     $"{label} (En curso)",
                     realInv,
                     realCol,
-                    fullMonthProjInv,
-                    fullMonthProjCol,
+                    projInv,
+                    projCol,
                     benchVal > 0 ? benchVal : null));
             }
             else
             {
-                int futureStep = monthNum - currentMonth;
-                decimal projInv = (futureStep <= forecastResult.ProjectedValues.Count)
-                    ? forecastResult.ProjectedValues[futureStep - 1]
-                    : Math.Round(benchmarkByMonth[m] > 0 ? benchmarkByMonth[m] : 500m, 2);
-
-                // Blend with historical benchmark for stability
-                if (benchVal > 0)
-                {
-                    projInv = Math.Round((0.6m * projInv) + (0.4m * benchVal), 2);
-                }
-
-                decimal projCol = Math.Round(projInv * collectionRate, 2);
                 totalProjInvoiced += projInv;
                 totalProjCollected += projCol;
 
@@ -713,22 +706,24 @@ public class DashboardService : IDashboardService
                     return (Invoiced: Math.Round(inv, 2), Collected: Math.Round(col, 2));
                 });
 
-        // 2. Build daily time series for the past 180 days to feed Holt-Winters
+        // 2. Build daily time series for the past 180 days up to the last day of the previous month
         var historyPoints = new List<TimeSeriesPoint>();
+        var firstDayOfCurrentMonth = new DateTime(localNow.Year, localNow.Month, 1);
+        var lastDayOfPrevMonth = firstDayOfCurrentMonth.AddDays(-1);
+
         for (int i = 180; i >= 0; i--)
         {
-            var d = localNow.Date.AddDays(-i);
+            var d = lastDayOfPrevMonth.AddDays(-i);
             decimal val = dailyActuals.TryGetValue(d, out var actual) ? actual.Invoiced : 0m;
             historyPoints.Add(new TimeSeriesPoint(d, val));
         }
 
         int daysInMonth = DateTime.DaysInMonth(localNow.Year, localNow.Month);
         int currentDay = localNow.Day;
-        int remainingDays = Math.Max(daysInMonth - currentDay, 0);
 
         var forecastResult = _forecaster.Forecast(
             historyPoints,
-            horizonSteps: Math.Max(remainingDays, 1),
+            horizonSteps: daysInMonth,
             seasonalPeriod: 7,
             damping: 0.92);
 
@@ -749,13 +744,16 @@ public class DashboardService : IDashboardService
             monthRealInvoiced += actual.Invoiced;
             monthRealCollected += actual.Collected;
 
+            decimal projInv = Math.Round(forecastResult.ProjectedValues[day - 1], 2);
+            decimal projCol = Math.Round(projInv * collectionRate, 2);
+
             points.Add(new ForecastDataPointDto(
                 dateStr,
                 dateStr,
                 actual.Invoiced,
                 actual.Collected,
-                isToday ? actual.Invoiced : null,
-                isToday ? actual.Collected : null,
+                projInv,
+                projCol,
                 null));
         }
 
@@ -763,11 +761,8 @@ public class DashboardService : IDashboardService
         {
             var date = new DateTime(localNow.Year, localNow.Month, day);
             string dateStr = date.ToString("yyyy-MM-dd");
-            int step = day - currentDay;
 
-            decimal projInv = (step <= forecastResult.ProjectedValues.Count)
-                ? forecastResult.ProjectedValues[step - 1]
-                : 0m;
+            decimal projInv = Math.Round(forecastResult.ProjectedValues[day - 1], 2);
             decimal projCol = Math.Round(projInv * collectionRate, 2);
 
             projectedFutureInvoiced += projInv;

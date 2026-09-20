@@ -4,6 +4,8 @@ import { useState } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { AccountsPage } from "@/components/accounts/accounts-page"
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 export default function CuentasPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -18,14 +20,10 @@ export default function CuentasPage() {
         <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {/* Breadcrumb */}
-          <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
-            <span className="text-green-600 font-medium">Home</span>
-            <span>/</span>
-            <span>Cuentas</span>
-          </nav>
+          
 
-          <AccountsPage />
+          <AppBreadcrumb />
+<AccountsPage />
         </main>
       </div>
     </div>

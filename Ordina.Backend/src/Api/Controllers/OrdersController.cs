@@ -29,12 +29,37 @@ public class OrdersController : ControllerBase
         [FromQuery] string? searchTerm = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] bool isDescending = false,
+        [FromQuery] string? saleType = null,
+        [FromQuery] string? excludeStatuses = null,
+        [FromQuery] string? productFilterPreset = null,
+        [FromQuery] string? locationStatus = null,
+        [FromQuery] string? manufacturingStatus = null,
+        [FromQuery] string? vendor = null,
+        [FromQuery] string? clientSearch = null,
+        [FromQuery] string? clientId = null,
+        [FromQuery] DateTime? dateFrom = null,
+        [FromQuery] DateTime? dateTo = null,
+        [FromQuery] bool? includeBudgets = null,
         CancellationToken cancellationToken = default)
     {
         var currentPage = page ?? pageNumber ?? 1;
         var querySearch = !string.IsNullOrWhiteSpace(search) ? search : searchTerm;
         var request = new PagedRequest(Page: Math.Max(1, currentPage), PageSize: Math.Clamp(pageSize, 1, 200), SearchTerm: querySearch, SortBy: sortBy, SortDescending: isDescending);
-        var result = await _orderService.GetPagedAsync(request, type, status, cancellationToken);
+        var filter = new OrderQueryFilter(
+            Type: type,
+            Status: status,
+            SaleType: saleType,
+            ExcludeStatuses: excludeStatuses,
+            ProductFilterPreset: productFilterPreset,
+            LocationStatus: locationStatus,
+            ManufacturingStatus: manufacturingStatus,
+            Vendor: vendor,
+            ClientSearch: clientSearch,
+            ClientId: clientId,
+            DateFrom: dateFrom,
+            DateTo: dateTo,
+            IncludeBudgets: includeBudgets);
+        var result = await _orderService.GetPagedAsync(request, filter, cancellationToken);
         var totalPages = result.PageSize > 0 ? (int)Math.Ceiling((double)result.TotalCount / result.PageSize) : 1;
 
         return Ok(new

@@ -101,6 +101,12 @@ public class ExchangeRateService : IExchangeRateService
         return dto;
     }
 
+    public async Task<IReadOnlyList<ExchangeRateResponseDto>> GetActiveRatesAsync(CancellationToken cancellationToken = default)
+    {
+        var rates = await _rateRepository.GetActiveRatesAsync(cancellationToken);
+        return rates.Select(MapToDto).ToList();
+    }
+
     public async Task<IReadOnlyList<ExchangeRateResponseDto>> GetRateHistoryAsync(CancellationToken cancellationToken = default)
     {
         var rates = await _rateRepository.GetAllAsync(cancellationToken);
@@ -109,6 +115,9 @@ public class ExchangeRateService : IExchangeRateService
 
     public async Task<ExchangeRateResponseDto> SetRateAsync(SetExchangeRateDto setDto, CancellationToken cancellationToken = default)
     {
+        // Desactivar tasas previas para este par de divisas (ej: Bs a USD)
+        await _rateRepository.DeactivatePreviousRatesAsync(setDto.FromCurrency, setDto.ToCurrency, cancellationToken);
+
         var rate = new ExchangeRate
         {
             FromCurrency = setDto.FromCurrency,

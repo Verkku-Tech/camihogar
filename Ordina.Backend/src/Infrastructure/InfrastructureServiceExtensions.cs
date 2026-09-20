@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Ordina.Application.Common;
+using Ordina.Application.Dashboard;
 using Ordina.Application.Security;
 using Ordina.Domain.Catalog;
 using Ordina.Domain.Dispatch;
@@ -46,6 +47,7 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IExchangeRateRepository, ExchangeRateRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
+        services.AddScoped<IDashboardRepository, DashboardRepository>();
 
         services.AddScoped<IRepository<Category>>(sp => new MongoRepository<Category>(sp.GetRequiredService<MongoDbContext>().Database, "categories"));
         services.AddScoped<IRepository<Provider>>(sp => new MongoRepository<Provider>(sp.GetRequiredService<MongoDbContext>().Database, "providers"));

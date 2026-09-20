@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { FileText, Package, CreditCard, Percent, Truck } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 interface ReportCard {
   id: string
@@ -76,14 +78,11 @@ export default function ReportesPage() {
         
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="max-w-7xl mx-auto w-full">
-            {/* Breadcrumb */}
-            <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
-              <span className="text-green-600 font-medium">Home</span>
-              <span>/</span>
-              <span>Reportes</span>
-            </nav>
+            
 
-            {/* Page Title */}
+            
+            <AppBreadcrumb />
+{/* Page Title */}
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-foreground">Reportes</h1>
               <p className="text-muted-foreground mt-1">

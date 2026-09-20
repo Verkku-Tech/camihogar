@@ -64,8 +64,8 @@ public class AuthController : ControllerBase
         Response.Cookies.Delete("refreshToken", new CookieOptions
         {
             HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.Strict,
+            Secure = Request.IsHttps,
+            SameSite = SameSiteMode.Lax,
             Path = "/api/auth"
         });
 
@@ -110,8 +110,8 @@ public class AuthController : ControllerBase
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.Strict,
+            Secure = Request.IsHttps,
+            SameSite = SameSiteMode.Lax,
             Expires = expiresAt,
             Path = "/api/auth"
         };

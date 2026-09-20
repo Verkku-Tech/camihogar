@@ -44,8 +44,10 @@ Antes de generar o modificar código en este repositorio, verifica:
   - [ ] ¿Los hooks están compartimentados en su módulo (`src/modules/<feature>/hooks/`) sin reprocesamiento masivo de arrays en el cliente?
   - [ ] ¿Las mutaciones envían la cabecera `X-Mutation-Id: <uuid>`?
   - [ ] ¿Los errores se capturan con `ErrorBoundary` y se envían a `/api/telemetry/client-logs`?
+  - [ ] **Animación de Carga Skeleton (`boneyard-js`):** ¿Cada componente o vista asíncrona cuenta con su animación de carga utilizando `boneyard-js` (`<Skeleton loading={...}>`) o componentes de skeleton para evitar pantallas en blanco, números vacíos o saltos de layout (CLS)?
 - [ ] **TDD:** ¿Escribiste primero la prueba que valide el flujo real o caso de borde y la viste fallar (RED) antes de implementar?
 - [ ] **Ponytail (Simplicidad Radical):** ¿Estás agregando abstracciones, fábricas o interfaces innecesarias para casos de un solo uso? Si es así, **elimínalas y escribe el código más simple y directo posible**.
+- [ ] **Prohibición de Fallbacks no Solicitados:** Los "fallbacks" no son solución y enmascaran errores de contrato. **NUNCA agregues mecanismos de fallback silenciosos** (como consultar endpoints alternativos, simular datos o enmascarar fallos) a menos que se te indique explícitamente.
 
 ---
 

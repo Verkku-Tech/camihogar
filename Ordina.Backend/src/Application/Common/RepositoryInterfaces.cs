@@ -8,10 +8,27 @@ using Ordina.Domain.Users;
 
 namespace Ordina.Application.Common;
 
+public record OrderQueryFilter(
+    string? Type = null,
+    string? Status = null,
+    string? SaleType = null,
+    string? ExcludeStatuses = null,
+    string? ProductFilterPreset = null,
+    string? LocationStatus = null,
+    string? ManufacturingStatus = null,
+    string? Vendor = null,
+    string? ClientSearch = null,
+    string? ClientId = null,
+    DateTime? DateFrom = null,
+    DateTime? DateTo = null,
+    bool? IncludeBudgets = null,
+    string? SearchTerm = null);
+
 public interface IOrderRepository : IRepository<Order>
 {
     Task<Order?> GetByOrderNumberAsync(string orderNumber, CancellationToken cancellationToken = default);
     Task<string> GenerateOrderNumberAsync(string prefix, CancellationToken cancellationToken = default);
+    Task<PagedResult<Order>> GetFilteredPagedAsync(int page, int pageSize, OrderQueryFilter queryFilter, CancellationToken cancellationToken = default);
 }
 
 public interface IUserRepository : IRepository<User>
@@ -34,6 +51,8 @@ public interface IProductRepository : IRepository<Product>
 public interface IExchangeRateRepository : IRepository<ExchangeRate>
 {
     Task<ExchangeRate?> GetLatestRateAsync(string fromCurrency, string toCurrency, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ExchangeRate>> GetActiveRatesAsync(CancellationToken cancellationToken = default);
+    Task DeactivatePreviousRatesAsync(string fromCurrency, string toCurrency, CancellationToken cancellationToken = default);
 }
 
 public interface IRefreshTokenRepository : IRepository<RefreshToken>

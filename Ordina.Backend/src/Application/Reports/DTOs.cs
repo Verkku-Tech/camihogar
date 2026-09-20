@@ -1,14 +1,5 @@
 namespace Ordina.Application.Reports;
 
-public record DashboardMetricsDto(
-    int TotalOrders,
-    int PendingOrders,
-    int CompletedOrders,
-    decimal TotalSalesUsd,
-    int TotalClients,
-    int TotalProductsInStock,
-    int ManufacturingPendingCount,
-    int DispatchPendingCount);
 
 public record CommissionReportRowDto(
     string OrderNumber,
@@ -71,4 +62,3 @@ public record DispatchReportPreviewDto(
     string InformacionDespacho,
     string DispatchObservations,
     string EstadoUbicacion);
-

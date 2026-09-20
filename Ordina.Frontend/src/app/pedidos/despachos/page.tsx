@@ -69,6 +69,8 @@ import { TablePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { matchesLocalDateRange } from "@/lib/date-utils"
 import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 type TabType = "por_despachar" | "en_despacho" | "despachados"
 type ActionType = "to_dispatch" | "to_delivered" | "to_store" | "to_manufacturing"
@@ -1031,6 +1033,7 @@ export default function DespachosPage() {
           
           <main className="flex-1 overflow-x-hidden overflow-y-auto">
             <div className="container mx-auto p-4 lg:p-6 space-y-6">
+              <AppBreadcrumb />
 
               {/* TABS DE SECCIÓN */}
               <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as TabType)} className="w-full">

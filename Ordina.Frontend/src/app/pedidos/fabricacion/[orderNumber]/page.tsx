@@ -12,6 +12,8 @@ import { ArrowLeft, Package, User, Calendar, FileText } from "lucide-react"
 import { getOrderByOrderNumberPreferBackend, getCategories, type Order, type Category, type AttributeValue } from "@/lib/storage"
 import { useAuth } from "@/contexts/auth-context"
 import { canAccessManufacturing } from "@/lib/user-extra-permissions"
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 export default function FabricacionOrderDetailPage() {
   const params = useParams()
@@ -98,7 +100,7 @@ export default function FabricacionOrderDetailPage() {
               <Card>
                 <CardContent className="p-8 text-center">
                   <p>Pedido no encontrado</p>
-                  <Button onClick={() => router.push("/inventario/fabricacion")} className="mt-4">
+                  <Button onClick={() => router.push("/pedidos/fabricacion")} className="mt-4">
                     Volver a Fabricación
                   </Button>
                 </CardContent>
@@ -187,22 +189,14 @@ export default function FabricacionOrderDetailPage() {
         <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="max-w-4xl mx-auto w-full">
-            {/* Breadcrumb */}
-            <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
-              <span className="text-green-600 font-medium">Home</span>
-              <span>/</span>
-              <span>Inventario</span>
-              <span>/</span>
-              <span>Fabricación</span>
-              <span>/</span>
-              <span>Pedido #{orderNumber}</span>
-            </nav>
+            <AppBreadcrumb />
+            
 
             {/* Header */}
             <div className="flex items-center gap-4 mb-6">
               <Button
                 variant="ghost"
-                onClick={() => router.push("/inventario/fabricacion")}
+                onClick={() => router.push("/pedidos/fabricacion")}
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Volver

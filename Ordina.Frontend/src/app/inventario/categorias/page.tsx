@@ -15,6 +15,8 @@ import { PermissionGuard } from "@/components/auth/permission-guard"
 import { getCategories, addCategory, updateCategory, deleteCategory, type Category } from "@/lib/storage"
 import { apiClient } from "@/lib/api-client"
 import * as db from "@/lib/indexeddb"
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 export default function CategoriasPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -161,14 +163,9 @@ export default function CategoriasPage() {
         <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="w-full">
-            <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
-              <span className="text-green-600 font-medium">Home</span>
-              <span>/</span>
-              <span>Inventario</span>
-              <span>/</span>
-              <span>Categorías</span>
-            </nav>
+        <AppBreadcrumb />
+<div className="w-full">
+            
 
             <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
               <div className="flex-1 flex items-center gap-3">

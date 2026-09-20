@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { apiFetch, setAuthToken, getAuthToken } from '../lib/api-client'
+import { apiFetch, setAuthToken, getAuthToken, requestTokenRefresh } from '../lib/api-client'
 
 export interface User {
   id: string
@@ -34,17 +34,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     async function restoreSession() {
       try {
-        const refreshRes = await fetch('/api/auth/refresh', {
-          method: 'POST',
-          headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          credentials: 'include'
-        })
-
-        if (refreshRes.ok) {
-          const data = await refreshRes.json()
-          setAuthToken(data.token)
-          setTokenState(data.token)
-
+        const token = await requestTokenRefresh()
+        if (token) {
+          setTokenState(token)
           // Fetch user details
           const me = await apiFetch<User>('auth/me')
           setUser(me)
@@ -68,10 +60,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener('auth:expired', handleAuthExpired)
   }, [])
 
-  const login = async (username: string, password: string, _rememberMe = false) => {
+  const login = async (username: string, password: string, rememberMe = true) => {
     const res = await apiFetch<{ token: string; user: User }>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password, rememberMe })
     })
 
     setAuthToken(res.token)

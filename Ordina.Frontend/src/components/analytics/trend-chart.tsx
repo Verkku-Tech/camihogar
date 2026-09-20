@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
+import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { TrendingUp, Sparkles, History } from "lucide-react"
 import type { TrendDataPoint, SalesForecastResponse } from "@/lib/api-client"
 import { CHART_THEME } from "./chart-theme"
@@ -260,18 +260,18 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
   }, [forecast, data, period])
 
   return (
-    <Card className="h-full min-h-[375px] flex flex-col justify-between border-border/70 shadow-sm hover:shadow-md transition-shadow duration-300">
-      <CardHeader className="pb-3 border-b border-border/40 bg-muted/20">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+    <Card className="h-full flex-1 flex flex-col justify-between border-border/70 shadow-sm hover:shadow-md transition-shadow duration-300">
+      <CardHeader className="p-4 sm:p-5 border-b border-border/40 bg-muted/20">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 flex-shrink-0">
               <TrendingUp className="w-4 h-4" />
             </div>
-            <div>
-              <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
+            <div className="min-w-0">
+              <CardTitle className="text-sm font-semibold tracking-tight text-foreground truncate">
                 Tendencia de Ventas y Recaudación
               </CardTitle>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground truncate">
                 {period === "year"
                   ? "Histórico anual y comparativa 3 años con proyección prudente de 6 meses"
                   : "Cifras reales continuas y proyección conservadora a fin de mes (base 6 meses)"}
@@ -279,12 +279,12 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {mapeScore !== undefined && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* {mapeScore !== undefined && (
               <Badge variant="outline" className="bg-muted/60 text-muted-foreground border-border/60 text-[11px] py-0.5 px-2">
                 Holt-Winters (MAPE: {mapeScore}%)
               </Badge>
-            )}
+            )} */}
             {summary.projectedInvoicedTotal > 0 && (
               <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1.5 py-1 px-2.5 text-xs font-medium">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -306,7 +306,7 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
         </div>
       </CardHeader>
 
-      <CardContent className="pt-4 flex-1 flex flex-col justify-center min-h-[295px]">
+      <CardContent className="pt-4 flex-1 flex flex-col justify-center">
         {isLoading ? (
           <div className="h-64 bg-muted/40 rounded-xl animate-pulse" />
         ) : points.length === 0 ? (
@@ -315,12 +315,29 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={270}>
-            <ComposedChart data={points} margin={{ top: 16, right: 28, left: 10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.gridStroke} vertical={false} />
+            <ComposedChart data={points} margin={{ top: 20, right: 10, left: -10, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorInvoiced" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={CHART_THEME.primary} stopOpacity={0.25} />
+                  <stop offset="95%" stopColor={CHART_THEME.primary} stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="colorCollected" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={CHART_THEME.blue} stopOpacity={0.25} />
+                  <stop offset="95%" stopColor={CHART_THEME.blue} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_THEME.gridStroke} />
               <XAxis
                 dataKey="date"
                 tick={{ fontSize: 11, fill: CHART_THEME.axisTick }}
-                tickFormatter={d => (period === "year" ? d : d.length >= 10 ? d.slice(5) : d)}
+                tickFormatter={d => {
+                  if (period === "year") return d
+                  if (d.length >= 10) {
+                    const parts = d.split('-')
+                    if (parts.length === 3) return `${parts[2]}-${parts[1]}`
+                  }
+                  return d
+                }}
                 stroke={CHART_THEME.gridStroke}
               />
               <YAxis
@@ -340,39 +357,39 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
                       </div>
                       <div className="space-y-1">
                         {point.invoicedUsd !== undefined && (
-                          <div className="flex items-center justify-between gap-3 text-emerald-600 dark:text-emerald-400 font-medium">
+                          <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 font-light">
                             <span className="flex items-center gap-1.5">
                               <span className="w-2.5 h-0.5 bg-emerald-500 inline-block" /> Facturado (Real):
                             </span>
-                            <span className="font-mono font-bold">${point.invoicedUsd.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-mono font-bold text-emerald-500">${point.invoicedUsd.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
                           </div>
                         )}
                         {point.projectedInvoiced !== undefined && (
-                          <div className="flex items-center justify-between gap-3 text-emerald-600/90 dark:text-emerald-400/90 font-medium">
+                          <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 font-light">
                             <span className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-0.5 border-b border-dashed border-emerald-500 inline-block" /> Fact. Proyectada:
+                              <span className="w-2.5 h-0.5 border-b border-dashed border-purple-500 inline-block" /> Fact. Proyectada:
                             </span>
-                            <span className="font-mono font-bold">${point.projectedInvoiced.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-mono font-bold text-purple-500">${point.projectedInvoiced.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
                           </div>
                         )}
                         {point.collectedUsd !== undefined && (
-                          <div className="flex items-center justify-between gap-3 text-blue-600 dark:text-blue-400 font-medium">
+                          <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 font-light">
                             <span className="flex items-center gap-1.5">
                               <span className="w-2.5 h-0.5 bg-blue-500 inline-block" /> Cobrado (Real):
                             </span>
-                            <span className="font-mono font-bold">${point.collectedUsd.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-mono font-bold text-blue-500">${point.collectedUsd.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
                           </div>
                         )}
                         {point.projectedCollected !== undefined && (
-                          <div className="flex items-center justify-between gap-3 text-blue-600/90 dark:text-blue-400/90 font-medium">
+                          <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 font-light">
                             <span className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-0.5 border-b border-dashed border-blue-500 inline-block" /> Cobro Proyectado:
+                              <span className="w-2.5 h-0.5 border-b border-dashed border-orange-500 inline-block" /> Cobro Proyectado:
                             </span>
-                            <span className="font-mono font-bold">${point.projectedCollected.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-mono font-bold text-orange-500">${point.projectedCollected.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
                           </div>
                         )}
                         {point.benchmark3Yr !== undefined && (
-                          <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 font-medium pt-1 border-t border-border/30">
+                          <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 font-light pt-1 border-t border-border/30">
                             <span className="flex items-center gap-1.5">
                               <span className="w-2.5 h-0.5 border-b border-dotted border-slate-500 inline-block" /> Benchmark 3 Años:
                             </span>
@@ -400,15 +417,31 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
                 }}
               />
 
-              {/* Facturado Real - Línea continua */}
-              <Line
+              {/* Facturado Real - Área */}
+              <Area
                 type="monotone"
                 dataKey="invoicedUsd"
                 name="invoicedUsd"
                 stroke={CHART_THEME.primary}
                 strokeWidth={2.5}
+                fill="url(#colorInvoiced)"
+                fillOpacity={1}
                 dot={{ fill: CHART_THEME.primary, r: 2.5 }}
                 activeDot={{ r: 5 }}
+                connectNulls={false}
+              />
+
+              {/* Cobrado Real - Área */}
+              <Area
+                type="monotone"
+                dataKey="collectedUsd"
+                name="collectedUsd"
+                stroke={CHART_THEME.blue}
+                strokeWidth={2}
+                fill="url(#colorCollected)"
+                fillOpacity={1}
+                dot={{ fill: CHART_THEME.blue, r: 2 }}
+                activeDot={{ r: 4 }}
                 connectNulls={false}
               />
 
@@ -417,22 +450,11 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
                 type="monotone"
                 dataKey="projectedInvoiced"
                 name="projectedInvoiced"
-                stroke={CHART_THEME.primary}
+                stroke={CHART_THEME.purple}
                 strokeWidth={2}
                 strokeDasharray="5 5"
-                dot={{ fill: CHART_THEME.primary, r: 2 }}
-                activeDot={{ r: 4 }}
-                connectNulls={false}
-              />
-
-              {/* Cobrado Real - Línea continua */}
-              <Line
-                type="monotone"
-                dataKey="collectedUsd"
-                name="collectedUsd"
-                stroke={CHART_THEME.blue}
-                strokeWidth={2}
-                dot={{ fill: CHART_THEME.blue, r: 2 }}
+                strokeOpacity={0.7}
+                dot={{ fill: CHART_THEME.purple, r: 2, fillOpacity: 0.7, strokeOpacity: 0.7 }}
                 activeDot={{ r: 4 }}
                 connectNulls={false}
               />
@@ -442,10 +464,11 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
                 type="monotone"
                 dataKey="projectedCollected"
                 name="projectedCollected"
-                stroke={CHART_THEME.blue}
+                stroke={CHART_THEME.orange}
                 strokeWidth={1.8}
                 strokeDasharray="5 5"
-                dot={{ fill: CHART_THEME.blue, r: 1.5 }}
+                strokeOpacity={0.7}
+                dot={{ fill: CHART_THEME.orange, r: 1.5, fillOpacity: 0.7, strokeOpacity: 0.7 }}
                 activeDot={{ r: 4 }}
                 connectNulls={false}
               />

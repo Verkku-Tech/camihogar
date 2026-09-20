@@ -6,6 +6,8 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { AccessPinPage } from "@/components/configuracion/access-pin-page";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { useAuth } from "@/contexts/auth-context";
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+
 
 function PinAccesoGate({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -31,7 +33,9 @@ export default function PinAccesoConfigPage() {
         <div className="flex flex-1 flex-col overflow-hidden">
           <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
           <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-            <PinAccesoGate>
+            <AppBreadcrumb />
+
+<PinAccesoGate>
               <AccessPinPage />
             </PinAccesoGate>
           </main>

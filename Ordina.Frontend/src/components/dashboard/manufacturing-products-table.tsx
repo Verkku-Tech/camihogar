@@ -207,7 +207,7 @@ export function ManufacturingProductsTable({ prefetchedOrders }: ManufacturingPr
                   </TableCell>
                   <TableCell>
                     <button
-                      onClick={() => router.push(`/inventario/fabricacion/${item.orderNumber}`)}
+                      onClick={() => router.push(`/pedidos/fabricacion/${item.orderNumber}`)}
                       className="text-green-600 hover:text-green-700 font-medium text-sm flex items-center gap-1"
                     >
                       <Eye className="w-4 h-4" />

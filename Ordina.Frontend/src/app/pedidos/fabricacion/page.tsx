@@ -55,6 +55,7 @@ import {
   canAccessManufacturing,
   MANUFACTURING_MANAGE,
 } from "@/lib/user-extra-permissions"
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
 
 // Tipo para productos agrupados por pedido
 interface ProductRow {
@@ -1415,16 +1416,11 @@ export default function FabricacionPage() {
         
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="max-w-7xl mx-auto w-full">
-            {/* Breadcrumb */}
-            <nav className="flex items-center space-x-2 text-sm text-muted-foreground mb-6">
-              <span className="text-green-600 font-medium">Home</span>
-              <span>/</span>
-              <span>Inventario</span>
-              <span>/</span>
-              <span>Fabricación</span>
-            </nav>
+            
 
-            {/* Header */}
+            
+            <AppBreadcrumb />
+{/* Header */}
             <div className="flex items-center gap-4 mb-6">
               <div className="flex-1">
                 <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center gap-2">
@@ -1776,7 +1772,7 @@ export default function FabricacionPage() {
                                               className="h-7 text-xs shrink-0"
                                               onClick={(e) => {
                                                 e.stopPropagation()
-                                                router.push(`/inventario/fabricacion/${group.orderNumber}`)
+                                                router.push(`/pedidos/fabricacion/${group.orderNumber}`)
                                               }}
                                             >
                                               <Eye className="w-3 h-3 mr-1" />

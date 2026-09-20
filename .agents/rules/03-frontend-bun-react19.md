@@ -122,3 +122,15 @@ Este documento define los estándares técnicos, patrones de estado y directrice
 3. **Ergonomía:**
    - Botones y tarjetas de taller táctiles y amplias (optimizadas para tablets de operarios).
    - Indicador de estado de sincronización (`SyncBadge`) visible en el encabezado (🟢 En línea / 🟡 X cambios pendientes / 🔴 Offline).
+
+---
+
+## 9. Animaciones de Carga y Skeletons (`boneyard-js`)
+
+1. **Cero Pantallas en Blanco o Métricas Vacías en Carga:**
+   - Ninguna página o componente debe mostrar métricas con valores vacíos (e.g. `$0.00`) o contenedores vacíos mientras se completan las solicitudes asíncronas de red.
+2. **Estándar con `boneyard-js`:**
+   - Envolver componentes, tarjetas KPI y gráficos con `<Skeleton loading={isLoading} name="...">` de `boneyard-js/react`.
+   - Proporcionar siempre un componente `fallback` (o pre-generar los bones del layout) utilizando elementos animados (`animate-pulse` / `shimmer`) para garantizar que la transición visual sea suave y no genere saltos abruptos de layout (Cumulative Layout Shift - CLS).
+3. **Respeto a Paleta y Dimensiones:**
+   - Los esqueletos deben replicar la altura, bordes redondeados y márgenes del componente final renderizado.

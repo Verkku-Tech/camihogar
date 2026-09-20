@@ -54,3 +54,14 @@ Este documento establece las directrices universales para cualquier agente o des
      ```
 4. **Preservación de Comentarios Existentes:**
    - No eliminar comentarios de negocio o documentación técnica preexistente a menos que sea explícitamente solicitado.
+
+---
+
+## 5. Prohibición Absoluta de Fallbacks no Solicitados
+
+1. **Los Fallbacks no son Solución:**
+   - Los mecanismos de "fallback" silenciosos (tales como consultar endpoints alternativos si el principal falla, inventar datos por defecto, o capturar excepciones para disimular un error de contrato) enmascaran los problemas de raíz e impiden detectar desalineaciones entre el cliente y el servidor.
+2. **Principio de Fallo Temprano (Fail-Fast):**
+   - Si un endpoint, servicio o contrato no funciona como debe, la operación debe fallar explícitamente para permitir diagnosticar y resolver la causa real del problema.
+3. **Excepción Exclusiva:**
+   - **Sólo** se deben implementar fallbacks cuando el usuario lo solicite de manera explícita e inequívoca en su requerimiento.
