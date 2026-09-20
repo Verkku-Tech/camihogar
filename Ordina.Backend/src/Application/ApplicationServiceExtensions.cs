@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Ordina.Application.Catalog;
 using Ordina.Application.Clients;
+using Ordina.Application.Dashboard;
 using Ordina.Application.Dispatch;
 using Ordina.Application.Finance;
 using Ordina.Application.Manufacturing;
@@ -34,6 +35,8 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IStoreService, StoreService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IReportService, ReportService>();
+        services.AddScoped<IDashboardService, DashboardService>();
+        services.AddSingleton<ITimeSeriesForecastingService, HoltWintersForecastingService>();
 
         return services;
     }
