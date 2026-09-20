@@ -191,7 +191,8 @@ export function AnalyticsDashboard() {
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           <AppBreadcrumb />
           
-          {/* Header & Controls */}
+          <div className="space-y-6">
+            {/* Header & Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card/60 backdrop-blur-sm p-4 rounded-2xl border border-border/70 shadow-sm">
             <div>
               <div className="flex items-center gap-2.5">
@@ -552,7 +553,8 @@ export function AnalyticsDashboard() {
               <TopProductsTable data={topProducts} isLoading={isLoading} />
             )}
           </div>
-        </main>
+        </div>
+      </main>
       </div>
     </div>
   )
