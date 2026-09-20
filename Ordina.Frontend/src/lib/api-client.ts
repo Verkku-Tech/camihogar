@@ -191,6 +191,71 @@ export async function apiFetch<T>(endpoint: string, options: RequestOptions = {}
   }
 }
 
+// Analytics Dashboard types
+export interface TrendDataPoint {
+  date: string
+  ordersCount: number
+  invoicedUsd: number
+  collectedUsd: number
+}
+
+export interface ForecastDataPoint {
+  date: string
+  label: string
+  invoicedUsd?: number
+  collectedUsd?: number
+  projectedInvoiced?: number
+  projectedCollected?: number
+  benchmark3Yr?: number
+}
+
+export interface ForecastSummary {
+  projectedInvoicedTotal: number
+  projectedCollectedTotal: number
+  benchmarkTotal?: number
+  mapeScore: number
+}
+
+export interface SalesForecastResponse {
+  points: ForecastDataPoint[]
+  summary: ForecastSummary
+}
+
+export interface SaleTypeData {
+  saleType: string
+  label: string
+  count: number
+  totalUsd: number
+}
+
+export interface TopSeller {
+  vendorId: string
+  vendorName: string
+  ordersCount: number
+  totalUsd: number
+}
+
+export interface TopProduct {
+  productName: string
+  category: string
+  unitsSold: number
+  totalUsd: number
+}
+
+export interface PipelineSnapshot {
+  manufacturing: number
+  warehouse: number
+  dispatch: number
+  delivered: number
+}
+
+export interface ExpiredLayawayAgeRange {
+  range: string
+  label: string
+  count: number
+  totalUsd: number
+}
+
 export class ApiClientClass {
   // Auth
   async login(username: string, password: string, rememberMe = false): Promise<{ token: string; refreshToken: string; expiresAt: string; refreshTokenExpiresAt: string; user: UserDto }> {
@@ -222,8 +287,11 @@ export class ApiClientClass {
 
   // Users & Roles
   async getUsers(status?: string): Promise<UserResponseDto[]> {
-    const query = status ? `?status=${encodeURIComponent(status)}` : ''
-    return apiFetch<UserResponseDto[]>(`/api/users${query}`)
+    const query = status ? `?status=${encodeURIComponent(status)}&pageSize=1000` : '?pageSize=1000'
+    const res = await apiFetch<any>(`/api/users${query}`)
+    if (Array.isArray(res)) return res
+    if (res && Array.isArray(res.items)) return res.items
+    return []
   }
 
   async getUserById(id: string): Promise<UserResponseDto> {
@@ -589,12 +657,8 @@ export class ApiClientClass {
   }
 
   // Finance & Exchange Rates
-  async getActiveExchangeRates(): Promise<{ USD?: ExchangeRate; EUR?: ExchangeRate }> {
-    try {
-      return await apiFetch<{ USD?: ExchangeRate; EUR?: ExchangeRate }>('/api/finance/exchange-rates/latest')
-    } catch {
-      return {}
-    }
+  async getActiveExchangeRates(): Promise<ExchangeRate[]> {
+    return apiFetch<ExchangeRate[]>('/api/finance/exchange-rates/active')
   }
 
   async getExchangeRateHistory(days = 30): Promise<ExchangeRate[]> {
@@ -611,7 +675,7 @@ export class ApiClientClass {
 
   async getLatestExchangeRate(toCurrency: string, fromCurrency = 'Bs'): Promise<ExchangeRate | null> {
     try {
-      return await apiFetch<ExchangeRate>(`/api/finance/exchange-rates/latest-pair?to=${toCurrency}&from=${fromCurrency}`)
+      return await apiFetch<ExchangeRate>(`/api/finance/exchange-rates/latest?toCurrency=${toCurrency}&fromCurrency=${fromCurrency}`)
     } catch {
       return null
     }
@@ -656,10 +720,42 @@ export class ApiClientClass {
     return apiFetch<any[]>(`/api/manufacturing/report${qStr}`)
   }
 
-  // Reports
+  // Dashboard
   async getDashboardMetrics(period = 'day', signal?: AbortSignal): Promise<any> {
-    return apiFetch<any>(`/api/reports/dashboard?period=${period}`, { signal })
+    return apiFetch<any>(`/api/dashboard/metrics?period=${period}`, { signal })
   }
+
+  async getSalesTrend(days = 30, signal?: AbortSignal): Promise<TrendDataPoint[]> {
+    return apiFetch<TrendDataPoint[]>(`/api/dashboard/trend?days=${days}`, { signal }).then(r => r ?? [])
+  }
+
+  async getSalesForecast(period = 'month', signal?: AbortSignal): Promise<SalesForecastResponse> {
+    return apiFetch<SalesForecastResponse>(`/api/dashboard/forecast?period=${period}`, { signal })
+      .then(r => r ?? { points: [], summary: { projectedInvoicedTotal: 0, projectedCollectedTotal: 0, mapeScore: 0 } })
+  }
+
+  async getBySaleType(period = 'month', signal?: AbortSignal): Promise<SaleTypeData[]> {
+    return apiFetch<SaleTypeData[]>(`/api/dashboard/by-sale-type?period=${period}`, { signal }).then(r => r ?? [])
+  }
+
+  async getTopSellers(period = 'month', limit = 10, signal?: AbortSignal): Promise<TopSeller[]> {
+    return apiFetch<TopSeller[]>(`/api/dashboard/top-sellers?period=${period}&limit=${limit}`, { signal }).then(r => r ?? [])
+  }
+
+  async getTopProducts(period = 'month', limit = 10, signal?: AbortSignal): Promise<TopProduct[]> {
+    return apiFetch<TopProduct[]>(`/api/dashboard/top-products?period=${period}&limit=${limit}`, { signal }).then(r => r ?? [])
+  }
+
+  async getPipelineSnapshot(signal?: AbortSignal): Promise<PipelineSnapshot> {
+    return apiFetch<PipelineSnapshot>(`/api/dashboard/pipeline`, { signal })
+      .then(r => r ?? { manufacturing: 0, warehouse: 0, dispatch: 0, delivered: 0 })
+  }
+
+  async getExpiredLayawaysByAge(signal?: AbortSignal): Promise<ExpiredLayawayAgeRange[]> {
+    return apiFetch<ExpiredLayawayAgeRange[]>(`/api/dashboard/expired-layaways-by-age`, { signal }).then(r => r ?? [])
+  }
+
+  // Reports
 
   async getCommissionsReportPreview(params: CommissionsReportQueryParams): Promise<CommissionReportRowDto[]> {
     const query = new URLSearchParams()
