@@ -464,12 +464,13 @@ export function AnalyticsDashboard() {
           </div>
 
           {/* Charts Row 1: Sales Trend & Distribution */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+            <div className="lg:col-span-2 flex flex-col">
               <BoneyardSkeleton
                 loading={isLoading}
                 name="analytics-trend"
                 fallback={<TrendChartSkeleton />}
+                className="h-full flex flex-col"
               >
                 <TrendChart
                   data={trendData}
@@ -479,11 +480,12 @@ export function AnalyticsDashboard() {
                 />
               </BoneyardSkeleton>
             </div>
-            <div>
+            <div className="flex flex-col">
               <BoneyardSkeleton
                 loading={isLoading}
                 name="analytics-sale-type"
                 fallback={<SaleTypeDonutSkeleton />}
+                className="h-full flex flex-col"
               >
                 <SaleTypeDonut data={saleTypeData} isLoading={isLoading} />
               </BoneyardSkeleton>
@@ -491,21 +493,23 @@ export function AnalyticsDashboard() {
           </div>
 
           {/* Charts Row 2: Invoiced vs Collected & Production Pipeline */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+            <div className="flex flex-col">
               <BoneyardSkeleton
                 loading={isLoading}
                 name="analytics-invoiced-vs-collected"
                 fallback={<InvoicedVsCollectedSkeleton />}
+                className="h-full flex flex-col"
               >
                 <InvoicedVsCollectedChart data={trendData} isLoading={isLoading} />
               </BoneyardSkeleton>
             </div>
-            <div>
+            <div className="flex flex-col">
               <BoneyardSkeleton
                 loading={isLoading}
                 name="analytics-pipeline"
                 fallback={<PipelineChartSkeleton />}
+                className="h-full flex flex-col"
               >
                 <PipelineChart data={pipelineData} isLoading={isLoading} />
               </BoneyardSkeleton>
@@ -513,21 +517,23 @@ export function AnalyticsDashboard() {
           </div>
 
           {/* Charts Row 3: Top Sellers & Expired Layaway Aging */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+            <div className="flex flex-col">
               <BoneyardSkeleton
                 loading={isLoading}
                 name="analytics-top-sellers"
                 fallback={<TopSellersSkeleton />}
+                className="h-full flex flex-col"
               >
                 <TopSellersChart data={topSellers} isLoading={isLoading} />
               </BoneyardSkeleton>
             </div>
-            <div>
+            <div className="flex flex-col">
               <BoneyardSkeleton
                 loading={isLoading}
                 name="analytics-expired-aging"
                 fallback={<ExpiredAgeSkeleton />}
+                className="h-full flex flex-col"
               >
                 <ExpiredAgeChart data={expiredAging} isLoading={isLoading} />
               </BoneyardSkeleton>

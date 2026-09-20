@@ -1,0 +1,84 @@
+"use client"
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts"
+import { Layers } from "lucide-react"
+import type { PipelineSnapshot } from "@/lib/api-client"
+import { CHART_THEME } from "./chart-theme"
+
+interface Props {
+  data: PipelineSnapshot | null
+  isLoading?: boolean
+}
+
+const STAGES = [
+  { stage: "Fabricación", key: "manufacturing", color: CHART_THEME.amber },
+  { stage: "Almacén", key: "warehouse", color: CHART_THEME.cyan },
+  { stage: "Despacho", key: "dispatch", color: CHART_THEME.purple },
+  { stage: "Entregado", key: "delivered", color: CHART_THEME.emerald },
+]
+
+export function PipelineChart({ data, isLoading }: Props) {
+  const chartData = data ? [
+    { stage: "Fabricación", value: data.manufacturing, color: CHART_THEME.amber },
+    { stage: "Almacén", value: data.warehouse, color: CHART_THEME.cyan },
+    { stage: "Despacho", value: data.dispatch, color: CHART_THEME.purple },
+    { stage: "Entregado", value: data.delivered, color: CHART_THEME.emerald },
+  ] : []
+
+  const totalPieces = chartData.reduce((s, d) => s + d.value, 0)
+
+  return (
+    <Card className="h-full flex flex-col justify-between border-border/70 shadow-sm hover:shadow-md transition-shadow duration-300">
+      <CardHeader className="pb-3 border-b border-border/40 bg-muted/20">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500">
+              <Layers className="w-4 h-4" />
+            </div>
+            <div>
+              <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
+                Pipeline Operativo de Piezas
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Estado de piezas en el flujo de producción y entrega</p>
+            </div>
+          </div>
+          {totalPieces > 0 && (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground border border-border/60">
+              {totalPieces} piezas en seguimiento
+            </span>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="pt-4 flex-1 flex flex-col justify-center">
+        {isLoading ? (
+          <div className="h-56 bg-muted/40 rounded-xl animate-pulse" />
+        ) : (
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 24, left: 10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.gridStroke} horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 11, fill: CHART_THEME.axisTick }} stroke={CHART_THEME.gridStroke} />
+              <YAxis type="category" dataKey="stage" tick={{ fontSize: 11, fill: "#475569" }} width={85} stroke={CHART_THEME.gridStroke} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "rgba(255, 255, 255, 0.95)",
+                  backdropFilter: "blur(8px)",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 10,
+                  boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
+                  fontSize: 12,
+                }}
+                formatter={(v: number) => [`${v} unidades`, "Cantidad"]}
+              />
+              <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={24}>
+                {chartData.map((entry, i) => (
+                  <Cell key={i} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </CardContent>
+    </Card>
+  )
+}

@@ -260,7 +260,7 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
   }, [forecast, data, period])
 
   return (
-    <Card className="border-border/70 shadow-sm hover:shadow-md transition-shadow duration-300">
+    <Card className="h-full flex flex-col justify-between border-border/70 shadow-sm hover:shadow-md transition-shadow duration-300">
       <CardHeader className="pb-3 border-b border-border/40 bg-muted/20">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2.5">
@@ -306,7 +306,7 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
         </div>
       </CardHeader>
 
-      <CardContent className="pt-4">
+      <CardContent className="pt-4 flex-1 flex flex-col justify-center">
         {isLoading ? (
           <div className="h-64 bg-muted/40 rounded-xl animate-pulse" />
         ) : points.length === 0 ? (
