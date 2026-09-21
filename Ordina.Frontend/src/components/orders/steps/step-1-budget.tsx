@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Edit, Trash2, KeyRound } from "lucide-react";
+import { Plus, Edit, Trash2, KeyRound, User as UserIcon, Search } from "lucide-react";
 import { PinValidationPanel } from "@/components/orders/pin-validation-panel";
 import { Badge } from "@/components/ui/badge";
 import { CommissionLineSourceBadge } from "@/components/orders/commission-line-source-badge";
@@ -20,7 +20,9 @@ import { formatCurrency, type Currency } from "@/lib/currency-utils";
 import {
   commercialRatesToExchangeRatesInput,
   formatCommercialDualDisplay,
+  formatDualCurrencyAmounts,
 } from "@/lib/order-currency-display";
+import { cn } from "@/lib/utils";
 import {
   getLineDiscountInBaseCurrency,
   getLinePriceCurrency,
@@ -60,6 +62,221 @@ function formatStep1Money(
     commercialRates: commercial,
     liveRates: orderForm.exchangeRates,
   });
+}
+
+function Step1MoneyDisplay({
+  orderForm,
+  amount,
+  amountCurrency,
+  primaryClassName = "font-medium text-sm text-foreground",
+  secondaryClassName = "text-xs text-muted-foreground font-normal block leading-tight",
+  align = "right",
+}: {
+  orderForm: Step1OrderForm;
+  amount: number;
+  amountCurrency: Currency;
+  primaryClassName?: string;
+  secondaryClassName?: string;
+  align?: "left" | "right" | "center";
+}) {
+  const commercial = orderForm.commercialExchangeRates
+    ? commercialRatesToExchangeRatesInput(orderForm.commercialExchangeRates)
+    : undefined;
+  const { primary, secondary } = formatDualCurrencyAmounts(
+    amount,
+    amountCurrency,
+    {
+      commercialRates: commercial,
+      liveRates: orderForm.exchangeRates,
+    },
+  );
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col min-w-0 leading-tight",
+        align === "right"
+          ? "items-end text-right"
+          : align === "center"
+            ? "items-center text-center"
+            : "items-start text-left",
+      )}
+    >
+      <span className={primaryClassName}>{primary}</span>
+      {secondary && <span className={secondaryClassName}>{secondary}</span>}
+    </div>
+  );
+}
+
+function ProductDiscountControl({
+  product,
+  orderForm,
+  rates,
+  lineBase,
+  preferredCurrency,
+  isMobile = false,
+}: {
+  product: any;
+  orderForm: UseOrderFormReturn;
+  rates: any;
+  lineBase: number;
+  preferredCurrency: Currency;
+  isMobile?: boolean;
+}) {
+  const discount = product.discount || 0;
+  const discountType = orderForm.productDiscountTypes[product.id] || "monto";
+  const discountCurrency =
+    orderForm.productDiscountCurrencies[product.id] || preferredCurrency;
+  const discountInputCurrency = discountCurrency;
+
+  const currentMode =
+    discountType === "porcentaje" ? "porcentaje" : discountCurrency;
+
+  const handleModeChange = (newMode: string) => {
+    if (newMode === "porcentaje") {
+      if (discountType !== "porcentaje") {
+        orderForm.handleProductDiscountTypeChange(product.id, "porcentaje");
+      }
+      return;
+    }
+
+    const newCurrency = newMode as Currency;
+    if (discountType === "porcentaje") {
+      orderForm.handleProductDiscountTypeChange(product.id, "monto");
+    }
+
+    orderForm.setProductDiscountCurrencies((prev) => ({
+      ...prev,
+      [product.id]: newCurrency,
+    }));
+
+    if (discountCurrency !== newCurrency && discountType === "monto") {
+      let discountInNewCurrency = discount;
+      if (discountCurrency === "Bs") {
+        const rate =
+          newCurrency === "USD"
+            ? orderForm.exchangeRates.USD?.rate
+            : orderForm.exchangeRates.EUR?.rate;
+        if (rate && rate > 0) discountInNewCurrency = discount / rate;
+      } else if (newCurrency === "Bs") {
+        const rate =
+          discountCurrency === "USD"
+            ? orderForm.exchangeRates.USD?.rate
+            : orderForm.exchangeRates.EUR?.rate;
+        if (rate && rate > 0) discountInNewCurrency = discount * rate;
+      } else {
+        const currentRate =
+          discountCurrency === "USD"
+            ? orderForm.exchangeRates.USD?.rate
+            : orderForm.exchangeRates.EUR?.rate;
+        const newRate =
+          newCurrency === "USD"
+            ? orderForm.exchangeRates.USD?.rate
+            : orderForm.exchangeRates.EUR?.rate;
+        if (currentRate && newRate && currentRate > 0) {
+          discountInNewCurrency = (discount * currentRate) / newRate;
+        }
+      }
+      orderForm.handleProductDiscountChange(
+        product.id,
+        discountInNewCurrency,
+        { inputCurrency: newCurrency },
+      );
+    }
+  };
+
+  const maxValue = (() => {
+    if (discountType === "porcentaje") return 100;
+    const category = orderForm.categories.find(
+      (cat) => cat.name === product.category,
+    );
+    if (category && category.maxDiscount > 0) {
+      let maxDiscountInBs = category.maxDiscount;
+      if (
+        category.maxDiscountCurrency &&
+        category.maxDiscountCurrency !== "Bs"
+      ) {
+        const rate =
+          category.maxDiscountCurrency === "USD"
+            ? orderForm.exchangeRates.USD?.rate
+            : orderForm.exchangeRates.EUR?.rate;
+        if (rate && rate > 0) {
+          maxDiscountInBs = category.maxDiscount * rate;
+        }
+      }
+      return Math.min(lineBase, maxDiscountInBs);
+    }
+    return lineBase;
+  })();
+
+  const displayValue = (() => {
+    if (discount === 0) return "";
+    if (discountType === "porcentaje") {
+      const percentage = lineBase > 0 ? (discount / lineBase) * 100 : 0;
+      return Math.round(percentage * 100) / 100;
+    }
+    return roundDisplayAmount(
+      normalizeMonetaryAmountFromLegacy(discount, discountCurrency, rates),
+    );
+  })();
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-1 min-w-0",
+        isMobile ? "w-full" : "items-center",
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center rounded-lg border bg-background shadow-2xs transition-all focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary",
+          isMobile ? "w-full h-10" : "w-[145px] h-8",
+        )}
+      >
+        <Select value={currentMode} onValueChange={handleModeChange}>
+          <SelectTrigger
+            className={cn(
+              "border-0 bg-muted/40 hover:bg-muted/70 px-2 font-semibold text-muted-foreground hover:text-foreground rounded-r-none focus:ring-0 focus:ring-offset-0 shrink-0 transition-colors",
+              isMobile ? "w-[80px] h-10 text-sm" : "w-[62px] h-8 text-xs",
+            )}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="USD">$ USD</SelectItem>
+            <SelectItem value="Bs">Bs.</SelectItem>
+            <SelectItem value="porcentaje">%</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input
+          type="number"
+          min="0"
+          step={discountType === "porcentaje" ? "1" : "0.01"}
+          max={maxValue}
+          value={displayValue}
+          onChange={(e) =>
+            orderForm.handleProductDiscountChange(
+              product.id,
+              Number.parseFloat(e.target.value) || 0,
+              { inputCurrency: discountInputCurrency },
+            )
+          }
+          className={cn(
+            "border-0 rounded-l-none text-right font-medium focus-visible:ring-0 shadow-none flex-1 min-w-0 pr-2.5",
+            isMobile ? "h-10 text-sm" : "h-8 text-xs",
+          )}
+          placeholder={
+            discountType === "porcentaje" ? "0%" : "0.00"
+          }
+        />
+      </div>
+      {discountType === "porcentaje" && discount > 0 && (
+        <span className="text-[11px] text-muted-foreground/80 leading-tight">
+          −{formatCurrency(discount, "Bs")}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function getStep1TotalsCurrency(orderForm: Step1OrderForm): Currency {
@@ -192,14 +409,67 @@ export function Step1Budget({
 
           {/* Client Selection */}
           <div className="space-y-2">
-            <Label>Cliente</Label>
-            <Input
-              readOnly
-              value={orderForm.selectedClient?.name || ""}
-              placeholder="Seleccionar cliente..."
+            <Label className="text-sm font-semibold text-foreground">Cliente</Label>
+            <div
               onClick={onClientLookup}
-              className="cursor-pointer"
-            />
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onClientLookup();
+                }
+              }}
+              className={cn(
+                "flex items-center justify-between gap-3 p-3 rounded-lg border transition-all cursor-pointer",
+                orderForm.selectedClient
+                  ? "bg-primary/5 border-primary/30 hover:bg-primary/10 hover:border-primary/50 shadow-xs"
+                  : "bg-muted/20 border-dashed border-border hover:bg-muted/50 hover:border-border/80"
+              )}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className={cn(
+                    "p-2 rounded-full shrink-0 transition-colors",
+                    orderForm.selectedClient
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  <UserIcon className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  {orderForm.selectedClient ? (
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-sm text-foreground truncate">
+                        {orderForm.selectedClient.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground truncate">
+                        {orderForm.selectedClient.rutId || orderForm.selectedClient.telefono || "Cliente registrado"}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      Haz clic para buscar o crear un cliente...
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant={orderForm.selectedClient ? "secondary" : "outline"}
+                size="sm"
+                className="shrink-0 text-xs h-8"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClientLookup();
+                }}
+              >
+                <Search className="w-3.5 h-3.5 mr-1.5" />
+                {orderForm.selectedClient ? "Cambiar" : "Buscar cliente"}
+              </Button>
+            </div>
           </div>
 
           {/* Products Table */}
@@ -272,293 +542,97 @@ export function Step1Budget({
 
             {orderForm.selectedProducts.length > 0 ? (
               <>
-                {/* Vista de tarjetas: móvil y tablet (&lt; lg) */}
+                {/* Vista de tarjetas: móvil y tablet (< lg) */}
                 <div className="space-y-4 lg:hidden">
                   {orderForm.selectedProducts.map((product) => {
                     const lineBase = orderForm.getProductLineBase(product);
                     const lineSurcharge = orderForm.getProductLineSurcharge(product);
-                    const discount = product.discount || 0;
-                    const discountInputCurrency =
-                      orderForm.productDiscountCurrencies[product.id] || preferredCurrency;
                     const rates = commercialRatesToExchangeRatesInput(
                       orderForm.commercialExchangeRates ?? orderForm.exchangeRates,
                     );
                     const formBase = getStep1TotalsCurrency(
                       orderForm as Step1OrderForm,
                     );
-                    const discCurrency = getProductDiscountCurrencyForTotals(
-                      product,
-                      {
-                        productDiscountTypes: orderForm.productDiscountTypes,
-                        productDiscountCurrencies:
-                          orderForm.productDiscountCurrencies,
-                        preferredCurrency,
-                      },
-                    );
-                    const discountInBase = getLineDiscountInBaseCurrency(
-                      product,
-                      discount,
-                      discCurrency,
-                      formBase,
-                      rates,
-                    );
                     const finalTotal = orderForm.getProductBaseTotal(product);
 
                     return (
-                      <Card key={product.id} className="p-4 sm:p-5">
-                        <div className="space-y-4">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1">
-                              <div className="flex flex-wrap items-center gap-2 mb-1">
-                                <span className="font-medium text-base">
+                      <Card key={product.id} className="p-4 rounded-xl border border-border/70 shadow-xs bg-card">
+                        <div className="space-y-3.5">
+                          <div className="flex items-start justify-between gap-3 border-b pb-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                <span className="font-semibold text-base text-foreground">
                                   {product.name}
                                 </span>
                                 <CommissionLineSourceBadge
                                   source={product.commissionLineSource}
                                 />
                               </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-lg font-semibold">
-                                {orderForm.formattedProductFinalTotals[product.id] ||
-                                  formatStep1Money(
-                                    orderForm,
-                                    finalTotal,
-                                    getStep1TotalsCurrency(orderForm),
-                                  )}
-                              </div>
                               <div className="text-xs text-muted-foreground">
-                                Total final
+                                Cantidad: <span className="font-semibold text-foreground">{product.quantity || 1}</span>
                               </div>
                             </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-3 text-sm">
-                            <div>
-                              <span className="text-muted-foreground">Precio:</span>
-                              <span className="ml-2 font-medium">
-                                {orderForm.formattedProductPrices[product.id] ||
-                                  formatStep1Money(
-                                    orderForm,
-                                    product.price,
-                                    getLinePriceCurrency(product),
-                                  )}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Cantidad:</span>
-                              <span className="ml-2 font-medium">{product.quantity}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Sobreprecio:</span>
-                              <span className="ml-2 font-medium">
-                                {lineSurcharge > 0
-                                  ? formatStep1Money(
-                                      orderForm,
-                                      lineSurcharge,
-                                      formBase,
-                                    )
-                                  : "—"}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Subtotal:</span>
-                              <span className="ml-2 font-medium">
-                                {orderForm.formattedProductTotals[product.id] ||
-                                  formatStep1Money(
-                                    orderForm,
-                                    lineBase,
-                                    formBase,
-                                  )}
-                              </span>
+                            <div className="text-right shrink-0">
+                              <div className="text-xs text-muted-foreground uppercase font-medium">Total final</div>
+                              <Step1MoneyDisplay
+                                orderForm={orderForm as Step1OrderForm}
+                                amount={finalTotal}
+                                amountCurrency={getStep1TotalsCurrency(orderForm)}
+                                primaryClassName="text-base font-bold text-emerald-600 dark:text-emerald-400"
+                                secondaryClassName="text-xs text-emerald-600/70 dark:text-emerald-400/70"
+                                align="right"
+                              />
                             </div>
                           </div>
 
-                          <div className="space-y-2.5 pt-3 border-t">
-                            <Label className="text-sm font-medium">Descuento</Label>
-                            <div className="flex flex-col gap-2 sm:flex-row sm:gap-2.5">
-                              <Select
-                                value={
-                                  orderForm.productDiscountTypes[product.id] || "monto"
-                                }
-                                onValueChange={(value: "monto" | "porcentaje") =>
-                                  orderForm.handleProductDiscountTypeChange(
-                                    product.id,
-                                    value
-                                  )
-                                }
-                              >
-                                <SelectTrigger className="w-28">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="monto">Monto</SelectItem>
-                                  <SelectItem value="porcentaje">Porcentaje</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              {orderForm.productDiscountTypes[product.id] === "monto" && (
-                                <Select
-                                  value={
-                                    orderForm.productDiscountCurrencies[product.id] ||
-                                    preferredCurrency
-                                  }
-                                  onValueChange={(value: Currency) => {
-                                    orderForm.setProductDiscountCurrencies((prev) => ({
-                                      ...prev,
-                                      [product.id]: value,
-                                    }));
-                                    // Recalcular el descuento mostrado
-                                    const currentDiscount = product.discount || 0;
-                                    const currentCurrency =
-                                      orderForm.productDiscountCurrencies[product.id] ||
-                                      preferredCurrency;
-                                    const newCurrency = value;
-                                    if (currentCurrency !== newCurrency) {
-                                      // Convertir el descuento actual a la nueva moneda
-                                      let discountInNewCurrency = currentDiscount;
-                                      if (currentCurrency === "Bs") {
-                                        const rate =
-                                          newCurrency === "USD"
-                                            ? orderForm.exchangeRates.USD?.rate
-                                            : orderForm.exchangeRates.EUR?.rate;
-                                        if (rate && rate > 0) {
-                                          discountInNewCurrency = currentDiscount / rate;
-                                        }
-                                      } else if (newCurrency === "Bs") {
-                                        const rate =
-                                          currentCurrency === "USD"
-                                            ? orderForm.exchangeRates.USD?.rate
-                                            : orderForm.exchangeRates.EUR?.rate;
-                                        if (rate && rate > 0) {
-                                          discountInNewCurrency = currentDiscount * rate;
-                                        }
-                                      } else {
-                                        const currentRate =
-                                          currentCurrency === "USD"
-                                            ? orderForm.exchangeRates.USD?.rate
-                                            : orderForm.exchangeRates.EUR?.rate;
-                                        const newRate =
-                                          newCurrency === "USD"
-                                            ? orderForm.exchangeRates.USD?.rate
-                                            : orderForm.exchangeRates.EUR?.rate;
-                                        if (
-                                          currentRate &&
-                                          newRate &&
-                                          currentRate > 0
-                                        ) {
-                                          discountInNewCurrency =
-                                            (currentDiscount * currentRate) / newRate;
-                                        }
-                                      }
-                                      orderForm.handleProductDiscountChange(
-                                        product.id,
-                                        discountInNewCurrency,
-                                        { inputCurrency: newCurrency }
-                                      );
-                                    }
-                                  }}
-                                >
-                                  <SelectTrigger className="w-20">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="Bs">Bs</SelectItem>
-                                    <SelectItem value="USD">USD</SelectItem>
-                                    <SelectItem value="EUR">EUR</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              )}
-                              <div className="flex items-center gap-1 flex-1 min-w-[100px]">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step={
-                                    orderForm.productDiscountTypes[product.id] ===
-                                    "porcentaje"
-                                      ? "1"
-                                      : "0.01"
-                                  }
-                                  max={(() => {
-                                    const discountType =
-                                      orderForm.productDiscountTypes[product.id] || "monto";
-                                    if (discountType === "porcentaje") {
-                                      return 100;
-                                    }
-
-                                    // Para monto, considerar el maxDiscount de la categoría
-                                    const category = orderForm.categories.find(
-                                      (cat) => cat.name === product.category
-                                    );
-                                    if (category && category.maxDiscount > 0) {
-                                      // Convertir maxDiscount a Bs si está en otra moneda
-                                      let maxDiscountInBs = category.maxDiscount;
-                                      if (
-                                        category.maxDiscountCurrency &&
-                                        category.maxDiscountCurrency !== "Bs"
-                                      ) {
-                                        const rate =
-                                          category.maxDiscountCurrency === "USD"
-                                            ? orderForm.exchangeRates.USD?.rate
-                                            : orderForm.exchangeRates.EUR?.rate;
-                                        if (rate && rate > 0) {
-                                          maxDiscountInBs = category.maxDiscount * rate;
-                                        }
-                                      }
-                                      return Math.min(lineBase, maxDiscountInBs);
-                                    }
-                                    return lineBase;
-                                  })()}
-                                  value={(() => {
-                                    const discountType =
-                                      orderForm.productDiscountTypes[product.id] || "monto";
-                                    if (discount === 0) return "";
-                                    if (discountType === "porcentaje") {
-                                      const percentage =
-                                        lineBase > 0 ? (discount / lineBase) * 100 : 0;
-                                      return Math.round(percentage * 100) / 100;
-                                    }
-                                    // Para monto, convertir a la moneda seleccionada
-                                    const discountCurrency =
-                                      orderForm.productDiscountCurrencies[product.id] ||
-                                      preferredCurrency;
-                                    return roundDisplayAmount(
-                                      normalizeMonetaryAmountFromLegacy(
-                                        discount,
-                                        discountCurrency,
-                                        rates,
-                                      ),
-                                    );
-                                  })()}
-                                  onChange={(e) =>
-                                    orderForm.handleProductDiscountChange(
-                                      product.id,
-                                      Number.parseFloat(e.target.value) || 0,
-                                      { inputCurrency: discountInputCurrency }
-                                    )
-                                  }
-                                  className="flex-1 min-w-0 text-sm"
-                                  placeholder={
-                                    orderForm.productDiscountTypes[product.id] ===
-                                    "porcentaje"
-                                      ? "0%"
-                                      : "0.00"
-                                  }
+                          <div className="grid grid-cols-2 gap-2.5 bg-muted/20 p-2.5 rounded-lg border border-border/40 text-xs sm:text-sm">
+                            <div>
+                              <span className="text-muted-foreground block text-[11px] uppercase">Precio unitario:</span>
+                              <Step1MoneyDisplay
+                                orderForm={orderForm as Step1OrderForm}
+                                amount={product.price}
+                                amountCurrency={getLinePriceCurrency(product)}
+                                primaryClassName="font-medium text-foreground text-xs sm:text-sm"
+                                secondaryClassName="text-[11px] text-muted-foreground"
+                                align="left"
+                              />
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[11px] uppercase">Subtotal base:</span>
+                              <Step1MoneyDisplay
+                                orderForm={orderForm as Step1OrderForm}
+                                amount={lineBase}
+                                amountCurrency={formBase}
+                                primaryClassName="font-medium text-foreground text-xs sm:text-sm"
+                                secondaryClassName="text-[11px] text-muted-foreground"
+                                align="left"
+                              />
+                            </div>
+                            {lineSurcharge > 0 && (
+                              <div className="col-span-2">
+                                <span className="text-muted-foreground block text-[11px] uppercase">Sobreprecio:</span>
+                                <Step1MoneyDisplay
+                                  orderForm={orderForm as Step1OrderForm}
+                                  amount={lineSurcharge}
+                                  amountCurrency={formBase}
+                                  primaryClassName="font-medium text-foreground text-xs sm:text-sm"
+                                  secondaryClassName="text-[11px] text-muted-foreground"
+                                  align="left"
                                 />
-                                {(orderForm.productDiscountTypes[product.id] ||
-                                  "monto") === "porcentaje" && (
-                                  <span className="text-sm text-muted-foreground shrink-0">
-                                    %
-                                  </span>
-                                )}
                               </div>
-                            </div>
-                            {(orderForm.productDiscountTypes[product.id] || "monto") ===
-                              "porcentaje" &&
-                              discount > 0 && (
-                                <p className="text-xs text-muted-foreground">
-                                  Equivalente: −{formatCurrency(discount, "Bs")}
-                                </p>
-                              )}
+                            )}
+                          </div>
+
+                          <div className="space-y-1.5 pt-1">
+                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Descuento</Label>
+                            <ProductDiscountControl
+                              product={product}
+                              orderForm={orderForm}
+                              rates={rates}
+                              lineBase={lineBase}
+                              preferredCurrency={preferredCurrency}
+                              isMobile={true}
+                            />
                           </div>
 
                           {canEditProducts && (
@@ -571,22 +645,22 @@ export function Step1Budget({
                                   e.stopPropagation();
                                   onEditProduct(product);
                                 }}
-                                className="flex-1"
+                                className="flex-1 h-9 font-medium"
                               >
-                                <Edit className="w-4 h-4 mr-2" />
+                                <Edit className="w-3.5 h-3.5 mr-1.5" />
                                 Editar
                               </Button>
                               <Button
                                 type="button"
-                                variant="destructive"
+                                variant="outline"
                                 size="sm"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   onRemoveProduct(product);
                                 }}
-                                className="flex-1"
+                                className="flex-1 h-9 font-medium text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
                               >
-                                <Trash2 className="w-4 h-4 mr-2" />
+                                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
                                 Eliminar
                               </Button>
                             </div>
@@ -598,296 +672,113 @@ export function Step1Budget({
                 </div>
 
                 {/* Vista de tabla: solo pantallas grandes (lg+) */}
-                <div className="hidden lg:block overflow-x-auto">
+                <div className="hidden lg:block overflow-x-auto rounded-lg border">
                   <div className="w-full min-w-0">
                     <Table className="w-full table-fixed">
                       <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[18%]">Producto</TableHead>
-                          <TableHead className="w-[9%]">Precio</TableHead>
-                          <TableHead className="w-[9%]">Sobreprecio</TableHead>
-                          <TableHead className="w-[7%] text-center">Cant.</TableHead>
-                          <TableHead className="w-[9%]">Subtotal</TableHead>
-                          <TableHead className="w-[22%]">Descuento</TableHead>
-                          <TableHead className="w-[9%]">Total final</TableHead>
-                          <TableHead className="w-[11%] text-right">Acciones</TableHead>
+                        <TableRow className="bg-muted/40 hover:bg-muted/40">
+                          <TableHead className="w-[22%] text-xs font-semibold uppercase tracking-wider">Producto</TableHead>
+                          <TableHead className="w-[12%] text-xs font-semibold uppercase tracking-wider text-right">Precio</TableHead>
+                          <TableHead className="w-[7%] text-xs font-semibold uppercase tracking-wider text-center">Cant.</TableHead>
+                          <TableHead className="w-[10%] text-xs font-semibold uppercase tracking-wider text-right">Sobreprecio</TableHead>
+                          <TableHead className="w-[12%] text-xs font-semibold uppercase tracking-wider text-right">Subtotal</TableHead>
+                          <TableHead className="w-[17%] text-xs font-semibold uppercase tracking-wider text-center">Descuento</TableHead>
+                          <TableHead className="w-[12%] text-xs font-semibold uppercase tracking-wider text-right text-emerald-600 dark:text-emerald-400">Total final</TableHead>
+                          <TableHead className="w-[8%] text-xs font-semibold uppercase tracking-wider text-right pr-4">Acciones</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {orderForm.selectedProducts.map((product) => {
                           const lineBase = orderForm.getProductLineBase(product);
-                          const lineSurcharge =
-                            orderForm.getProductLineSurcharge(product);
-                          const discount = product.discount || 0;
-                          const discountInputCurrency =
-                            orderForm.productDiscountCurrencies[product.id] || preferredCurrency;
+                          const lineSurcharge = orderForm.getProductLineSurcharge(product);
                           const rates = commercialRatesToExchangeRatesInput(
-                            orderForm.commercialExchangeRates ??
-                              orderForm.exchangeRates,
+                            orderForm.commercialExchangeRates ?? orderForm.exchangeRates,
                           );
                           const formBase = getStep1TotalsCurrency(
                             orderForm as Step1OrderForm,
                           );
-                          const discCurrency = getProductDiscountCurrencyForTotals(
-                            product,
-                            {
-                              productDiscountTypes: orderForm.productDiscountTypes,
-                              productDiscountCurrencies:
-                                orderForm.productDiscountCurrencies,
-                              preferredCurrency,
-                            },
-                          );
-                          const discountInBase = getLineDiscountInBaseCurrency(
-                            product,
-                            discount,
-                            discCurrency,
-                            formBase,
-                            rates,
-                          );
                           const finalTotal = orderForm.getProductBaseTotal(product);
 
                           return (
-                            <TableRow key={product.id}>
-                              <TableCell className="w-[20%]">
+                            <TableRow key={product.id} className="hover:bg-muted/20">
+                              <TableCell className="w-[22%] py-3">
                                 <div className="flex flex-col gap-1 min-w-0">
-                                  <span className="truncate text-sm">{product.name}</span>
+                                  <span className="truncate text-sm font-semibold text-foreground">
+                                    {product.name}
+                                  </span>
                                   <CommissionLineSourceBadge
                                     source={product.commissionLineSource}
                                   />
                                 </div>
                               </TableCell>
-                              <TableCell className="w-[9%] text-right text-sm">
-                                {orderForm.formattedProductPrices[product.id] ||
-                                  formatStep1Money(
-                                    orderForm,
-                                    product.price,
-                                    getLinePriceCurrency(product),
-                                  )}
+                              <TableCell className="w-[12%] text-right py-3">
+                                <Step1MoneyDisplay
+                                  orderForm={orderForm as Step1OrderForm}
+                                  amount={product.price}
+                                  amountCurrency={getLinePriceCurrency(product)}
+                                  primaryClassName="text-sm font-medium text-foreground"
+                                  secondaryClassName="text-xs text-muted-foreground font-normal"
+                                  align="right"
+                                />
                               </TableCell>
-                              <TableCell className="w-[9%] text-right text-sm">
-                                {lineSurcharge > 0
-                                  ? formatStep1Money(
-                                      orderForm,
-                                      lineSurcharge,
-                                      formBase,
-                                    )
-                                  : "—"}
+                              <TableCell className="w-[7%] text-center py-3">
+                                <span className="font-semibold text-sm px-2 py-0.5 rounded bg-muted/60 text-foreground">
+                                  {product.quantity || 1}
+                                </span>
                               </TableCell>
-                              <TableCell className="w-[7%] text-center text-sm font-medium">
-                                {product.quantity || 1}
+                              <TableCell className="w-[10%] text-right py-3">
+                                {lineSurcharge > 0 ? (
+                                  <Step1MoneyDisplay
+                                    orderForm={orderForm as Step1OrderForm}
+                                    amount={lineSurcharge}
+                                    amountCurrency={formBase}
+                                    primaryClassName="text-sm font-medium text-foreground"
+                                    secondaryClassName="text-xs text-muted-foreground font-normal"
+                                    align="right"
+                                  />
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">—</span>
+                                )}
                               </TableCell>
-                              <TableCell className="w-[9%] text-right text-sm">
-                                {orderForm.formattedProductTotals[product.id] ||
-                                  formatStep1Money(
-                                    orderForm,
-                                    lineBase,
-                                    formBase,
-                                  )}
+                              <TableCell className="w-[12%] text-right py-3">
+                                <Step1MoneyDisplay
+                                  orderForm={orderForm as Step1OrderForm}
+                                  amount={lineBase}
+                                  amountCurrency={formBase}
+                                  primaryClassName="text-sm font-medium text-foreground"
+                                  secondaryClassName="text-xs text-muted-foreground font-normal"
+                                  align="right"
+                                />
                               </TableCell>
-                              <TableCell className="w-[24%]">
-                                <div className="flex flex-col gap-1 min-w-0">
-                                <div className="flex gap-1.5 items-center flex-wrap">
-                                  <Select
-                                    value={
-                                      orderForm.productDiscountTypes[product.id] || "monto"
-                                    }
-                                    onValueChange={(value: "monto" | "porcentaje") =>
-                                      orderForm.handleProductDiscountTypeChange(
-                                        product.id,
-                                        value
-                                      )
-                                    }
-                                  >
-                                    <SelectTrigger className="w-28 h-8 text-xs px-2">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="monto">Monto</SelectItem>
-                                      <SelectItem value="porcentaje">Porcentaje</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                  {orderForm.productDiscountTypes[product.id] === "monto" && (
-                                    <Select
-                                      value={
-                                        orderForm.productDiscountCurrencies[product.id] ||
-                                        preferredCurrency
-                                      }
-                                      onValueChange={(value: Currency) => {
-                                        orderForm.setProductDiscountCurrencies((prev) => ({
-                                          ...prev,
-                                          [product.id]: value,
-                                        }));
-                                        // Recalcular el descuento mostrado
-                                        const currentDiscount = product.discount || 0;
-                                        const currentCurrency =
-                                          orderForm.productDiscountCurrencies[product.id] ||
-                                          preferredCurrency;
-                                        const newCurrency = value;
-                                        if (currentCurrency !== newCurrency) {
-                                          // Convertir el descuento actual a la nueva moneda
-                                          let discountInNewCurrency = currentDiscount;
-                                          if (currentCurrency === "Bs") {
-                                            const rate =
-                                              newCurrency === "USD"
-                                                ? orderForm.exchangeRates.USD?.rate
-                                                : orderForm.exchangeRates.EUR?.rate;
-                                            if (rate && rate > 0) {
-                                              discountInNewCurrency = currentDiscount / rate;
-                                            }
-                                          } else if (newCurrency === "Bs") {
-                                            const rate =
-                                              currentCurrency === "USD"
-                                                ? orderForm.exchangeRates.USD?.rate
-                                                : orderForm.exchangeRates.EUR?.rate;
-                                            if (rate && rate > 0) {
-                                              discountInNewCurrency = currentDiscount * rate;
-                                            }
-                                          } else {
-                                            const currentRate =
-                                              currentCurrency === "USD"
-                                                ? orderForm.exchangeRates.USD?.rate
-                                                : orderForm.exchangeRates.EUR?.rate;
-                                            const newRate =
-                                              newCurrency === "USD"
-                                                ? orderForm.exchangeRates.USD?.rate
-                                                : orderForm.exchangeRates.EUR?.rate;
-                                            if (
-                                              currentRate &&
-                                              newRate &&
-                                              currentRate > 0
-                                            ) {
-                                              discountInNewCurrency =
-                                                (currentDiscount * currentRate) / newRate;
-                                            }
-                                          }
-                                          orderForm.handleProductDiscountChange(
-                                            product.id,
-                                            discountInNewCurrency,
-                                            { inputCurrency: newCurrency }
-                                          );
-                                        }
-                                      }}
-                                    >
-                                      <SelectTrigger className="w-16 h-7 text-xs px-1">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="Bs">Bs</SelectItem>
-                                        <SelectItem value="USD">USD</SelectItem>
-                                        <SelectItem value="EUR">EUR</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  )}
-                                  <div className="flex items-center gap-1 flex-1 min-w-[80px]">
-                                    <Input
-                                      type="number"
-                                      min="0"
-                                      step={
-                                        orderForm.productDiscountTypes[product.id] ===
-                                        "porcentaje"
-                                          ? "1"
-                                          : "0.01"
-                                      }
-                                      max={(() => {
-                                        const discountType =
-                                          orderForm.productDiscountTypes[product.id] || "monto";
-                                        if (discountType === "porcentaje") {
-                                          return 100;
-                                        }
-
-                                        // Para monto, considerar el maxDiscount de la categoría
-                                        const category = orderForm.categories.find(
-                                          (cat) => cat.name === product.category
-                                        );
-                                        if (category && category.maxDiscount > 0) {
-                                          // Convertir maxDiscount a Bs si está en otra moneda
-                                          let maxDiscountInBs = category.maxDiscount;
-                                          if (
-                                            category.maxDiscountCurrency &&
-                                            category.maxDiscountCurrency !== "Bs"
-                                          ) {
-                                            const rate =
-                                              category.maxDiscountCurrency === "USD"
-                                                ? orderForm.exchangeRates.USD?.rate
-                                                : orderForm.exchangeRates.EUR?.rate;
-                                            if (rate && rate > 0) {
-                                              maxDiscountInBs = category.maxDiscount * rate;
-                                            }
-                                          }
-                                          return Math.min(lineBase, maxDiscountInBs);
-                                        }
-                                        return lineBase;
-                                      })()}
-                                      value={(() => {
-                                        const discountType =
-                                          orderForm.productDiscountTypes[product.id] || "monto";
-                                        if (discount === 0) return "";
-                                        if (discountType === "porcentaje") {
-                                          const percentage =
-                                            lineBase > 0
-                                              ? (discount / lineBase) * 100
-                                              : 0;
-                                          return Math.round(percentage * 100) / 100;
-                                        }
-                                        const discountCurrency =
-                                          orderForm.productDiscountCurrencies[product.id] ||
-                                          preferredCurrency;
-                                        return roundDisplayAmount(
-                                          normalizeMonetaryAmountFromLegacy(
-                                            discount,
-                                            discountCurrency,
-                                            rates,
-                                          ),
-                                        );
-                                      })()}
-                                      onChange={(e) =>
-                                        orderForm.handleProductDiscountChange(
-                                          product.id,
-                                          Number.parseFloat(e.target.value) || 0,
-                                          { inputCurrency: discountInputCurrency }
-                                        )
-                                      }
-                                      className="flex-1 min-w-0 h-7 text-sm"
-                                      placeholder={
-                                        orderForm.productDiscountTypes[product.id] ===
-                                        "porcentaje"
-                                          ? "0%"
-                                          : "0.00"
-                                      }
-                                    />
-                                    {(orderForm.productDiscountTypes[product.id] ||
-                                      "monto") === "porcentaje" && (
-                                      <span className="text-sm text-muted-foreground shrink-0">
-                                        %
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                {(orderForm.productDiscountTypes[product.id] || "monto") ===
-                                  "porcentaje" &&
-                                  discount > 0 && (
-                                    <p className="text-xs text-muted-foreground leading-tight">
-                                      Equivalente: −{formatCurrency(discount, "Bs")}
-                                    </p>
-                                  )}
-                                </div>
+                              <TableCell className="w-[17%] py-3">
+                                <ProductDiscountControl
+                                  product={product}
+                                  orderForm={orderForm}
+                                  rates={rates}
+                                  lineBase={lineBase}
+                                  preferredCurrency={preferredCurrency}
+                                  isMobile={false}
+                                />
                               </TableCell>
-                              <TableCell className="w-[10%] font-semibold text-right text-sm">
-                                {orderForm.formattedProductFinalTotals[product.id] ||
-                                  formatStep1Money(
-                                    orderForm,
-                                    finalTotal,
-                                    getStep1TotalsCurrency(orderForm),
-                                  )}
+                              <TableCell className="w-[12%] text-right py-3">
+                                <Step1MoneyDisplay
+                                  orderForm={orderForm as Step1OrderForm}
+                                  amount={finalTotal}
+                                  amountCurrency={getStep1TotalsCurrency(orderForm)}
+                                  primaryClassName="text-sm font-bold text-emerald-600 dark:text-emerald-400"
+                                  secondaryClassName="text-xs text-emerald-600/70 dark:text-emerald-400/70 font-normal"
+                                  align="right"
+                                />
                               </TableCell>
-                              <TableCell className="w-[12%] text-right">
+                              <TableCell className="w-[8%] text-right pr-3 py-3">
                                 {canEditProducts && (
-                                  <div className="flex justify-end gap-1">
+                                  <div className="flex items-center justify-end gap-1">
                                     <Button
                                       variant="ghost"
                                       size="sm"
                                       onClick={() => onEditProduct(product)}
-                                      className="h-7 w-7 p-0"
+                                      className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                      title="Editar producto"
                                     >
                                       <Edit className="w-3.5 h-3.5" />
                                     </Button>
@@ -895,7 +786,8 @@ export function Step1Budget({
                                       variant="ghost"
                                       size="sm"
                                       onClick={() => onRemoveProduct(product)}
-                                      className="h-7 w-7 p-0"
+                                      className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                      title="Eliminar producto"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </Button>
@@ -918,21 +810,22 @@ export function Step1Budget({
           </div>
 
           {/* Subtotal */}
-          <div className="flex justify-end">
-            <div className="text-right">
-              <div className="text-sm sm:text-lg font-semibold">
-                <span className="block sm:inline">
-                  Subtotal (después de descuentos):
-                </span>
-                <span className="block sm:inline sm:ml-1">
-                  {formatStep1Money(
-                    orderForm,
-                    orderForm.subtotalAfterProductDiscounts +
-                      orderForm.productSurchargeTotal,
-                    getStep1TotalsCurrency(orderForm),
-                  )}
-                </span>
-              </div>
+          <div className="flex justify-end pt-2">
+            <div className="flex items-center gap-4 bg-muted/40 border border-border/70 rounded-xl px-4 py-3 shadow-2xs">
+              <span className="text-sm sm:text-base font-medium text-muted-foreground">
+                Subtotal (después de descuentos):
+              </span>
+              <Step1MoneyDisplay
+                orderForm={orderForm as Step1OrderForm}
+                amount={
+                  orderForm.subtotalAfterProductDiscounts +
+                  orderForm.productSurchargeTotal
+                }
+                amountCurrency={getStep1TotalsCurrency(orderForm)}
+                primaryClassName="text-base sm:text-xl font-bold text-emerald-600 dark:text-emerald-400"
+                secondaryClassName="text-xs sm:text-sm text-emerald-600/70 dark:text-emerald-400/70 font-medium"
+                align="right"
+              />
             </div>
           </div>
         </CardContent>

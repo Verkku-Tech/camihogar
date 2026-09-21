@@ -16,38 +16,26 @@ export default defineConfig({
       },
       includeAssets: ['favicon.png', 'apple-touch-icon.png', 'icon.png', 'icon-192.png', 'icon-512.png'],
       manifest: {
-        name: 'Ordina ERP — Camihogar',
-        short_name: 'Camihogar',
+        name: 'Forge ERP — Camihogar',
+        short_name: 'Forge',
         description: 'Sistema Integral de Gestión Comercial, Manufactura y Despacho — Camihogar',
         start_url: '/',
         scope: '/',
-        theme_color: '#1CB569',
+        theme_color: '#1AD96D',
         background_color: '#111418',
         display: 'standalone',
         orientation: 'portrait-primary',
         icons: [
           {
-            src: '/icon-192.png',
-            sizes: '192x192',
-            type: 'image/png',
+            src: '/logos/Imagotipo.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
             purpose: 'any'
           },
           {
-            src: '/icon-192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'maskable'
-          },
-          {
-            src: '/icon-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any'
-          },
-          {
-            src: '/icon-512.png',
-            sizes: '512x512',
-            type: 'image/png',
+            src: '/logos/Imagotipo.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
             purpose: 'maskable'
           }
         ]

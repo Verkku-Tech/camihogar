@@ -1,11 +1,10 @@
 import { ProtectedRoute } from "@/components/auth/protected-route";
-import { Dashboard } from "@/components/dashboard/dashboard";
-import { useEffect } from "react";
+import { Home } from "@/components/home/home";
 
 export default function HomePage() {
   return (
     <ProtectedRoute>
-      <Dashboard />
+      <Home />
     </ProtectedRoute>
   );
 }

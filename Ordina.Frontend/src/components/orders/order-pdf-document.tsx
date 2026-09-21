@@ -37,7 +37,7 @@ import {
 
 /** Ajuste en UI o variables de entorno según tienda; valores por defecto para encabezado del PDF. */
 export const DEFAULT_ORDER_PDF_COMPANY = {
-  name: "Ordina",
+  name: "Forge",
   subtitle: "Pedido confirmado",
   address: "",
   phone: "",

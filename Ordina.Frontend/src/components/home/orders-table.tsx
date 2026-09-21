@@ -1,0 +1,517 @@
+"use client"
+
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { getOrders, Order } from "@/lib/storage"
+import { formatCurrency, getActiveExchangeRates } from "@/lib/currency-utils"
+import {
+  commercialRatesToExchangeRatesInput,
+  formatCommercialDualDisplay,
+  getCommercialRatesFromOrder,
+} from "@/lib/order-currency-display"
+import { getOrderBaseCurrency } from "@/lib/order-line-pricing"
+import { apiClient } from "@/lib/api-client"
+import { toast } from "sonner"
+import { Loader2 } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
+import {
+  isOrderVisibleToOnlineSellerTeam,
+  isOnlineSellerRole,
+} from "@/lib/order-online-seller-visibility"
+import { useOnlineSellerVisibility } from "@/hooks/use-online-seller-visibility"
+import { getOrderStatusBadgeLabel } from "@/components/orders/constants"
+import { resolveDisplayOrderStatus } from "@/lib/order-status-aggregation"
+import { usePagination } from "@/hooks/use-pagination"
+import { TablePagination } from "@/components/ui/table-pagination"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+
+interface OrdersTableProps {
+  /** Si el padre ya sincronizó pedidos, evita otro getOrders al montar. */
+  prefetchedOrders?: Order[] | null
+}
+
+const DEFAULT_ITEMS_PER_PAGE = 10
+
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "Presupuesto":
+      return "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300"
+    case "Validado":
+      return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300"
+    case "Reporte de fabricación":
+      return "bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-200"
+    case "Por Fabricar":
+      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
+    case "En Fabricación":
+    case "Fabricación":
+    case "Fabricándose":
+      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300"
+    case "Almacén":
+    case "En Almacén":
+      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+    case "Despacho":
+    case "Por despachar":
+    case "En Ruta":
+      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300"
+    case "Entregado":
+    case "Completada":
+    case "Completado":
+      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+    case "Declinado":
+    case "Cancelado":
+      return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+    case "Generado":
+    case "Generada":
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+    default:
+      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300"
+  }
+}
+
+function filterAndSortGeneratedOrders(
+  allOrders: Order[],
+  userRole: string | undefined,
+  onlineSellerIds: ReadonlySet<string>,
+  onlineSellerFilterLoading: boolean,
+) {
+  let list = allOrders
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  if (isOnlineSellerRole(userRole) && !onlineSellerFilterLoading && onlineSellerIds.size > 0) {
+    list = list.filter((o) =>
+      isOrderVisibleToOnlineSellerTeam(o, onlineSellerIds),
+    )
+  }
+  return list
+}
+
+export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
+  const router = useRouter()
+  const { user } = useAuth()
+  const { onlineSellerIds, isLoading: onlineSellerFilterLoading } =
+    useOnlineSellerVisibility()
+  const canValidateOrders =
+    user?.role === "Super Administrator" || user?.role === "Administrator"
+  const [orders, setOrders] = useState<Order[]>([])
+  const [isLoading, setIsLoading] = useState(prefetchedOrders === null || prefetchedOrders === undefined)
+  const [formattedAmounts, setFormattedAmounts] = useState<Record<string, string>>({})
+  const [validatingIds, setValidatingIds] = useState<Set<string>>(new Set())
+  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
+  const [confirmAction, setConfirmAction] = useState<{
+    order: Order
+    type: "validate"
+  } | null>(null)
+  const [isDeclineDialogOpen, setIsDeclineDialogOpen] = useState(false)
+  const [declineReasonInput, setDeclineReasonInput] = useState("")
+  const [declineTargetOrder, setDeclineTargetOrder] = useState<Order | null>(null)
+
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedOrders,
+    goToPage,
+    startIndex,
+    endIndex,
+    totalItems,
+  } = usePagination({ data: orders, itemsPerPage })
+
+  const pageIds = useMemo(
+    () => paginatedOrders.map((o) => o.id).join("|"),
+    [paginatedOrders],
+  )
+
+  const reloadGeneratedOrders = useCallback(async () => {
+    const allOrders = await getOrders()
+    setOrders(
+      filterAndSortGeneratedOrders(
+        allOrders,
+        user?.role,
+        onlineSellerIds,
+        onlineSellerFilterLoading,
+      ),
+    )
+  }, [user?.role, onlineSellerIds, onlineSellerFilterLoading])
+
+  useEffect(() => {
+    if (prefetchedOrders === null) {
+      setIsLoading(true)
+      return
+    }
+    if (prefetchedOrders !== undefined) {
+      setOrders(
+        filterAndSortGeneratedOrders(
+          prefetchedOrders,
+          user?.role,
+          onlineSellerIds,
+          onlineSellerFilterLoading,
+        ),
+      )
+      setIsLoading(false)
+      return
+    }
+    const loadOrders = async () => {
+      try {
+        await reloadGeneratedOrders()
+      } catch (error) {
+        console.error("Error loading orders:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    void loadOrders()
+  }, [
+    prefetchedOrders,
+    reloadGeneratedOrders,
+    user?.role,
+    onlineSellerIds,
+    onlineSellerFilterLoading,
+  ])
+
+  useEffect(() => {
+    const formatAmounts = async () => {
+      if (paginatedOrders.length === 0) {
+        setFormattedAmounts({})
+        return
+      }
+
+      try {
+        const formatted: Record<string, string> = {}
+        const fallbackRates = await getActiveExchangeRates()
+
+        for (const order of paginatedOrders) {
+          const baseCurrency = getOrderBaseCurrency(order)
+          const commercial = commercialRatesToExchangeRatesInput(
+            getCommercialRatesFromOrder(order),
+          )
+          const live = commercialRatesToExchangeRatesInput({
+            USD: fallbackRates.USD,
+            EUR: fallbackRates.EUR,
+          })
+          formatted[order.id] = formatCommercialDualDisplay(
+            order.total,
+            baseCurrency,
+            { commercialRates: commercial, liveRates: live },
+          )
+        }
+
+        setFormattedAmounts(formatted)
+      } catch (error) {
+        console.error("Error formatting amounts:", error)
+      }
+    }
+
+    formatAmounts()
+  }, [pageIds, paginatedOrders])
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString("es-ES", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
+  }
+
+  const handleValidate = async (order: Order, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    if (!canValidateOrders) {
+      toast.error("Solo administradores pueden validar pedidos.")
+      return
+    }
+    const productsToValidate = order.products.filter(
+      (p) => !p.logisticStatus || p.logisticStatus === "Generado"
+    )
+    if (productsToValidate.length === 0) {
+      toast.info("Todos los productos ya están validados.")
+      return
+    }
+
+    setValidatingIds((prev) => new Set(prev).add(order.id))
+    try {
+      for (const p of productsToValidate) {
+        await apiClient.validateOrderItem(order.id, p.id)
+      }
+      await reloadGeneratedOrders()
+      toast.success("Pedido validado exitosamente")
+    } catch (error) {
+      console.error("Error validando pedido:", error)
+      toast.error("Error al validar el pedido")
+    } finally {
+      setValidatingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(order.id)
+        return next
+      })
+      setConfirmAction(null)
+    }
+  }
+
+  const handleDecline = async (order: Order, reason?: string) => {
+    if (!canValidateOrders) {
+      toast.error("Solo administradores pueden declinar pedidos.")
+      return
+    }
+    setValidatingIds((prev) => new Set(prev).add(order.id))
+    try {
+      await apiClient.declineOrder(order.id, reason)
+      await reloadGeneratedOrders()
+      toast.success("Pedido declinado")
+    } catch (error) {
+      console.error("Error declinando pedido:", error)
+      toast.error("Error al declinar el pedido")
+    } finally {
+      setValidatingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(order.id)
+        return next
+      })
+      setIsDeclineDialogOpen(false)
+      setDeclineReasonInput("")
+      setDeclineTargetOrder(null)
+      setConfirmAction(null)
+    }
+  }
+
+  const isGenerated = (order: Order) =>
+    order.status === "Generado" || order.status === "Generada"
+
+  if (isLoading || prefetchedOrders === null) {
+    return (
+      <Card>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="font-medium text-muted-foreground">Pedido</TableHead>
+                  <TableHead className="font-medium text-muted-foreground">Subtotal</TableHead>
+                  <TableHead className="font-medium text-muted-foreground">Fecha Creación</TableHead>
+                  <TableHead className="font-medium text-muted-foreground">Cliente</TableHead>
+                  <TableHead className="font-medium text-muted-foreground">Estado</TableHead>
+                  <TableHead className="font-medium text-muted-foreground text-right">Acción</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[1, 2, 3, 4, 5].map((index) => (
+                  <TableRow key={index}>
+                    <TableCell className="h-12 animate-pulse bg-muted" />
+                    <TableCell className="h-12 animate-pulse bg-muted" />
+                    <TableCell className="h-12 animate-pulse bg-muted" />
+                    <TableCell className="h-12 animate-pulse bg-muted" />
+                    <TableCell className="h-12 animate-pulse bg-muted" />
+                    <TableCell className="h-12 animate-pulse bg-muted" />
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (orders.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <p className="text-center text-muted-foreground">
+            No hay pedidos pendientes de validación
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <>
+      <Card>
+        <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="font-medium text-muted-foreground">Pedido</TableHead>
+                <TableHead className="font-medium text-muted-foreground">Subtotal</TableHead>
+                <TableHead className="font-medium text-muted-foreground">Fecha Creación</TableHead>
+                <TableHead className="font-medium text-muted-foreground">Cliente</TableHead>
+                <TableHead className="font-medium text-muted-foreground">Estado</TableHead>
+                <TableHead className="font-medium text-muted-foreground text-right">Acción</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedOrders.map((order) => (
+                <TableRow
+                  key={order.id}
+                  className="hover:bg-muted/50 cursor-pointer"
+                  onClick={() => router.push(`/pedidos/${order.orderNumber}`)}
+                >
+                  <TableCell className="font-medium text-green-600">{order.orderNumber}</TableCell>
+                  <TableCell className="font-medium">
+                    {formattedAmounts[order.id] || formatCurrency(order.subtotal, order.baseCurrency || "Bs")}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{formatDate(order.createdAt)}</TableCell>
+                  <TableCell className="text-green-600 font-medium">{order.clientName}</TableCell>
+                  <TableCell>
+                    {(() => {
+                      const displayStatus = resolveDisplayOrderStatus(order)
+                      return (
+                        <Badge
+                          className={`${getStatusColor(displayStatus)} whitespace-nowrap`}
+                          title={displayStatus}
+                        >
+                          {getOrderStatusBadgeLabel(displayStatus, "compact")}
+                        </Badge>
+                      )
+                    })()}
+                  </TableCell>
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    {isGenerated(order) && canValidateOrders ? (
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                          disabled={validatingIds.has(order.id)}
+                          onClick={() => setConfirmAction({ order, type: "validate" })}
+                        >
+                          {validatingIds.has(order.id) && (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          )}
+                          Validar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={validatingIds.has(order.id)}
+                          onClick={() => {
+                            setDeclineReasonInput("");
+                            setDeclineTargetOrder(order);
+                            setIsDeclineDialogOpen(true);
+                          }}
+                        >
+                          Declinar
+                        </Button>
+                      </div>
+                    ) : (
+                      <span
+                        className="text-xs text-muted-foreground"
+                        title={
+                          isGenerated(order) && !canValidateOrders
+                            ? "Solo administradores pueden validar pedidos"
+                            : undefined
+                        }
+                      >
+                        —
+                      </span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        <div className="border-t px-4 py-3">
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={goToPage}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        </div>
+      </CardContent>
+    </Card>
+
+    <AlertDialog
+      open={confirmAction !== null}
+      onOpenChange={(open) => !open && setConfirmAction(null)}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>¿Validar pedido?</AlertDialogTitle>
+          <AlertDialogDescription>
+            El pedido pasará a estado Validado. Todos los productos pendientes serán validados.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={validatingIds.has(confirmAction?.order.id ?? "")}
+            onClick={() => {
+              if (!confirmAction) return
+              handleValidate(confirmAction.order)
+            }}
+          >
+            {validatingIds.has(confirmAction?.order.id ?? "")
+              ? "Procesando..."
+              : "Confirmar"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <Dialog open={isDeclineDialogOpen} onOpenChange={setIsDeclineDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>¿Declinar pedido?</DialogTitle>
+          <DialogDescription>
+            El pedido pasará a estado Declinado y quedará fuera de reportes y despachos. Puedes revertirlo luego desde el detalle del pedido.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <label htmlFor="decline-reason-dashboard" className="text-sm font-medium">
+            Razón de declinación <span className="text-destructive">*</span>
+          </label>
+          <Textarea
+            id="decline-reason-dashboard"
+            value={declineReasonInput}
+            onChange={(e) => setDeclineReasonInput(e.target.value)}
+            placeholder="Motivo por el cual se declinó el pedido..."
+            rows={3}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsDeclineDialogOpen(false)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              if (declineTargetOrder) {
+                handleDecline(declineTargetOrder, declineReasonInput.trim() || undefined);
+              }
+            }}
+            disabled={validatingIds.has(declineTargetOrder?.id ?? "") || !declineReasonInput.trim()}
+          >
+            {validatingIds.has(declineTargetOrder?.id ?? "") ? "Procesando..." : "Declinar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
+  )
+}

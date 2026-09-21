@@ -2,8 +2,8 @@
 
 import { useState } from "react"
 import { Sidebar } from "@/components/dashboard/sidebar"
-import { DashboardHeader } from "@/components/dashboard/dashboard-header"
-import { BudgetsTable } from "@/components/dashboard/budgets-table"
+import { HomeHeader } from "@/components/home/home-header"
+import { BudgetsTable } from "@/components/home/budgets-table"
 import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
 
 
@@ -15,7 +15,7 @@ export default function PresupuestosPage() {
       <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
+        <HomeHeader onMenuClick={() => setSidebarOpen(true)} />
 
         <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
           

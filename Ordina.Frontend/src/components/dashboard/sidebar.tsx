@@ -74,8 +74,8 @@ interface SidebarProps {
 }
 
 const navigation = [
-  { id: "home", name: "Home", href: "/", icon: Home },
-  { id: "analytics", name: "Dashboard", href: "/dashboard", icon: BarChart3, adminOnly: true },
+  { id: "home", name: "Inicio", href: "/", icon: Home },
+  { id: "analytics", name: "Métricas", href: "/dashboard", icon: BarChart3, adminOnly: true },
   { id: "proveedores", name: "Proveedores", href: "/proveedores", icon: Users },
   { id: "clientes", name: "Clientes", href: "/clientes", icon: UserCheck },
   { id: "tiendas", name: "Tiendas", href: "/tiendas", icon: Building2 },
@@ -341,7 +341,13 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
       >
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex items-center justify-between h-16 px-6 border-b border-sidebar-border shrink-0">
-            <h1 className="text-xl font-bold text-sidebar-foreground">Ordina</h1>
+            <Link href="/" className="flex items-center">
+              <img
+                src="/logos/Isologo.svg"
+                alt="Forge"
+                className="h-10 w-auto object-contain"
+              />
+            </Link>
             <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => onOpenChange(false)}>
               <X className="w-5 h-5" />
             </Button>

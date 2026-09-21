@@ -166,9 +166,10 @@ export function InstallPrompt() {
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-sm">
       <div className="bg-card border border-border rounded-lg shadow-lg p-4 space-y-3">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <img src="/logos/Imagotipo.svg" alt="Forge" className="w-9 h-9 rounded-lg shrink-0 object-contain" />
           <div className="flex-1">
-            <h3 className="font-semibold text-sm mb-1">Instalar CamiHogar</h3>
+            <h3 className="font-semibold text-sm mb-1">Instalar Forge</h3>
             <p className="text-xs text-muted-foreground">
               Instala la app para acceso rápido y funcionamiento offline
             </p>
@@ -210,9 +211,10 @@ export function InstallPrompt() {
     return (
       <div className="fixed bottom-4 right-4 z-50 max-w-sm">
         <div className="bg-card border border-border rounded-lg shadow-lg p-4 space-y-3">
-          <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start justify-between gap-3">
+            <img src="/logos/Imagotipo.svg" alt="Forge" className="w-9 h-9 rounded-lg shrink-0 object-contain" />
             <div className="flex-1">
-              <h3 className="font-semibold text-sm mb-1">Instalar CamiHogar</h3>
+              <h3 className="font-semibold text-sm mb-1">Instalar Forge</h3>
               <p className="text-xs text-muted-foreground">
                 {isIOS
                   ? "Toca el botón Compartir y luego 'Añadir a pantalla de inicio'"
