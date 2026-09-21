@@ -8,6 +8,7 @@ using Ordina.Domain.Catalog;
 using Ordina.Domain.Dispatch;
 using Ordina.Domain.Finance;
 using Ordina.Domain.Manufacturing;
+using Ordina.Domain.Notifications;
 using Ordina.Domain.Orders;
 using Ordina.Domain.Security;
 using Ordina.Domain.Stores;
@@ -48,6 +49,7 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
         services.AddScoped<IDashboardRepository, DashboardRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
 
         services.AddScoped<IRepository<Category>>(sp => new MongoRepository<Category>(sp.GetRequiredService<MongoDbContext>().Database, "categories"));
         services.AddScoped<IRepository<Provider>>(sp => new MongoRepository<Provider>(sp.GetRequiredService<MongoDbContext>().Database, "providers"));
