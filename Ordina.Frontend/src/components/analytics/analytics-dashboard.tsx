@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/auth-context"
-import { Sidebar } from "@/components/dashboard/sidebar"
-import { DashboardHeader } from "@/components/dashboard/dashboard-header"
+import { Sidebar } from "@/components/layout/sidebar"
+import { HomeHeader as DashboardHeader } from "@/components/home/home-header"
 import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -249,7 +249,7 @@ export function AnalyticsDashboard() {
           </div>
 
           {/* Top KPI Cards (Curated Palette & Visual Weight) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4 items-stretch">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4 items-stretch">
 
             {/* Pedidos */}
             <BoneyardSkeleton
@@ -550,7 +550,7 @@ export function AnalyticsDashboard() {
             {isLoading ? (
               <TopProductsTableSkeleton />
             ) : (
-              <TopProductsTable data={topProducts} isLoading={isLoading} />
+              <TopProductsTable data={topProducts} isLoading={isLoading} period={period} />
             )}
           </div>
         </div>
