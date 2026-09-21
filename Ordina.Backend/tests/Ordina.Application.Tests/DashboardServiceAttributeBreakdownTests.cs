@@ -212,4 +212,89 @@ public class DashboardServiceAttributeBreakdownTests
         Assert.Equal(4, telaAttr.Options[1].UnitsSold);
         Assert.Equal(44.44m, telaAttr.Options[1].Percentage);
     }
+
+    [Fact]
+    public async Task GetProductAttributeBreakdownAsync_HandlesArrayAttributesAndResolvesValueLabels()
+    {
+        // Arrange
+        var mockRepo = new Mock<IDashboardRepository>();
+        var categories = new List<Category>
+        {
+            new()
+            {
+                Name = "Camas",
+                Attributes = new List<CategoryAttribute>
+                {
+                    new()
+                    {
+                        Id = "tela",
+                        Title = "Tela",
+                        Values = new List<AttributeValue>
+                        {
+                            new() { Id = "val_lino_01", Label = "Lino Premium" },
+                            new() { Id = "val_ter_02", Label = "Terciopelo Italiano" }
+                        }
+                    },
+                    new()
+                    {
+                        Id = "color",
+                        Title = "Color"
+                    }
+                }
+            }
+        };
+        mockRepo.Setup(r => r.GetCategoriesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(categories);
+
+        var now = DateTime.UtcNow;
+        var orders = new List<Order>
+        {
+            new()
+            {
+                Id = "ord-1",
+                OrderNumber = "ORD-001",
+                TypeString = "Order",
+                StatusString = "Entregado",
+                CreatedAt = now,
+                Total = 1000m,
+                Products = new List<OrderProduct>
+                {
+                    new()
+                    {
+                        Name = "Cama Matrimonial",
+                        Category = "Camas",
+                        Quantity = 3,
+                        Total = 1000m,
+                        Attributes = new Dictionary<string, object>
+                        {
+                            // Stored as object array with attribute value ID
+                            { "tela", new object[] { "val_lino_01" } },
+                            // Stored as string array with raw label
+                            { "color", new string[] { "Gris Plomo" } }
+                        }
+                    }
+                }
+            }
+        };
+        mockRepo.Setup(r => r.GetAllOrdersForDashboardAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(orders);
+
+        var service = new DashboardService(mockRepo.Object);
+
+        // Act
+        var result = await service.GetProductAttributeBreakdownAsync("Cama Matrimonial", "month");
+
+        // Assert
+        var telaAttr = result.Attributes.First(a => a.AttributeTitle == "Tela");
+        Assert.Single(telaAttr.Options);
+        // Must be the resolved label "Lino Premium", NOT "System.Object[]" or "val_lino_01"
+        Assert.Equal("Lino Premium", telaAttr.Options[0].Value);
+        Assert.Equal(3, telaAttr.Options[0].UnitsSold);
+
+        var colorAttr = result.Attributes.First(a => a.AttributeTitle == "Color");
+        Assert.Single(colorAttr.Options);
+        // Must be "Gris Plomo", NOT "System.Object[]"
+        Assert.Equal("Gris Plomo", colorAttr.Options[0].Value);
+        Assert.Equal(3, colorAttr.Options[0].UnitsSold);
+    }
 }

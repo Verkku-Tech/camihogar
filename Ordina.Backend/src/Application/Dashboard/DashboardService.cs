@@ -839,12 +839,15 @@ public class DashboardService : IDashboardService
 
                     if (attrEntry.Value != null)
                     {
-                        var rawValue = attrEntry.Value.ToString()?.Trim();
-                        if (!string.IsNullOrEmpty(rawValue))
+                        var extractedValues = ExtractAttributeValues(attrEntry.Value, catAttr);
+                        if (extractedValues.Count > 0)
                         {
                             var qty = p.Quantity > 0 ? p.Quantity : 1;
                             totalUnitsWithThisAttr += qty;
-                            optionCounts[rawValue] = optionCounts.GetValueOrDefault(rawValue) + qty;
+                            foreach (var val in extractedValues)
+                            {
+                                optionCounts[val] = optionCounts.GetValueOrDefault(val) + qty;
+                            }
                         }
                     }
                 }
@@ -870,5 +873,122 @@ public class DashboardService : IDashboardService
             categoryName,
             totalUnitsSold,
             attributeBreakdowns);
+    }
+
+    private static List<string> ExtractAttributeValues(object? rawValue, Ordina.Domain.Catalog.CategoryAttribute? catAttr)
+    {
+        var list = new List<string>();
+        if (rawValue == null) return list;
+
+        void AddValue(string? val)
+        {
+            if (string.IsNullOrWhiteSpace(val)) return;
+            var trimmed = val.Trim();
+            if (trimmed.Equals("System.Object[]", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("System.Object", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            // Resolve label from CategoryAttribute.Values if trimmed matches an Id or Label
+            if (catAttr?.Values != null && catAttr.Values.Count > 0)
+            {
+                var match = catAttr.Values.FirstOrDefault(v =>
+                    string.Equals(v.Id, trimmed, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(v.Label, trimmed, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(v.ProductId, trimmed, StringComparison.OrdinalIgnoreCase));
+                if (match != null && !string.IsNullOrWhiteSpace(match.Label))
+                {
+                    list.Add(match.Label.Trim());
+                    return;
+                }
+            }
+
+            list.Add(trimmed);
+        }
+
+        if (rawValue is string strVal)
+        {
+            if (strVal.StartsWith('[') && strVal.EndsWith(']'))
+            {
+                try
+                {
+                    var parsed = System.Text.Json.JsonSerializer.Deserialize<List<object>>(strVal);
+                    if (parsed != null)
+                    {
+                        foreach (var item in parsed)
+                            AddValue(item?.ToString());
+                        return list;
+                    }
+                }
+                catch
+                {
+                    // Not valid JSON array, fallback to string
+                }
+            }
+            AddValue(strVal);
+            return list;
+        }
+
+        if (rawValue is System.Text.Json.JsonElement jsonElem)
+        {
+            if (jsonElem.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var item in jsonElem.EnumerateArray())
+                {
+                    if (item.ValueKind == System.Text.Json.JsonValueKind.Object && item.TryGetProperty("label", out var lbl))
+                        AddValue(lbl.GetString());
+                    else
+                        AddValue(item.ToString());
+                }
+                return list;
+            }
+            if (jsonElem.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                if (jsonElem.TryGetProperty("label", out var lbl))
+                    AddValue(lbl.GetString());
+                else if (jsonElem.TryGetProperty("value", out var val))
+                    AddValue(val.GetString());
+                else
+                    AddValue(jsonElem.ToString());
+                return list;
+            }
+            AddValue(jsonElem.GetString() ?? jsonElem.ToString());
+            return list;
+        }
+
+        if (rawValue is MongoDB.Bson.BsonArray bsonArr)
+        {
+            foreach (var item in bsonArr)
+            {
+                AddValue(item.AsString ?? item.ToString());
+            }
+            return list;
+        }
+
+        if (rawValue is System.Collections.IEnumerable enumerable)
+        {
+            foreach (var item in enumerable)
+            {
+                if (item != null)
+                {
+                    if (item is IDictionary<string, object> dict)
+                    {
+                        if (dict.TryGetValue("label", out var lbl) && lbl != null)
+                            AddValue(lbl.ToString());
+                        else if (dict.TryGetValue("value", out var val) && val != null)
+                            AddValue(val.ToString());
+                        else
+                            AddValue(item.ToString());
+                    }
+                    else
+                    {
+                        AddValue(item.ToString());
+                    }
+                }
+            }
+            return list;
+        }
+
+        AddValue(rawValue.ToString());
+        return list;
     }
 }
