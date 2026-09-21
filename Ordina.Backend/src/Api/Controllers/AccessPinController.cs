@@ -111,7 +111,7 @@ public class AccessPinController : ControllerBase
                     Title: "Uso de PIN de Emergencia",
                     Message: $"El usuario '{userName}' utilizó un PIN de acceso de emergencia para el pedido {request.OrderId}.",
                     Severity: "warning",
-                    TargetRoles: new[] { "Administrator", "Super Administrator" }), cancellationToken);
+                    TargetRoles: new() { "Administrator", "Super Administrator" }), cancellationToken);
             }
             catch (Exception ex)
             {

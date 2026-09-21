@@ -116,6 +116,17 @@ public class OrderRepository : MongoRepository<Order>, IOrderRepository
                         p.LocationStatusString == "DISPONIBILIDAD INMEDIATA" ||
                         (p.LocationStatusString == "FABRICACION" && p.ManufacturingStatusString == "almacen_no_fabricado")));
                     break;
+                case "fabricacion_retrasada":
+                    var twentyFiveDaysAgo = DateTime.UtcNow.AddDays(-25);
+                    filters.Add(fb.ElemMatch(o => o.Products, p => p.LocationStatusString == "FABRICACION" && p.ManufacturingStatusString != "fabricado"));
+                    filters.Add(fb.Lt(o => o.UpdatedAt, twentyFiveDaysAgo));
+                    filters.Add(fb.Nin(o => o.StatusString, new[] { "Declinado", "Cancelado", "Entregado", "Completado", "Completada" }));
+                    break;
+                case "reservas_vencidas":
+                    var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
+                    filters.Add(fb.Lt(o => o.CreatedAt, thirtyDaysAgo));
+                    filters.Add(fb.Nin(o => o.StatusString, new[] { "Declinado", "Cancelado", "Entregado", "Completado", "Completada" }));
+                    break;
                 case "en_despacho":
                     filters.Add(fb.ElemMatch(o => o.Products, p => p.LocationStatusString == "EN DESPACHO"));
                     break;

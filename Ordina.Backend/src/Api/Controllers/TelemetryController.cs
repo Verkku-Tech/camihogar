@@ -73,7 +73,7 @@ public class TelemetryController : ControllerBase
                                 Title: "Conflicto de sincronización offline",
                                 Message: $"Conflicto o error de sincronización offline: {log.Message}",
                                 Severity: "error",
-                                TargetRoles: new[] { "Administrator", "Super Administrator" }));
+                                TargetRoles: new() { "Administrator", "Super Administrator" }));
                         }
                         break;
                     case "WARN":

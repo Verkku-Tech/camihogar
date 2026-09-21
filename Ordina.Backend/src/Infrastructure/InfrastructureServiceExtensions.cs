@@ -74,6 +74,9 @@ public static class InfrastructureServiceExtensions
         services.AddSingleton<IndexManager>();
         services.AddScoped<MongoDatabaseSeeder>();
 
+        // 5. Background Workers
+        services.AddHostedService<Ordina.Infrastructure.BackgroundServices.DelayedOrdersNotifierWorker>();
+
         return services;
     }
 }
