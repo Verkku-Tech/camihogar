@@ -73,6 +73,19 @@ public class DashboardController : ControllerBase
         return Ok(data);
     }
 
+    [HttpGet("top-products/attribute-breakdown")]
+    public async Task<ActionResult<ProductAttributeBreakdownResponseDto>> GetProductAttributeBreakdown(
+        [FromQuery] string productName,
+        [FromQuery] string period = "month",
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(productName))
+            return BadRequest("El nombre del producto es requerido.");
+
+        var data = await _dashboardService.GetProductAttributeBreakdownAsync(productName, period, ct);
+        return Ok(data);
+    }
+
     [HttpGet("pipeline")]
     public async Task<ActionResult<PipelineSnapshotDto>> GetPipeline(CancellationToken ct = default)
     {
