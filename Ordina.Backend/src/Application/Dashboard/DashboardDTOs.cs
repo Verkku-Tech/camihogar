@@ -90,6 +90,9 @@ public record ProductAttributeBreakdownResponseDto(
     string ProductName,
     string Category,
     int TotalUnitsSold,
+    decimal TotalInvoicedUsd,
+    decimal AverageUnitPriceUsd,
+    int OrdersCount,
     IReadOnlyList<AttributeBreakdownDto> Attributes);
 
 public record PipelineSnapshotDto(

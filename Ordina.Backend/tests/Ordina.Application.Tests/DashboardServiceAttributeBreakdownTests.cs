@@ -191,6 +191,9 @@ public class DashboardServiceAttributeBreakdownTests
         Assert.Equal("Cama Matrimonial", result.ProductName);
         Assert.Equal("Camas", result.Category);
         Assert.Equal(9, result.TotalUnitsSold);
+        Assert.Equal(2250m, result.TotalInvoicedUsd);
+        Assert.Equal(250m, result.AverageUnitPriceUsd);
+        Assert.Equal(3, result.OrdersCount);
         Assert.Equal(2, result.Attributes.Count);
 
         var copeteAttr = result.Attributes.First(a => a.AttributeTitle == "Copete");

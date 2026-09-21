@@ -808,13 +808,35 @@ public class DashboardService : IDashboardService
         var allOrders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
         var orders = allOrders.Where(o => IsValidOrder(o) && o.CreatedAt >= periodStart).ToList();
 
-        var matchingProducts = orders
-            .SelectMany(o => o.Products ?? Enumerable.Empty<OrderProduct>())
-            .Where(p => string.Equals(p.Name?.Trim(), productName.Trim(), StringComparison.OrdinalIgnoreCase))
+        var allRates = await _dashboardRepository.GetExchangeRatesAsync(cancellationToken);
+        var liveUsdRate = allRates?.FirstOrDefault(r => (r.ToCurrency == "USD" || r.FromCurrency == "USD") && r.IsActive)?.Rate ?? 1.0m;
+        if (liveUsdRate <= 0) liveUsdRate = 1.0m;
+
+        var matchingOrders = orders
+            .Where(o => (o.Products ?? Enumerable.Empty<OrderProduct>())
+                .Any(p => string.Equals(p.Name?.Trim(), productName.Trim(), StringComparison.OrdinalIgnoreCase)))
             .ToList();
 
+        var matchingProductsWithUsd = orders
+            .SelectMany(o =>
+            {
+                var orderTotalUsd = ConvertOrderTotalToUsd(o, liveUsdRate);
+                var ratio = o.Total > 0 ? (orderTotalUsd / o.Total) : 1m;
+                return (o.Products ?? Enumerable.Empty<OrderProduct>()).Select(p => new
+                {
+                    Product = p,
+                    TotalUsd = p.Total * ratio
+                });
+            })
+            .Where(x => string.Equals(x.Product.Name?.Trim(), productName.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var matchingProducts = matchingProductsWithUsd.Select(x => x.Product).ToList();
         var categoryName = matchingProducts.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Category))?.Category?.Trim() ?? "";
         var totalUnitsSold = matchingProducts.Sum(p => p.Quantity > 0 ? p.Quantity : 1);
+        var totalInvoicedUsd = Math.Round(matchingProductsWithUsd.Sum(x => x.TotalUsd), 2);
+        var averageUnitPriceUsd = totalUnitsSold > 0 ? Math.Round(totalInvoicedUsd / totalUnitsSold, 2) : 0m;
+        var ordersCount = matchingOrders.Count;
 
         var categories = await _dashboardRepository.GetCategoriesAsync(cancellationToken);
         var category = categories.FirstOrDefault(c => string.Equals(c.Name?.Trim(), categoryName, StringComparison.OrdinalIgnoreCase));
@@ -872,6 +894,9 @@ public class DashboardService : IDashboardService
             productName,
             categoryName,
             totalUnitsSold,
+            totalInvoicedUsd,
+            averageUnitPriceUsd,
+            ordersCount,
             attributeBreakdowns);
     }
 
