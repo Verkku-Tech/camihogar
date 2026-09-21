@@ -148,3 +148,36 @@ public record SalesForecastResponseDto(
     IReadOnlyList<ForecastDataPointDto> Points,
     ForecastSummaryDto Summary);
 
+public record AgingReportDto(
+    string Range,
+    string Label,
+    int Count,
+    decimal TotalBalanceUsd);
+
+public record PaymentMixDto(
+    string Method,
+    string Label,
+    int Count,
+    decimal TotalUsd,
+    decimal Percentage);
+
+public record SellerCommissionDto(
+    string SellerId,
+    string SellerName,
+    decimal TotalSalesUsd,
+    decimal EstimatedCommissionUsd);
+
+public record AovByBranchDto(
+    string BranchId,
+    string BranchName,
+    decimal AverageOrderValue,
+    int OrdersCount,
+    decimal TotalSalesUsd);
+
+public record FinancesMetricsResponseDto(
+    decimal TotalPendingBalanceUsd,
+    IReadOnlyList<AgingReportDto> AgingReport,
+    IReadOnlyList<PaymentMixDto> PaymentMix,
+    IReadOnlyList<SellerCommissionDto> TopSellersCommissions,
+    IReadOnlyList<AovByBranchDto> AovByBranch);
+
