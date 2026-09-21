@@ -10,29 +10,55 @@ export function useNotifications() {
   const [notifications, setNotifications] = useState<NotificationDto[]>([])
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
+  const [hasMore, setHasMore] = useState<boolean>(true)
   const eventSourceRef = useRef<EventSource | null>(null)
+
+  const PAGE_SIZE = 10
 
   const loadNotifications = useCallback(async () => {
     if (!user) {
       setNotifications([])
       setUnreadCount(0)
       setIsLoading(false)
+      setHasMore(false)
       return
     }
 
     try {
       const [list, count] = await Promise.all([
-        apiClient.getNotifications(30).catch(() => []),
+        apiClient.getNotifications(0, PAGE_SIZE).catch(() => []),
         apiClient.getUnreadNotificationCount().catch(() => 0)
       ])
       setNotifications(list)
       setUnreadCount(count)
+      setHasMore(list.length === PAGE_SIZE)
     } catch {
       // ponytail: graceful degradation if offline
     } finally {
       setIsLoading(false)
     }
   }, [user])
+
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore || !user) return
+    setIsLoadingMore(true)
+    try {
+      const more = await apiClient.getNotifications(notifications.length, PAGE_SIZE)
+      if (more.length < PAGE_SIZE) {
+        setHasMore(false)
+      }
+      setNotifications((prev) => {
+        const existingIds = new Set(prev.map((n) => n.id))
+        const uniqueMore = more.filter((n) => !existingIds.has(n.id))
+        return [...prev, ...uniqueMore]
+      })
+    } catch {
+      // ponytail: ignore network hiccups
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [isLoadingMore, hasMore, user, notifications.length])
 
   useEffect(() => {
     loadNotifications()
@@ -101,12 +127,35 @@ export function useNotifications() {
     await apiClient.markAllNotificationsAsRead().catch(() => {})
   }, [])
 
+  const deleteNotification = useCallback(async (id: string) => {
+    setNotifications((prev) => {
+      const target = prev.find((n) => n.id === id)
+      if (target && !target.isRead) {
+        setUnreadCount((c) => Math.max(0, c - 1))
+      }
+      return prev.filter((n) => n.id !== id)
+    })
+    await apiClient.deleteNotification(id).catch(() => {})
+  }, [])
+
+  const deleteAllNotifications = useCallback(async () => {
+    setNotifications([])
+    setUnreadCount(0)
+    setHasMore(false)
+    await apiClient.deleteAllNotifications().catch(() => {})
+  }, [])
+
   return {
     notifications,
     unreadCount,
     isLoading,
+    isLoadingMore,
+    hasMore,
+    loadMore,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
+    deleteAllNotifications,
     refetch: loadNotifications
   }
 }

@@ -23,5 +23,6 @@ public class NotificationRepositoryTests
         Assert.Equal("info", notification.Severity);
         Assert.Empty(notification.TargetRoles);
         Assert.Empty(notification.ReadByUserIds);
+        Assert.Empty(notification.DeletedByUserIds);
     }
 }

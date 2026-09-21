@@ -1042,8 +1042,8 @@ export class ApiClientClass {
   }
 
   // Notifications
-  async getNotifications(limit = 50): Promise<NotificationDto[]> {
-    return apiFetch<NotificationDto[]>(`/api/notifications?limit=${limit}`)
+  async getNotifications(skip = 0, limit = 10): Promise<NotificationDto[]> {
+    return apiFetch<NotificationDto[]>(`/api/notifications?skip=${skip}&limit=${limit}`)
   }
 
   async getUnreadNotificationCount(): Promise<number> {
@@ -1061,6 +1061,20 @@ export class ApiClientClass {
   async markAllNotificationsAsRead(): Promise<boolean> {
     const res = await apiFetch<{ success: boolean }>('/api/notifications/mark-all-read', {
       method: 'PUT'
+    })
+    return res.success
+  }
+
+  async deleteNotification(id: string): Promise<boolean> {
+    const res = await apiFetch<{ success: boolean }>(`/api/notifications/${id}`, {
+      method: 'DELETE'
+    })
+    return res.success
+  }
+
+  async deleteAllNotifications(): Promise<boolean> {
+    const res = await apiFetch<{ success: boolean }>('/api/notifications', {
+      method: 'DELETE'
     })
     return res.success
   }

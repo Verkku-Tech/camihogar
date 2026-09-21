@@ -35,6 +35,9 @@ public class Notification : BaseEntity
     [BsonElement("readByUserIds")]
     public List<string> ReadByUserIds { get; set; } = new();
 
+    [BsonElement("deletedByUserIds")]
+    public List<string> DeletedByUserIds { get; set; } = new();
+
     [BsonElement("metadata")]
     public Dictionary<string, object>? Metadata { get; set; }
 }

@@ -114,13 +114,14 @@ public class NotificationService : INotificationService
     public async Task<IReadOnlyList<NotificationDto>> GetUserNotificationsAsync(
         string userId,
         IEnumerable<string> roles,
-        int limit = 50,
+        int skip = 0,
+        int limit = 10,
         CancellationToken ct = default)
     {
         using var scope = _scopeFactory.CreateScope();
         var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
 
-        var entities = await repo.GetForUserAsync(userId, roles, limit, ct);
+        var entities = await repo.GetForUserAsync(userId, roles, skip, limit, ct);
         return entities.Select(e => MapToDto(e, e.ReadByUserIds.Contains(userId))).ToList();
     }
 
@@ -149,6 +150,22 @@ public class NotificationService : INotificationService
         var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
 
         return await repo.MarkAllAsReadAsync(userId, roles, ct);
+    }
+
+    public async Task<bool> DeleteAsync(string notificationId, string userId, CancellationToken ct = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+        return await repo.DeleteAsync(notificationId, userId, ct);
+    }
+
+    public async Task<bool> DeleteAllAsync(string userId, IEnumerable<string> roles, CancellationToken ct = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+
+        return await repo.DeleteAllAsync(userId, roles, ct);
     }
 
     private static NotificationDto MapToDto(Notification n, bool isRead) =>

@@ -31,13 +31,14 @@ public class NotificationsController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<NotificationDto>>> GetNotifications(
-        [FromQuery] int limit = 50,
+        [FromQuery] int skip = 0,
+        [FromQuery] int limit = 10,
         CancellationToken ct = default)
     {
         var (userId, roles) = GetCurrentUserContext();
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-        var notifications = await _notificationService.GetUserNotificationsAsync(userId, roles, limit, ct);
+        var notifications = await _notificationService.GetUserNotificationsAsync(userId, roles, skip, limit, ct);
         return Ok(notifications);
     }
 
@@ -68,6 +69,26 @@ public class NotificationsController : ControllerBase
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var success = await _notificationService.MarkAllAsReadAsync(userId, roles, ct);
+        return Ok(new { success });
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<ActionResult<object>> DeleteNotification(string id, CancellationToken ct = default)
+    {
+        var (userId, _) = GetCurrentUserContext();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var success = await _notificationService.DeleteAsync(id, userId, ct);
+        return Ok(new { success });
+    }
+
+    [HttpDelete]
+    public async Task<ActionResult<object>> DeleteAllNotifications(CancellationToken ct = default)
+    {
+        var (userId, roles) = GetCurrentUserContext();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        var success = await _notificationService.DeleteAllAsync(userId, roles, ct);
         return Ok(new { success });
     }
 

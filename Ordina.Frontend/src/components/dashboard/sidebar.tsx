@@ -63,7 +63,7 @@ import { useCurrency } from "@/contexts/currency-context"
 import { apiClient } from "@/lib/api-client"
 import { toast } from "sonner"
 import { PinGeneratorDialog } from "@/components/pin/pin-generator-dialog"
-import { Bell, AlertCircle, Info, AlertTriangle } from "lucide-react"
+import { Bell, AlertCircle, Info, AlertTriangle, Check, Trash2, Loader2 } from "lucide-react"
 import { useNotifications } from "@/hooks/use-notifications"
 
 interface SidebarProps {
@@ -141,7 +141,16 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
 
   const router = useRouter()
   const { hasActiveExchangeRates } = useCurrency()
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
+  const {
+    notifications,
+    unreadCount,
+    isLoadingMore,
+    loadMore,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification,
+    deleteAllNotifications
+  } = useNotifications()
   const [isPinGeneratorOpen, setIsPinGeneratorOpen] = useState(false)
 
   const canGenerateAccessPin =
@@ -542,19 +551,40 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
                         </span>
                       )}
                     </div>
-                    {unreadCount > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs h-7 px-2 text-muted-foreground hover:text-foreground"
-                        onClick={() => markAllAsRead()}
-                      >
-                        Marcar todas leídas
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {unreadCount > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs h-7 px-2 text-muted-foreground hover:text-foreground"
+                          onClick={() => markAllAsRead()}
+                        >
+                          Marcar todas leídas
+                        </Button>
+                      )}
+                      {notifications.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs h-7 px-2 text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteAllNotifications()}
+                          title="Eliminar todas las notificaciones"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="overflow-y-auto max-h-[380px] divide-y divide-border">
+                  <div
+                    className="overflow-y-auto max-h-[380px] divide-y divide-border"
+                    onScroll={(e) => {
+                      const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
+                      if (scrollHeight - scrollTop - clientHeight < 40) {
+                        loadMore()
+                      }
+                    }}
+                  >
                     {!hasActiveExchangeRates && (
                       <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 flex items-start gap-3">
                         <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
@@ -582,45 +612,79 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
                         No tienes notificaciones pendientes
                       </div>
                     ) : (
-                      notifications.map((n) => (
-                        <div
-                          key={n.id}
-                          className={cn(
-                            "p-3 text-xs transition-colors hover:bg-muted/50 cursor-pointer flex gap-3",
-                            !n.isRead && "bg-muted/30 font-medium"
-                          )}
-                          onClick={() => {
-                            if (!n.isRead) markAsRead(n.id)
-                            if (n.link) router.push(n.link)
-                          }}
-                        >
-                          <div className="mt-0.5 shrink-0">
-                            {n.severity === "error" ? (
-                              <AlertCircle className="w-4 h-4 text-destructive" />
-                            ) : n.severity === "warning" ? (
-                              <AlertTriangle className="w-4 h-4 text-amber-500" />
-                            ) : (
-                              <Info className="w-4 h-4 text-blue-500" />
+                      <>
+                        {notifications.map((n) => (
+                          <div
+                            key={n.id}
+                            className={cn(
+                              "p-3 text-xs transition-colors hover:bg-muted/50 cursor-pointer flex gap-3 group relative",
+                              !n.isRead && "bg-muted/30 font-medium"
                             )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1 mb-0.5">
-                              <span className="truncate font-semibold text-foreground">
-                                {n.title}
-                              </span>
-                              {!n.isRead && (
-                                <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+                            onClick={() => {
+                              if (!n.isRead) markAsRead(n.id)
+                              if (n.link) router.push(n.link)
+                            }}
+                          >
+                            <div className="mt-0.5 shrink-0">
+                              {n.severity === "error" ? (
+                                <AlertCircle className="w-4 h-4 text-destructive" />
+                              ) : n.severity === "warning" ? (
+                                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                              ) : (
+                                <Info className="w-4 h-4 text-blue-500" />
                               )}
                             </div>
-                            <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed">
-                              {n.message}
-                            </p>
-                            <span className="text-[10px] text-muted-foreground/70 mt-1 block">
-                              {new Date(n.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1 mb-0.5">
+                                <span className="truncate font-semibold text-foreground">
+                                  {n.title}
+                                </span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {!n.isRead && (
+                                    <button
+                                      type="button"
+                                      className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors opacity-80 hover:opacity-100"
+                                      title="Marcar como leída"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        markAsRead(n.id)
+                                      }}
+                                    >
+                                      <Check className="w-3.5 h-3.5 text-blue-500" />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-muted transition-colors opacity-80 hover:opacity-100"
+                                    title="Eliminar notificación"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      deleteNotification(n.id)
+                                    }}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  {!n.isRead && (
+                                    <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 ml-0.5" />
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed">
+                                {n.message}
+                              </p>
+                              <span className="text-[10px] text-muted-foreground/70 mt-1 block">
+                                {new Date(n.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      ))
+                        ))}
+                        {isLoadingMore && (
+                          <div className="p-2 flex items-center justify-center text-muted-foreground">
+                            <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+                            <span className="text-[11px]">Cargando más notificaciones...</span>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </DropdownMenuContent>

@@ -73,4 +73,40 @@ public class NotificationServiceTests
         Assert.True(hasItem);
         Assert.Equal("Broadcast", enumerator.Current.Title);
     }
+
+    [Fact]
+    public async Task GetUserNotificationsAsync_PassesSkipAndLimit()
+    {
+        _mockRepo.Setup(r => r.GetForUserAsync("u1", It.IsAny<IEnumerable<string>>(), 10, 10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Notification>());
+
+        var result = await _service.GetUserNotificationsAsync("u1", new[] { "Admin" }, skip: 10, limit: 10);
+
+        Assert.NotNull(result);
+        _mockRepo.Verify(r => r.GetForUserAsync("u1", It.IsAny<IEnumerable<string>>(), 10, 10, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_CallsRepository()
+    {
+        _mockRepo.Setup(r => r.DeleteAsync("notif-1", "u1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await _service.DeleteAsync("notif-1", "u1");
+
+        Assert.True(result);
+        _mockRepo.Verify(r => r.DeleteAsync("notif-1", "u1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAllAsync_CallsRepository()
+    {
+        _mockRepo.Setup(r => r.DeleteAllAsync("u1", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var result = await _service.DeleteAllAsync("u1", new[] { "Admin" });
+
+        Assert.True(result);
+        _mockRepo.Verify(r => r.DeleteAllAsync("u1", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
 }
