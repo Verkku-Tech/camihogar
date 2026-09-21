@@ -318,6 +318,9 @@ export interface ProductAttributeBreakdownResponse {
   productName: string
   category: string
   totalUnitsSold: number
+  totalInvoicedUsd?: number
+  averageUnitPriceUsd?: number
+  ordersCount?: number
   attributes: AttributeBreakdown[]
 }
 
