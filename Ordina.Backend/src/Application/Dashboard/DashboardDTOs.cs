@@ -72,7 +72,25 @@ public record TopProductDto(
     string ProductName,
     string Category,
     int UnitsSold,
-    decimal TotalUsd);
+    decimal TotalUsd,
+    bool HasAttributes = false);
+
+public record AttributeOptionStatDto(
+    string Value,
+    int UnitsSold,
+    decimal Percentage);
+
+public record AttributeBreakdownDto(
+    string AttributeId,
+    string AttributeTitle,
+    int TotalUnitsWithAttribute,
+    IReadOnlyList<AttributeOptionStatDto> Options);
+
+public record ProductAttributeBreakdownResponseDto(
+    string ProductName,
+    string Category,
+    int TotalUnitsSold,
+    IReadOnlyList<AttributeBreakdownDto> Attributes);
 
 public record PipelineSnapshotDto(
     int Manufacturing,
