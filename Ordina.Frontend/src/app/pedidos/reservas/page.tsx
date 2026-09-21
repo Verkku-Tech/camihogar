@@ -31,6 +31,7 @@ import {
   Loader2,
   ClipboardList,
   Trash2,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -108,6 +109,16 @@ export default function ReservasPage() {
     null,
   );
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [filterExpired, setFilterExpired] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("filter") === "expired") {
+        setFilterExpired(true);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 400);
@@ -133,12 +144,14 @@ export default function ReservasPage() {
         dateFrom?: string;
         dateTo?: string;
         vendor?: string;
+        productFilterPreset?: string;
       } = { status: "Reserva" };
 
       if (debouncedSearchTerm.trim()) filters.search = debouncedSearchTerm.trim();
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (onlineSellerFilter && user?.name) filters.vendor = user.name;
+      if (filterExpired) filters.productFilterPreset = "reservas_vencidas";
 
       const response = await apiClient.getOrdersPaged(
         page,
@@ -153,7 +166,7 @@ export default function ReservasPage() {
         totalPages: response.totalPages,
       };
     },
-    [debouncedSearchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name, itemsPerPage],
+    [debouncedSearchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name, itemsPerPage, filterExpired],
   );
 
   const fetchCount = useCallback(
@@ -164,12 +177,14 @@ export default function ReservasPage() {
         dateFrom?: string;
         dateTo?: string;
         vendor?: string;
+        productFilterPreset?: string;
       } = { status: "Reserva" };
 
       if (debouncedSearchTerm.trim()) filters.search = debouncedSearchTerm.trim();
       if (dateFrom) filters.dateFrom = dateFrom;
       if (dateTo) filters.dateTo = dateTo;
       if (onlineSellerFilter && user?.name) filters.vendor = user.name;
+      if (filterExpired) filters.productFilterPreset = "reservas_vencidas";
 
       const response = await apiClient.getOrderCount(filters, signal);
       return {
@@ -177,7 +192,7 @@ export default function ReservasPage() {
         totalPages: response.totalPages,
       };
     },
-    [debouncedSearchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name],
+    [debouncedSearchTerm, dateFrom, dateTo, onlineSellerFilter, user?.name, filterExpired],
   );
 
   const {
@@ -311,6 +326,17 @@ export default function ReservasPage() {
                       aria-label="Fecha hasta"
                     />
                   </div>
+                  <Button
+                    type="button"
+                    variant={filterExpired ? "destructive" : "outline"}
+                    size="sm"
+                    className="h-9 gap-1.5 text-xs font-medium"
+                    onClick={() => setFilterExpired((v) => !v)}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    Reservas vencidas (&gt; 30 días)
+                    {filterExpired && <span className="ml-1 font-bold">✕</span>}
+                  </Button>
                 </div>
               </div>
 

@@ -118,8 +118,17 @@ export default function FabricacionPage() {
     return () => clearTimeout(timer)
   }, [searchTerm])
   const [filterStatus, setFilterStatus] = useState<
-    "all" | "needs_fabrication" | "ready_for_batch" | "fabricating" | "warehouse"
+    "all" | "needs_fabrication" | "ready_for_batch" | "fabricating" | "warehouse" | "delayed"
   >("all")
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get("filter") === "delayed") {
+        setFilterStatus("delayed")
+      }
+    }
+  }, [])
   const [filterPurchaseType, setFilterPurchaseType] = useState<"all" | "encargo" | "encargo_entrega" | "sistema_apartado">("all")
   const [filterProvider, setFilterProvider] = useState<string>("all")
   const [selectedProduct, setSelectedProduct] = useState<{ orderId: string; product: OrderProduct } | null>(null)
@@ -229,13 +238,15 @@ export default function FabricacionPage() {
 
   const fetchPage = useCallback(
     async (page: number, signal?: AbortSignal) => {
+      const isDelayed = filterStatus === "delayed"
       const response = await apiClient.getOrdersPaged(page, itemsPerPage, undefined, {
         locationStatus: "FABRICACION",
         excludeStatuses: "Generado,Generada,Declinado",
         search: debouncedSearchTerm.trim() || undefined,
-        manufacturingStatus: filterStatus !== "all"
+        manufacturingStatus: filterStatus !== "all" && !isDelayed
           ? mapFilterStatusToManufacturing(filterStatus)
           : undefined,
+        productFilterPreset: isDelayed ? "fabricacion_retrasada" : undefined,
       }, signal)
       return {
         items: response.orders ?? [],
@@ -248,13 +259,15 @@ export default function FabricacionPage() {
 
   const fetchCount = useCallback(
     async (signal?: AbortSignal) => {
+      const isDelayed = filterStatus === "delayed"
       const response = await apiClient.getOrderCount({
         locationStatus: "FABRICACION",
         excludeStatuses: "Generado,Generada,Declinado",
         search: debouncedSearchTerm.trim() || undefined,
-        manufacturingStatus: filterStatus !== "all"
+        manufacturingStatus: filterStatus !== "all" && !isDelayed
           ? mapFilterStatusToManufacturing(filterStatus)
           : undefined,
+        productFilterPreset: isDelayed ? "fabricacion_retrasada" : undefined,
       }, signal, itemsPerPage)
       return {
         totalCount: response.totalCount ?? 0,
@@ -1480,6 +1493,9 @@ export default function FabricacionPage() {
                         <SelectItem value="ready_for_batch">{REPORTE_FABRICACION_LABEL}</SelectItem>
                         <SelectItem value="fabricating">Fabricando</SelectItem>
                         <SelectItem value="warehouse">En almacén</SelectItem>
+                        <SelectItem value="delayed" className="text-amber-700 dark:text-amber-400 font-medium">
+                          Pedidos con retraso (&gt; 25 días)
+                        </SelectItem>
                       </SelectContent>
                     </Select>
 
