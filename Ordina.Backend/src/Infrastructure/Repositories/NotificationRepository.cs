@@ -1,10 +1,15 @@
 using MongoDB.Driver;
 using Ordina.Domain.Notifications;
+using Ordina.Infrastructure.Mongo;
 
 namespace Ordina.Infrastructure.Repositories;
 
 public class NotificationRepository : MongoRepository<Notification>, INotificationRepository
 {
+    public NotificationRepository(MongoDbContext context) : base(context.Database, "notifications")
+    {
+    }
+
     public NotificationRepository(IMongoDatabase database) : base(database, "notifications")
     {
     }

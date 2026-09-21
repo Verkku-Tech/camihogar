@@ -39,6 +39,7 @@ public static class InfrastructureServiceExtensions
 
         services.AddSingleton<IMongoClient>(_ => new MongoClient(connectionString));
         services.AddSingleton(sp => new MongoDbContext(sp.GetRequiredService<IMongoClient>(), configuration));
+        services.AddSingleton<IMongoDatabase>(sp => sp.GetRequiredService<MongoDbContext>().Database);
 
         // 2. Generic and Specialized Repositories
         services.AddScoped<IOrderRepository, OrderRepository>();
