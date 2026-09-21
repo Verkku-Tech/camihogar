@@ -74,8 +74,26 @@ export default defineConfig({
     }
   },
   server: {
+    host: true,
     port: process.env.PORT ? parseInt(process.env.PORT, 10) : 5173,
     strictPort: true,
+    allowedHosts: ['local.verkku.com', '.verkku.com'],
+    hmr: {
+      clientPort: 443
+    },
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_URL || 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false
+      }
+    }
+  },
+  preview: {
+    host: true,
+    port: process.env.PORT ? parseInt(process.env.PORT, 10) : 5173,
+    strictPort: true,
+    allowedHosts: ['local.verkku.com', '.verkku.com'],
     proxy: {
       '/api': {
         target: process.env.VITE_API_URL || 'http://localhost:5000',
