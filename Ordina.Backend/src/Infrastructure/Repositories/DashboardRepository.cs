@@ -38,4 +38,15 @@ public class DashboardRepository : IDashboardRepository
         await _cache.SetAsync("dashboard:rates", (IReadOnlyList<ExchangeRate>)rates, slidingExpiration: TimeSpan.FromSeconds(30), cancellationToken: cancellationToken);
         return rates;
     }
+
+    public async Task<IReadOnlyList<Ordina.Domain.Catalog.Category>> GetCategoriesAsync(CancellationToken cancellationToken = default)
+    {
+        // ponytail: 60s sliding cache avoids scanning categories on dashboard visits
+        var cached = await _cache.GetAsync<IReadOnlyList<Ordina.Domain.Catalog.Category>>("dashboard:categories", cancellationToken);
+        if (cached != null) return cached;
+
+        var categories = await _context.Categories.Find(_ => true).ToListAsync(cancellationToken);
+        await _cache.SetAsync("dashboard:categories", (IReadOnlyList<Ordina.Domain.Catalog.Category>)categories, slidingExpiration: TimeSpan.FromSeconds(60), cancellationToken: cancellationToken);
+        return categories;
+    }
 }

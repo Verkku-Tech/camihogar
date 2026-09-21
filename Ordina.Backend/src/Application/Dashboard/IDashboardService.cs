@@ -10,4 +10,5 @@ public interface IDashboardService
     Task<PipelineSnapshotDto> GetPipelineSnapshotAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ExpiredLayawayAgeRangeDto>> GetExpiredLayawaysByAgeAsync(CancellationToken cancellationToken = default);
     Task<SalesForecastResponseDto> GetSalesForecastAsync(string period = "month", CancellationToken cancellationToken = default);
+    Task<ProductAttributeBreakdownResponseDto> GetProductAttributeBreakdownAsync(string productName, string period = "month", CancellationToken cancellationToken = default);
 }

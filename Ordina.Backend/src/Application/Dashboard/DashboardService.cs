@@ -786,4 +786,12 @@ public class DashboardService : IDashboardService
 
         return new SalesForecastResponseDto(points, summary);
     }
+
+    public async Task<ProductAttributeBreakdownResponseDto> GetProductAttributeBreakdownAsync(
+        string productName,
+        string period = "month",
+        CancellationToken cancellationToken = default)
+    {
+        throw new NotImplementedException();
+    }
 }
