@@ -26,12 +26,16 @@ import {
   Shield,
   Database,
   KeyRound,
+  RectangleEllipsis,
   Sun,
   Moon,
   HelpCircle,
   User,
   LogOut,
+  UserPen,
+  Upload,
 } from "lucide-react"
+import { processAvatarImage } from "@/lib/image-utils"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,7 +63,8 @@ import { useCurrency } from "@/contexts/currency-context"
 import { apiClient } from "@/lib/api-client"
 import { toast } from "sonner"
 import { PinGeneratorDialog } from "@/components/pin/pin-generator-dialog"
-import { Bell, AlertCircle } from "lucide-react"
+import { Bell, AlertCircle, Info, AlertTriangle } from "lucide-react"
+import { useNotifications } from "@/hooks/use-notifications"
 
 interface SidebarProps {
   open: boolean
@@ -95,7 +100,7 @@ const configurationSubmenu = [
   { id: "tasas", name: "Tasas de Cambio", href: "/configuracion/tasas", icon: DollarSign },
   { id: "comisiones", name: "Comisiones", href: "/configuracion/comisiones", icon: Percent, permission: "settings.company.manage" },
   { id: "roles", name: "Roles y Permisos", href: "/configuracion/roles", icon: Shield, permission: "roles.read" },
-  { id: "pin-acceso", name: "PIN de Acceso", href: "/configuracion/pin-acceso", icon: KeyRound, adminOnly: true },
+  { id: "pin-acceso", name: "PIN de Acceso", href: "/configuracion/pin-acceso", icon: RectangleEllipsis, adminOnly: true },
   { id: "sistema", name: "Sistema", href: "/configuracion/sistema", icon: Database },
 ]
 
@@ -132,14 +137,71 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
   const { isNavigationItemActive } = useNavigation()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
-  const { hasPermission, user, logout } = useAuth()
+  const { hasPermission, user, logout, updateUser } = useAuth()
 
   const router = useRouter()
   const { hasActiveExchangeRates } = useCurrency()
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
   const [isPinGeneratorOpen, setIsPinGeneratorOpen] = useState(false)
 
   const canGenerateAccessPin =
     user?.role === "Super Administrator" || user?.role === "Administrator"
+
+  const canEditUser =
+    user?.role === "Super Administrator" ||
+    user?.role === "Administrator" ||
+    hasPermission("users.update")
+
+  const [isEditUserOpen, setIsEditUserOpen] = useState(false)
+  const [editName, setEditName] = useState("")
+  const [editEmail, setEditEmail] = useState("")
+  const [editUsername, setEditUsername] = useState("")
+  const [editAvatarUrl, setEditAvatarUrl] = useState("")
+  const [isSavingUser, setIsSavingUser] = useState(false)
+
+  useEffect(() => {
+    if (isEditUserOpen && user) {
+      setEditName(user.name || "")
+      setEditEmail(user.email || "")
+      setEditUsername(user.username || "")
+      setEditAvatarUrl(user.avatarUrl || "")
+    }
+  }, [isEditUserOpen, user])
+
+  const handleSaveEditUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
+    if (!editName.trim()) {
+      toast.error("El nombre completo es requerido")
+      return
+    }
+    if (!editEmail.trim()) {
+      toast.error("El correo electrónico es requerido")
+      return
+    }
+
+    setIsSavingUser(true)
+    try {
+      const updated = await apiClient.updateUser(user.id, {
+        name: editName.trim(),
+        email: editEmail.trim(),
+        username: editUsername.trim() || undefined,
+        avatarUrl: editAvatarUrl,
+      })
+      updateUser({
+        name: updated.name,
+        email: updated.email,
+        username: updated.username,
+        avatarUrl: updated.avatarUrl,
+      })
+      toast.success("Usuario actualizado correctamente")
+      setIsEditUserOpen(false)
+    } catch (err: any) {
+      toast.error(err?.message || "Error al actualizar el usuario")
+    } finally {
+      setIsSavingUser(false)
+    }
+  }
 
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false)
   const [currentPassword, setCurrentPassword] = useState("")
@@ -461,40 +523,106 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
                     title="Notificaciones"
                   >
                     <Bell className="h-4 w-4" />
-                    {!hasActiveExchangeRates && (
-                      <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full border-2 border-sidebar" />
-                    )}
+                    {unreadCount > 0 ? (
+                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-sidebar">
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    ) : !hasActiveExchangeRates ? (
+                      <span className="absolute top-1 right-1 h-2 w-2 bg-amber-500 rounded-full border-2 border-sidebar" />
+                    ) : null}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent side="top" align="start" className="w-80 mb-2">
-                  {!hasActiveExchangeRates ? (
-                    <div className="px-3 py-2">
-                      <div className="flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <DropdownMenuContent side="top" align="start" className="w-80 md:w-96 mb-2 p-0 max-h-[480px] flex flex-col">
+                  <div className="p-3 border-b flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm">Notificaciones</span>
+                      {unreadCount > 0 && (
+                        <span className="bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 text-xs px-2 py-0.5 rounded-full font-medium">
+                          {unreadCount} nuevas
+                        </span>
+                      )}
+                    </div>
+                    {unreadCount > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7 px-2 text-muted-foreground hover:text-foreground"
+                        onClick={() => markAllAsRead()}
+                      >
+                        Marcar todas leídas
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="overflow-y-auto max-h-[380px] divide-y divide-border">
+                    {!hasActiveExchangeRates && (
+                      <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 flex items-start gap-3">
+                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
-                          <p className="font-semibold text-sm text-amber-800 dark:text-amber-200 mb-1">
-                            No hay tasas de cambio configuradas
+                          <p className="font-semibold text-xs text-amber-800 dark:text-amber-200">
+                            Tasa del día no configurada
                           </p>
-                          <p className="text-xs text-amber-700 dark:text-amber-300 mb-3">
-                            Es necesario crear al menos una tasa de cambio (USD o EUR) para poder
-                            realizar conversiones de moneda en pedidos y presupuestos.
+                          <p className="text-[11px] text-amber-700 dark:text-amber-300 mb-2">
+                            Se requiere al menos una tasa de cambio para conversiones.
                           </p>
                           <Button
                             size="sm"
+                            variant="outline"
                             onClick={() => router.push("/configuracion/tasas")}
-                            className="w-full"
+                            className="w-full text-xs h-7"
                           >
-                            <DollarSign className="w-4 h-4 mr-2" />
-                            Ir a Tasas de Cambio
+                            Configurar Tasa
                           </Button>
                         </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">
-                      No hay notificaciones
-                    </div>
-                  )}
+                    )}
+
+                    {notifications.length === 0 && hasActiveExchangeRates ? (
+                      <div className="p-6 text-center text-xs text-muted-foreground">
+                        No tienes notificaciones pendientes
+                      </div>
+                    ) : (
+                      notifications.map((n) => (
+                        <div
+                          key={n.id}
+                          className={cn(
+                            "p-3 text-xs transition-colors hover:bg-muted/50 cursor-pointer flex gap-3",
+                            !n.isRead && "bg-muted/30 font-medium"
+                          )}
+                          onClick={() => {
+                            if (!n.isRead) markAsRead(n.id)
+                            if (n.link) router.push(n.link)
+                          }}
+                        >
+                          <div className="mt-0.5 shrink-0">
+                            {n.severity === "error" ? (
+                              <AlertCircle className="w-4 h-4 text-destructive" />
+                            ) : n.severity === "warning" ? (
+                              <AlertTriangle className="w-4 h-4 text-amber-500" />
+                            ) : (
+                              <Info className="w-4 h-4 text-blue-500" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className="truncate font-semibold text-foreground">
+                                {n.title}
+                              </span>
+                              {!n.isRead && (
+                                <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+                              )}
+                            </div>
+                            <p className="text-muted-foreground text-[11px] line-clamp-2 leading-relaxed">
+                              {n.message}
+                            </p>
+                            <span className="text-[10px] text-muted-foreground/70 mt-1 block">
+                              {new Date(n.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -527,8 +655,16 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
               <button
                 className="flex items-center w-full gap-3 px-2 py-2 text-sm font-medium rounded-md transition-colors text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground text-left focus:outline-none focus:ring-1 focus:ring-sidebar-ring"
               >
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-sidebar-accent text-sidebar-accent-foreground shrink-0 border border-sidebar-border">
-                  <User className="w-4 h-4" />
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-sidebar-accent text-sidebar-accent-foreground shrink-0 border border-sidebar-border overflow-hidden">
+                  {user?.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.name || "Usuario"}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-4 h-4" />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-sidebar-foreground truncate">
@@ -547,18 +683,40 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
               className="w-56 z-[9999] mb-2"
               sideOffset={8}
             >
-              <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                <div className="font-medium text-foreground">{user?.name}</div>
-                <div className="truncate text-xs">{user?.email}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">{user?.role}</div>
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold text-sm border border-border shrink-0 overflow-hidden shadow-xs">
+                  {user?.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.name || "Usuario"}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    user?.name ? user.name.charAt(0).toUpperCase() : <User className="w-5 h-5" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-foreground truncate text-sm leading-tight">{user?.name}</div>
+                  <div className="truncate text-xs text-muted-foreground">{user?.email}</div>
+                  <div className="text-[11px] text-muted-foreground font-medium mt-0.5">{user?.role}</div>
+                </div>
               </div>
               <DropdownMenuSeparator />
+              {canEditUser && (
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => setIsEditUserOpen(true)}
+                >
+                  <UserPen className="mr-2 h-4 w-4" />
+                  Editar usuario
+                </DropdownMenuItem>
+              )}
               {canGenerateAccessPin && (
                 <DropdownMenuItem
                   className="cursor-pointer"
                   onClick={() => setIsPinGeneratorOpen(true)}
                 >
-                  <KeyRound className="mr-2 h-4 w-4" />
+                  <RectangleEllipsis className="mr-2 h-4 w-4" />
                   Generar PIN de acceso
                 </DropdownMenuItem>
               )}
@@ -649,6 +807,131 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
               </Button>
               <Button type="submit" disabled={isChangingPassword}>
                 {isChangingPassword ? "Guardando…" : "Guardar"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {/* Edit User Dialog */}
+      <Dialog
+        open={isEditUserOpen}
+        onOpenChange={(open) => {
+          setIsEditUserOpen(open)
+          if (!open && user) {
+            setEditName(user.name || "")
+            setEditEmail(user.email || "")
+            setEditUsername(user.username || "")
+            setEditAvatarUrl(user.avatarUrl || "")
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <form onSubmit={handleSaveEditUser}>
+            <DialogHeader>
+              <DialogTitle>Editar usuario</DialogTitle>
+              <DialogDescription>
+                Actualiza los datos y la foto de perfil de tu usuario.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-3">
+              {/* Foto de Perfil */}
+              <div className="flex flex-col items-center justify-center gap-2 p-3 bg-muted/40 rounded-lg border border-dashed border-border">
+                <div className="relative">
+                  {editAvatarUrl ? (
+                    <img
+                      src={editAvatarUrl}
+                      alt="Foto de perfil"
+                      className="w-20 h-20 rounded-full object-cover border-2 border-primary/20 shadow-xs"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center text-muted-foreground border-2 border-dashed border-muted-foreground/30">
+                      <User className="w-8 h-8 opacity-60" />
+                    </div>
+                  )}
+                  {editAvatarUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setEditAvatarUrl("")}
+                      className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground p-1 rounded-full shadow-xs hover:bg-destructive/90 transition-colors"
+                      title="Eliminar foto"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <label
+                    htmlFor="sidebar-avatar-upload"
+                    className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground cursor-pointer shadow-xs transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                    {editAvatarUrl ? "Cambiar foto" : "Subir foto"}
+                  </label>
+                  <input
+                    id="sidebar-avatar-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      try {
+                        const dataUrl = await processAvatarImage(file)
+                        setEditAvatarUrl(dataUrl)
+                        toast.success("Foto procesada y optimizada")
+                      } catch (err: any) {
+                        toast.error(err?.message || "Error al procesar la imagen")
+                      }
+                      e.target.value = ""
+                    }}
+                  />
+                </div>
+                <span className="text-[11px] text-muted-foreground text-center">
+                  PNG, JPG o WebP. Se optimizará a 256x256 px automáticamente.
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sidebar-edit-name">Nombre Completo *</Label>
+                <Input
+                  id="sidebar-edit-name"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sidebar-edit-username">Nombre de Usuario *</Label>
+                <Input
+                  id="sidebar-edit-username"
+                  value={editUsername}
+                  onChange={(e) => setEditUsername(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sidebar-edit-email">Correo Electrónico *</Label>
+                <Input
+                  id="sidebar-edit-email"
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditUserOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isSavingUser}>
+                {isSavingUser ? "Guardando…" : "Guardar cambios"}
               </Button>
             </DialogFooter>
           </form>

@@ -1040,6 +1040,44 @@ export class ApiClientClass {
     const res = await fetch('/api/reports/expired-layaways/excel')
     return res.blob()
   }
+
+  // Notifications
+  async getNotifications(limit = 50): Promise<NotificationDto[]> {
+    return apiFetch<NotificationDto[]>(`/api/notifications?limit=${limit}`)
+  }
+
+  async getUnreadNotificationCount(): Promise<number> {
+    const res = await apiFetch<{ count: number }>('/api/notifications/unread-count')
+    return res.count
+  }
+
+  async markNotificationAsRead(id: string): Promise<boolean> {
+    const res = await apiFetch<{ success: boolean }>(`/api/notifications/${id}/read`, {
+      method: 'PUT'
+    })
+    return res.success
+  }
+
+  async markAllNotificationsAsRead(): Promise<boolean> {
+    const res = await apiFetch<{ success: boolean }>('/api/notifications/mark-all-read', {
+      method: 'PUT'
+    })
+    return res.success
+  }
+}
+
+export interface NotificationDto {
+  id: string
+  type: string
+  title: string
+  message: string
+  severity: 'info' | 'warning' | 'error' | 'success'
+  link?: string
+  targetUserId?: string
+  targetRoles?: string[]
+  isRead: boolean
+  createdAt: string
+  metadata?: Record<string, any>
 }
 
 export const apiClient = new ApiClientClass()
