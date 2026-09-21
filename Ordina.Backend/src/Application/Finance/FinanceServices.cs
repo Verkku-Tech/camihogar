@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Ordina.Application.Common;
+using Ordina.Application.Notifications;
 using Ordina.Domain.Enums;
 using Ordina.Domain.Finance;
 
@@ -74,15 +75,18 @@ public class ExchangeRateService : IExchangeRateService
     private readonly IExchangeRateRepository _rateRepository;
     private readonly ICacheService _cacheService;
     private readonly ILogger<ExchangeRateService> _logger;
+    private readonly INotificationService? _notificationService;
 
     public ExchangeRateService(
         IExchangeRateRepository rateRepository,
         ICacheService cacheService,
-        ILogger<ExchangeRateService> logger)
+        ILogger<ExchangeRateService> logger,
+        INotificationService? notificationService = null)
     {
         _rateRepository = rateRepository;
         _cacheService = cacheService;
         _logger = logger;
+        _notificationService = notificationService;
     }
 
     public async Task<ExchangeRateResponseDto?> GetLatestRateAsync(string fromCurrency = "Bs", string toCurrency = "USD", CancellationToken cancellationToken = default)
@@ -133,6 +137,24 @@ public class ExchangeRateService : IExchangeRateService
         await _cacheService.RemoveAsync(CacheKeys.ExchangeRates, cancellationToken);
 
         _logger.LogInformation("Nueva tasa de cambio establecida: 1 {From} = {Rate} {To}", created.FromCurrency, created.Rate, created.ToCurrency);
+
+        if (_notificationService != null)
+        {
+            try
+            {
+                await _notificationService.PublishAsync(new CreateNotificationDto(
+                    Type: "ExchangeRateChanged",
+                    Title: "Tasa de cambio actualizada",
+                    Message: $"La tasa de {created.FromCurrency}/{created.ToCurrency} se ha actualizado a {created.Rate:N2}.",
+                    Severity: "info",
+                    Link: "/configuracion/tasas"), cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error al emitir notificación de cambio de tasa");
+            }
+        }
+
         return MapToDto(created);
     }
 

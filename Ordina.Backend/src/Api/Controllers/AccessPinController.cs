@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ordina.Application.Common;
+using Ordina.Application.Notifications;
 using Ordina.Domain.Common;
 using Ordina.Domain.Security;
 
@@ -23,11 +24,16 @@ public class AccessPinController : ControllerBase
 
     private readonly IRepository<AccessPin> _pinRepository;
     private readonly ILogger<AccessPinController> _logger;
+    private readonly INotificationService? _notificationService;
 
-    public AccessPinController(IRepository<AccessPin> pinRepository, ILogger<AccessPinController> logger)
+    public AccessPinController(
+        IRepository<AccessPin> pinRepository,
+        ILogger<AccessPinController> logger,
+        INotificationService? notificationService = null)
     {
         _pinRepository = pinRepository;
         _logger = logger;
+        _notificationService = notificationService;
     }
 
     [HttpPost("generate")]
@@ -94,6 +100,24 @@ public class AccessPinController : ControllerBase
         accessPin.SessionExpiresAt = sessionExpiresAt;
 
         await _pinRepository.UpdateAsync(accessPin, cancellationToken);
+
+        if (_notificationService != null)
+        {
+            try
+            {
+                var userName = User.FindFirstValue(ClaimTypes.Name) ?? User.Identity?.Name ?? userId;
+                await _notificationService.PublishAsync(new CreateNotificationDto(
+                    Type: "EmergencyPinUsed",
+                    Title: "Uso de PIN de Emergencia",
+                    Message: $"El usuario '{userName}' utilizó un PIN de acceso de emergencia para el pedido {request.OrderId}.",
+                    Severity: "warning",
+                    TargetRoles: new[] { "Administrator", "Super Administrator" }), cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error emitiendo notificación de uso de PIN de emergencia");
+            }
+        }
 
         return Ok(new
         {

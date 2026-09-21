@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Logging;
+using Ordina.Application.Notifications;
 
 namespace Ordina.Api.Controllers;
 
@@ -26,10 +27,12 @@ public record ClientLogBatchRequest(
 public class TelemetryController : ControllerBase
 {
     private readonly ILogger<TelemetryController> _logger;
+    private readonly INotificationService? _notificationService;
 
-    public TelemetryController(ILogger<TelemetryController> logger)
+    public TelemetryController(ILogger<TelemetryController> logger, INotificationService? notificationService = null)
     {
         _logger = logger;
+        _notificationService = notificationService;
     }
 
     [HttpPost("client-logs")]
@@ -60,6 +63,18 @@ public class TelemetryController : ControllerBase
                     case "ERROR":
                     case "CRITICAL":
                         TelemetryLogMessages.LogClientError(_logger, log.Message, log.Stack ?? string.Empty);
+                        if (_notificationService != null &&
+                            (log.Message.Contains("409", StringComparison.OrdinalIgnoreCase) ||
+                             log.Message.Contains("conflict", StringComparison.OrdinalIgnoreCase) ||
+                             (log.Extra != null && log.Extra.TryGetValue("status", out var statusVal) && statusVal?.ToString() == "409")))
+                        {
+                            _ = _notificationService.PublishAsync(new CreateNotificationDto(
+                                Type: "SyncConflict",
+                                Title: "Conflicto de sincronización offline",
+                                Message: $"Conflicto o error de sincronización offline: {log.Message}",
+                                Severity: "error",
+                                TargetRoles: new[] { "Administrator", "Super Administrator" }));
+                        }
                         break;
                     case "WARN":
                     case "WARNING":
