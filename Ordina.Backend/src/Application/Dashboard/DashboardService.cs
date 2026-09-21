@@ -399,6 +399,12 @@ public class DashboardService : IDashboardService
         var liveUsdRate = allRates.FirstOrDefault(r => (r.ToCurrency == "USD" || r.FromCurrency == "USD") && r.IsActive)?.Rate ?? 1.0m;
         if (liveUsdRate <= 0) liveUsdRate = 1.0m;
 
+        var categories = await _dashboardRepository.GetCategoriesAsync(cancellationToken);
+        var categoriesWithAttributes = new HashSet<string>(
+            categories.Where(c => c.Attributes != null && c.Attributes.Count > 0)
+                      .Select(c => c.Name.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+
         return orders
             .SelectMany(o =>
             {
@@ -411,11 +417,17 @@ public class DashboardService : IDashboardService
                 });
             })
             .GroupBy(x => (x.Product.Name?.Trim() ?? "Sin nombre"))
-            .Select(g => new TopProductDto(
-                g.Key,
-                g.FirstOrDefault()?.Product.Category ?? "",
-                g.Sum(x => x.Product.Quantity > 0 ? x.Product.Quantity : 1),
-                Math.Round(g.Sum(x => x.TotalUsd), 2)))
+            .Select(g =>
+            {
+                var categoryName = g.FirstOrDefault()?.Product.Category?.Trim() ?? "";
+                var hasAttributes = categoriesWithAttributes.Contains(categoryName);
+                return new TopProductDto(
+                    g.Key,
+                    categoryName,
+                    g.Sum(x => x.Product.Quantity > 0 ? x.Product.Quantity : 1),
+                    Math.Round(g.Sum(x => x.TotalUsd), 2),
+                    hasAttributes);
+            })
             .OrderByDescending(x => x.UnitsSold)
             .Take(limit)
             .ToList();
@@ -792,6 +804,71 @@ public class DashboardService : IDashboardService
         string period = "month",
         CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        var periodStart = ComputePeriodStart(period);
+        var allOrders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
+        var orders = allOrders.Where(o => IsValidOrder(o) && o.CreatedAt >= periodStart).ToList();
+
+        var matchingProducts = orders
+            .SelectMany(o => o.Products ?? Enumerable.Empty<OrderProduct>())
+            .Where(p => string.Equals(p.Name?.Trim(), productName.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var categoryName = matchingProducts.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Category))?.Category?.Trim() ?? "";
+        var totalUnitsSold = matchingProducts.Sum(p => p.Quantity > 0 ? p.Quantity : 1);
+
+        var categories = await _dashboardRepository.GetCategoriesAsync(cancellationToken);
+        var category = categories.FirstOrDefault(c => string.Equals(c.Name?.Trim(), categoryName, StringComparison.OrdinalIgnoreCase));
+
+        var attributeBreakdowns = new List<AttributeBreakdownDto>();
+
+        if (category?.Attributes != null)
+        {
+            foreach (var catAttr in category.Attributes)
+            {
+                var optionCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                int totalUnitsWithThisAttr = 0;
+
+                foreach (var p in matchingProducts)
+                {
+                    if (p.Attributes == null || p.Attributes.Count == 0) continue;
+
+                    // Match attribute by Id or Title (case-insensitive)
+                    var attrEntry = p.Attributes.FirstOrDefault(kvp =>
+                        string.Equals(kvp.Key, catAttr.Id, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(kvp.Key, catAttr.Title, StringComparison.OrdinalIgnoreCase));
+
+                    if (attrEntry.Value != null)
+                    {
+                        var rawValue = attrEntry.Value.ToString()?.Trim();
+                        if (!string.IsNullOrEmpty(rawValue))
+                        {
+                            var qty = p.Quantity > 0 ? p.Quantity : 1;
+                            totalUnitsWithThisAttr += qty;
+                            optionCounts[rawValue] = optionCounts.GetValueOrDefault(rawValue) + qty;
+                        }
+                    }
+                }
+
+                var options = optionCounts
+                    .OrderByDescending(kv => kv.Value)
+                    .Select(kv => new AttributeOptionStatDto(
+                        kv.Key,
+                        kv.Value,
+                        totalUnitsWithThisAttr > 0 ? Math.Round((decimal)kv.Value / totalUnitsWithThisAttr * 100m, 2) : 0m))
+                    .ToList();
+
+                attributeBreakdowns.Add(new AttributeBreakdownDto(
+                    catAttr.Id,
+                    catAttr.Title,
+                    totalUnitsWithThisAttr,
+                    options));
+            }
+        }
+
+        return new ProductAttributeBreakdownResponseDto(
+            productName,
+            categoryName,
+            totalUnitsSold,
+            attributeBreakdowns);
     }
 }
