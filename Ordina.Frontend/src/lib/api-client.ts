@@ -298,6 +298,27 @@ export interface TopProduct {
   category: string
   unitsSold: number
   totalUsd: number
+  hasAttributes?: boolean
+}
+
+export interface AttributeOptionStat {
+  value: string
+  unitsSold: number
+  percentage: number
+}
+
+export interface AttributeBreakdown {
+  attributeId: string
+  attributeTitle: string
+  totalUnitsWithAttribute: number
+  options: AttributeOptionStat[]
+}
+
+export interface ProductAttributeBreakdownResponse {
+  productName: string
+  category: string
+  totalUnitsSold: number
+  attributes: AttributeBreakdown[]
 }
 
 export interface PipelineSnapshot {
@@ -890,6 +911,18 @@ export class ApiClientClass {
 
   async getTopProducts(period = 'month', limit = 10, signal?: AbortSignal): Promise<TopProduct[]> {
     return apiFetch<TopProduct[]>(`/api/dashboard/top-products?period=${period}&limit=${limit}`, { signal }).then(r => r ?? [])
+  }
+
+  async getProductAttributeBreakdown(
+    productName: string,
+    period = 'month',
+    signal?: AbortSignal
+  ): Promise<ProductAttributeBreakdownResponse> {
+    const query = new URLSearchParams({ productName, period })
+    return apiFetch<ProductAttributeBreakdownResponse>(
+      `/api/dashboard/top-products/attribute-breakdown?${query.toString()}`,
+      { signal }
+    )
   }
 
   async getPipelineSnapshot(signal?: AbortSignal): Promise<PipelineSnapshot> {
