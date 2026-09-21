@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/contexts/auth-context"
+import { useNavigation } from "@/contexts/navigation-context"
 import { Sidebar } from "@/components/layout/sidebar"
 import { HomeHeader as DashboardHeader } from "@/components/home/home-header"
 import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
@@ -73,8 +74,15 @@ type Period = "day" | "week" | "month" | "year"
 
 export function AnalyticsDashboard() {
   const { user, isLoading: isAuthLoading } = useAuth()
-  const canAccess =
-    user?.role === "Super Administrator" || user?.role === "Administrator"
+  const { isNavigationItemVisible, navigationItems } = useNavigation()
+
+  const analyticsConfig = navigationItems.find((n) => n.id === "analytics")
+  const hasCustomConfig =
+    (analyticsConfig?.allowedRoles && analyticsConfig.allowedRoles.length > 0) ||
+    analyticsConfig?.superAdminOnly
+  const canAccess = hasCustomConfig
+    ? isNavigationItemVisible("analytics", user?.role)
+    : (user?.role === "Super Administrator" || user?.role === "Administrator")
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [period, setPeriod] = useState<Period>("month")

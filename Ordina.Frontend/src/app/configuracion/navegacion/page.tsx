@@ -18,7 +18,7 @@ export default function NavigacionPage() {
         <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
           <AppBreadcrumb />
 
-<NavigationPage />
+          <NavigationPage />
         </main>
       </div>
     </div>

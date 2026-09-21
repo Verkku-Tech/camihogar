@@ -77,12 +77,13 @@ public class DashboardController : ControllerBase
     public async Task<ActionResult<ProductAttributeBreakdownResponseDto>> GetProductAttributeBreakdown(
         [FromQuery] string productName,
         [FromQuery] string period = "month",
+        [FromQuery] string? attributeIds = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(productName))
             return BadRequest("El nombre del producto es requerido.");
 
-        var data = await _dashboardService.GetProductAttributeBreakdownAsync(productName, period, ct);
+        var data = await _dashboardService.GetProductAttributeBreakdownAsync(productName, period, attributeIds, ct);
         return Ok(data);
     }
 

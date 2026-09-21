@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Sidebar } from "@/components/dashboard/sidebar"
+import { Sidebar } from "@/components/layout/sidebar"
 import { HomeHeader } from "@/components/home/home-header"
 import { BudgetsTable } from "@/components/home/budgets-table"
 import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"

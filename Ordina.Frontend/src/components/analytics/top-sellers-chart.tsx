@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts"
 import { Trophy } from "lucide-react"
 import type { TopSeller } from "@/lib/api-client"
 import { CHART_THEME } from "./chart-theme"
@@ -23,13 +23,23 @@ const RANK_COLORS = [
   "#94A3B8", // 8th+
 ]
 
+function formatVendorName(rawName: string, idx: number): string {
+  if (!rawName || !rawName.trim()) return `Vendedor ${idx + 1}`
+  const words = rawName.trim().split(/\s+/).slice(0, 2)
+  return words
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ")
+}
+
 export function TopSellersChart({ data, isLoading }: Props) {
   const chartData = data.map((s, idx) => ({
-    name: s.vendorName.trim() ? s.vendorName.split(" ").slice(0, 2).join(" ") : `Vendedor ${idx + 1}`,
+    name: formatVendorName(s.vendorName, idx),
     total: s.totalUsd,
     orders: s.ordersCount,
     rank: idx + 1,
   }))
+
+  const chartHeight = Math.max(280, chartData.length * 32)
 
   return (
     <Card className="h-full flex-1 flex flex-col justify-between border-border/70 shadow-sm hover:shadow-md transition-shadow duration-300">
@@ -48,14 +58,19 @@ export function TopSellersChart({ data, isLoading }: Props) {
       </CardHeader>
       <CardContent className="pt-4 flex-1 flex flex-col justify-center">
         {isLoading ? (
-          <div className="h-56 bg-muted/40 rounded-xl animate-pulse" />
+          <div className="h-72 bg-muted/40 rounded-xl animate-pulse" />
         ) : chartData.length === 0 ? (
-          <div className="h-56 flex items-center justify-center text-sm text-muted-foreground">
+          <div className="h-72 flex items-center justify-center text-sm text-muted-foreground">
             Sin datos de vendedores en el período
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 24, left: 10, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <BarChart
+              data={chartData}
+              layout="vertical"
+              margin={{ top: 8, right: 54, left: 10, bottom: 0 }}
+              barCategoryGap={8}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.gridStroke} horizontal={false} />
               <XAxis
                 type="number"
@@ -66,9 +81,12 @@ export function TopSellersChart({ data, isLoading }: Props) {
               <YAxis
                 type="category"
                 dataKey="name"
-                tick={{ fontSize: 11, fill: "#475569" }}
-                width={85}
+                tick={{ fontSize: 11, fill: "#475569", fontWeight: 500 }}
+                width={130}
+                interval={0}
                 stroke={CHART_THEME.gridStroke}
+                axisLine={false}
+                tickLine={false}
               />
               <Tooltip
                 contentStyle={{
@@ -86,10 +104,17 @@ export function TopSellersChart({ data, isLoading }: Props) {
                   n === "total" ? "Facturado" : "Pedidos"
                 ]}
               />
-              <Bar dataKey="total" radius={[0, 6, 6, 0]} maxBarSize={22}>
+              <Bar dataKey="total" radius={[0, 6, 6, 0]} maxBarSize={16}>
                 {chartData.map((_, i) => (
                   <Cell key={i} fill={RANK_COLORS[Math.min(i, RANK_COLORS.length - 1)]} />
                 ))}
+                <LabelList
+                  dataKey="total"
+                  position="right"
+                  formatter={(v: any) => `$${(Number(v) / 1000).toFixed(1)}k`}
+                  style={{ fontSize: 11, fill: "#64748B", fontWeight: 600 }}
+                  offset={8}
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>

@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts"
 import { AlertCircle } from "lucide-react"
 import type { ExpiredLayawayAgeRange } from "@/lib/api-client"
 import { CHART_THEME, AGING_COLORS } from "./chart-theme"
@@ -39,17 +39,17 @@ export function ExpiredAgeChart({ data, isLoading }: Props) {
       </CardHeader>
       <CardContent className="pt-4 flex-1 flex flex-col justify-center">
         {isLoading ? (
-          <div className="h-56 bg-muted/40 rounded-xl animate-pulse" />
+          <div className="h-72 bg-muted/40 rounded-xl animate-pulse" />
         ) : data.every(d => d.count === 0) ? (
-          <div className="h-56 flex flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
+          <div className="h-72 flex flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
             <span className="font-medium text-emerald-600 dark:text-emerald-400">✓ Excelente estado</span>
             <span>No hay apartados vencidos pendientes en el sistema</span>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={data} margin={{ top: 8, right: 16, left: -10, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={data} margin={{ top: 16, right: 16, left: -10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.gridStroke} vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: CHART_THEME.axisTick }} stroke={CHART_THEME.gridStroke} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: CHART_THEME.axisTick }} stroke={CHART_THEME.gridStroke} interval={0} />
               <YAxis tick={{ fontSize: 11, fill: CHART_THEME.axisTick }} width={35} stroke={CHART_THEME.gridStroke} />
               <Tooltip
                 contentStyle={{
@@ -69,6 +69,12 @@ export function ExpiredAgeChart({ data, isLoading }: Props) {
                 {data.map((_, i) => (
                   <Cell key={i} fill={AGING_COLORS[i % AGING_COLORS.length]} />
                 ))}
+                <LabelList
+                  dataKey="count"
+                  position="top"
+                  formatter={(v: any) => (Number(v) > 0 ? `${v}` : "")}
+                  style={{ fontSize: 10, fill: "#64748B", fontWeight: 600 }}
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>

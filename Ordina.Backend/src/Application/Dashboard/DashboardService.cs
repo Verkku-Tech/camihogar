@@ -802,6 +802,7 @@ public class DashboardService : IDashboardService
     public async Task<ProductAttributeBreakdownResponseDto> GetProductAttributeBreakdownAsync(
         string productName,
         string period = "month",
+        string? attributeIds = null,
         CancellationToken cancellationToken = default)
     {
         var periodStart = ComputePeriodStart(period);
@@ -822,42 +823,41 @@ public class DashboardService : IDashboardService
             {
                 var orderTotalUsd = ConvertOrderTotalToUsd(o, liveUsdRate);
                 var ratio = o.Total > 0 ? (orderTotalUsd / o.Total) : 1m;
-                return (o.Products ?? Enumerable.Empty<OrderProduct>()).Select(p => new
-                {
-                    Product = p,
-                    TotalUsd = p.Total * ratio
-                });
+                return (o.Products ?? Enumerable.Empty<OrderProduct>())
+                    .Where(p => string.Equals(p.Name?.Trim(), productName.Trim(), StringComparison.OrdinalIgnoreCase))
+                    .Select(p => (Product: p, TotalUsd: p.Total * ratio, Order: o));
             })
-            .Where(x => string.Equals(x.Product.Name?.Trim(), productName.Trim(), StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        var matchingProducts = matchingProductsWithUsd.Select(x => x.Product).ToList();
-        var categoryName = matchingProducts.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.Category))?.Category?.Trim() ?? "";
-        var totalUnitsSold = matchingProducts.Sum(p => p.Quantity > 0 ? p.Quantity : 1);
+        var totalUnitsSold = matchingProductsWithUsd.Sum(x => x.Product.Quantity > 0 ? x.Product.Quantity : 1);
         var totalInvoicedUsd = Math.Round(matchingProductsWithUsd.Sum(x => x.TotalUsd), 2);
         var averageUnitPriceUsd = totalUnitsSold > 0 ? Math.Round(totalInvoicedUsd / totalUnitsSold, 2) : 0m;
         var ordersCount = matchingOrders.Count;
 
-        var categories = await _dashboardRepository.GetCategoriesAsync(cancellationToken);
-        var category = categories.FirstOrDefault(c => string.Equals(c.Name?.Trim(), categoryName, StringComparison.OrdinalIgnoreCase));
+        var firstCategory = matchingProductsWithUsd.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Product.Category)).Product?.Category;
+        var categoryName = firstCategory ?? string.Empty;
 
-        var attributeBreakdowns = new List<AttributeBreakdownDto>();
+        var allCategories = await _dashboardRepository.GetCategoriesAsync(cancellationToken);
+        var category = allCategories?.FirstOrDefault(c =>
+            string.Equals(c.Name?.Trim(), categoryName.Trim(), StringComparison.OrdinalIgnoreCase));
 
-        if (category?.Attributes != null)
+        var rawBreakdowns = new List<(Ordina.Domain.Catalog.CategoryAttribute CatAttr, int TotalUnits, List<AttributeOptionStatDto> Options)>();
+
+        if (category?.Attributes != null && category.Attributes.Count > 0)
         {
             foreach (var catAttr in category.Attributes)
             {
                 var optionCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 int totalUnitsWithThisAttr = 0;
 
-                foreach (var p in matchingProducts)
+                foreach (var item in matchingProductsWithUsd)
                 {
+                    var p = item.Product;
                     if (p.Attributes == null || p.Attributes.Count == 0) continue;
 
-                    // Match attribute by Id or Title (case-insensitive)
                     var attrEntry = p.Attributes.FirstOrDefault(kvp =>
-                        string.Equals(kvp.Key, catAttr.Id, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(kvp.Key, catAttr.Title, StringComparison.OrdinalIgnoreCase));
+                        (!string.IsNullOrWhiteSpace(catAttr.Id) && string.Equals(kvp.Key, catAttr.Id, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrWhiteSpace(catAttr.Title) && string.Equals(kvp.Key, catAttr.Title, StringComparison.OrdinalIgnoreCase)));
 
                     if (attrEntry.Value != null)
                     {
@@ -882,12 +882,213 @@ public class DashboardService : IDashboardService
                         totalUnitsWithThisAttr > 0 ? Math.Round((decimal)kv.Value / totalUnitsWithThisAttr * 100m, 2) : 0m))
                     .ToList();
 
-                attributeBreakdowns.Add(new AttributeBreakdownDto(
-                    catAttr.Id,
-                    catAttr.Title,
-                    totalUnitsWithThisAttr,
-                    options));
+                rawBreakdowns.Add((catAttr, totalUnitsWithThisAttr, options));
             }
+        }
+
+        // Option C Heuristic: Determine structural vs cosmetic attributes
+        var candidateAttrs = category?.Attributes?.Where(a => a.Required == true).ToList() ?? new List<Ordina.Domain.Catalog.CategoryAttribute>();
+        if (candidateAttrs.Count == 0 && category?.Attributes != null)
+        {
+            candidateAttrs = category.Attributes.ToList();
+        }
+
+        var suggestedAttrIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var catAttr in candidateAttrs)
+        {
+            var catAttrKey = GetAttributeKey(catAttr);
+            var raw = rawBreakdowns.FirstOrDefault(b => string.Equals(GetAttributeKey(b.CatAttr), catAttrKey, StringComparison.OrdinalIgnoreCase));
+            if (raw.CatAttr == null || raw.Options.Count == 0) continue;
+
+            int n = raw.Options.Count;
+            decimal pTop = raw.Options.Max(o => o.Percentage);
+            decimal pTop2 = raw.Options.Take(2).Sum(o => o.Percentage);
+
+            // Heuristic C:
+            // 1. Low cardinality (<= 2 options like Box DT/BL or Patas)
+            // 2. Focused 3-way model choice (3 options with top 2 accumulating >= 70%, like Copete)
+            // 3. Dominant model leader (>= 60% share)
+            if (n <= 2 || (n == 3 && pTop2 >= 70.0m) || pTop >= 60.0m)
+            {
+                suggestedAttrIds.Add(catAttrKey);
+            }
+        }
+
+        // Fallback if none qualified: pick top 2 attributes by concentration
+        if (suggestedAttrIds.Count == 0 && candidateAttrs.Count > 0)
+        {
+            var topConcentrated = candidateAttrs
+                .OrderByDescending(catAttr =>
+                {
+                    var catAttrKey = GetAttributeKey(catAttr);
+                    var raw = rawBreakdowns.FirstOrDefault(b => string.Equals(GetAttributeKey(b.CatAttr), catAttrKey, StringComparison.OrdinalIgnoreCase));
+                    return raw.Options?.Count > 0 ? raw.Options.Max(o => o.Percentage) : 0m;
+                })
+                .Take(2);
+
+            foreach (var a in topConcentrated)
+            {
+                suggestedAttrIds.Add(GetAttributeKey(a));
+            }
+        }
+
+        // Build final AttributeBreakdownDto list with IsSuggestedForGrouping
+        var attributeBreakdowns = rawBreakdowns
+            .Select(b =>
+            {
+                var attrKey = GetAttributeKey(b.CatAttr);
+                return new AttributeBreakdownDto(
+                    attrKey,
+                    b.CatAttr.Title,
+                    b.TotalUnits,
+                    b.Options,
+                    suggestedAttrIds.Contains(attrKey));
+            })
+            .ToList();
+
+        // Determine active grouping attributes (Option B if user provided attributeIds, otherwise Option C heuristic)
+        List<Ordina.Domain.Catalog.CategoryAttribute> groupingAttrs;
+        if (!string.IsNullOrWhiteSpace(attributeIds))
+        {
+            var requestedTokens = attributeIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            groupingAttrs = category?.Attributes?
+                .Where(a => requestedTokens.Contains(GetAttributeKey(a)) ||
+                            (!string.IsNullOrWhiteSpace(a.Title) && requestedTokens.Contains(a.Title)) ||
+                            (!string.IsNullOrWhiteSpace(a.Id) && requestedTokens.Contains(a.Id)))
+                .ToList() ?? new List<Ordina.Domain.Catalog.CategoryAttribute>();
+        }
+        else
+        {
+            groupingAttrs = candidateAttrs
+                .Where(a => suggestedAttrIds.Contains(GetAttributeKey(a)))
+                .ToList();
+        }
+
+        if (groupingAttrs.Count == 0)
+        {
+            groupingAttrs = candidateAttrs.Where(a => suggestedAttrIds.Contains(GetAttributeKey(a))).ToList();
+        }
+
+        var activeAttributeIds = groupingAttrs.Select(GetAttributeKey).ToList();
+        var topVariants = new List<ProductVariantStatDto>();
+        int totalUniqueVariantsCount = 0;
+
+        if (groupingAttrs.Count > 0)
+        {
+            var variantMap = new Dictionary<string, (
+                string VariantName,
+                Dictionary<string, string> Attributes,
+                int UnitsSold,
+                decimal TotalInvoicedUsd,
+                Dictionary<string, (string OrderNumber, string ClientName, DateTime CreatedAt, int Quantity, decimal TotalUsd, string? Status)> OrdersMap)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in matchingProductsWithUsd)
+            {
+                var p = item.Product;
+                var o = item.Order;
+                if (p.Attributes == null || p.Attributes.Count == 0) continue;
+
+                var resolvedAttrs = new Dictionary<string, string>();
+                bool missingSelectedRequired = false;
+
+                foreach (var catAttr in groupingAttrs)
+                {
+                    var attrEntry = p.Attributes.FirstOrDefault(kvp =>
+                        (!string.IsNullOrWhiteSpace(catAttr.Id) && string.Equals(kvp.Key, catAttr.Id, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrWhiteSpace(catAttr.Title) && string.Equals(kvp.Key, catAttr.Title, StringComparison.OrdinalIgnoreCase)));
+
+                    if (attrEntry.Value != null)
+                    {
+                        var vals = ExtractAttributeValues(attrEntry.Value, catAttr);
+                        if (vals.Count > 0)
+                        {
+                            resolvedAttrs[catAttr.Title] = string.Join(", ", vals);
+                        }
+                    }
+
+                    if (!resolvedAttrs.ContainsKey(catAttr.Title))
+                    {
+                        if (catAttr.Required == true)
+                        {
+                            missingSelectedRequired = true;
+                        }
+                        else
+                        {
+                            resolvedAttrs[catAttr.Title] = "No";
+                        }
+                    }
+                }
+
+                if (missingSelectedRequired || resolvedAttrs.Count == 0) continue;
+
+                var signature = string.Join(" | ", resolvedAttrs.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}:{kv.Value}"));
+                var variantName = string.Join(" / ", resolvedAttrs.Values);
+
+                var qty = p.Quantity > 0 ? p.Quantity : 1;
+                var usd = item.TotalUsd;
+
+                if (!variantMap.TryGetValue(signature, out var acc))
+                {
+                    acc = (variantName, resolvedAttrs, 0, 0m, new Dictionary<string, (string OrderNumber, string ClientName, DateTime CreatedAt, int Quantity, decimal TotalUsd, string? Status)>(StringComparer.OrdinalIgnoreCase));
+                }
+
+                acc.UnitsSold += qty;
+                acc.TotalInvoicedUsd += usd;
+                if (!string.IsNullOrWhiteSpace(o?.OrderNumber))
+                {
+                    var ordNum = o.OrderNumber.Trim();
+                    if (!acc.OrdersMap.TryGetValue(ordNum, out var ordEntry))
+                    {
+                        ordEntry = (
+                            OrderNumber: ordNum,
+                            ClientName: string.IsNullOrWhiteSpace(o.ClientName) ? "Consumidor Final" : o.ClientName.Trim(),
+                            CreatedAt: o.CreatedAt,
+                            Quantity: 0,
+                            TotalUsd: 0m,
+                            Status: o.StatusString ?? o.Status.ToString()
+                        );
+                    }
+                    ordEntry.Quantity += qty;
+                    ordEntry.TotalUsd += usd;
+                    acc.OrdersMap[ordNum] = ordEntry;
+                }
+
+                variantMap[signature] = acc;
+            }
+
+            var allVariants = variantMap.Values
+                .OrderByDescending(v => v.UnitsSold)
+                .ThenByDescending(v => v.TotalInvoicedUsd)
+                .Select((v, idx) =>
+                {
+                    var orderSummaries = v.OrdersMap.Values
+                        .OrderByDescending(ord => ord.CreatedAt)
+                        .Select(ord => new ProductVariantOrderSummaryDto(
+                            OrderNumber: ord.OrderNumber,
+                            ClientName: ord.ClientName,
+                            CreatedAt: ord.CreatedAt,
+                            Quantity: ord.Quantity,
+                            TotalUsd: Math.Round(ord.TotalUsd, 2),
+                            Status: ord.Status))
+                        .ToList();
+
+                    return new ProductVariantStatDto(
+                        Rank: idx + 1,
+                        VariantName: v.VariantName,
+                        Attributes: v.Attributes,
+                        UnitsSold: v.UnitsSold,
+                        Percentage: totalUnitsSold > 0 ? Math.Round((decimal)v.UnitsSold / totalUnitsSold * 100m, 2) : 0m,
+                        TotalInvoicedUsd: Math.Round(v.TotalInvoicedUsd, 2),
+                        OrderNumbers: orderSummaries.Select(ord => ord.OrderNumber).ToList(),
+                        Orders: orderSummaries);
+                })
+                .ToList();
+
+            topVariants = allVariants.Take(3).ToList();
+            totalUniqueVariantsCount = allVariants.Count;
         }
 
         return new ProductAttributeBreakdownResponseDto(
@@ -897,7 +1098,16 @@ public class DashboardService : IDashboardService
             totalInvoicedUsd,
             averageUnitPriceUsd,
             ordersCount,
-            attributeBreakdowns);
+            attributeBreakdowns,
+            topVariants,
+            totalUniqueVariantsCount,
+            activeAttributeIds);
+    }
+
+    private static string GetAttributeKey(Ordina.Domain.Catalog.CategoryAttribute attr)
+    {
+        if (!string.IsNullOrWhiteSpace(attr.Id)) return attr.Id.Trim();
+        return attr.Title?.Trim() ?? string.Empty;
     }
 
     private static List<string> ExtractAttributeValues(object? rawValue, Ordina.Domain.Catalog.CategoryAttribute? catAttr)

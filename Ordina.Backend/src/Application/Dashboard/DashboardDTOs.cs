@@ -84,7 +84,26 @@ public record AttributeBreakdownDto(
     string AttributeId,
     string AttributeTitle,
     int TotalUnitsWithAttribute,
-    IReadOnlyList<AttributeOptionStatDto> Options);
+    IReadOnlyList<AttributeOptionStatDto> Options,
+    bool IsSuggestedForGrouping = true);
+
+public record ProductVariantOrderSummaryDto(
+    string OrderNumber,
+    string ClientName,
+    DateTime CreatedAt,
+    int Quantity,
+    decimal TotalUsd,
+    string? Status);
+
+public record ProductVariantStatDto(
+    int Rank,
+    string VariantName,
+    IReadOnlyDictionary<string, string> Attributes,
+    int UnitsSold,
+    decimal Percentage,
+    decimal TotalInvoicedUsd,
+    IReadOnlyList<string> OrderNumbers,
+    IReadOnlyList<ProductVariantOrderSummaryDto>? Orders = null);
 
 public record ProductAttributeBreakdownResponseDto(
     string ProductName,
@@ -93,7 +112,10 @@ public record ProductAttributeBreakdownResponseDto(
     decimal TotalInvoicedUsd,
     decimal AverageUnitPriceUsd,
     int OrdersCount,
-    IReadOnlyList<AttributeBreakdownDto> Attributes);
+    IReadOnlyList<AttributeBreakdownDto> Attributes,
+    IReadOnlyList<ProductVariantStatDto> TopVariants,
+    int TotalUniqueVariantsCount,
+    IReadOnlyList<string> ActiveAttributeIds = null!);
 
 public record PipelineSnapshotDto(
     int Manufacturing,

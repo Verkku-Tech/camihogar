@@ -65,6 +65,7 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IRepository<DispatchRoute>>(sp => new MongoRepository<DispatchRoute>(sp.GetRequiredService<MongoDbContext>().Database, "dispatch_routes"));
         services.AddScoped<IRepository<WorkOrder>>(sp => new MongoRepository<WorkOrder>(sp.GetRequiredService<MongoDbContext>().Database, "work_orders"));
         services.AddScoped<IRepository<AccessPin>>(sp => new MongoRepository<AccessPin>(sp.GetRequiredService<MongoDbContext>().Database, "accessPins"));
+        services.AddScoped<IRepository<NavigationSettings>>(sp => new MongoRepository<NavigationSettings>(sp.GetRequiredService<MongoDbContext>().Database, "navigation_settings"));
 
         // 3. Security & Caching
         services.AddSingleton<IPasswordHasher, PasswordHasher>();

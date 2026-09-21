@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts"
 import { Layers } from "lucide-react"
 import type { PipelineSnapshot } from "@/lib/api-client"
 import { CHART_THEME } from "./chart-theme"
@@ -55,10 +55,17 @@ export function PipelineChart({ data, isLoading }: Props) {
           <div className="h-56 bg-muted/40 rounded-xl animate-pulse" />
         ) : (
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 24, left: 10, bottom: 0 }}>
+            <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 38, left: 10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.gridStroke} horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 11, fill: CHART_THEME.axisTick }} stroke={CHART_THEME.gridStroke} />
-              <YAxis type="category" dataKey="stage" tick={{ fontSize: 11, fill: "#475569" }} width={85} stroke={CHART_THEME.gridStroke} />
+              <YAxis
+                type="category"
+                dataKey="stage"
+                tick={{ fontSize: 11, fill: "#475569" }}
+                width={85}
+                interval={0}
+                stroke={CHART_THEME.gridStroke}
+              />
               <Tooltip
                 contentStyle={{
                   backgroundColor: "rgba(255, 255, 255, 0.95)",
@@ -74,6 +81,12 @@ export function PipelineChart({ data, isLoading }: Props) {
                 {chartData.map((entry, i) => (
                   <Cell key={i} fill={entry.color} />
                 ))}
+                <LabelList
+                  dataKey="value"
+                  position="right"
+                  formatter={(v: any) => `${v}`}
+                  style={{ fontSize: 11, fill: "#64748B", fontWeight: 600 }}
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>

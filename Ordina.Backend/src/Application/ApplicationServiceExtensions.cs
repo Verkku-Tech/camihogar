@@ -37,6 +37,7 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<INavigationSettingsService, NavigationSettingsService>();
         services.AddSingleton<ITimeSeriesForecastingService, HoltWintersForecastingService>();
         services.AddSingleton<INotificationService, NotificationService>();
 

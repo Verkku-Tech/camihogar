@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Sidebar } from "@/components/dashboard/sidebar";
+import { Sidebar } from "@/components/layout/sidebar";
 import { HomeHeader } from "./home-header";
 import { MetricsCards } from "./metrics-cards";
 import { OrdersTable } from "./orders-table";

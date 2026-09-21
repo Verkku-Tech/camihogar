@@ -58,6 +58,13 @@ import type {
 } from './api-client-dtos'
 import type { ExchangeRate } from './currency-utils'
 
+export interface NavigationSettingItemDto {
+  id: string
+  active: boolean
+  superAdminOnly?: boolean
+  allowedRoles?: string[]
+}
+
 export * from './api-client-dtos'
 
 let inMemoryToken: string | null = null
@@ -312,6 +319,27 @@ export interface AttributeBreakdown {
   attributeTitle: string
   totalUnitsWithAttribute: number
   options: AttributeOptionStat[]
+  isSuggestedForGrouping?: boolean
+}
+
+export interface ProductVariantOrderSummary {
+  orderNumber: string
+  clientName: string
+  createdAt: string
+  quantity: number
+  totalUsd: number
+  status?: string
+}
+
+export interface ProductVariantStat {
+  rank: number
+  variantName: string
+  attributes: Record<string, string>
+  unitsSold: number
+  percentage: number
+  totalInvoicedUsd: number
+  orderNumbers: string[]
+  orders?: ProductVariantOrderSummary[]
 }
 
 export interface ProductAttributeBreakdownResponse {
@@ -322,6 +350,9 @@ export interface ProductAttributeBreakdownResponse {
   averageUnitPriceUsd?: number
   ordersCount?: number
   attributes: AttributeBreakdown[]
+  topVariants?: ProductVariantStat[]
+  totalUniqueVariantsCount?: number
+  activeAttributeIds?: string[]
 }
 
 export interface PipelineSnapshot {
@@ -450,6 +481,18 @@ export class ApiClientClass {
 
   async deleteRole(id: string): Promise<void> {
     return apiFetch<void>(`/api/users/roles/${id}`, { method: 'DELETE' })
+  }
+
+  // Navigation Settings
+  async getNavigationSettings(): Promise<NavigationSettingItemDto[]> {
+    return apiFetch<NavigationSettingItemDto[]>('/api/NavigationSettings')
+  }
+
+  async updateNavigationSettings(items: NavigationSettingItemDto[]): Promise<NavigationSettingItemDto[]> {
+    return apiFetch<NavigationSettingItemDto[]>('/api/NavigationSettings', {
+      method: 'PUT',
+      body: JSON.stringify(items),
+    })
   }
 
   // Categories
@@ -919,9 +962,14 @@ export class ApiClientClass {
   async getProductAttributeBreakdown(
     productName: string,
     period = 'month',
+    attributeIds?: string[],
     signal?: AbortSignal
   ): Promise<ProductAttributeBreakdownResponse> {
-    const query = new URLSearchParams({ productName, period })
+    const params: Record<string, string> = { productName, period }
+    if (attributeIds && attributeIds.length > 0) {
+      params.attributeIds = attributeIds.join(',')
+    }
+    const query = new URLSearchParams(params)
     return apiFetch<ProductAttributeBreakdownResponse>(
       `/api/dashboard/top-products/attribute-breakdown?${query.toString()}`,
       { signal }
