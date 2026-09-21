@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Ordina.Application.Finance;
+using Ordina.Application.Orders;
 
 namespace Ordina.Api.Controllers;
 
@@ -12,15 +13,18 @@ public class FinanceController : ControllerBase
     private readonly IPaymentService _paymentService;
     private readonly IExchangeRateService _exchangeRateService;
     private readonly ICommissionService _commissionService;
+    private readonly IOrderCoreService _orderService;
 
     public FinanceController(
         IPaymentService paymentService,
         IExchangeRateService exchangeRateService,
-        ICommissionService commissionService)
+        ICommissionService commissionService,
+        IOrderCoreService orderService)
     {
         _paymentService = paymentService;
         _exchangeRateService = exchangeRateService;
         _commissionService = commissionService;
+        _orderService = orderService;
     }
 
     [HttpGet("exchange-rates/latest")]
@@ -97,6 +101,15 @@ public class FinanceController : ControllerBase
             return NotFound();
         }
         return NoContent();
+    }
+
+    [HttpPost("payments/conciliate")]
+    public async Task<ActionResult<bool>> ConciliatePayments(
+        [FromBody] List<ConciliatePaymentRequestDto> requests,
+        CancellationToken cancellationToken)
+    {
+        var result = await _orderService.ConciliatePaymentsAsync(requests, cancellationToken);
+        return Ok(result);
     }
 
     [HttpGet("commissions")]

@@ -40,10 +40,10 @@ public class AuthService : IAuthService
         if (!string.IsNullOrEmpty(user.RoleString))
         {
             var roles = await _roleRepository.FindAsync(r => r.Name == user.RoleString, cancellationToken);
-            var role = roles.FirstOrDefault();
+            var role = roles?.FirstOrDefault();
             if (role != null)
             {
-                rolePermissions = role.Permissions;
+                rolePermissions = role.Permissions ?? new List<string>();
             }
         }
         return UserPermissionResolver.Merge(rolePermissions, user.ExtraPermissions);
@@ -111,7 +111,8 @@ public class AuthService : IAuthService
                 user.StatusString,
                 permissions,
                 user.StoreId,
-                user.StoreName));
+                user.StoreName,
+                user.AvatarUrl));
     }
 
     public async Task<RefreshTokenResponse> RefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default)
@@ -237,6 +238,48 @@ public class AuthService : IAuthService
             user.StatusString,
             permissions,
             user.StoreId,
-            user.StoreName);
+            user.StoreName,
+            user.AvatarUrl);
+    }
+
+    public async Task<LoginResponse> ImpersonateUserAsync(string currentUserId, string targetUserId, CancellationToken cancellationToken = default)
+    {
+        if (string.Equals(currentUserId, targetUserId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("No puedes impersonar a tu propio usuario.");
+        }
+
+        var targetUser = await _userRepository.GetByIdAsync(targetUserId, cancellationToken)
+            ?? throw new KeyNotFoundException("Usuario no encontrado.");
+
+        if (targetUser.Status != UserStatus.Active)
+        {
+            throw new InvalidOperationException("No se puede impersonar a un usuario inactivo.");
+        }
+
+        var permissions = await GetUserPermissionsAsync(targetUser, cancellationToken);
+        var token = _tokenService.GenerateToken(targetUser, permissions, currentUserId);
+        var expiresAt = DateTime.UtcNow.AddMinutes(AccessTokenExpirationMinutes);
+
+        _logger.LogInformation("Superadmin {SuperAdminId} inició impersonación del usuario {TargetUserId}", currentUserId, targetUserId);
+
+        // ponytail: No emitimos nuevo refreshToken para preservar la sesión del superadmin intacta
+        return new LoginResponse(
+            token,
+            string.Empty,
+            expiresAt,
+            expiresAt,
+            new UserDto(
+                targetUser.Id,
+                targetUser.Username,
+                targetUser.Email,
+                targetUser.RoleString,
+                targetUser.Name,
+                targetUser.StatusString,
+                permissions,
+                targetUser.StoreId,
+                targetUser.StoreName,
+                targetUser.AvatarUrl));
     }
 }
+

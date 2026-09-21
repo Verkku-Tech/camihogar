@@ -57,8 +57,13 @@ import {
   RefreshCw,
   Copy,
   KeyRound,
+  UserCheck,
+  Upload,
+  User,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/auth-context";
 import { useUsers } from "@/hooks/use-users";
 import { apiClient } from "@/lib/api-client";
 import type { CreateUserDto, UpdateUserDto } from "@/lib/api-client";
@@ -70,6 +75,8 @@ import {
   getAssignablePermissionsForDisplayRole,
   type AssignableUserPermission,
 } from "@/lib/user-extra-permissions";
+
+import { processAvatarImage } from "@/lib/image-utils";
 
 function generateRandomPassword(length = 16): string {
   const chars =
@@ -139,6 +146,7 @@ interface UserDisplay {
   storeId?: string;
   storeName?: string;
   extraPermissions: string[];
+  avatarUrl?: string;
 }
 
 const isStoreSellerDisplayRole = (role: string) => role === "Vendedor de tienda";
@@ -154,6 +162,26 @@ export function UsersPage() {
     deleteUser,
     refresh,
   } = useUsers();
+  const {
+    user: currentUser,
+    impersonate,
+    isImpersonating,
+    updateUser: updateAuthUser,
+  } = useAuth();
+  const [impersonatingUserId, setImpersonatingUserId] = useState<string | null>(null);
+
+  const handleImpersonate = async (targetUser: UserDisplay) => {
+    try {
+      setImpersonatingUserId(targetUser.id);
+      await impersonate(targetUser.id);
+      toast.success(`Ahora estás operando como ${targetUser.fullName}`);
+    } catch (err: any) {
+      toast.error(err?.message || "No se pudo iniciar la impersonación");
+    } finally {
+      setImpersonatingUserId(null);
+    }
+  };
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -176,6 +204,7 @@ export function UsersPage() {
     role: "",
     status: "Activo" as "Activo" | "Inactivo",
     storeId: "",
+    avatarUrl: "",
   });
 
   const visibleAssignablePermissions = useMemo(
@@ -216,6 +245,7 @@ export function UsersPage() {
     storeId: u.storeId,
     storeName: u.storeName,
     extraPermissions: u.extraPermissions ?? [],
+    avatarUrl: u.avatarUrl,
   }));
 
   const filteredUsers = users.filter((user) => {
@@ -318,6 +348,7 @@ export function UsersPage() {
           ? { storeId: formData.storeId }
           : {}),
         extraPermissions,
+        avatarUrl: formData.avatarUrl || undefined,
       };
       
       const createdUser = await createUser(createUserDto);
@@ -456,12 +487,21 @@ export function UsersPage() {
           ? { storeId: formData.storeId }
           : { storeId: "" }),
         extraPermissions,
+        avatarUrl: formData.avatarUrl,
       };
       
       const updatedUser = await updateUser(editingUser.id, updateUserDto);
       
       // Solo mostrar éxito si realmente se actualizó
       if (updatedUser) {
+        if (currentUser && editingUser.id === currentUser.id) {
+          updateAuthUser({
+            name: formData.fullName.trim(),
+            username: formData.username.trim(),
+            email: formData.email.trim(),
+            avatarUrl: formData.avatarUrl,
+          });
+        }
         setIsEditDialogOpen(false);
         setEditingUser(null);
         resetForm();
@@ -569,6 +609,7 @@ export function UsersPage() {
       role: user.role,
       status: user.status,
       storeId: user.storeId || "",
+      avatarUrl: user.avatarUrl || "",
     });
     setExtraPermissions(
       filterExtraPermissionsForDisplayRole(
@@ -589,6 +630,7 @@ export function UsersPage() {
       role: "",
       status: "Activo" as "Activo" | "Inactivo",
       storeId: "",
+      avatarUrl: "",
     });
     setExtraPermissions([]);
     setShowPassword(false);
@@ -693,18 +735,8 @@ export function UsersPage() {
             <h1 className="text-2xl font-bold text-foreground">
               Gestión de Usuarios
             </h1>
-            {isSyncing && (
-              <RefreshCw className="w-5 h-5 text-blue-500 animate-spin" />
-            )}
-            {!isOnline && (
-              <Badge
-                variant="outline"
-                className="text-orange-600 border-orange-600"
-              >
-                Modo Offline
-              </Badge>
-            )}
           </div>
+
           <p className="text-muted-foreground mb-4">
             Administra los usuarios del sistema
           </p>
@@ -740,7 +772,7 @@ export function UsersPage() {
                   Nuevo Usuario
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
+              <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Crear Usuario</DialogTitle>
                   <DialogDescription>
@@ -748,6 +780,62 @@ export function UsersPage() {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
+                  {/* Foto de Perfil */}
+                  <div className="flex flex-col items-center justify-center gap-2 p-3 bg-muted/40 rounded-lg border border-dashed border-border">
+                    <div className="relative">
+                      {formData.avatarUrl ? (
+                        <img
+                          src={formData.avatarUrl}
+                          alt="Foto de perfil"
+                          className="w-20 h-20 rounded-full object-cover border-2 border-primary/20 shadow-xs"
+                        />
+                      ) : (
+                        <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center text-muted-foreground border-2 border-dashed border-muted-foreground/30">
+                          <User className="w-8 h-8 opacity-60" />
+                        </div>
+                      )}
+                      {formData.avatarUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, avatarUrl: "" })}
+                          className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground p-1 rounded-full shadow-xs hover:bg-destructive/90 transition-colors"
+                          title="Eliminar foto"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label
+                        htmlFor="create-avatar-upload"
+                        className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground cursor-pointer shadow-xs transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                        {formData.avatarUrl ? "Cambiar foto" : "Subir foto"}
+                      </label>
+                      <input
+                        id="create-avatar-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const dataUrl = await processAvatarImage(file);
+                            setFormData((prev) => ({ ...prev, avatarUrl: dataUrl }));
+                            toast.success("Foto procesada y optimizada");
+                          } catch (err: any) {
+                            toast.error(err?.message || "Error al procesar la imagen");
+                          }
+                          e.target.value = "";
+                        }}
+                      />
+                    </div>
+                    <span className="text-[11px] text-muted-foreground text-center">
+                      PNG, JPG o WebP. Se optimizará a 256x256 px automáticamente.
+                    </span>
+                  </div>
                   <div>
                     <Label htmlFor="fullName">Nombre Completo *</Label>
                     <Input
@@ -980,7 +1068,20 @@ export function UsersPage() {
                   {filteredUsers.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell className="font-medium">
-                        {user.fullName}
+                        <div className="flex items-center gap-3">
+                          {user.avatarUrl ? (
+                            <img
+                              src={user.avatarUrl}
+                              alt={user.fullName}
+                              className="w-8 h-8 rounded-full object-cover border border-border shrink-0"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold text-xs border border-primary/20 shrink-0">
+                              {user.fullName.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="truncate">{user.fullName}</span>
+                        </div>
                       </TableCell>
                       <TableCell>{user.username}</TableCell>
                       <TableCell>{user.email}</TableCell>
@@ -1010,6 +1111,18 @@ export function UsersPage() {
                       <TableCell>{user.createdAt}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {currentUser?.role === "Super Administrator" && !isImpersonating && user.id !== currentUser?.id && user.status === "Activo" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleImpersonate(user)}
+                              disabled={impersonatingUserId === user.id}
+                              title={`Impersonar a ${user.fullName}`}
+                              className="text-amber-700 hover:text-amber-800 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-950"
+                            >
+                              <UserCheck className="w-4 h-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1095,7 +1208,7 @@ export function UsersPage() {
 
       {/* Edit User Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Usuario</DialogTitle>
             <DialogDescription>
@@ -1103,6 +1216,62 @@ export function UsersPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {/* Foto de Perfil */}
+            <div className="flex flex-col items-center justify-center gap-2 p-3 bg-muted/40 rounded-lg border border-dashed border-border">
+              <div className="relative">
+                {formData.avatarUrl ? (
+                  <img
+                    src={formData.avatarUrl}
+                    alt="Foto de perfil"
+                    className="w-20 h-20 rounded-full object-cover border-2 border-primary/20 shadow-xs"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center text-muted-foreground border-2 border-dashed border-muted-foreground/30">
+                    <User className="w-8 h-8 opacity-60" />
+                  </div>
+                )}
+                {formData.avatarUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, avatarUrl: "" })}
+                    className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground p-1 rounded-full shadow-xs hover:bg-destructive/90 transition-colors"
+                    title="Eliminar foto"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="edit-avatar-upload"
+                  className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground cursor-pointer shadow-xs transition-colors"
+                >
+                  <Upload className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                  {formData.avatarUrl ? "Cambiar foto" : "Subir foto"}
+                </label>
+                <input
+                  id="edit-avatar-upload"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const dataUrl = await processAvatarImage(file);
+                      setFormData((prev) => ({ ...prev, avatarUrl: dataUrl }));
+                      toast.success("Foto procesada y optimizada");
+                    } catch (err: any) {
+                      toast.error(err?.message || "Error al procesar la imagen");
+                    }
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+              <span className="text-[11px] text-muted-foreground text-center">
+                PNG, JPG o WebP. Se optimizará a 256x256 px automáticamente.
+              </span>
+            </div>
             <div>
               <Label htmlFor="editFullName">Nombre Completo *</Label>
               <Input

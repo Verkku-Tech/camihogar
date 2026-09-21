@@ -11,7 +11,8 @@ public record UserDto(
     string Status,
     IReadOnlyList<string> Permissions,
     string? StoreId = null,
-    string? StoreName = null);
+    string? StoreName = null,
+    string? AvatarUrl = null);
 
 public record LoginResponse(
     string Token,

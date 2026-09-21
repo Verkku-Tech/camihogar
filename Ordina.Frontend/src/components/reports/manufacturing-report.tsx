@@ -448,20 +448,6 @@ export function ManufacturingReport() {
 
   return (
     <div className="space-y-6">
-      {/* Indicador de estado de conexión */}
-      <Card className="border-muted">
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              
-            </div>
-            <Badge variant={isOnline ? "default" : "secondary"}>
-              {isOnline ? "Online" : "Offline"}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Reporte de Fabricación */}
       <Card>
         <CardHeader>

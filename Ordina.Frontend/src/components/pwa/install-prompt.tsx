@@ -1,16 +1,83 @@
+// ponytail: install prompt banner and hook for client device PWA installation
 "use client"
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Download, X } from "lucide-react"
 
-interface BeforeInstallPromptEvent extends Event {
+export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
 }
 
+let globalDeferredPrompt: BeforeInstallPromptEvent | null = null
+const promptListeners = new Set<(prompt: BeforeInstallPromptEvent | null) => void>()
+
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (e: Event) => {
+    e.preventDefault()
+    globalDeferredPrompt = e as BeforeInstallPromptEvent
+    promptListeners.forEach((fn) => fn(globalDeferredPrompt))
+    console.log("✅ beforeinstallprompt captured globally")
+  })
+
+  window.addEventListener("appinstalled", () => {
+    globalDeferredPrompt = null
+    promptListeners.forEach((fn) => fn(null))
+    localStorage.removeItem("pwa-install-dismissed")
+    console.log("✅ PWA appinstalled globally")
+  })
+}
+
+export function usePwaInstall() {
+  const [canInstall, setCanInstall] = useState(!!globalDeferredPrompt)
+  const [isStandalone, setIsStandalone] = useState(false)
+
+  useEffect(() => {
+    const checkStandalone = () => {
+      if (typeof window === "undefined") return false
+      return (
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (window.navigator as any).standalone === true
+      )
+    }
+
+    setIsStandalone(checkStandalone())
+    setCanInstall(!!globalDeferredPrompt)
+
+    const handler = (p: BeforeInstallPromptEvent | null) => {
+      setCanInstall(!!p)
+      setIsStandalone(checkStandalone())
+    }
+
+    promptListeners.add(handler)
+    return () => {
+      promptListeners.delete(handler)
+    }
+  }, [])
+
+  const install = async () => {
+    if (globalDeferredPrompt) {
+      try {
+        await globalDeferredPrompt.prompt()
+        const choice = await globalDeferredPrompt.userChoice
+        if (choice.outcome === "accepted") {
+          globalDeferredPrompt = null
+          promptListeners.forEach((fn) => fn(null))
+        }
+        return choice.outcome
+      } catch (err) {
+        console.error("Install prompt error:", err)
+      }
+    }
+    return null
+  }
+
+  return { canInstall, isStandalone, install }
+}
+
 export function InstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(globalDeferredPrompt)
   const [isInstalled, setIsInstalled] = useState(false)
   const [isDismissed, setIsDismissed] = useState(false)
   const [showFallback, setShowFallback] = useState(false)
@@ -34,22 +101,15 @@ export function InstallPrompt() {
       setIsDismissed(true)
     }
 
-    // Escuchar evento beforeinstallprompt (Chrome/Edge)
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault()
-      setDeferredPrompt(e as BeforeInstallPromptEvent)
-      console.log("✅ beforeinstallprompt event captured")
+    const handler = (p: BeforeInstallPromptEvent | null) => {
+      setDeferredPrompt(p)
+      if (checkInstalled()) {
+        setIsInstalled(true)
+      }
     }
 
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
+    promptListeners.add(handler)
 
-    // Escuchar cuando se instala
-    window.addEventListener("appinstalled", () => {
-      setIsInstalled(true)
-      setDeferredPrompt(null)
-      localStorage.removeItem("pwa-install-dismissed")
-      console.log("✅ PWA instalada")
-    })
 
     // Fallback: Mostrar instrucciones después de un tiempo si no hay prompt
     // (útil para iOS Safari u otros navegadores)
@@ -65,9 +125,10 @@ export function InstallPrompt() {
     }, 3000)
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
+      promptListeners.delete(handler)
       clearTimeout(fallbackTimer)
     }
+
   }, [deferredPrompt, isInstalled, isDismissed])
 
   const handleInstallClick = async () => {

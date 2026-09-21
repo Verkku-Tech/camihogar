@@ -32,9 +32,6 @@ public class MongoDatabaseSeeder
     private async Task SeedRolesAsync(CancellationToken cancellationToken)
     {
         var count = await _context.Roles.CountDocumentsAsync(_ => true, cancellationToken: cancellationToken);
-        if (count > 0) return;
-
-        _logger.LogInformation("Sembrando roles por defecto en MongoDB...");
 
         var allPermissions = Permissions.GetAll();
 
@@ -104,9 +101,13 @@ public class MongoDatabaseSeeder
                 {
                     Permissions.Orders.Read,
                     Permissions.Orders.Create,
+                    Permissions.Orders.Update,
+                    Permissions.Orders.ManagePayments,
                     Permissions.Budgets.Create,
+                    Permissions.Budgets.Update,
                     Permissions.Clients.Read,
                     Permissions.Clients.Create,
+                    Permissions.Clients.Update,
                     Permissions.Products.Read
                 },
                 IsSystem = true,
@@ -140,8 +141,37 @@ public class MongoDatabaseSeeder
             }
         };
 
-        await _context.Roles.InsertManyAsync(roles, cancellationToken: cancellationToken);
-        _logger.LogInformation("Se sembraron {Count} roles.", roles.Count);
+        if (count == 0)
+        {
+            _logger.LogInformation("Sembrando roles por defecto en MongoDB...");
+            await _context.Roles.InsertManyAsync(roles, cancellationToken: cancellationToken);
+            _logger.LogInformation("Se sembraron {Count} roles.", roles.Count);
+        }
+        else
+        {
+            // Sincroniza permisos faltantes en roles del sistema existentes
+            foreach (var role in roles)
+            {
+                var existing = await _context.Roles.Find(r => r.Name == role.Name).FirstOrDefaultAsync(cancellationToken);
+                if (existing == null)
+                {
+                    await _context.Roles.InsertOneAsync(role, cancellationToken: cancellationToken);
+                    continue;
+                }
+
+                var currentPerms = existing.Permissions ?? new List<string>();
+                var missing = role.Permissions.Where(p => !currentPerms.Contains(p)).ToList();
+                if (missing.Count > 0)
+                {
+                    currentPerms.AddRange(missing);
+                    var update = Builders<Role>.Update
+                        .Set(r => r.Permissions, currentPerms)
+                        .Set(r => r.UpdatedAt, DateTime.UtcNow);
+                    await _context.Roles.UpdateOneAsync(r => r.Name == role.Name, update, cancellationToken: cancellationToken);
+                    _logger.LogInformation("Rol '{RoleName}' actualizado con {Count} permisos adicionales.", role.Name, missing.Count);
+                }
+            }
+        }
     }
 
     private async Task SeedAdminUserAsync(CancellationToken cancellationToken)

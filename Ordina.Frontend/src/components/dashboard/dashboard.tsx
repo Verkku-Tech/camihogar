@@ -211,15 +211,15 @@ export function Dashboard() {
   };
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-full bg-background">
       {/* Sidebar */}
       <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
           {/* Breadcrumb */}
           <AppBreadcrumb />
 
@@ -273,11 +273,11 @@ export function Dashboard() {
           )}
 
           {/* Orders Section */}
-          <div className="mt-8">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
-              <div className="flex items-center space-x-1 mb-4 sm:mb-0">
+          <div className="mt-8 min-w-0 max-w-full">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full no-scrollbar">
                 {isOnlineSeller ? (
-                  <span className="px-4 py-2 text-sm rounded-md bg-primary text-primary-foreground">
+                  <span className="px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-md bg-primary text-primary-foreground shrink-0">
                     Pedidos
                   </span>
                 ) : (
@@ -285,7 +285,7 @@ export function Dashboard() {
                     {/* OCULTO TEMPORALMENTE - Presupuestos (lógica preservada)
                     <button
                       onClick={() => setActiveTab("presupuestos")}
-                      className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                      className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-md whitespace-nowrap shrink-0 transition-colors ${
                         activeTab === "presupuestos"
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -296,7 +296,7 @@ export function Dashboard() {
                     */}
                     <button
                       onClick={() => setActiveTab("pedidos")}
-                      className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                      className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-md whitespace-nowrap shrink-0 transition-colors ${
                         activeTab === "pedidos"
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -306,7 +306,7 @@ export function Dashboard() {
                     </button>
                     <button
                       onClick={() => setActiveTab("fabricacion")}
-                      className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                      className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-md whitespace-nowrap shrink-0 transition-colors ${
                         activeTab === "fabricacion"
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -316,7 +316,7 @@ export function Dashboard() {
                     </button>
                     <button
                       onClick={() => setActiveTab("despachos")}
-                      className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                      className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-md whitespace-nowrap shrink-0 transition-colors ${
                         activeTab === "despachos"
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -326,7 +326,7 @@ export function Dashboard() {
                     </button>
                     <button
                       onClick={() => setActiveTab("sa-vencidos")}
-                      className={`px-4 py-2 text-sm rounded-md transition-colors ${
+                      className={`px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-md whitespace-nowrap shrink-0 transition-colors ${
                         activeTab === "sa-vencidos"
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -338,7 +338,7 @@ export function Dashboard() {
                 )}
               </div>
               <Button
-                className="bg-green-600 hover:bg-green-700 text-white"
+                className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white shrink-0"
                 onClick={() => setIsNewOrderOpen(true)}
               >
                 <Plus className="w-4 h-4 mr-2" />

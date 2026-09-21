@@ -205,7 +205,7 @@ export default function PedidosPage() {
       dateFrom: rangeFrom || undefined,
       dateTo: rangeTo || undefined,
       includeBudgets: true,
-      excludeStatuses: filters.status === "all" ? "Declinado" : undefined,
+      excludeStatuses: filters.status === "all" && !debouncedSearchTerm.trim() ? "Declinado" : undefined,
     };
   }, [debouncedSearchTerm, filters, dateFrom, dateTo]);
 
@@ -540,12 +540,23 @@ export default function PedidosPage() {
     }
   };
 
+  const isBudgetRecord = (o?: UnifiedOrder | null) => {
+    if (!o) return false;
+    const t = (o.type || "").toLowerCase();
+    return t === "budget" || (o.orderNumber || "").toUpperCase().startsWith("PRE-");
+  };
+
+  const isOrderRecord = (o?: UnifiedOrder | null) => {
+    if (!o) return false;
+    const t = (o.type || "").toLowerCase();
+    return t === "order" || (!t && !(o.orderNumber || "").toUpperCase().startsWith("PRE-"));
+  };
+
   const handleView = async (order: UnifiedOrder) => {
-    // Redirigir según el tipo (pedido o presupuesto)
-    if (order.type === "order") {
-      window.location.href = `/pedidos/${order.orderNumber}`;
-    } else {
+    if (isBudgetRecord(order)) {
       window.location.href = `/presupuestos/${order.orderNumber}`;
+    } else {
+      window.location.href = `/pedidos/${order.orderNumber}`;
     }
   };
 
@@ -559,19 +570,20 @@ export default function PedidosPage() {
       setIsEditOrderOpen(true);
     };
 
-    if (row.type === "budget" && (canConvertBudget || canEditOrderFull)) {
+    const isBudget = isBudgetRecord(row);
+    if (isBudget && (canConvertBudget || canEditOrderFull)) {
       setEditMode("full");
       const full = await getOrderByOrderNumberPreferBackend(row.orderNumber);
       openEdit(full ?? ({ ...row, paymentMethod: row.paymentMethod ?? "" } as Order));
       return;
     }
-    if (row.type === "order" && canEditOrderFull) {
+    if (!isBudget && canEditOrderFull) {
       setEditMode("full");
       const full = await getOrderByOrderNumberPreferBackend(row.orderNumber);
       openEdit(full ?? ({ ...row, paymentMethod: row.paymentMethod ?? "" } as Order));
       return;
     }
-    if (canEditOrderPaymentsOnly && row.type === "order") {
+    if (canEditOrderPaymentsOnly && !isBudget) {
       setEditMode("payments");
       const full = await getOrderByOrderNumberPreferBackend(row.orderNumber);
       openEdit(full ?? ({ ...row, paymentMethod: row.paymentMethod ?? "" } as Order));
@@ -584,22 +596,23 @@ export default function PedidosPage() {
 
   const canEditOrder = (order: UnifiedOrder) => {
     if (onlineSellerFilter && !isTeamOrder(order)) return false;
+    const isBudget = isBudgetRecord(order);
     return (
-      (order.type === "budget" && (canConvertBudget || canEditOrderFull)) ||
-      (order.type === "order" && canEditOrderFull) ||
-      (canEditOrderPaymentsOnly && order.type === "order")
+      (isBudget && (canConvertBudget || canEditOrderFull)) ||
+      (!isBudget && canEditOrderFull) ||
+      (canEditOrderPaymentsOnly && !isBudget)
     );
   };
 
   const canDeleteOrder = (order: UnifiedOrder) => {
     if (onlineSellerFilter && !isTeamOrder(order)) return false;
-    return order.type === "order"
+    return isOrderRecord(order)
       ? hasPermission("orders.delete")
       : hasPermission("budgets.delete");
   };
 
   const handleEditPayments = async (row: UnifiedOrder) => {
-    if (!canEditOrderPaymentsOnly || row.type !== "order") {
+    if (!canEditOrderPaymentsOnly || !isOrderRecord(row)) {
       toast.error("Acceso denegado", {
         description: "No tienes permisos para editar los pagos de este pedido.",
       });
@@ -619,7 +632,7 @@ export default function PedidosPage() {
 
   const canEditOrderPaymentsQuick = (order: UnifiedOrder) => {
     if (onlineSellerFilter && !isTeamOrder(order)) return false;
-    return canEditOrderPaymentsOnly && order.type === "order";
+    return canEditOrderPaymentsOnly && isOrderRecord(order);
   };
 
   const handleDeleteClick = (order: UnifiedOrder) => {
@@ -633,43 +646,41 @@ export default function PedidosPage() {
 
   return (
     <ProtectedRoute>
-      <div className="flex h-screen bg-background">
+      <div className="flex h-full bg-background">
         <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
 
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
-          <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-            
-
+          <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
             <AppBreadcrumb />
-<div className="space-y-6">
-              <div className="flex flex-col sm:flex-row gap-4 justify-between">
-                <div className="relative flex-1 max-w-md">
+            <div className="space-y-6 min-w-0 max-w-full">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-center justify-between">
+                <div className="relative flex-1 max-w-md w-full">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none" />
                   <Input
                     placeholder="Buscar por N° pedido, cliente, CI, teléfono o vendedor..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 w-full"
                     aria-label="Buscar pedidos por número, cliente, CI, teléfono o vendedor"
                   />
                 </div>
-                <Button onClick={() => setIsNewOrderOpen(true)}>
+                <Button onClick={() => setIsNewOrderOpen(true)} className="w-full sm:w-auto shrink-0">
                   <Plus className="w-4 h-4 mr-2" />
                   Nuevo Pedido
                 </Button>
               </div>
 
               {/* Filtros por columna */}
-              <div className="flex flex-wrap gap-2 items-center">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:flex lg:flex-wrap gap-2.5 items-center">
                 <Select
                   value={filters.vendor}
                   onValueChange={(value) =>
                     setFilters((prev) => ({ ...prev, vendor: value }))
                   }
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue placeholder="Todos los vendedores" />
                   </SelectTrigger>
                   <SelectContent>
@@ -688,7 +699,7 @@ export default function PedidosPage() {
                     setFilters((prev) => ({ ...prev, status: value }))
                   }
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue placeholder="Todos los estados" />
                   </SelectTrigger>
                   <SelectContent>
@@ -707,7 +718,7 @@ export default function PedidosPage() {
                     setFilters((prev) => ({ ...prev, saleType: value }))
                   }
                 >
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="w-full sm:w-[200px]">
                     <SelectValue placeholder="Todos los tipos" />
                   </SelectTrigger>
                   <SelectContent>
@@ -720,29 +731,31 @@ export default function PedidosPage() {
                   </SelectContent>
                 </Select>
 
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    Desde
-                  </span>
-                  <Input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-[150px]"
-                    aria-label="Fecha desde"
-                  />
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    Hasta
-                  </span>
-                  <Input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="w-[150px]"
-                    aria-label="Fecha hasta"
-                  />
+                <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center">
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                      Desde
+                    </span>
+                    <Input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="w-full sm:w-[145px]"
+                      aria-label="Fecha desde"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                      Hasta
+                    </span>
+                    <Input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="w-full sm:w-[145px]"
+                      aria-label="Fecha hasta"
+                    />
+                  </div>
                 </div>
 
                 {(searchTerm !== "" ||
@@ -764,7 +777,7 @@ export default function PedidosPage() {
                       setDateFrom("");
                       setDateTo("");
                     }}
-                    className="gap-2"
+                    className="w-full sm:w-auto gap-2"
                   >
                     <X className="w-4 h-4" />
                     Limpiar filtros
@@ -903,7 +916,7 @@ export default function PedidosPage() {
                                   orderId={order.id}
                                   orderType={order.type}
                                   order={
-                                    order.type === "order"
+                                    isOrderRecord(order)
                                       ? (order as Order)
                                       : undefined
                                   }
@@ -915,7 +928,7 @@ export default function PedidosPage() {
                                     size="sm"
                                     onClick={() => handleEdit(order)}
                                     title={
-                                      order.type === "budget"
+                                      isBudgetRecord(order)
                                         ? "Editar presupuesto"
                                         : "Editar pedido"
                                     }
@@ -939,7 +952,7 @@ export default function PedidosPage() {
                                     size="sm"
                                     onClick={() => handleDeleteClick(order)}
                                     title={
-                                      order.type === "order"
+                                      isOrderRecord(order)
                                         ? "Eliminar pedido"
                                         : "Eliminar presupuesto"
                                     }

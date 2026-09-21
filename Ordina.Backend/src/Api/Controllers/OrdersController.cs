@@ -144,4 +144,13 @@ public class OrdersController : ControllerBase
         }
         return NoContent();
     }
+
+    [HttpPost("payments/conciliate")]
+    public async Task<ActionResult<bool>> ConciliatePayments(
+        [FromBody] List<ConciliatePaymentRequestDto> requests,
+        CancellationToken cancellationToken)
+    {
+        var result = await _orderService.ConciliatePaymentsAsync(requests, cancellationToken);
+        return Ok(result);
+    }
 }

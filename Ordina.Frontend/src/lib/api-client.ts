@@ -1,4 +1,6 @@
 import { telemetry } from './telemetry'
+import { connectivityManager } from './connectivity'
+import { localApi } from './local-api'
 import type {
   ClientResponseDto,
   CreateClientDto,
@@ -62,7 +64,7 @@ let inMemoryToken: string | null = null
 
 export function setAuthToken(token: string | null) {
   inMemoryToken = token
-  if (typeof window !== 'undefined' && window.localStorage) {
+  if (typeof localStorage !== 'undefined') {
     if (token) {
       localStorage.setItem('auth_token', token)
     } else {
@@ -72,7 +74,7 @@ export function setAuthToken(token: string | null) {
 }
 
 export function getAuthToken(): string | null {
-  if (!inMemoryToken && typeof window !== 'undefined') {
+  if (!inMemoryToken && typeof localStorage !== 'undefined') {
     inMemoryToken = localStorage.getItem('auth_token')
   }
   return inMemoryToken
@@ -86,6 +88,7 @@ export async function requestTokenRefresh(): Promise<string | null> {
   }
 
   refreshTokenPromise = (async () => {
+    let explicitRejection = false
     try {
       const refreshRes = await fetch('/api/auth/refresh', {
         method: 'POST',
@@ -97,23 +100,43 @@ export async function requestTokenRefresh(): Promise<string | null> {
         const data = await refreshRes.json()
         if (data?.token) {
           setAuthToken(data.token)
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('auth_last_active_at', Date.now().toString())
+          }
+          connectivityManager.reportSuccess()
           return data.token as string
         }
       }
-      setAuthToken(null)
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('auth:expired'))
+
+      if (refreshRes.status === 401 || refreshRes.status === 403) {
+        explicitRejection = true
+      } else {
+        connectivityManager.reportFailure({ statusCode: refreshRes.status })
       }
-      return null
-    } catch {
-      setAuthToken(null)
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('auth:expired'))
-      }
-      return null
+    } catch (err: any) {
+      connectivityManager.reportFailure(err)
     } finally {
       refreshTokenPromise = null
     }
+
+    if (typeof localStorage !== 'undefined') {
+      const lastActive = Number(localStorage.getItem('auth_last_active_at') || '0')
+      const ONE_HOUR = 60 * 60 * 1000
+      // If within 1-hour grace period and not explicitly rejected by server (401/403)
+      if (!explicitRejection && lastActive > 0 && Date.now() - lastActive < ONE_HOUR) {
+        return getAuthToken()
+      }
+
+      setAuthToken(null)
+      localStorage.removeItem('auth_last_active_at')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:expired'))
+      } else if (typeof globalThis.dispatchEvent === 'function') {
+        globalThis.dispatchEvent(new CustomEvent('auth:expired'))
+      }
+    }
+
+    return null
   })()
 
   return refreshTokenPromise
@@ -164,8 +187,12 @@ export async function apiFetch<T>(endpoint: string, options: RequestOptions = {}
       : `/api/${endpoint}`
 
   try {
+    const timeoutSignal = typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(10000) : undefined
+    const effectiveSignal = options.signal || timeoutSignal
+
     const res = await fetch(url, {
       ...options,
+      signal: effectiveSignal,
       headers,
       credentials: 'include'
     })
@@ -188,11 +215,18 @@ export async function apiFetch<T>(endpoint: string, options: RequestOptions = {}
       const errorMessage = errorBody?.message || errorBody?.error || `HTTP ${res.status}: ${res.statusText}`
       const error = new ApiError(errorMessage, res.status, errorBody)
 
+      connectivityManager.reportFailure(error)
+
       if (res.status >= 500) {
         telemetry.log('error', `API Failure: ${method} ${url}`, error.stack, { status: res.status, body: errorBody }, mutationId)
       }
 
       throw error
+    }
+
+    connectivityManager.reportSuccess()
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('auth_last_active_at', Date.now().toString())
     }
 
     if (res.status === 204) {
@@ -201,20 +235,18 @@ export async function apiFetch<T>(endpoint: string, options: RequestOptions = {}
 
     return await res.json()
   } catch (err: any) {
-    if (
-      err?.name === 'AbortError' ||
-      (typeof DOMException !== 'undefined' && err instanceof DOMException && err.name === 'AbortError') ||
-      options.signal?.aborted ||
-      (typeof err?.message === 'string' && err.message.toLowerCase().includes('aborted'))
-    ) {
+    const isCallerAborted = options.signal?.aborted === true
+    if (isCallerAborted) {
       throw err
     }
     if (err instanceof ApiError) {
       throw err
     }
     const networkError = new ApiError('Error de conexión o modo sin conexión.', 0, { originalError: err?.message })
+    connectivityManager.reportFailure(networkError)
     throw networkError
   }
+
 }
 
 // Analytics Dashboard types
@@ -305,11 +337,21 @@ export class ApiClientClass {
 
   // Users & Roles
   async getUsers(status?: string): Promise<UserResponseDto[]> {
-    const query = status ? `?status=${encodeURIComponent(status)}&pageSize=1000` : '?pageSize=1000'
-    const res = await apiFetch<any>(`/api/users${query}`)
-    if (Array.isArray(res)) return res
-    if (res && Array.isArray(res.items)) return res.items
-    return []
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.getUsers()) as unknown as UserResponseDto[]
+    }
+    try {
+      const query = status ? `?status=${encodeURIComponent(status)}&pageSize=1000` : '?pageSize=1000'
+      const res = await apiFetch<any>(`/api/users${query}`)
+      const items = Array.isArray(res) ? res : res && Array.isArray(res.items) ? res.items : []
+      localApi.cacheEntities('users', items).catch(() => {})
+      return items
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.getUsers()) as unknown as UserResponseDto[]
+      }
+      throw err
+    }
   }
 
   async getUserById(id: string): Promise<UserResponseDto> {
@@ -388,7 +430,19 @@ export class ApiClientClass {
 
   // Categories
   async getCategories(): Promise<CategoryResponseDto[]> {
-    return apiFetch<CategoryResponseDto[]>('/api/categories')
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.getCategories()) as unknown as CategoryResponseDto[]
+    }
+    try {
+      const res = await apiFetch<CategoryResponseDto[]>('/api/categories')
+      localApi.cacheEntities('categories', res).catch(() => {})
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.getCategories()) as unknown as CategoryResponseDto[]
+      }
+      throw err
+    }
   }
 
   async getCategoryById(id: string): Promise<CategoryResponseDto> {
@@ -420,7 +474,19 @@ export class ApiClientClass {
 
   // Products
   async getProducts(): Promise<ProductResponseDto[]> {
-    return apiFetch<ProductResponseDto[]>('/api/products/all')
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.getProducts()) as unknown as ProductResponseDto[]
+    }
+    try {
+      const res = await apiFetch<ProductResponseDto[]>('/api/products/all')
+      localApi.cacheEntities('products', res).catch(() => {})
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.getProducts()) as unknown as ProductResponseDto[]
+      }
+      throw err
+    }
   }
 
 
@@ -492,13 +558,41 @@ export class ApiClientClass {
 
   // Clients
   async getClientsPaged(page = 1, pageSize = 20, search?: string, signal?: AbortSignal): Promise<PagedResult<ClientResponseDto>> {
-    const query = new URLSearchParams({ page: page.toString(), pageSize: pageSize.toString() })
-    if (search) query.set('search', search)
-    return apiFetch<PagedResult<ClientResponseDto>>(`/api/clients?${query.toString()}`, { signal })
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.getClientsPaged(page, pageSize, search)) as unknown as PagedResult<ClientResponseDto>
+    }
+    try {
+      const query = new URLSearchParams({ page: page.toString(), pageSize: pageSize.toString() })
+      if (search) query.set('search', search)
+      const res = await apiFetch<PagedResult<ClientResponseDto>>(`/api/clients?${query.toString()}`, { signal })
+      if (res?.items) {
+        localApi.cacheEntities('clients', res.items).catch(() => {})
+      }
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.getClientsPaged(page, pageSize, search)) as unknown as PagedResult<ClientResponseDto>
+      }
+      throw err
+    }
   }
 
   async getClientById(id: string): Promise<ClientResponseDto> {
-    return apiFetch<ClientResponseDto>(`/api/clients/${id}`)
+    if (connectivityManager.isServerUnreachable()) {
+      const cached = await localApi.getClient(id)
+      if (cached) return cached as unknown as ClientResponseDto
+    }
+    try {
+      const res = await apiFetch<ClientResponseDto>(`/api/clients/${id}`)
+      localApi.cacheEntities('clients', [res]).catch(() => {})
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        const cached = await localApi.getClient(id)
+        if (cached) return cached as unknown as ClientResponseDto
+      }
+      throw err
+    }
   }
 
   async getClientByRut(rut: string): Promise<ClientResponseDto> {
@@ -506,17 +600,41 @@ export class ApiClientClass {
   }
 
   async createClient(client: CreateClientDto): Promise<ClientResponseDto> {
-    return apiFetch<ClientResponseDto>('/api/clients', {
-      method: 'POST',
-      body: JSON.stringify(client)
-    })
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.createClient(client)) as unknown as ClientResponseDto
+    }
+    try {
+      const res = await apiFetch<ClientResponseDto>('/api/clients', {
+        method: 'POST',
+        body: JSON.stringify(client)
+      })
+      localApi.cacheEntities('clients', [res]).catch(() => {})
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.createClient(client)) as unknown as ClientResponseDto
+      }
+      throw err
+    }
   }
 
   async updateClient(id: string, client: UpdateClientDto): Promise<ClientResponseDto> {
-    return apiFetch<ClientResponseDto>(`/api/clients/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(client)
-    })
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.updateClient(id, client)) as unknown as ClientResponseDto
+    }
+    try {
+      const res = await apiFetch<ClientResponseDto>(`/api/clients/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(client)
+      })
+      localApi.cacheEntities('clients', [res]).catch(() => {})
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.updateClient(id, client)) as unknown as ClientResponseDto
+      }
+      throw err
+    }
   }
 
   async deleteClient(id: string): Promise<void> {
@@ -623,10 +741,20 @@ export class ApiClientClass {
   }
 
   async createOrder(order: CreateOrderDto): Promise<OrderResponseDto> {
-    return apiFetch<OrderResponseDto>('/api/orders', {
-      method: 'POST',
-      body: JSON.stringify(order)
-    })
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.createOrder(order)) as unknown as OrderResponseDto
+    }
+    try {
+      return await apiFetch<OrderResponseDto>('/api/orders', {
+        method: 'POST',
+        body: JSON.stringify(order)
+      })
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.createOrder(order)) as unknown as OrderResponseDto
+      }
+      throw err
+    }
   }
 
   async updateOrder(id: string, order: UpdateOrderDto): Promise<OrderResponseDto> {

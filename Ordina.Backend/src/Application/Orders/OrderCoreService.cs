@@ -292,6 +292,61 @@ public class OrderCoreService : IOrderCoreService
         return await _orderRepository.UpdateAsync(order, cancellationToken);
     }
 
+    public async Task<bool> ConciliatePaymentsAsync(List<ConciliatePaymentRequestDto> requests, CancellationToken cancellationToken = default)
+    {
+        if (requests == null || requests.Count == 0)
+            return false;
+
+        var requestsByOrder = requests.GroupBy(r => r.OrderId);
+        bool anyUpdated = false;
+
+        foreach (var orderGroup in requestsByOrder)
+        {
+            var order = await _orderRepository.GetByIdAsync(orderGroup.Key, cancellationToken);
+            if (order == null) continue;
+
+            bool orderUpdated = false;
+            foreach (var req in orderGroup)
+            {
+                if (string.Equals(req.PaymentType, "main", StringComparison.OrdinalIgnoreCase))
+                {
+                    order.PaymentDetails ??= new PaymentDetails();
+                    order.PaymentDetails.IsConciliated = req.IsConciliated;
+                    orderUpdated = true;
+                }
+                else if (string.Equals(req.PaymentType, "partial", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (order.PartialPayments != null && req.PaymentIndex >= 0 && req.PaymentIndex < order.PartialPayments.Count)
+                    {
+                        var payment = order.PartialPayments[req.PaymentIndex];
+                        payment.PaymentDetails ??= new PaymentDetails();
+                        payment.PaymentDetails.IsConciliated = req.IsConciliated;
+                        orderUpdated = true;
+                    }
+                }
+                else if (string.Equals(req.PaymentType, "mixed", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (order.MixedPayments != null && req.PaymentIndex >= 0 && req.PaymentIndex < order.MixedPayments.Count)
+                    {
+                        var payment = order.MixedPayments[req.PaymentIndex];
+                        payment.PaymentDetails ??= new PaymentDetails();
+                        payment.PaymentDetails.IsConciliated = req.IsConciliated;
+                        orderUpdated = true;
+                    }
+                }
+            }
+
+            if (orderUpdated)
+            {
+                order.UpdatedAt = DateTime.UtcNow;
+                await _orderRepository.UpdateAsync(order, cancellationToken);
+                anyUpdated = true;
+            }
+        }
+
+        return anyUpdated;
+    }
+
     private static ProductImage MapImageFromDto(ProductImageDto dto) => new()
     {
         Id = dto.Id,

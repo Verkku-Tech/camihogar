@@ -39,7 +39,7 @@ export function isSistemaApartado(order: {
   type?: string
   saleType?: string
 }): boolean {
-  return order.type === "order" && order.saleType === "sistema_apartado"
+  return (order.type || "").toLowerCase() === "order" && order.saleType === "sistema_apartado"
 }
 
 /** Resaltar fila en listados para pedidos Sistema de Apartado. */

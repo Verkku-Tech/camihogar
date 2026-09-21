@@ -202,10 +202,11 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   };
 
   // Handlers de pagos (mantener aquí por ahora, pueden moverse al hook después)
-  const addPayment = () => {
+  const addPayment = (): string => {
     const defaultCurrency = orderForm.getDefaultCurrencyFromSelection();
+    const newId = Date.now().toString();
     const newPayment: PartialPayment = {
-      id: Date.now().toString(),
+      id: newId,
       amount: 0,
       method: "",
       date: todayPaymentDateYyyyMmDd(),
@@ -213,6 +214,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       paymentDetails: {},
     };
     orderForm.setPayments([...orderForm.payments, newPayment]);
+    return newId;
   };
 
   const updatePayment = (
@@ -1109,7 +1111,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4"
+          className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-5xl max-h-[min(90dvh,calc(100dvh-2rem))] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-xl sm:rounded-lg"
           onInteractOutside={preventClose}
           onPointerDownOutside={preventClose}
         >
@@ -1177,7 +1179,7 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
             )}
 
             {/* Footer con botones de navegación */}
-            <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t">
+            <div className="sticky bottom-0 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 md:-mx-8 md:-mb-8 p-3 sm:p-4 bg-background/95 backdrop-blur-xs border-t flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 z-10">
               <Button
                 variant="outline"
                 onClick={orderForm.handleBack}

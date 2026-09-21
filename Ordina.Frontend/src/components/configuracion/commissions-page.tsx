@@ -388,16 +388,16 @@ export function CommissionsPage() {
       )}
 
       <Tabs defaultValue="categories" className="space-y-4">
-        <TabsList className="flex h-auto w-full justify-start overflow-x-auto sm:overflow-visible sm:grid sm:grid-cols-3">
-          <TabsTrigger value="categories" className="flex items-center gap-2">
+        <TabsList className="flex h-auto w-full justify-start overflow-x-auto no-scrollbar sm:overflow-visible sm:grid sm:grid-cols-3">
+          <TabsTrigger value="categories" className="flex items-center gap-2 whitespace-nowrap">
             <ShoppingBag className="w-4 h-4" />
             Por Familia de Producto
           </TabsTrigger>
-          <TabsTrigger value="distribution" className="flex items-center gap-2">
+          <TabsTrigger value="distribution" className="flex items-center gap-2 whitespace-nowrap">
             <ArrowLeftRight className="w-4 h-4" />
             Distribución por Tipo de Venta
           </TabsTrigger>
-          <TabsTrigger value="exclusive" className="flex items-center gap-2">
+          <TabsTrigger value="exclusive" className="flex items-center gap-2 whitespace-nowrap">
             <Users className="w-4 h-4" />
             Vendedores Exclusivos
           </TabsTrigger>

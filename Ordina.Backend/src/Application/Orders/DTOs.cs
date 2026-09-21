@@ -195,3 +195,9 @@ public record ConvertBudgetDto(
     string PaymentMethod = "Efectivo",
     PaymentDetailsDto? PaymentDetails = null,
     IReadOnlyList<PartialPaymentDto>? PartialPayments = null);
+
+public record ConciliatePaymentRequestDto(
+    string OrderId,
+    string PaymentType,
+    int PaymentIndex,
+    bool IsConciliated);

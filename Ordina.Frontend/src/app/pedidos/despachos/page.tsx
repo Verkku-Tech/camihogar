@@ -436,7 +436,7 @@ export default function DespachosPage() {
 
   // Sync server-paginated orders with local state
   useEffect(() => {
-    setOrders(pagination.currentItems.filter((order) => order.type === "order"))
+    setOrders(pagination.currentItems.filter((order) => (order.type || "").toLowerCase() === "order" || !order.orderNumber?.toUpperCase().startsWith("PRE-")))
     setIsLoading(!textFiltersSettled || pagination.isLoadingCount || pagination.isLoadingPages)
   }, [pagination.currentItems, pagination.isLoadingCount, pagination.isLoadingPages, textFiltersSettled])
 
@@ -1025,22 +1025,22 @@ export default function DespachosPage() {
 
   return (
     <ProtectedRoute>
-      <div className="flex h-screen bg-background">
+      <div className="flex h-full bg-background">
         <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
         
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
           
-          <main className="flex-1 overflow-x-hidden overflow-y-auto">
-            <div className="container mx-auto p-4 lg:p-6 space-y-6">
+          <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto">
+            <div className="p-4 lg:p-6 space-y-6 min-w-0 max-w-full">
               <AppBreadcrumb />
 
               {/* TABS DE SECCIÓN */}
               <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as TabType)} className="w-full">
-                <TabsList className="flex h-auto w-full justify-start overflow-x-auto sm:overflow-visible sm:grid sm:grid-cols-3 max-w-xl mx-auto mb-6">
-                  <TabsTrigger value="por_despachar" className="text-sm font-medium">En Almacen</TabsTrigger>
-                  <TabsTrigger value="en_despacho" className="text-sm font-medium">En Despacho (En Ruta)</TabsTrigger>
-                  <TabsTrigger value="despachados" className="text-sm font-medium">Despachados (Entregados)</TabsTrigger>
+                <TabsList className="flex h-auto w-full justify-start overflow-x-auto sm:overflow-visible sm:grid sm:grid-cols-3 max-w-xl mx-auto mb-6 no-scrollbar">
+                  <TabsTrigger value="por_despachar" className="text-sm font-medium whitespace-nowrap">En Almacen</TabsTrigger>
+                  <TabsTrigger value="en_despacho" className="text-sm font-medium whitespace-nowrap">En Despacho (En Ruta)</TabsTrigger>
+                  <TabsTrigger value="despachados" className="text-sm font-medium whitespace-nowrap">Despachados (Entregados)</TabsTrigger>
                 </TabsList>
 
                 {/* Filtros Globales (Comunes a las 3 tabs) */}

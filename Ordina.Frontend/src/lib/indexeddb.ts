@@ -127,7 +127,7 @@ const STORES: StoreConfig[] = [
 // Inicializar la base de datos
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
-    if (typeof window === "undefined") {
+    if (typeof indexedDB === "undefined") {
       reject(new Error("IndexedDB is not available in this environment"));
       return;
     }

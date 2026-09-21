@@ -21,6 +21,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   ArrowLeft,
   User,
   Package,
@@ -110,8 +118,7 @@ import {
   getLineDiscountLabelLead,
 } from "@/lib/product-discount-ui";
 import { formatPaymentDateForDisplay } from "@/lib/exchange-rate-for-date";
-import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
-
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb";
 
 const OrderPdfDownloadButton = dynamic(
   () =>
@@ -582,6 +589,8 @@ export default function OrderDetailPage() {
   >(null);
   const [declineReason, setDeclineReason] = useState(order?.declineReason ?? "");
   const [savingDeclineReason, setSavingDeclineReason] = useState(false);
+  const [isDeclineDialogOpen, setIsDeclineDialogOpen] = useState(false);
+  const [declineReasonInput, setDeclineReasonInput] = useState("");
 
   /** Un solo arreglo activo: varios pagos van en mixedPayments y partialPayments queda vacío. */
   const activePayments = useMemo((): PartialPayment[] => {
@@ -948,10 +957,15 @@ export default function OrderDetailPage() {
     if (!order) return;
     try {
       setValidatingOrder(true);
-      await apiClient.declineOrder(order.id);
+      await apiClient.declineOrder(order.id, declineReasonInput.trim() || undefined);
       const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
-      if (foundOrder) setOrder(foundOrder);
+      if (foundOrder) {
+        setOrder(foundOrder);
+        setDeclineReason(foundOrder.declineReason ?? "");
+      }
       toast.success("Pedido declinado");
+      setIsDeclineDialogOpen(false);
+      setDeclineReasonInput("");
     } catch (error) {
       console.error("Error declinando pedido:", error);
       toast.error("Error al declinar el pedido");
@@ -982,18 +996,7 @@ export default function OrderDetailPage() {
     }
   };
 
-  const handleSaveDeclineReason = async () => {
-    if (!order) return;
-    setSavingDeclineReason(true);
-    try {
-      await apiClient.updateOrder(order.id, { declineReason });
-      setOrder({ ...order, declineReason });
-    } catch (error) {
-      console.error("Error guardando razón del declinado:", error);
-    } finally {
-      setSavingDeclineReason(false);
-    }
-  };
+
 
   const [productBreakdowns, setProductBreakdowns] = useState<
     Record<
@@ -1731,17 +1734,17 @@ export default function OrderDetailPage() {
 
   return (
     <ProtectedRoute>
-      <div className="flex h-screen bg-background">
+      <div className="flex h-full bg-background">
         <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <DashboardHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-          <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-            <div className="max-w-6xl mx-auto space-y-6">
+          <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
+            <div className="max-w-6xl mx-auto space-y-6 min-w-0 max-w-full">
               <AppBreadcrumb />
               {/* Header */}
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 {/* Barra de acciones — solo móvil */}
-                <div className="flex items-center justify-between gap-2 sm:hidden">
+                <div className="flex flex-wrap items-center justify-between gap-2 sm:hidden">
                   <div className="flex items-center gap-2">
                     <Button
                       variant="ghost"
@@ -1778,7 +1781,10 @@ export default function OrderDetailPage() {
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => setConfirmAction("decline")}
+                          onClick={() => {
+                            setDeclineReasonInput("");
+                            setIsDeclineDialogOpen(true);
+                          }}
                           disabled={validatingOrder}
                         >
                           Declinar
@@ -1958,7 +1964,10 @@ export default function OrderDetailPage() {
                     canValidateOrders && (
                       <Button
                         variant="destructive"
-                        onClick={() => setConfirmAction("decline")}
+                        onClick={() => {
+                          setDeclineReasonInput("");
+                          setIsDeclineDialogOpen(true);
+                        }}
                         disabled={validatingOrder}
                       >
                         Declinar Pedido
@@ -2117,33 +2126,6 @@ export default function OrderDetailPage() {
                     <p className="text-sm whitespace-pre-wrap bg-amber-50 dark:bg-amber-950 p-3 rounded">
                       {order.dispatchObservations}
                     </p>
-                  </CardContent>
-                </Card>
-              )}
-              {order.status === "Declinado" && (
-                <Card className="border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/50">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">
-                      <AlertCircle className="w-5 h-5" />
-                      Razón del Declinado
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Textarea
-                      value={declineReason}
-                      onChange={(e) => setDeclineReason(e.target.value)}
-                      placeholder="Motivo por el cual se declinó el pedido..."
-                      rows={3}
-                      className="w-full"
-                    />
-                    <Button
-                      onClick={handleSaveDeclineReason}
-                      disabled={savingDeclineReason || declineReason === (order.declineReason ?? "")}
-                      className="mt-2"
-                      size="sm"
-                    >
-                      {savingDeclineReason ? "Guardando..." : "Guardar"}
-                    </Button>
                   </CardContent>
                 </Card>
               )}
@@ -3208,14 +3190,11 @@ export default function OrderDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {confirmAction === "validate" && "¿Validar pedido?"}
-              {confirmAction === "decline" && "¿Declinar pedido?"}
               {confirmAction === "reactivate" && "¿Reactivar pedido?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmAction === "validate" &&
                 "El pedido pasará a estado Validado. Todos los productos pendientes serán validados."}
-              {confirmAction === "decline" &&
-                "El pedido pasará a estado Declinado y quedará fuera de reportes y despachos. Puedes revertirlo luego con 'Reactivar'."}
               {confirmAction === "reactivate" &&
                 "El pedido volverá a estado Generado para poder validarlo o editarlo."}
             </AlertDialogDescription>
@@ -3223,19 +3202,12 @@ export default function OrderDetailPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              className={
-                confirmAction === "decline"
-                  ? "bg-red-600 hover:bg-red-700 text-white"
-                  : undefined
-              }
               onClick={
                 confirmAction === "validate"
                   ? handleValidateOrder
-                  : confirmAction === "decline"
-                    ? handleDeclineOrder
-                    : confirmAction === "reactivate"
-                      ? handleReactivateOrder
-                      : undefined
+                  : confirmAction === "reactivate"
+                    ? handleReactivateOrder
+                    : undefined
               }
               disabled={validatingOrder}
             >
@@ -3244,6 +3216,41 @@ export default function OrderDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={isDeclineDialogOpen} onOpenChange={setIsDeclineDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Declinar pedido?</DialogTitle>
+            <DialogDescription>
+              El pedido pasará a estado Declinado y quedará fuera de reportes y despachos. Puedes revertirlo luego con 'Reactivar'.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="decline-reason" className="text-sm font-medium">
+              Razón de declinación <span className="text-destructive">*</span>
+            </label>
+            <Textarea
+              id="decline-reason"
+              value={declineReasonInput}
+              onChange={(e) => setDeclineReasonInput(e.target.value)}
+              placeholder="Motivo por el cual se declinó el pedido..."
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeclineDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeclineOrder}
+              disabled={validatingOrder || !declineReasonInput.trim()}
+            >
+              {validatingOrder ? "Procesando..." : "Declinar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ProtectedRoute>
   );
 }

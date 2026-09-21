@@ -34,4 +34,30 @@ describe('SyncManager Outbox Enqueue', () => {
     // UUID regex check
     expect(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(mutationId)).toBe(true)
   })
+
+  test('addToQueue formats plural REST endpoints with entityId correctly', async () => {
+    let capturedEndpoint = ''
+    let capturedMethod = ''
+    const originalEnqueue = syncManager.enqueueMutation.bind(syncManager)
+    syncManager.enqueueMutation = async (mutation: any) => {
+      capturedEndpoint = mutation.endpoint
+      capturedMethod = mutation.method
+      return 'mock-uuid'
+    }
+
+    try {
+      await syncManager.addToQueue({
+        type: 'update',
+        entity: 'user',
+        entityId: 'user-789',
+        data: { name: 'New Name' }
+      })
+
+      expect(capturedEndpoint).toBe('/api/users/user-789')
+      expect(capturedMethod).toBe('PUT')
+    } finally {
+      syncManager.enqueueMutation = originalEnqueue
+    }
+  })
 })
+

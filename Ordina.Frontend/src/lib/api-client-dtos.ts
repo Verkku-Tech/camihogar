@@ -156,6 +156,7 @@ export interface UserDto {
   name: string;
   status: string;
   permissions: string[];
+  avatarUrl?: string;
 }
 
 export interface UserResponseDto {
@@ -174,6 +175,7 @@ export interface UserResponseDto {
   storeId?: string;
   storeName?: string;
   extraPermissions?: string[];
+  avatarUrl?: string;
 }
 
 export interface AssignablePermissionDto {
@@ -190,6 +192,7 @@ export interface CreateUserDto {
   password?: string;
   storeId?: string;
   extraPermissions?: string[];
+  avatarUrl?: string;
 }
 
 export interface UpdateUserDto {
@@ -204,6 +207,7 @@ export interface UpdateUserDto {
   baseSalaryCurrency?: string;
   storeId?: string;
   extraPermissions?: string[];
+  avatarUrl?: string;
 }
 
 export interface CommissionsReportQueryParams {

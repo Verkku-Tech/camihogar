@@ -37,6 +37,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
 
 interface OrdersTableProps {
   /** Si el padre ya sincronizó pedidos, evita otro getOrders al montar. */
@@ -111,8 +120,11 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
   const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE)
   const [confirmAction, setConfirmAction] = useState<{
     order: Order
-    type: "validate" | "decline"
+    type: "validate"
   } | null>(null)
+  const [isDeclineDialogOpen, setIsDeclineDialogOpen] = useState(false)
+  const [declineReasonInput, setDeclineReasonInput] = useState("")
+  const [declineTargetOrder, setDeclineTargetOrder] = useState<Order | null>(null)
 
   const {
     currentPage,
@@ -256,14 +268,14 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
     }
   }
 
-  const handleDecline = async (order: Order) => {
+  const handleDecline = async (order: Order, reason?: string) => {
     if (!canValidateOrders) {
       toast.error("Solo administradores pueden declinar pedidos.")
       return
     }
     setValidatingIds((prev) => new Set(prev).add(order.id))
     try {
-      await apiClient.declineOrder(order.id)
+      await apiClient.declineOrder(order.id, reason)
       await reloadGeneratedOrders()
       toast.success("Pedido declinado")
     } catch (error) {
@@ -275,6 +287,9 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
         next.delete(order.id)
         return next
       })
+      setIsDeclineDialogOpen(false)
+      setDeclineReasonInput("")
+      setDeclineTargetOrder(null)
       setConfirmAction(null)
     }
   }
@@ -389,7 +404,11 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
                           size="sm"
                           variant="destructive"
                           disabled={validatingIds.has(order.id)}
-                          onClick={() => setConfirmAction({ order, type: "decline" })}
+                          onClick={() => {
+                            setDeclineReasonInput("");
+                            setDeclineTargetOrder(order);
+                            setIsDeclineDialogOpen(true);
+                          }}
                         >
                           Declinar
                         </Button>
@@ -433,33 +452,18 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>
-            {confirmAction?.type === "validate"
-              ? "¿Validar pedido?"
-              : "¿Declinar pedido?"}
-          </AlertDialogTitle>
+          <AlertDialogTitle>¿Validar pedido?</AlertDialogTitle>
           <AlertDialogDescription>
-            {confirmAction?.type === "validate"
-              ? "El pedido pasará a estado Validado. Todos los productos pendientes serán validados."
-              : "El pedido pasará a estado Declinado y quedará fuera de reportes y despachos. Puedes revertirlo luego desde el detalle del pedido."}
+            El pedido pasará a estado Validado. Todos los productos pendientes serán validados.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction
-            className={
-              confirmAction?.type === "decline"
-                ? "bg-red-600 hover:bg-red-700 text-white"
-                : undefined
-            }
             disabled={validatingIds.has(confirmAction?.order.id ?? "")}
             onClick={() => {
               if (!confirmAction) return
-              if (confirmAction.type === "validate") {
-                handleValidate(confirmAction.order)
-              } else {
-                handleDecline(confirmAction.order)
-              }
+              handleValidate(confirmAction.order)
             }}
           >
             {validatingIds.has(confirmAction?.order.id ?? "")
@@ -469,6 +473,45 @@ export function OrdersTable({ prefetchedOrders }: OrdersTableProps) {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    <Dialog open={isDeclineDialogOpen} onOpenChange={setIsDeclineDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>¿Declinar pedido?</DialogTitle>
+          <DialogDescription>
+            El pedido pasará a estado Declinado y quedará fuera de reportes y despachos. Puedes revertirlo luego desde el detalle del pedido.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <label htmlFor="decline-reason-dashboard" className="text-sm font-medium">
+            Razón de declinación <span className="text-destructive">*</span>
+          </label>
+          <Textarea
+            id="decline-reason-dashboard"
+            value={declineReasonInput}
+            onChange={(e) => setDeclineReasonInput(e.target.value)}
+            placeholder="Motivo por el cual se declinó el pedido..."
+            rows={3}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsDeclineDialogOpen(false)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              if (declineTargetOrder) {
+                handleDecline(declineTargetOrder, declineReasonInput.trim() || undefined);
+              }
+            }}
+            disabled={validatingIds.has(declineTargetOrder?.id ?? "") || !declineReasonInput.trim()}
+          >
+            {validatingIds.has(declineTargetOrder?.id ?? "") ? "Procesando..." : "Declinar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </>
   )
 }

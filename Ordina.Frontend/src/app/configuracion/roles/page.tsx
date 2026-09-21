@@ -22,6 +22,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { RoleForm } from "./role-form"
@@ -96,102 +97,111 @@ export default function RolesPage() {
     }
 
     return (
-        <div className="flex h-screen bg-background">
+        <div className="flex h-full bg-background">
             <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
-                <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+                <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6">
                     <AppBreadcrumb />
 
-<div className="container mx-auto max-w-6xl">
-                        <div className="flex justify-between items-center mb-6">
+                    <div className="space-y-6 min-w-0 max-w-full">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
-                                <h1 className="text-3xl font-bold tracking-tight">Gestión de Roles</h1>
+                                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Gestión de Roles</h1>
                                 <p className="text-muted-foreground">Configura los roles y permisos del sistema</p>
                             </div>
                             <PermissionGuard permission="roles.create">
-                                <Button onClick={handleCreate}>
+                                <Button onClick={handleCreate} className="w-full sm:w-auto">
                                     <Plus className="mr-2 h-4 w-4" />
                                     Nuevo Rol
                                 </Button>
                             </PermissionGuard>
                         </div>
 
-                        <div className="rounded-md border">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Nombre</TableHead>
-                                        <TableHead>Permisos</TableHead>
-                                        <TableHead>Sistema</TableHead>
-                                        <TableHead className="text-right">Acciones</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {isLoading ? (
-                                        <TableRow>
-                                            <TableCell colSpan={4} className="text-center py-10">
-                                                Cargando roles...
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : roles.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={4} className="text-center py-10">
-                                                No hay roles configurados
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : (
-                                        roles.map((role) => (
-                                            <TableRow key={role.id}>
-                                                <TableCell className="font-medium">
-                                                    <div className="flex items-center">
-                                                        <Shield className="mr-2 h-4 w-4 text-primary" />
-                                                        {role.name}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Badge variant="outline" className="mr-2">
-                                                        {role.permissions.length} permisos
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell>
-                                                    {role.isSystem ? (
-                                                        <Badge variant="secondary">Sistema</Badge>
-                                                    ) : (
-                                                        <Badge variant="outline">Personalizado</Badge>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex justify-end gap-2">
-                                                        <PermissionGuard permission="roles.update">
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                onClick={() => handleEdit(role)}
-                                                                disabled={role.name === "Super Administrator"} // Prevent editing Super Admin permissions easily
-                                                            >
-                                                                <Edit className="h-4 w-4" />
-                                                            </Button>
-                                                        </PermissionGuard>
-                                                        <PermissionGuard permission="roles.delete">
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                onClick={() => handleDelete(role.id)}
-                                                                disabled={role.isSystem} // Prevent deleting system roles
-                                                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                            >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </Button>
-                                                        </PermissionGuard>
-                                                    </div>
-                                                </TableCell>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-lg">Roles ({roles.length})</CardTitle>
+                                <CardDescription>Roles y permisos configurados en el sistema</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Nombre</TableHead>
+                                                <TableHead>Permisos</TableHead>
+                                                <TableHead>Sistema</TableHead>
+                                                <TableHead className="text-right">Acciones</TableHead>
                                             </TableRow>
-                                        ))
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </div>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {isLoading ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
+                                                        Cargando roles...
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : roles.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
+                                                        No hay roles configurados
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : (
+                                                roles.map((role) => (
+                                                    <TableRow key={role.id}>
+                                                        <TableCell className="font-medium text-foreground">
+                                                            <div className="flex items-center">
+                                                                <Shield className="mr-2 h-4 w-4 text-primary" />
+                                                                <span className="text-foreground font-medium">{role.name}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Badge variant="outline" className="mr-2">
+                                                                {role.permissions.length} permisos
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            {role.isSystem ? (
+                                                                <Badge variant="secondary">Sistema</Badge>
+                                                            ) : (
+                                                                <Badge variant="outline">Personalizado</Badge>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <div className="flex justify-end gap-2">
+                                                                <PermissionGuard permission="roles.update">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        onClick={() => handleEdit(role)}
+                                                                        disabled={role.name === "Super Administrator"} // Prevent editing Super Admin permissions easily
+                                                                        className="text-muted-foreground hover:text-foreground"
+                                                                    >
+                                                                        <Edit className="h-4 w-4" />
+                                                                    </Button>
+                                                                </PermissionGuard>
+                                                                <PermissionGuard permission="roles.delete">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        onClick={() => handleDelete(role.id)}
+                                                                        disabled={role.isSystem} // Prevent deleting system roles
+                                                                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </PermissionGuard>
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
 
                         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">

@@ -13,7 +13,8 @@ public record UserResponseDto(
     string BaseSalaryCurrency,
     string? StoreId,
     string? StoreName,
-    IReadOnlyList<string> ExtraPermissions);
+    IReadOnlyList<string> ExtraPermissions,
+    string? AvatarUrl = null);
 
 public record CreateUserDto(
     string Username,
@@ -27,7 +28,8 @@ public record CreateUserDto(
     decimal BaseSalary = 0,
     string BaseSalaryCurrency = "USD",
     string CommissionExclusivityMode = "shared",
-    IReadOnlyList<string>? ExtraPermissions = null);
+    IReadOnlyList<string>? ExtraPermissions = null,
+    string? AvatarUrl = null);
 
 public record UpdateUserDto(
     string? Name = null,
@@ -39,7 +41,8 @@ public record UpdateUserDto(
     decimal? BaseSalary = null,
     string? BaseSalaryCurrency = null,
     string? CommissionExclusivityMode = null,
-    IReadOnlyList<string>? ExtraPermissions = null);
+    IReadOnlyList<string>? ExtraPermissions = null,
+    string? AvatarUrl = null);
 
 public record RegeneratePasswordResponseDto(string TemporaryPassword);
 

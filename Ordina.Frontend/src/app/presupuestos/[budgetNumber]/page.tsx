@@ -529,12 +529,12 @@ export default function BudgetDetailPage() {
 
   return (
     <ProtectedRoute>
-      <div className="flex h-screen bg-background">
+      <div className="flex h-full bg-background">
         <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <DashboardHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-          <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-            <div className="max-w-6xl mx-auto space-y-6">
+          <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
+            <div className="max-w-6xl mx-auto space-y-6 min-w-0 max-w-full">
               <AppBreadcrumb />
               {/* Header */}
               <div className="flex items-center justify-between">

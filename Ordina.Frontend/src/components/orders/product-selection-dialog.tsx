@@ -312,7 +312,7 @@ export function ProductSelectionDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-4xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4"
+          className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-4xl max-h-[min(90dvh,calc(100dvh-2rem))] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-xl sm:rounded-lg"
           onInteractOutside={preventClose}
           onPointerDownOutside={preventClose}
         >
@@ -560,7 +560,7 @@ export function ProductSelectionDialog({
             )}
           </div>
 
-          <div className="flex justify-end pt-3 sm:pt-4 border-t">
+          <div className="sticky bottom-0 -mx-3 -mb-3 sm:-mx-4 sm:-mb-4 md:-mx-6 md:-mb-6 p-3 sm:p-4 bg-background/95 backdrop-blur-xs border-t flex justify-end z-10">
             <Button
               onClick={() => onOpenChange(false)}
               className="w-full sm:w-auto"

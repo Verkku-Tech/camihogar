@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Search, Edit, Power, PowerOff, Filter, Cloud, CloudOff, Loader2 } from "lucide-react"
+import { Plus, Search, Edit, Power, PowerOff, Filter } from "lucide-react"
 import { toast } from "sonner"
 import { 
   getProviders, 
@@ -414,30 +414,6 @@ export function ProvidersPage() {
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold text-foreground">Proveedores</h1>
-            {/* Indicador de origen de datos */}
-            {dataSource === "syncing" && (
-              <Badge variant="secondary" className="gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Sincronizando…
-              </Badge>
-            )}
-            {dataSource === "backend" && (
-              <Badge variant="default" className="gap-1 bg-green-600 hover:bg-green-700">
-                <Cloud className="w-3 h-3" />
-                Servidor
-              </Badge>
-            )}
-            {dataSource === "indexeddb" && (
-              <Badge variant="secondary" className="gap-1">
-                <CloudOff className="w-3 h-3" />
-                Sin conexión (datos locales)
-              </Badge>
-            )}
-            {pendingSyncCount > 0 && (
-              <Badge variant="outline" className="gap-1">
-                {pendingSyncCount} pendiente{pendingSyncCount !== 1 ? "s" : ""} de sincronizar
-              </Badge>
-            )}
           </div>
           <p className="text-muted-foreground">Gestiona los proveedores de tu empresa</p>
         </div>

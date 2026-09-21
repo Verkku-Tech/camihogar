@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Download, Wifi, WifiOff, Loader2 } from "lucide-react"
+import { Download, Loader2 } from "lucide-react"
 import { getOrders, getAccounts, type Order, type PartialPayment, type Account } from "@/lib/storage"
 import {
   getActivePaymentsForReport,
@@ -1095,20 +1095,9 @@ export function PaymentsReport() {
                 </>
               )}
             </Button>
-            {!isOnline && (
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <WifiOff className="h-4 w-4" />
-                <span>Sin conexión</span>
-              </div>
-            )}
-            {isOnline && (
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <Wifi className="h-4 w-4" />
-                <span>En línea</span>
-              </div>
-            )}
           </div>
         </CardContent>
+
       </Card>
 
       {/* Tabla de datos */}

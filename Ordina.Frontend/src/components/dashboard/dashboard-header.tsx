@@ -11,6 +11,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { CurrencyCalculatorDialog } from "@/components/currency/currency-calculator-dialog";
 import { OrderAuditLogDialog } from "@/components/orders/order-audit-log-dialog";
 import { OrderSearchCombobox } from "@/components/dashboard/order-search-combobox";
+import { ConnectionStatusBadge } from "@/components/dashboard/connection-status-badge";
 
 interface DashboardHeaderProps {
   onMenuClick: () => void;
@@ -67,6 +68,7 @@ export function DashboardHeader({
       </div>
 
       <div className="flex items-center gap-2 min-w-[40px] justify-end">
+        <ConnectionStatusBadge />
         <CalculatorButton />
         <AuditLogButton />
       </div>

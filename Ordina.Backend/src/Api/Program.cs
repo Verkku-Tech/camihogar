@@ -12,6 +12,8 @@ using Ordina.Api.Middleware;
 using Ordina.Application;
 using Ordina.Infrastructure;
 using Ordina.Infrastructure.Mongo;
+using MongoDB.Bson;
+using MongoDB.Driver;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -173,13 +175,39 @@ app.UseMiddleware<IdempotencyMiddleware>();
 
 app.MapControllers();
 
-app.MapGet("/health", () => Results.Ok(new
+var appStartTime = DateTime.UtcNow;
+var healthCheckHandler = async (IMongoDatabase database, CancellationToken ct) =>
 {
-    status = "Healthy",
-    service = "Ordina.Api",
-    runtime = Environment.Version.ToString(),
-    timestamp = DateTime.UtcNow
-}));
+    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+    cts.CancelAfter(TimeSpan.FromSeconds(2));
+    try
+    {
+        await database.RunCommandAsync<BsonDocument>(new BsonDocument("ping", 1), cancellationToken: cts.Token);
+        return Results.Ok(new
+        {
+            status = "Healthy",
+            database = "Connected",
+            service = "Ordina.Api",
+            uptime = (DateTime.UtcNow - appStartTime).ToString(@"dd\.hh\:mm\:ss"),
+            memoryMb = Math.Round(GC.GetTotalMemory(false) / (1024.0 * 1024.0), 2),
+            timestamp = DateTime.UtcNow
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new
+        {
+            status = "Unhealthy",
+            database = "Disconnected",
+            error = ex.Message,
+            service = "Ordina.Api",
+            timestamp = DateTime.UtcNow
+        }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+};
+
+app.MapGet("/health", healthCheckHandler);
+app.MapGet("/api/health", healthCheckHandler);
 
 // 9. Startup initialization (Indexes & Seeder)
 using (var scope = app.Services.CreateScope())

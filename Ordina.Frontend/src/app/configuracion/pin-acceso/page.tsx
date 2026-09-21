@@ -28,11 +28,11 @@ export default function PinAccesoConfigPage() {
 
   return (
     <ProtectedRoute>
-      <div className="flex h-screen bg-background">
+      <div className="flex h-full bg-background">
         <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
           <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
-          <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+          <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
             <AppBreadcrumb />
 
 <PinAccesoGate>

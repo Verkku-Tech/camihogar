@@ -385,6 +385,8 @@ export interface User {
   baseSalaryCurrency?: string; // Moneda del sueldo
   storeId?: string;
   storeName?: string;
+  avatarUrl?: string;
+  permissions?: string[];
 }
 
 export interface Vendor {

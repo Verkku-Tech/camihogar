@@ -63,15 +63,25 @@ public class User : BaseEntity
     [BsonElement("baseSalaryCurrency")]
     public string BaseSalaryCurrency { get; set; } = "USD";
 
+    private string? _storeId;
+
     [BsonElement("storeId")]
     [BsonRepresentation(BsonType.ObjectId)]
-    public string? StoreId { get; set; }
+    [BsonIgnoreIfNull]
+    public string? StoreId
+    {
+        get => string.IsNullOrWhiteSpace(_storeId) ? null : _storeId;
+        set => _storeId = string.IsNullOrWhiteSpace(value) ? null : value;
+    }
 
     [BsonElement("storeName")]
     public string? StoreName { get; set; }
 
     [BsonElement("extraPermissions")]
     public List<string> ExtraPermissions { get; set; } = new();
+
+    [BsonElement("avatarUrl")]
+    public string? AvatarUrl { get; set; }
 
     public void NormalizeCommissionExclusivity()
     {

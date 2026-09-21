@@ -271,18 +271,16 @@ export default function ReservasPage() {
 
   return (
     <ProtectedRoute>
-      <div className="flex h-screen bg-background">
+      <div className="flex h-full bg-background">
         <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
 
-          <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 lg:p-6">
-            
-
+          <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto p-4 lg:p-6">
             <AppBreadcrumb />
-<div className="space-y-4 sm:space-y-6">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+            <div className="space-y-4 sm:space-y-6 min-w-0 max-w-full">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
                 <div className="relative w-full lg:max-w-md lg:flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -293,44 +291,46 @@ export default function ReservasPage() {
                     aria-label="Buscar reservas"
                   />
                 </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto">
-                  <div className="flex w-full items-center gap-2 sm:w-auto">
-                    <Label
-                      htmlFor="dateFrom"
-                      className="w-12 shrink-0 text-xs text-muted-foreground sm:w-auto"
-                    >
-                      Desde
-                    </Label>
-                    <Input
-                      id="dateFrom"
-                      type="date"
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
-                      className="min-w-0 flex-1 sm:w-[150px] sm:flex-none"
-                      aria-label="Fecha desde"
-                    />
-                  </div>
-                  <div className="flex w-full items-center gap-2 sm:w-auto">
-                    <Label
-                      htmlFor="dateTo"
-                      className="w-12 shrink-0 text-xs text-muted-foreground sm:w-auto"
-                    >
-                      Hasta
-                    </Label>
-                    <Input
-                      id="dateTo"
-                      type="date"
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
-                      className="min-w-0 flex-1 sm:w-[150px] sm:flex-none"
-                      aria-label="Fecha hasta"
-                    />
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto">
+                  <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Label
+                        htmlFor="dateFrom"
+                        className="shrink-0 text-xs text-muted-foreground"
+                      >
+                        Desde
+                      </Label>
+                      <Input
+                        id="dateFrom"
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        className="min-w-0 w-full sm:w-[140px]"
+                        aria-label="Fecha desde"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Label
+                        htmlFor="dateTo"
+                        className="shrink-0 text-xs text-muted-foreground"
+                      >
+                        Hasta
+                      </Label>
+                      <Input
+                        id="dateTo"
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        className="min-w-0 w-full sm:w-[140px]"
+                        aria-label="Fecha hasta"
+                      />
+                    </div>
                   </div>
                   <Button
                     type="button"
                     variant={filterExpired ? "destructive" : "outline"}
                     size="sm"
-                    className="h-9 gap-1.5 text-xs font-medium"
+                    className="h-9 gap-1.5 text-xs font-medium w-full sm:w-auto"
                     onClick={() => setFilterExpired((v) => !v)}
                   >
                     <Clock className="w-3.5 h-3.5" />
@@ -340,7 +340,7 @@ export default function ReservasPage() {
                 </div>
               </div>
 
-              <Card>
+              <Card className="min-w-0 overflow-hidden">
                 <CardHeader className="space-y-1.5">
                   <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
                     <ClipboardList className="h-5 w-5 shrink-0" />

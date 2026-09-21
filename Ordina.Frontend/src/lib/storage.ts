@@ -438,16 +438,29 @@ export const getProductsByCategory = async (categoryName: string): Promise<Produ
 export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
   const baseCurrency = (dto.baseCurrency as Order['baseCurrency']) ?? inferOrderBaseCurrency(dto as unknown as Order)
 
+  const rawType = (dto.type ?? (dto as unknown as { Type?: string }).Type ?? '').trim().toLowerCase()
+  const orderNumber = (dto.orderNumber ?? (dto as unknown as { OrderNumber?: string }).OrderNumber ?? '').trim()
+
+  let type: Order['type'] = 'order'
+  if (rawType === 'budget' || rawType === 'presupuesto' || (orderNumber.toUpperCase().startsWith('PRE-') && dto.status === 'Presupuesto')) {
+    type = 'budget'
+  } else if (rawType === 'reservation' || rawType === 'reserva' || (typeof orderNumber === 'string' && orderNumber.toUpperCase().startsWith('RES-'))) {
+    type = 'reservation'
+  }
+
+  const rawPayments = (dto as any).payments || (dto as any).partialPayments || (dto as any).mixedPayments || []
+
   return {
     ...dto,
-    orderNumber: dto.orderNumber ?? (dto as unknown as { OrderNumber?: string }).OrderNumber ?? '',
+    type,
+    orderNumber,
     products: (dto.products || []).map(p => ({
       ...p,
       priceCurrency: p.priceCurrency as any,
       stock: (p as any).stock ?? 0,
       status: (p as any).status || (p as any).manufacturingStatus || 'Por Fabricar'
     })) as any,
-    payments: ((dto as any).payments || []).map((pay: any) => ({
+    payments: rawPayments.map((pay: any) => ({
       ...pay,
       currency: pay.currency as any
     })) as any,
@@ -456,12 +469,18 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
 }
 
 export const orderToBackendDto = (order: Partial<Order>): CreateOrderDto => {
-  return order as unknown as CreateOrderDto
+  return {
+    ...order,
+    type: order.type === 'budget' ? 'Budget' : order.type === 'reservation' ? 'Reservation' : 'Order'
+  } as unknown as CreateOrderDto
 }
 
 export const orderDtoToUnifiedOrder = (dto: OrderResponseDto): UnifiedOrder => {
   const order = orderFromBackendDto(dto)
-  return order as unknown as UnifiedOrder
+  return {
+    ...order,
+    type: order.type === 'budget' ? 'budget' : 'order',
+  } as unknown as UnifiedOrder
 }
 
 export const getOrders = async (options?: any): Promise<Order[]> => {
@@ -658,7 +677,8 @@ export const userFromBackendDto = (dto: UserResponseDto): User => ({
   baseSalary: dto.baseSalary !== undefined && dto.baseSalary !== null ? Number(dto.baseSalary) : undefined,
   baseSalaryCurrency: dto.baseSalaryCurrency,
   storeId: dto.storeId,
-  storeName: dto.storeName
+  storeName: dto.storeName,
+  avatarUrl: dto.avatarUrl,
 })
 
 export const getUsers = async (): Promise<User[]> => {

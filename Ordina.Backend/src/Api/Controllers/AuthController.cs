@@ -105,6 +105,31 @@ public class AuthController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Roles = "Super Administrator")]
+    [HttpPost("impersonate/{userId}")]
+    public async Task<ActionResult<LoginResponse>> Impersonate(string userId, CancellationToken cancellationToken)
+    {
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(currentUserId))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            var response = await _authService.ImpersonateUserAsync(currentUserId, userId, cancellationToken);
+            return Ok(response);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     private void SetRefreshTokenCookie(string refreshToken, DateTime expiresAt)
     {
         var cookieOptions = new CookieOptions

@@ -34,7 +34,9 @@ import {
   LogOut,
   UserPen,
   Upload,
+  Download,
 } from "lucide-react"
+import { usePwaInstall } from "@/components/pwa/install-prompt"
 import { processAvatarImage } from "@/lib/image-utils"
 import {
   DropdownMenu,
@@ -152,8 +154,23 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
     deleteAllNotifications
   } = useNotifications()
   const [isPinGeneratorOpen, setIsPinGeneratorOpen] = useState(false)
+  const { canInstall, isStandalone, install } = usePwaInstall()
+
+  const handleInstallPwa = async () => {
+    if (canInstall) {
+      await install()
+    } else {
+      const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent)
+      if (isIOS) {
+        toast.info("Para instalar en iOS: presiona el botón Compartir en Safari y luego 'Añadir a pantalla de inicio'.")
+      } else {
+        toast.info("Para instalar en este dispositivo: usa el botón 'Instalar' en la barra de direcciones o menú del navegador.")
+      }
+    }
+  }
 
   const canGenerateAccessPin =
+
     user?.role === "Super Administrator" || user?.role === "Administrator"
 
   const canEditUser =
@@ -711,6 +728,19 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
                 <HelpCircle className="w-4 h-4" />
                 <span className="sr-only">Ayuda</span>
               </Button>
+
+              {!isStandalone && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-500"
+                  onClick={handleInstallPwa}
+                  title="Instalar aplicación en este dispositivo"
+                >
+                  <Download className="w-4 h-4" />
+                  <span className="sr-only">Instalar aplicación</span>
+                </Button>
+              )}
             </div>
           </div>
 
@@ -766,6 +796,15 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
                 </div>
               </div>
               <DropdownMenuSeparator />
+              {!isStandalone && (
+                <DropdownMenuItem
+                  className="cursor-pointer text-emerald-600 dark:text-emerald-400 font-medium"
+                  onClick={handleInstallPwa}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Instalar aplicación
+                </DropdownMenuItem>
+              )}
               {canEditUser && (
                 <DropdownMenuItem
                   className="cursor-pointer"

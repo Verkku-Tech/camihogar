@@ -134,6 +134,16 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -152,6 +162,14 @@
     flex: 1 1 0%;
     height: 100%;
   }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Custom checkbox */

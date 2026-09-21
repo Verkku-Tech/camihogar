@@ -23,13 +23,6 @@ export function ImageGallery({
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null)
   const [showAll, setShowAll] = useState(false)
 
-  if (!images || images.length === 0) {
-    return null
-  }
-
-  const visibleThumbnails = showAll ? images : images.slice(0, maxThumbnails)
-  const hasMore = images.length > maxThumbnails
-
   const openLightbox = (index: number) => {
     setSelectedImageIndex(index)
   }
@@ -39,7 +32,7 @@ export function ImageGallery({
   }
 
   const navigateImage = (direction: 'prev' | 'next') => {
-    if (selectedImageIndex === null) return
+    if (selectedImageIndex === null || !images) return
     
     if (direction === 'prev') {
       setSelectedImageIndex(
@@ -68,7 +61,14 @@ export function ImageGallery({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedImageIndex, images.length])
+  }, [selectedImageIndex, images?.length])
+
+  if (!images || images.length === 0) {
+    return null
+  }
+
+  const visibleThumbnails = showAll ? images : images.slice(0, maxThumbnails)
+  const hasMore = images.length > maxThumbnails
 
   const selectedImage = selectedImageIndex !== null ? images[selectedImageIndex] : null
 

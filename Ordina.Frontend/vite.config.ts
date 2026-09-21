@@ -11,25 +11,44 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'robots.txt'],
+      devOptions: {
+        enabled: true
+      },
+      includeAssets: ['favicon.png', 'apple-touch-icon.png', 'icon.png', 'icon-192.png', 'icon-512.png'],
       manifest: {
-        name: 'Ordina ERP - Camihogar',
-        short_name: 'Ordina',
-        description: 'Sistema Integral de Gestión Comercial, Manufactura y Despacho - Camihogar',
+        name: 'Ordina ERP — Camihogar',
+        short_name: 'Camihogar',
+        description: 'Sistema Integral de Gestión Comercial, Manufactura y Despacho — Camihogar',
+        start_url: '/',
+        scope: '/',
         theme_color: '#1CB569',
         background_color: '#111418',
         display: 'standalone',
-        orientation: 'portrait',
+        orientation: 'portrait-primary',
         icons: [
           {
-            src: '/vite.svg',
+            src: '/icon-192.png',
             sizes: '192x192',
-            type: 'image/svg+xml'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
-            src: '/vite.svg',
+            src: '/icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable'
+          },
+          {
+            src: '/icon-512.png',
             sizes: '512x512',
-            type: 'image/svg+xml'
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: '/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
           }
         ]
       },

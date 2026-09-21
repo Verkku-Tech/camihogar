@@ -379,10 +379,10 @@ export function ClientsPage() {
       </div>
 
       {/* Filters and Search */}
-      <Card>
+      <Card className="min-w-0">
         <CardContent className="pt-6">
           <div className="flex flex-col lg:flex-row gap-4">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
@@ -394,9 +394,9 @@ export function ClientsPage() {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex gap-2 items-center">
               <Select value={filterTipoCliente} onValueChange={setFilterTipoCliente}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px]">
                   <Filter className="w-4 h-4 mr-2" />
                   <SelectValue placeholder="Tipo" />
                 </SelectTrigger>
@@ -410,20 +410,22 @@ export function ClientsPage() {
                 </SelectContent>
               </Select>
 
-              <Select value={filterEstado} onValueChange={setFilterEstado}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="activo">Activos</SelectItem>
-                  <SelectItem value="inactivo">Inactivos</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select value={filterEstado} onValueChange={setFilterEstado}>
+                  <SelectTrigger className="w-full sm:w-[140px]">
+                    <SelectValue placeholder="Estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="activo">Activos</SelectItem>
+                    <SelectItem value="inactivo">Inactivos</SelectItem>
+                  </SelectContent>
+                </Select>
 
-              <Button variant="outline" size="icon" onClick={() => loadClients()} title="Recargar">
-                <RefreshCw className="h-4 w-4" />
-              </Button>
+                <Button variant="outline" size="icon" onClick={() => loadClients()} title="Recargar" className="shrink-0">
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>

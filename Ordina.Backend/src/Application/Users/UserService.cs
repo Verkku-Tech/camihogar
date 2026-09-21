@@ -95,12 +95,13 @@ public class UserService : IUserService
             RoleString = createDto.Role,
             StatusString = createDto.Status,
             PasswordHash = _passwordHasher.HashPassword(password),
-            StoreId = createDto.StoreId,
-            StoreName = createDto.StoreName,
+            StoreId = string.IsNullOrWhiteSpace(createDto.StoreId) ? null : createDto.StoreId.Trim(),
+            StoreName = string.IsNullOrWhiteSpace(createDto.StoreId) ? null : createDto.StoreName,
             BaseSalary = createDto.BaseSalary,
             BaseSalaryCurrency = createDto.BaseSalaryCurrency,
             CommissionExclusivityModeStored = createDto.CommissionExclusivityMode,
             ExtraPermissions = normalizedPermissions,
+            AvatarUrl = createDto.AvatarUrl,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -131,7 +132,11 @@ public class UserService : IUserService
         }
         if (!string.IsNullOrWhiteSpace(updateDto.Role)) user.RoleString = updateDto.Role;
         if (!string.IsNullOrWhiteSpace(updateDto.Status)) user.StatusString = updateDto.Status;
-        if (updateDto.StoreId != null) user.StoreId = updateDto.StoreId;
+        if (updateDto.StoreId != null)
+        {
+            user.StoreId = string.IsNullOrWhiteSpace(updateDto.StoreId) ? null : updateDto.StoreId.Trim();
+            if (user.StoreId == null) user.StoreName = null;
+        }
         if (updateDto.StoreName != null) user.StoreName = updateDto.StoreName;
         if (updateDto.BaseSalary.HasValue) user.BaseSalary = updateDto.BaseSalary.Value;
         if (!string.IsNullOrWhiteSpace(updateDto.BaseSalaryCurrency)) user.BaseSalaryCurrency = updateDto.BaseSalaryCurrency;
@@ -139,6 +144,10 @@ public class UserService : IUserService
         if (updateDto.ExtraPermissions != null)
         {
             user.ExtraPermissions = AssignableUserPermissions.Normalize(updateDto.ExtraPermissions);
+        }
+        if (updateDto.AvatarUrl != null)
+        {
+            user.AvatarUrl = string.IsNullOrWhiteSpace(updateDto.AvatarUrl) ? null : updateDto.AvatarUrl;
         }
 
         user.NormalizeCommissionExclusivity();
@@ -190,7 +199,8 @@ public class UserService : IUserService
         user.BaseSalaryCurrency,
         user.StoreId,
         user.StoreName,
-        user.ExtraPermissions);
+        user.ExtraPermissions,
+        user.AvatarUrl);
 }
 
 public class RoleService : IRoleService

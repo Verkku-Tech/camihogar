@@ -104,4 +104,75 @@ public class AuthAndSecurityTests
 
         Assert.Contains("incorrectos", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task AuthService_ImpersonateUserAsync_GeneratesToken_ForActiveUser()
+    {
+        var targetUser = new User
+        {
+            Id = "user-2",
+            Username = "seller_user",
+            Email = "seller@camihogar.com",
+            RoleString = "Store Seller",
+            Status = UserStatus.Active,
+            Name = "Vendedor Tienda",
+            AvatarUrl = "data:image/webp;base64,impersonated_avatar"
+        };
+
+        _userRepoMock.Setup(r => r.GetByIdAsync("user-2", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(targetUser);
+
+        _roleRepoMock.Setup(r => r.FindAsync(It.IsAny<System.Linq.Expressions.Expression<Func<Role, bool>>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Role>());
+
+        _tokenServiceMock.Setup(t => t.GenerateToken(targetUser, It.IsAny<System.Collections.Generic.IEnumerable<string>>(), "superadmin-1"))
+            .Returns("impersonated_jwt_token");
+
+        var response = await _authService.ImpersonateUserAsync("superadmin-1", "user-2", CancellationToken.None);
+
+        Assert.NotNull(response);
+        Assert.Equal("impersonated_jwt_token", response.Token);
+        Assert.Equal("seller_user", response.User.Username);
+        Assert.Equal("Store Seller", response.User.Role);
+        Assert.Equal("data:image/webp;base64,impersonated_avatar", response.User.AvatarUrl);
+    }
+
+    [Fact]
+    public async Task AuthService_ImpersonateUserAsync_Throws_WhenTargetUserNotFound()
+    {
+        _userRepoMock.Setup(r => r.GetByIdAsync("non-existent", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            _authService.ImpersonateUserAsync("superadmin-1", "non-existent", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AuthService_ImpersonateUserAsync_Throws_WhenTargetUserIsInactive()
+    {
+        var inactiveUser = new User
+        {
+            Id = "user-inactive",
+            Username = "inactive_user",
+            Status = UserStatus.Inactive
+        };
+
+        _userRepoMock.Setup(r => r.GetByIdAsync("user-inactive", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(inactiveUser);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _authService.ImpersonateUserAsync("superadmin-1", "user-inactive", CancellationToken.None));
+
+        Assert.Contains("inactivo", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AuthService_ImpersonateUserAsync_Throws_WhenTargetUserIsSameAsCurrent()
+    {
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _authService.ImpersonateUserAsync("superadmin-1", "superadmin-1", CancellationToken.None));
+
+        Assert.Contains("propio usuario", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }
+

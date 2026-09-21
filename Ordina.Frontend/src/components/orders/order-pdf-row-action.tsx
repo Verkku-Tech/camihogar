@@ -45,7 +45,7 @@ export function OrderPdfRowAction({
   client: clientProp,
   lazyLoad = false,
 }: Props) {
-  const eligible = orderType === "order";
+  const eligible = (orderType || "").toLowerCase() === "order" || (!orderType && !orderId?.toUpperCase().startsWith("PRE-"));
 
   const [order, setOrder] = useState<Order | null>(orderProp ?? null);
   const [client, setClient] = useState<Client | null>(null);

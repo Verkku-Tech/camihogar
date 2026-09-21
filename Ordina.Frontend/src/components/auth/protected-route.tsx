@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { Navigate } from "react-router-dom"
 import { useAuth } from "@/contexts/auth-context"
 
 interface ProtectedRouteProps {
@@ -37,7 +38,7 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   }
 
   if (!isAuthenticated) {
-    return null
+    return <Navigate to="/login" replace />
   }
 
   if (requiredRole && user && !requiredRole.includes(user.role)) {

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,8 +21,14 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  const { login } = useAuth()
+  const { login, isAuthenticated, isLoading: isAuthLoading } = useAuth()
   const router = useRouter()
+
+  useEffect(() => {
+    if (!isAuthLoading && isAuthenticated) {
+      router.replace("/")
+    }
+  }, [isAuthLoading, isAuthenticated, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -59,8 +65,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-white p-4">
-      <Card className="w-full max-w-md">
+    <div className="h-full w-full overflow-y-auto flex items-center justify-center bg-gradient-to-br from-indigo-50 to-white p-4">
+      <Card className="w-full max-w-md my-auto">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
             <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center">

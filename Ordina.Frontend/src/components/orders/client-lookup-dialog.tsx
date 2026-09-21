@@ -148,7 +148,7 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-2xl sm:max-h-[90vh] overflow-y-auto p-3 sm:p-4 md:p-6 rounded-none sm:rounded-lg m-0 sm:m-4"
+          className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-2xl max-h-[min(90dvh,calc(100dvh-2rem))] overflow-y-auto p-4 sm:p-6 rounded-xl sm:rounded-lg"
           onInteractOutside={preventClose}
           onPointerDownOutside={preventClose}
         >
@@ -160,11 +160,6 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
           </DialogHeader>
 
           <div className="space-y-3 sm:space-y-4">
-            {offlineMode && (
-              <p className="text-sm text-amber-600 dark:text-amber-500">
-                Sin conexión: se muestra la lista en caché local con búsqueda en este equipo.
-              </p>
-            )}
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />

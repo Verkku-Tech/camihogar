@@ -14,6 +14,7 @@ interface User {
   storeId?: string
   storeName?: string
   extraPermissions?: string[]
+  avatarUrl?: string
 }
 
 function mapApiUserToLocal(apiUser: UserResponseDto): User {
@@ -28,6 +29,7 @@ function mapApiUserToLocal(apiUser: UserResponseDto): User {
     storeId: apiUser.storeId,
     storeName: apiUser.storeName,
     extraPermissions: apiUser.extraPermissions ?? [],
+    avatarUrl: apiUser.avatarUrl,
   }
 }
 
@@ -132,6 +134,7 @@ export function useUsers(options: UseUsersOptions = {}) {
         status: userData.status || 'active',
         createdAt: new Date().toISOString(),
         storeId: userData.storeId,
+        avatarUrl: userData.avatarUrl,
       }
 
       // Guardar en IndexedDB inmediatamente (offline-first)

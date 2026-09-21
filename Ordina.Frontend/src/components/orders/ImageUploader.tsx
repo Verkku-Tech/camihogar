@@ -1,8 +1,8 @@
 "use client"
 
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useState, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { UploadCloud, X, Loader2, Shield, FileText } from 'lucide-react'
+import { UploadCloud, X, Loader2, Shield, FileText, CheckCircle2, Plus } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -38,6 +38,16 @@ export function ImageUploader({
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [compressionProgress, setCompressionProgress] = useState<number>(0)
+  const [processedSuccess, setProcessedSuccess] = useState(false)
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) {
+        clearTimeout(successTimerRef.current)
+      }
+    }
+  }, [])
 
   /**
    * Valida que no se envíe información a servicios externos
@@ -386,6 +396,13 @@ export function ImageUploader({
     } finally {
       setUploading(false)
       setCompressionProgress(0)
+      setProcessedSuccess(true)
+      if (successTimerRef.current) {
+        clearTimeout(successTimerRef.current)
+      }
+      successTimerRef.current = setTimeout(() => {
+        setProcessedSuccess(false)
+      }, 3000)
     }
   }
 
@@ -412,59 +429,76 @@ export function ImageUploader({
 
   // Calcular tamaño total actual
   const currentTotalSizeMB = (calculateTotalSize(images) / 1024 / 1024).toFixed(2)
+  const hasImages = images.length > 0;
+  const canAddMore = hasImages && !uploading && !disabled && images.length < maxImages;
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-4">
-      
-     
 
-      {/* Área de Dropzone */}
-      <div
-        {...getRootProps()}
-        className={cn(
-          "relative border-2 border-dashed rounded-lg p-10 transition-colors flex flex-col items-center justify-center",
-          (disabled || uploading || images.length >= maxImages) 
-            ? "opacity-50 cursor-not-allowed" 
-            : "cursor-pointer",
-          isDragActive 
-            ? "border-primary bg-primary/5" 
-            : "border-muted-foreground/25 hover:border-primary/50"
-        )}
-      >
-        <input {...getInputProps()} />
-        {uploading ? (
-          <>
-            <Loader2 className="w-8 h-8 text-primary animate-spin mb-4" />
-            <p className="text-sm font-medium text-center">
-              Procesando archivos... {Math.round(compressionProgress)}%
-            </p>
-            <div className="w-full max-w-xs mt-2 bg-muted rounded-full h-2">
-              <div 
-                className="bg-primary h-2 rounded-full transition-all duration-300"
-                style={{ width: `${compressionProgress}%` }}
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="bg-primary/10 p-4 rounded-full mb-4">
-              <UploadCloud className="w-8 h-8 text-primary" />
-            </div>
-            <p className="text-sm font-medium text-center">
-              {isDragActive 
-                ? "Suelta los archivos aquí" 
-                : images.length >= maxImages
-                ? `Máximo de ${maxImages} archivos alcanzado`
-                : "Arrastra imágenes/PDFs o haz clic para seleccionar"}
-            </p>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              {images.length}/{maxImages} archivos • Imágenes: {maxSizeMB}MB • PDFs: {maxPdfSizeMB}MB
-              <br />
-              Tamaño total: {currentTotalSizeMB}MB / {maxTotalSizeMB}MB
-            </p>
-          </>
-        )}
-      </div>
+      {/* Dropzone grande cuando no hay imágenes o está subiendo */}
+      {(!hasImages || uploading) && (
+        <div
+          {...getRootProps()}
+          className={cn(
+            "relative border-2 border-dashed rounded-lg p-10 transition-colors flex flex-col items-center justify-center",
+            (disabled || uploading || images.length >= maxImages) 
+              ? "opacity-50 cursor-not-allowed" 
+              : "cursor-pointer",
+            isDragActive 
+              ? "border-primary bg-primary/5" 
+              : processedSuccess
+              ? "border-green-500 bg-green-500/5"
+              : "border-muted-foreground/25 hover:border-primary/50"
+          )}
+        >
+          <input {...getInputProps()} />
+          {uploading ? (
+            <>
+              <Loader2 className="w-8 h-8 text-primary animate-spin mb-4" />
+              <p className="text-sm font-medium text-center">
+                Procesando archivos... {Math.round(compressionProgress)}%
+              </p>
+              <div className="w-full max-w-xs mt-2 bg-muted rounded-full h-2.5">
+                <div 
+                  className="bg-primary h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${compressionProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                Comprimiendo y validando...
+              </p>
+            </>
+          ) : processedSuccess ? (
+            <>
+              <CheckCircle2 className="w-8 h-8 text-green-500 mb-4" />
+              <p className="text-sm font-medium text-center text-green-600">
+                Archivo procesado correctamente
+              </p>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                {images.length}/{maxImages} archivos • Tamaño total: {currentTotalSizeMB}MB / {maxTotalSizeMB}MB
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="bg-primary/10 p-4 rounded-full mb-4">
+                <UploadCloud className="w-8 h-8 text-primary" />
+              </div>
+              <p className="text-sm font-medium text-center">
+                {isDragActive 
+                  ? "Suelta los archivos aquí" 
+                  : images.length >= maxImages
+                  ? `Máximo de ${maxImages} archivos alcanzado`
+                  : "Arrastra imágenes/PDFs o haz clic para seleccionar"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                {images.length}/{maxImages} archivos • Imágenes: {maxSizeMB}MB • PDFs: {maxPdfSizeMB}MB
+                <br />
+                Tamaño total: {currentTotalSizeMB}MB / {maxTotalSizeMB}MB
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Mensaje de error */}
       {error && (
@@ -473,58 +507,78 @@ export function ImageUploader({
         </div>
       )}
 
-      {/* Vista previa de archivos */}
-      {images.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {images.map((image) => {
-            const isPDF = image.mimeType === 'application/pdf' || 
-                         image.filename.toLowerCase().endsWith('.pdf') ||
-                         image.base64.startsWith('data:application/pdf')
-            const fileSizeMB = image.size ? (image.size / 1024 / 1024).toFixed(2) : 'N/A'
-            
-            return (
-              <div key={image.id} className="relative group rounded-md overflow-hidden border">
-                {isPDF ? (
-                  <div className="w-full aspect-square flex flex-col bg-muted">
-                    <div className="flex-1 min-h-[200px]">
-                      <iframe
-                        src={image.base64}
-                        className="w-full h-full border-0"
-                        title={image.filename}
-                      />
+      {/* Vista previa de archivos + botón agregar */}
+      {hasImages && (
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 flex-1">
+            {images.map((image) => {
+              const isPDF = image.mimeType === 'application/pdf' || 
+                           image.filename.toLowerCase().endsWith('.pdf') ||
+                           image.base64.startsWith('data:application/pdf')
+              const fileSizeMB = image.size ? (image.size / 1024 / 1024).toFixed(2) : 'N/A'
+              
+              return (
+                <div key={image.id} className="relative group rounded-md overflow-hidden border w-24 h-24">
+                  {isPDF ? (
+                    <div className="w-full h-full flex flex-col bg-muted">
+                      <div className="flex-1">
+                        <iframe
+                          src={image.base64}
+                          className="w-full h-full border-0"
+                          title={image.filename}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="aspect-square">
+                  ) : (
                     <img
                       src={image.base64}
                       alt={image.filename}
                       className="w-full h-full object-cover"
                     />
-                  </div>
-                )}
-                {!disabled && (
-                <button
-                  onClick={() => removeImage(image.id)}
-                  className="absolute top-1 right-1 bg-destructive text-destructive-foreground p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                  type="button"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-                )}
-                <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1">
-                  <div className="truncate flex items-center gap-1">
-                    {isPDF && <FileText className="w-3 h-3" />}
-                    {image.filename}
-                  </div>
-                  <div className="text-[10px] opacity-75">
-                    {isPDF ? 'PDF' : 'Imagen'} • {fileSizeMB}MB
+                  )}
+                  {!disabled && (
+                    <button
+                      onClick={() => removeImage(image.id)}
+                      className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-80 hover:opacity-100 transition-opacity z-10 shadow-sm"
+                      type="button"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white px-1 py-0.5">
+                    <div className="truncate text-[9px] flex items-center gap-0.5">
+                      {isPDF && <FileText className="w-2.5 h-2.5" />}
+                      {image.filename}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
+
+          {/* Botón + para agregar más */}
+          {canAddMore && (
+            <div
+              {...getRootProps()}
+              className={cn(
+                "flex items-center justify-center w-24 h-24 rounded-md border-2 border-dashed transition-colors cursor-pointer",
+                isDragActive
+                  ? "border-primary bg-primary/5"
+                  : "border-muted-foreground/25 hover:border-primary/50"
+              )}
+            >
+              <input {...getInputProps()} />
+              <Plus className="w-6 h-6 text-muted-foreground" />
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Contador de tamaño */}
+      {hasImages && (
+        <p className="text-xs text-muted-foreground">
+          {images.length}/{maxImages} archivos • Tamaño total: {currentTotalSizeMB}MB / {maxTotalSizeMB}MB
+        </p>
       )}
     </div>
   )

@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import { useEditOrderForm } from "./hooks/use-edit-order-form";
@@ -256,6 +257,7 @@ export function EditOrderDialog({
   );
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
+  const [paymentSavedTrigger, setPaymentSavedTrigger] = useState(0);
 
   const nestedModalOpen =
     isRemoveProductOpen ||
@@ -305,10 +307,11 @@ export function EditOrderDialog({
   };
 
   // Handlers de pagos (mantener aquí por ahora, pueden moverse al hook después)
-  const addPayment = () => {
+  const addPayment = (): string => {
     const defaultCurrency = orderForm.getDefaultCurrencyFromSelection();
+    const newId = Date.now().toString();
     const newPayment: PartialPayment = {
-      id: Date.now().toString(),
+      id: newId,
       amount: 0,
       method: "",
       date: todayPaymentDateYyyyMmDd(),
@@ -316,6 +319,7 @@ export function EditOrderDialog({
       paymentDetails: {},
     };
     orderForm.setPayments([...orderForm.payments, newPayment]);
+    return newId;
   };
 
   const updatePayment = (
@@ -669,9 +673,7 @@ export function EditOrderDialog({
         mixedPayments: multi ? paymentsNorm : [],
       });
       toast.success("Pagos actualizados correctamente");
-      onOpenChange(false);
-      orderForm.resetForm();
-      window.location.reload();
+      setPaymentSavedTrigger((t) => t + 1);
     } catch (error) {
       console.error("Error updating payments:", error);
       toast.error("Error al guardar los pagos. Por favor intenta nuevamente.");
@@ -1511,7 +1513,10 @@ export function EditOrderDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="w-[100vw] h-[100vh] max-w-none max-h-none sm:w-full sm:h-auto sm:max-w-[95vw] sm:max-w-5xl sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-none sm:rounded-lg m-0 sm:m-4"
+          className={cn(
+            "w-[calc(100vw-1.5rem)] sm:w-full max-h-[min(90dvh,calc(100dvh-2rem))] overflow-y-auto p-4 sm:p-6 md:p-8 rounded-xl sm:rounded-lg",
+            isPaymentsOnly ? "max-w-4xl" : "sm:max-w-5xl"
+          )}
           onInteractOutside={preventClose}
           onPointerDownOutside={preventClose}
         >
@@ -1585,12 +1590,34 @@ export function EditOrderDialog({
               paymentsOnly={isPaymentsOnly}
               allowRemovePayment={allowRemovePayment}
               canEditConciliatedPayments={canEditConciliatedPayments}
+              paymentSavedTrigger={paymentSavedTrigger}
             />
           )}
 
-          {/* Footer: solo para modo completo; en modo solo pagos el submit está en Step3 */}
+          {/* Footer sticky para modo pagos */}
+          {isPaymentsOnly && (
+            <div className="sticky bottom-0 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 md:-mx-8 md:-mb-8 p-3 sm:p-4 bg-background/95 backdrop-blur-xs border-t flex items-center justify-end gap-3 z-10">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="w-full sm:w-auto"
+              >
+                Cerrar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSavePaymentsOnly}
+                className="w-full sm:w-auto"
+              >
+                Guardar pagos
+              </Button>
+            </div>
+          )}
+
+          {/* Footer: solo para modo completo */}
           {!isPaymentsOnly && (
-            <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 border-t">
+            <div className="sticky bottom-0 -mx-4 -mb-4 sm:-mx-6 sm:-mb-6 md:-mx-8 md:-mb-8 p-3 sm:p-4 bg-background/95 backdrop-blur-xs border-t flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 z-10">
               <Button
                 variant="outline"
                 onClick={orderForm.handleBack}
@@ -1602,20 +1629,6 @@ export function EditOrderDialog({
               </Button>
 
               <div className="flex flex-col sm:flex-row gap-3">
-                {/* OCULTO TEMPORALMENTE - creación de presupuestos desde paso 1
-                {orderForm.currentStep === 1 && (
-                  <Button
-                    onClick={handleCreateBudget}
-                    variant="outline"
-                    className="w-full sm:w-auto"
-                    disabled={!orderForm.canCreateBudget}
-                  >
-                    <FileText className="w-4 h-4 mr-2" />
-                    Presupuesto
-                  </Button>
-                )}
-                */}
-
                 {orderForm.currentStep < 3 ? (
                   <Button
                     onClick={orderForm.handleNext}
@@ -1630,25 +1643,6 @@ export function EditOrderDialog({
                     {isEditingBudget ? "Guardar como pedido" : "Crear Pedido"}
                   </Button>
                 )}
-              </div>
-            </div>
-          )}
-
-          {isPaymentsOnly && (
-            <div className="flex flex-col gap-3 pt-4 border-t">
-              {order?.paymentCondition === "cashea" && (
-                <p className="text-sm text-muted-foreground">
-                  Cashea: edite el pago inicial en tienda. Al guardar, el saldo
-                  restante se registrará como financiación Cashea.
-                </p>
-              )}
-              <div className="flex justify-end">
-                <Button
-                  onClick={handleSavePaymentsOnly}
-                  className="w-full sm:w-auto"
-                >
-                  Guardar pagos
-                </Button>
               </div>
             </div>
           )}

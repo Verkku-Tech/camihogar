@@ -142,11 +142,11 @@ export function AnalyticsDashboard() {
 
   if (!isAuthLoading && !canAccess) {
     return (
-      <div className="flex h-screen bg-background">
+      <div className="flex h-full bg-background">
         <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <DashboardHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-          <main className="flex-1 flex items-center justify-center p-6">
+          <main className="flex-1 flex items-center justify-center p-6 min-w-0 overflow-hidden">
             <Card className="max-w-md w-full text-center border-border/70 shadow-xl">
               <CardHeader>
                 <div className="mx-auto w-14 h-14 rounded-2xl bg-rose-500/10 flex items-center justify-center mb-2 ring-1 ring-rose-500/20">
@@ -182,16 +182,16 @@ export function AnalyticsDashboard() {
   const expiredLayawaysBalance = metrics?.expiredLayawaysAmount ?? metrics?.expiredLayawaysBalanceUsd ?? 0
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-full bg-background">
       <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <DashboardHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
           <AppBreadcrumb />
           
-          <div className="space-y-6">
+          <div className="space-y-6 min-w-0 max-w-full">
             {/* Header & Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card/60 backdrop-blur-sm p-4 rounded-2xl border border-border/70 shadow-sm">
             <div>
@@ -210,9 +210,9 @@ export function AnalyticsDashboard() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="flex items-center gap-2.5 flex-wrap max-w-full overflow-x-auto no-scrollbar">
               {/* Period Selector Tabs */}
-              <div className="inline-flex rounded-xl border border-border bg-muted/40 p-1 shadow-inner">
+              <div className="inline-flex rounded-xl border border-border bg-muted/40 p-1 shadow-inner shrink-0">
                 {(
                   [
                     { key: "day", label: "Hoy" },

@@ -12,4 +12,5 @@ public interface IOrderCoreService
     Task<OrderResponseDto> UpdateOrderAsync(string id, UpdateOrderDto updateDto, DateTime? expectedUpdatedAt = null, CancellationToken cancellationToken = default);
     Task<OrderResponseDto> ConvertBudgetToOrderAsync(ConvertBudgetDto convertDto, CancellationToken cancellationToken = default);
     Task<bool> CancelOrderAsync(string id, string reason, CancellationToken cancellationToken = default);
+    Task<bool> ConciliatePaymentsAsync(List<ConciliatePaymentRequestDto> requests, CancellationToken cancellationToken = default);
 }

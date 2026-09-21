@@ -291,9 +291,10 @@ export function ConfirmOrderDialog({
       generalDiscountAmount,
   );
 
-  const addPayment = () => {
+  const addPayment = (): string => {
+    const newId = Date.now().toString();
     const newPayment: PartialPayment = {
-      id: Date.now().toString(),
+      id: newId,
       amount: 0,
       method: "",
       date: todayPaymentDateYyyyMmDd(),
@@ -301,6 +302,7 @@ export function ConfirmOrderDialog({
       paymentDetails: {},
     };
     setPayments((prev) => [...prev, newPayment]);
+    return newId;
   };
 
   const validatePayments = (): boolean => {

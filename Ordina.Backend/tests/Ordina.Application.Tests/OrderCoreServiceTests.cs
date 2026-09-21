@@ -140,4 +140,47 @@ public class OrderCoreServiceTests
         Assert.Equal(50, result.DeliveryCost);
         Assert.Equal(950, result.Total);
     }
+
+    [Fact]
+    public async Task ConciliatePaymentsAsync_UpdatesPaymentConciliatedFlag()
+    {
+        // Arrange
+        var orderId = "order-conciliate-1";
+        var order = new Order
+        {
+            Id = orderId,
+            OrderNumber = "ORD-CONC-001",
+            PaymentDetails = new PaymentDetails { IsConciliated = false },
+            PartialPayments = new List<PartialPayment>
+            {
+                new() { Id = "pay-1", Amount = 50, PaymentDetails = new PaymentDetails { IsConciliated = false } },
+                new() { Id = "pay-2", Amount = 50, PaymentDetails = new PaymentDetails { IsConciliated = false } }
+            },
+            MixedPayments = new List<PartialPayment>
+            {
+                new() { Id = "mix-1", Amount = 100, PaymentDetails = new PaymentDetails { IsConciliated = false } }
+            }
+        };
+
+        _orderRepoMock.Setup(r => r.GetByIdAsync(orderId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(order);
+
+        var requests = new List<ConciliatePaymentRequestDto>
+        {
+            new(orderId, "main", 0, true),
+            new(orderId, "partial", 1, true),
+            new(orderId, "mixed", 0, true)
+        };
+
+        // Act
+        var result = await _service.ConciliatePaymentsAsync(requests, CancellationToken.None);
+
+        // Assert
+        Assert.True(result);
+        Assert.True(order.PaymentDetails!.IsConciliated);
+        Assert.False(order.PartialPayments[0].PaymentDetails!.IsConciliated);
+        Assert.True(order.PartialPayments[1].PaymentDetails!.IsConciliated);
+        Assert.True(order.MixedPayments[0].PaymentDetails!.IsConciliated);
+        _orderRepoMock.Verify(r => r.UpdateAsync(order, It.IsAny<CancellationToken>()), Times.Once);
+    }
 }

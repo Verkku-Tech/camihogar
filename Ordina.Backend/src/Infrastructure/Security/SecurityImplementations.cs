@@ -52,7 +52,7 @@ public class JwtTokenGenerator : ITokenService
         _configuration = configuration;
     }
 
-    public string GenerateToken(User user, IEnumerable<string> permissions)
+    public string GenerateToken(User user, IEnumerable<string> permissions, string? impersonatedBy = null)
     {
         var secretKey = _configuration["Jwt:SecretKey"]
                         ?? _configuration["Jwt:Key"]
@@ -88,6 +88,11 @@ public class JwtTokenGenerator : ITokenService
         foreach (var permission in permissions)
         {
             claims.Add(new Claim("permission", permission));
+        }
+
+        if (!string.IsNullOrWhiteSpace(impersonatedBy))
+        {
+            claims.Add(new Claim("impersonated_by", impersonatedBy));
         }
 
         var token = new JwtSecurityToken(

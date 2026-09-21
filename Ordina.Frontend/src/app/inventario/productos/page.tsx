@@ -216,13 +216,13 @@ export default function ProductosPage() {
   }
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-full bg-background">
       <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <DashboardHeader onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6">
         <AppBreadcrumb />
-<div className="w-full">
+<div className="w-full min-w-0 max-w-full">
             
             <div className="flex flex-col gap-4 mb-6">
               <div className="flex items-start gap-4">
