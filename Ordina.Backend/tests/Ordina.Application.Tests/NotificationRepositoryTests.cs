@@ -24,16 +24,4 @@ public class NotificationRepositoryTests
         Assert.Empty(notification.TargetRoles);
         Assert.Empty(notification.ReadByUserIds);
     }
-
-    [Fact]
-    public void NotificationRepository_CanBeConstructedWithDatabase()
-    {
-        var mockDb = new Moq.Mock<IMongoDatabase>();
-        var mockCollection = new Moq.Mock<IMongoCollection<Notification>>();
-        mockDb.Setup(d => d.GetCollection<Notification>("notifications", null))
-            .Returns(mockCollection.Object);
-
-        var repo = new Ordina.Infrastructure.Repositories.NotificationRepository(mockDb.Object);
-        Assert.NotNull(repo);
-    }
 }

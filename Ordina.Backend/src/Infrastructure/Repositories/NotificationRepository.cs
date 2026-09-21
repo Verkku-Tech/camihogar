@@ -10,10 +10,6 @@ public class NotificationRepository : MongoRepository<Notification>, INotificati
     {
     }
 
-    public NotificationRepository(IMongoDatabase database) : base(database, "notifications")
-    {
-    }
-
     public async Task<Notification> CreateAsync(Notification notification, CancellationToken ct = default)
     {
         return await AddAsync(notification, ct);
