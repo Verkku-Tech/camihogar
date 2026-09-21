@@ -40,7 +40,7 @@
   }
   ```
 
-- [ ] **Step 1: Write unit tests for Notification entity and queries**
+- [x] **Step 1: Write unit tests for Notification entity and queries**
 
 ```csharp
 // Ordina.Backend/tests/Ordina.Application.Tests/NotificationRepositoryTests.cs
@@ -72,12 +72,12 @@ public class NotificationRepositoryTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails (missing type)**
+- [x] **Step 2: Run test to verify it fails (missing type)**
 
 Run: `dotnet run --project tests/Ordina.Application.Tests` in `Ordina.Backend`
 Expected: FAIL (Compilation error: Notification does not exist)
 
-- [ ] **Step 3: Create Domain Entity and Repository Interface**
+- [x] **Step 3: Create Domain Entity and Repository Interface**
 
 ```csharp
 // Ordina.Backend/src/Domain/Notifications/Notification.cs
@@ -118,16 +118,16 @@ public class Notification : BaseEntity
 }
 ```
 
-- [ ] **Step 4: Implement NotificationRepository with MongoDB Driver**
+- [x] **Step 4: Implement NotificationRepository with MongoDB Driver**
 
 Create `Ordina.Backend/src/Domain/Notifications/INotificationRepository.cs` and `Ordina.Backend/src/Infrastructure/Repositories/NotificationRepository.cs` implementing queries with role/user filtering. Register in `DependencyInjection.cs`.
 
-- [ ] **Step 5: Run tests and verify they pass**
+- [x] **Step 5: Run tests and verify they pass**
 
 Run: `dotnet run --project tests/Ordina.Application.Tests`
 Expected: PASS (All 39+ tests pass)
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 ```bash
 git add -f Ordina.Backend/src/Domain/Notifications/ Ordina.Backend/src/Infrastructure/Repositories/NotificationRepository.cs Ordina.Backend/tests/Ordina.Application.Tests/NotificationRepositoryTests.cs Ordina.Backend/src/Infrastructure/DependencyInjection.cs
@@ -160,7 +160,7 @@ git commit -m "feat(notifications): add notification domain entity and mongodb r
   }
   ```
 
-- [ ] **Step 1: Write unit tests for NotificationService Pub/Sub filtering**
+- [x] **Step 1: Write unit tests for NotificationService Pub/Sub filtering**
 
 ```csharp
 // Ordina.Backend/tests/Ordina.Application.Tests/NotificationServiceTests.cs
@@ -198,21 +198,21 @@ public class NotificationServiceTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet run --project tests/Ordina.Application.Tests`
 Expected: FAIL (types not defined)
 
-- [ ] **Step 3: Implement DTOs and NotificationService using System.Threading.Channels**
+- [x] **Step 3: Implement DTOs and NotificationService using System.Threading.Channels**
 
 Implement `NotificationService` maintaining a concurrent list of client channels or bounded channel broadcasting to subscribers whose role/userId matches. Register `INotificationService` as Singleton (for pub/sub state) in `Application/DependencyInjection.cs`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet run --project tests/Ordina.Application.Tests`
 Expected: PASS
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ```bash
 git add -f Ordina.Backend/src/Application/Notifications/ Ordina.Backend/tests/Ordina.Application.Tests/NotificationServiceTests.cs Ordina.Backend/src/Application/DependencyInjection.cs
@@ -235,7 +235,7 @@ git commit -m "feat(notifications): implement notification service with SSE even
   - `PUT /api/notifications/mark-all-read` -> `{ success: true }`
   - `GET /api/notifications/stream` -> SSE stream (`text/event-stream`)
 
-- [ ] **Step 1: Create NotificationsController**
+- [x] **Step 1: Create NotificationsController**
 
 Write `NotificationsController` with `[Authorize]`. In `GetStream(CancellationToken ct)`:
 - Set `Response.Headers.Append("Content-Type", "text/event-stream")`.
@@ -244,12 +244,12 @@ Write `NotificationsController` with `[Authorize]`. In `GetStream(CancellationTo
 - Read claims for current user ID and roles.
 - Stream events: `await Response.WriteAsync($"data: {json}\n\n", ct); await Response.Body.FlushAsync(ct)`.
 
-- [ ] **Step 2: Test building API**
+- [x] **Step 2: Test building API**
 
 Run: `dotnet build src/Api` in `Ordina.Backend`
 Expected: Build succeeded with 0 errors.
 
-- [ ] **Step 3: Commit Task 3**
+- [x] **Step 3: Commit Task 3**
 
 ```bash
 git add -f Ordina.Backend/src/Api/Controllers/NotificationsController.cs
@@ -265,7 +265,7 @@ git commit -m "feat(notifications): add SSE stream and REST notification control
 - Modify: `Ordina.Backend/src/Api/Controllers/AccessPinController.cs`
 - Modify: `Ordina.Backend/src/Api/Controllers/TelemetryController.cs` (or specialized endpoint for offline conflicts)
 
-- [ ] **Step 1: Add Notification publishing on Exchange Rate update**
+- [x] **Step 1: Add Notification publishing on Exchange Rate update**
 
 Inject `INotificationService` into `ExchangeRateService`. When a rate is created or updated:
 ```csharp
@@ -277,21 +277,21 @@ await _notificationService.PublishAsync(new CreateNotificationDto(
     Link: "/configuracion/tasas"));
 ```
 
-- [ ] **Step 2: Add Notification publishing on Emergency PIN consumption**
+- [x] **Step 2: Add Notification publishing on Emergency PIN consumption**
 
 In `AccessPinController.ValidatePin` or `AccessPinService`:
 Publish notification with `TargetRoles = new[] { "Administrator", "Super Administrator" }`.
 
-- [ ] **Step 3: Add Notification publishing on offline sync conflict**
+- [x] **Step 3: Add Notification publishing on offline sync conflict**
 
 When frontend detects `409 Conflict` in outbox draining, it reports to an endpoint or telemetry which publishes an error notification to Administrators.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `dotnet run --project tests/Ordina.Application.Tests`
 Expected: PASS
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 ```bash
 git add -u
@@ -307,27 +307,27 @@ git commit -m "feat(notifications): integrate exchange rate, pin, and offline co
 - Create: `Ordina.Backend/src/Infrastructure/BackgroundServices/DelayedOrdersNotifierWorker.cs`
 - Modify: `Ordina.Backend/src/Infrastructure/DependencyInjection.cs`
 
-- [ ] **Step 1: Add query filter presets in SpecializedRepositories**
+- [x] **Step 1: Add query filter presets in SpecializedRepositories**
 
 Add `"fabricacion_retrasada"` (manufacturing orders without status change in > 25 days) and `"reservas_vencidas"` (reservations created > 30 days ago).
 
-- [ ] **Step 2: Implement Periodic BackgroundService**
+- [x] **Step 2: Implement Periodic BackgroundService**
 
 `DelayedOrdersNotifierWorker : BackgroundService`:
 - Runs on startup and then every 30 minutes.
 - Queries delayed manufacturing orders count. If > 0, publishes/updates consolidated notification (`Type: "ManufacturingDelay"`, `Link: "/pedidos/fabricacion?filter=delayed"`).
 - Queries expired reservations grouped by `VendorId`. If > 0, publishes/updates consolidated notification for that vendor (`Type: "ReservationExpiring"`, `Link: "/pedidos/reservas?filter=expired"`).
 
-- [ ] **Step 3: Register HostedService in DependencyInjection**
+- [x] **Step 3: Register HostedService in DependencyInjection**
 
 Register `services.AddHostedService<DelayedOrdersNotifierWorker>()`.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `dotnet run --project tests/Ordina.Application.Tests`
 Expected: PASS
 
-- [ ] **Step 5: Commit Task 5**
+- [x] **Step 5: Commit Task 5**
 
 ```bash
 git add -f Ordina.Backend/src/Infrastructure/BackgroundServices/DelayedOrdersNotifierWorker.cs Ordina.Backend/src/Infrastructure/Repositories/SpecializedRepositories.cs Ordina.Backend/src/Infrastructure/DependencyInjection.cs
@@ -343,18 +343,18 @@ git commit -m "feat(notifications): add background worker for manufacturing dela
 - Create: `Ordina.Frontend/src/hooks/use-notifications.ts`
 - Modify: `Ordina.Frontend/src/components/dashboard/sidebar.tsx`
 
-- [ ] **Step 1: Add notification methods to api-client.ts**
+- [x] **Step 1: Add notification methods to api-client.ts**
 
 `getNotifications()`, `getUnreadNotificationCount()`, `markNotificationAsRead(id)`, `markAllNotificationsAsRead()`.
 
-- [ ] **Step 2: Create useNotifications hook**
+- [x] **Step 2: Create useNotifications hook**
 
 Create `use-notifications.ts`:
 - Connects to `/api/notifications/stream` via `EventSource`.
 - On message, appends to notification state, increments unread counter, and triggers Sonner toast for high severity.
 - Handles reconnections and cleanup on unmount.
 
-- [ ] **Step 3: Update Sidebar Bell Icon and Dropdown**
+- [x] **Step 3: Update Sidebar Bell Icon and Dropdown**
 
 In `sidebar.tsx`:
 - Replace the static "No hay tasas de cambio" dropdown with dynamic notifications list.
@@ -362,12 +362,12 @@ In `sidebar.tsx`:
 - Click on notification navigates to `notification.link` and marks as read.
 - Include "Marcar todas como leídas" button.
 
-- [ ] **Step 4: Build frontend and verify**
+- [x] **Step 4: Build frontend and verify**
 
 Run: `npm run build` in `Ordina.Frontend`
 Expected: 0 errors.
 
-- [ ] **Step 5: Commit Task 6**
+- [x] **Step 5: Commit Task 6**
 
 ```bash
 git add -f Ordina.Frontend/src/hooks/use-notifications.ts Ordina.Frontend/src/lib/api-client.ts Ordina.Frontend/src/components/dashboard/sidebar.tsx
@@ -382,26 +382,26 @@ git commit -m "feat(frontend): add useNotifications hook and interactive sidebar
 - Modify: `Ordina.Frontend/src/app/pedidos/fabricacion/page.tsx`
 - Modify: `Ordina.Frontend/src/app/pedidos/reservas/page.tsx`
 
-- [ ] **Step 1: Add 'delayed' status option in FabricacionPage**
+- [x] **Step 1: Add 'delayed' status option in FabricacionPage**
 
 In `fabricacion/page.tsx`:
 - Add option `"delayed"` ("Pedidos con retraso (> 25 días)") in the status select dropdown.
 - Check `searchParams.get("filter") === "delayed"` on load to auto-select it.
 - Filter rows where status is not completed and last activity/creation is older than 25 days.
 
-- [ ] **Step 2: Add 'expired' filter option in ReservasPage**
+- [x] **Step 2: Add 'expired' filter option in ReservasPage**
 
 In `reservas/page.tsx`:
 - Add quick filter button/select for "Reservas vencidas (> 30 días)" (`expired`).
 - Check `searchParams.get("filter") === "expired"` on load.
 - Filter items where `createdAt < Date.now() - 30 * 24 * 60 * 60 * 1000`.
 
-- [ ] **Step 3: Build frontend and verify**
+- [x] **Step 3: Build frontend and verify**
 
 Run: `npm run build` in `Ordina.Frontend`
 Expected: 0 errors.
 
-- [ ] **Step 4: Commit Task 7**
+- [x] **Step 4: Commit Task 7**
 
 ```bash
 git add Ordina.Frontend/src/app/pedidos/fabricacion/page.tsx Ordina.Frontend/src/app/pedidos/reservas/page.tsx
@@ -412,9 +412,9 @@ git commit -m "feat(frontend): integrate delayed manufacturing and expired reser
 
 ### Task 8: Verification & Walkthrough
 
-- [ ] **Step 1: Run all backend tests**
+- [x] **Step 1: Run all backend tests**
 `dotnet run --project tests/Ordina.Application.Tests` in `Ordina.Backend`
-- [ ] **Step 2: Run frontend build and linter**
+- [x] **Step 2: Run frontend build and linter**
 `npm run build` and `npm run lint` in `Ordina.Frontend`
-- [ ] **Step 3: Document changes in walkthrough.md**
+- [x] **Step 3: Document changes in walkthrough.md**
 Update `walkthrough.md` with complete details, API endpoints, and screenshots/instructions.
