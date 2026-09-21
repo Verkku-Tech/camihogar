@@ -5,6 +5,7 @@ using Ordina.Application.Dashboard;
 using Ordina.Application.Dispatch;
 using Ordina.Application.Finance;
 using Ordina.Application.Manufacturing;
+using Ordina.Application.Notifications;
 using Ordina.Application.Orders;
 using Ordina.Application.Reports;
 using Ordina.Application.Security;
@@ -37,6 +38,7 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddSingleton<ITimeSeriesForecastingService, HoltWintersForecastingService>();
+        services.AddSingleton<INotificationService, NotificationService>();
 
         return services;
     }
