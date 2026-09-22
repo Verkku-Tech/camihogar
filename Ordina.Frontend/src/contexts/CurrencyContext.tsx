@@ -126,7 +126,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <CurrencyContext.Provider
+    <CurrencyContext
       value={{
         preferredCurrency,
         setPreferredCurrency,
@@ -137,7 +137,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
-    </CurrencyContext.Provider>
+    </CurrencyContext>
   );
 }
 

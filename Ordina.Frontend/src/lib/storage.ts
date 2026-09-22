@@ -681,9 +681,9 @@ export const userFromBackendDto = (dto: UserResponseDto): User => ({
   avatarUrl: dto.avatarUrl,
 })
 
-export const getUsers = async (): Promise<User[]> => {
+export const getUsers = async (status?: string): Promise<User[]> => {
   try {
-    const res: any = await apiClient.getUsers()
+    const res: any = await apiClient.getUsers(status)
     const list = Array.isArray(res) ? res : (res?.items ?? [])
     return list.map(userFromBackendDto)
   } catch {
@@ -715,17 +715,28 @@ export const deleteUser = async (id: string): Promise<void> => {
 }
 
 export const getVendors = async (): Promise<Vendor[]> => {
-  const all = await getUsers()
+  const all = await getUsers('active')
   return all
-    .filter(u => u.role === 'Store Seller' || u.role === 'Online Seller')
-    .map(u => ({ id: u.id, name: u.name, role: u.role, type: 'vendor' as const }))
+    .filter(
+      (u) =>
+        (u.status === 'active' || !u.status) &&
+        (u.role === 'Store Seller' ||
+          u.role === 'Online Seller' ||
+          (u.role as string) === 'Vendedor de tienda' ||
+          (u.role as string) === 'Vendedor Online'),
+    )
+    .map((u) => ({ id: u.id, name: u.name, role: u.role, type: 'vendor' as const }))
 }
 
 export const getReferrers = async (): Promise<Vendor[]> => {
-  const all = await getUsers()
+  const all = await getUsers('active')
   return all
-    .filter(u => u.role === 'Online Seller')
-    .map(u => ({ id: u.id, name: u.name, role: u.role, type: 'referrer' as const }))
+    .filter(
+      (u) =>
+        (u.status === 'active' || !u.status) &&
+        (u.role === 'Online Seller' || (u.role as string) === 'Vendedor Online'),
+    )
+    .map((u) => ({ id: u.id, name: u.name, role: u.role, type: 'referrer' as const }))
 }
 
 export const getOnlineSellerUserIds = async (): Promise<string[]> => {

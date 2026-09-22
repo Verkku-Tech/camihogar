@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Search, Download, FileSpreadsheet, Wifi, WifiOff, Loader2, Check, ChevronsUpDown } from "lucide-react"
+import { Search, Download, FileSpreadsheet, Loader2, Check, ChevronsUpDown } from "lucide-react"
 import { getProviders, getOrders, type Provider, type Order, type OrderProduct } from "@/lib/storage"
 import { isReservationOrder } from "@/lib/order-document-types"
 import { toast } from "sonner"
@@ -21,6 +21,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
+import { useConnectivity } from "@/hooks/use-connectivity"
 
 type ManufacturingStatus =
   | "debe_fabricar"
@@ -76,7 +77,8 @@ export function ManufacturingReport() {
   const [isDownloading, setIsDownloading] = useState(false)
   const [isLoadingPreview, setIsLoadingPreview] = useState(false)
   const [previewData, setPreviewData] = useState<ManufacturingReportRow[]>([])
-  const [isOnline, setIsOnline] = useState(true)
+  // ponytail: use server reachability instead of navigator.onLine
+  const { isServerReachable: isOnline } = useConnectivity()
   const [itemsPerPage, setItemsPerPage] = useState(10)
 
   const {
@@ -91,24 +93,6 @@ export function ManufacturingReport() {
     data: previewData,
     itemsPerPage,
   })
-
-  // Detectar estado de conexión
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setIsOnline(navigator.onLine)
-      
-      const handleOnline = () => setIsOnline(true)
-      const handleOffline = () => setIsOnline(false)
-      
-      window.addEventListener("online", handleOnline)
-      window.addEventListener("offline", handleOffline)
-      
-      return () => {
-        window.removeEventListener("online", handleOnline)
-        window.removeEventListener("offline", handleOffline)
-      }
-    }
-  }, [])
 
   // Cargar proveedores (fabricantes)
   useEffect(() => {
@@ -244,14 +228,14 @@ export function ManufacturingReport() {
     loadOrders()
   }, [activeTab])
 
-  // Resetear filtros cuando cambia la pestaña
-  useEffect(() => {
+  const handleTabChange = (value: string) => {
+    setActiveTab(value as ManufacturingStatus)
     setSelectedManufacturer("all")
     setOrderNumber("")
     setStartDate("")
     setEndDate("")
     setSearchTerm("")
-  }, [activeTab])
+  }
 
   // Descargar reporte desde el backend
   const downloadReport = async () => {
@@ -358,93 +342,6 @@ export function ManufacturingReport() {
   const getStatusLabel = (status: ManufacturingStatus): string =>
     getManufacturingStatusLabel(status)
 
-  // Función para filtrar productos según el estado y filtros aplicados
-  // (Ya no se usa para la vista previa, solo para el combobox de números de pedido)
-  const getFilteredProducts = (): Array<{
-    order: Order
-    product: OrderProduct
-    orderDate: string
-  }> => {
-    const result: Array<{ order: Order; product: OrderProduct; orderDate: string }> = []
-
-    orders.forEach(order => {
-      if (isReservationOrder(order)) return
-      if (order.status === "Generado" || order.status === "Generada") {
-        return
-      }
-      // Filtrar por número de pedido si se especifica
-      if (orderNumber && order.orderNumber !== orderNumber) {
-        return
-      }
-
-      // Filtrar por rango de fechas si se especifica
-      const orderDate = new Date(order.createdAt)
-      if (startDate) {
-        const start = new Date(startDate)
-        if (orderDate < start) {
-          return
-        }
-      }
-      if (endDate) {
-        const end = new Date(endDate)
-        end.setHours(23, 59, 59, 999) // Incluir todo el día
-        if (orderDate > end) {
-          return
-        }
-      }
-
-      order.products.forEach(product => {
-        // Solo productos que deben mandarse a fabricar
-        if (product.locationStatus !== "FABRICACION") {
-          return
-        }
-
-        // Determinar el estado real del producto
-        const productStatus = product.manufacturingStatus || "debe_fabricar"
-
-        // Filtrar por el estado solicitado
-        if (productStatus !== activeTab) {
-          return
-        }
-
-        // Filtrar por fabricante si se especifica (solo para fabricando y en almacén)
-        if (activeTab !== "debe_fabricar" && selectedManufacturer !== "all") {
-          if (!product.manufacturingProviderId || product.manufacturingProviderId !== selectedManufacturer) {
-            return
-          }
-        }
-
-        // Filtrar por término de búsqueda
-        if (searchTerm) {
-          const search = searchTerm.toLowerCase()
-          const matchesOrder = order.orderNumber.toLowerCase().includes(search)
-          const matchesClient = order.clientName.toLowerCase().includes(search)
-          const matchesProduct = product.name.toLowerCase().includes(search)
-          
-          if (!matchesOrder && !matchesClient && !matchesProduct) {
-            return
-          }
-        }
-
-        result.push({
-          order,
-          product,
-          orderDate: order.createdAt
-        })
-      })
-    })
-
-    // Ordenar por fecha (más reciente primero) y luego por número de pedido
-    result.sort((a, b) => {
-      const dateCompare = new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()
-      if (dateCompare !== 0) return dateCompare
-      return a.order.orderNumber.localeCompare(b.order.orderNumber)
-    })
-
-    return result
-  }
-
-  // Ya no necesitamos filteredProducts, usamos previewData del backend
 
   return (
     <div className="space-y-6">
@@ -490,7 +387,7 @@ export function ManufacturingReport() {
               {/* Select de Estado - Dentro de filtros */}
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Estado de Fabricación</label>
-                <Select value={activeTab} onValueChange={(value) => setActiveTab(value as ManufacturingStatus)}>
+                <Select value={activeTab} onValueChange={handleTabChange}>
                   <SelectTrigger className="w-full md:w-[300px]">
                     <SelectValue placeholder="Seleccionar estado" />
                   </SelectTrigger>

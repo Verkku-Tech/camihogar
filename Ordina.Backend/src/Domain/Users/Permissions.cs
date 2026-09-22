@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 namespace Ordina.Domain.Users;
 
 public static class Permissions
@@ -123,19 +125,24 @@ public static class Permissions
         public const string PaymentsDetailed = "reports.payments.detailed.view";
     }
 
-    public static List<string> GetAll()
-    {
-        var permissions = new List<string>();
-        foreach (var outerClass in typeof(Permissions).GetNestedTypes())
-        {
-            foreach (var field in outerClass.GetFields())
-            {
-                if (field.IsLiteral && !field.IsInitOnly && field.FieldType == typeof(string))
-                {
-                    permissions.Add((string)field.GetValue(null)!);
-                }
-            }
-        }
-        return permissions;
-    }
+    private static readonly string[] AllArray =
+    [
+        Users.Read, Users.Create, Users.Update, Users.Delete, Users.ViewPermissions, Users.ModifyPasswords,
+        Roles.Read, Roles.Create, Roles.Update, Roles.Delete,
+        Clients.Read, Clients.Create, Clients.Update, Clients.Delete,
+        Providers.Read, Providers.Create, Providers.Update, Providers.Delete,
+        Inventory.ManageWarehouses, Inventory.DeleteWarehouses, Inventory.ViewStock, Inventory.ViewMovements, Inventory.ManageMovements,
+        Products.ManageTags, Products.DeleteTags, Products.Read, Products.Create, Products.Update, Products.Delete, Products.ViewStatistics,
+        Finance.CreateAccounts, Finance.ReadAccounts, Finance.ManageRecords, Finance.Conciliate, Finance.Export, Finance.Download, Finance.ViewStatistics,
+        Settings.ManageCompany, Settings.ManageCurrency, Settings.ManageAlerts, Settings.ManageSystem,
+        Budgets.ReadAll, Budgets.Create, Budgets.Update, Budgets.ConvertToOrder, Budgets.Close, Budgets.Delete, Budgets.ViewStatistics,
+        Orders.Read, Orders.Create, Orders.Update, Orders.Delete, Orders.Export, Orders.ViewStatistics, Orders.ManagePayments,
+        Dispatch.Read, Dispatch.Create, Dispatch.Update, Dispatch.SendToRoute, Dispatch.ConfirmDelivery, Dispatch.EmitPayment, Dispatch.DeletePayment, Dispatch.Delete, Dispatch.ViewStatistics,
+        Manufacturing.Manage,
+        Reports.Dispatch, Reports.Commissions, Reports.Manufacturing, Reports.PaymentsDetailed
+    ];
+
+    public static readonly FrozenSet<string> All = AllArray.ToFrozenSet(StringComparer.Ordinal);
+
+    public static List<string> GetAll() => [.. All];
 }

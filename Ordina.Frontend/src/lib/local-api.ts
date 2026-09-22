@@ -71,12 +71,108 @@ export class LocalApi {
     return users.filter((u) => u.role?.toLowerCase()?.includes('vendedor') || u.role?.toLowerCase()?.includes('ventas'))
   }
 
-  async getStores() {
-    return await getAll<any>('stores')
+  async getStores(status?: string) {
+    const all = await getAll<any>('stores')
+    if (!status) return all
+    const lower = status.toLowerCase()
+    return all.filter((s) => (s.status || '').toLowerCase() === lower || (lower === 'active' && s.activo === true))
+  }
+
+  async getProviders() {
+    return await getAll<any>('providers')
+  }
+
+  async getAccounts(storeId?: string, isActive?: boolean) {
+    const all = await getAll<any>('accounts')
+    return all.filter((a) => {
+      if (storeId && a.storeId !== storeId) return false
+      if (isActive !== undefined && (a.isActive ?? a.activo) !== isActive) return false
+      return true
+    })
   }
 
   async getOrders() {
     return await getAll<any>('orders')
+  }
+
+  async getOrder(id: string) {
+    return (await get<any>('orders', id)) || null
+  }
+
+  async getOrderByOrderNumber(orderNumber: string) {
+    if (!orderNumber) return null
+    const all = await getAll<any>('orders')
+    const lower = orderNumber.trim().toLowerCase()
+    return all.find((o) => (o.orderNumber || '').trim().toLowerCase() === lower) || null
+  }
+
+  /** Lectura paginada y filtrada de pedidos desde IndexedDB */
+  async getOrdersPaged(page: number = 1, pageSize: number = 50, filters?: any) {
+    const all = await getAll<any>('orders')
+    let filtered = all
+
+    if (filters) {
+      if (filters.search && typeof filters.search === 'string') {
+        const q = filters.search.trim().toLowerCase()
+        filtered = filtered.filter((o) => {
+          const num = (o.orderNumber || '').toLowerCase()
+          const cli = (o.clientName || o.cliente || '').toLowerCase()
+          const ven = (o.vendorName || o.vendedor || '').toLowerCase()
+          return num.includes(q) || cli.includes(q) || ven.includes(q)
+        })
+      }
+
+      if (filters.clientSearch && typeof filters.clientSearch === 'string') {
+        const q = filters.clientSearch.trim().toLowerCase()
+        filtered = filtered.filter((o) => (o.clientName || o.cliente || '').toLowerCase().includes(q))
+      }
+
+      if (filters.vendor && filters.vendor !== 'all') {
+        filtered = filtered.filter((o) => o.vendorName === filters.vendor || o.vendorId === filters.vendor)
+      }
+
+      if (filters.status && filters.status !== 'all') {
+        filtered = filtered.filter((o) => (o.status || '').toLowerCase() === filters.status.toLowerCase())
+      }
+
+      if (filters.excludeStatuses) {
+        const excluded = String(filters.excludeStatuses).split(',').map((s) => s.trim().toLowerCase())
+        filtered = filtered.filter((o) => !excluded.includes((o.status || '').toLowerCase()))
+      }
+
+      if (filters.saleType && filters.saleType !== 'all') {
+        filtered = filtered.filter((o) => o.saleType === filters.saleType)
+      }
+
+      if (filters.dateFrom) {
+        filtered = filtered.filter((o) => (o.createdAt || '') >= filters.dateFrom)
+      }
+
+      if (filters.dateTo) {
+        filtered = filtered.filter((o) => (o.createdAt || '') <= filters.dateTo)
+      }
+
+      if (filters.includeBudgets === false) {
+        filtered = filtered.filter((o) => o.type !== 'budget' && o.status !== 'Presupuesto')
+      }
+    }
+
+    const totalCount = filtered.length
+    const totalPages = Math.ceil(totalCount / pageSize) || 1
+    const startIndex = (page - 1) * pageSize
+    const items = filtered.slice(startIndex, startIndex + pageSize)
+
+    return {
+      orders: items,
+      items,
+      page,
+      pageSize,
+      totalCount,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
+      serverTimestamp: new Date().toISOString()
+    }
   }
 
   /** Creación offline de cliente con ID provisional y encolado en outbox */
@@ -93,7 +189,9 @@ export class LocalApi {
     await syncManager.enqueueMutation({
       endpoint: '/api/clients',
       method: 'POST',
-      payload: dto
+      payload: dto,
+      localEntityId: localId,
+      storeName: 'clients'
     })
 
     return client
@@ -137,10 +235,33 @@ export class LocalApi {
     await syncManager.enqueueMutation({
       endpoint: '/api/orders',
       method: 'POST',
-      payload: dto
+      payload: dto,
+      localEntityId: localId,
+      storeName: 'orders'
     })
 
     return order
+  }
+
+  /** Edición offline de pedido y encolado en outbox */
+  async updateOrder(id: string, dto: any) {
+    const existing = (await get<any>('orders', id)) || {}
+    const updated = {
+      ...existing,
+      ...dto,
+      id,
+      updatedAt: new Date().toISOString(),
+      isOfflineUpdated: true
+    }
+
+    await put('orders', updated)
+    await syncManager.enqueueMutation({
+      endpoint: `/api/orders/${id}`,
+      method: 'PUT',
+      payload: dto
+    })
+
+    return updated
   }
 }
 

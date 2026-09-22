@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, createContext, useContext } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/dashboard/sidebar";
@@ -534,6 +534,176 @@ function getStatusColor(status: string) {
 /** Saldo residual por redondeo; alinear con validación de pagos del formulario (~0,01 Bs). */
 const PENDING_BALANCE_EPSILON_BS = 0.01;
 
+interface OrderDisplayContextValue {
+  order: Order | null;
+  orderBaseCurrency: Currency;
+  localExchangeRates: { USD?: ExchangeRate; EUR?: ExchangeRate };
+  inStorePaymentsForDisplay: any[];
+}
+
+const OrderDisplayContext = createContext<OrderDisplayContextValue>({
+  order: null,
+  orderBaseCurrency: "Bs",
+  localExchangeRates: {},
+  inStorePaymentsForDisplay: [],
+});
+
+/** Cobros y saldo: USD comercial; con showCollectedBs el secundario es la suma real de Bs. */
+function OrderPaymentCurrency({
+  amountUsd,
+  className,
+  inline,
+  showCollectedBs,
+}: {
+  amountUsd: number;
+  className?: string;
+  inline?: boolean;
+  showCollectedBs?: boolean;
+}) {
+  const { order, inStorePaymentsForDisplay } = useContext(OrderDisplayContext);
+  const formatted = showCollectedBs
+    ? formatOrderPaymentTotalsDisplay(
+        amountUsd,
+        inStorePaymentsForDisplay,
+        order ?? undefined,
+      )
+    : formatOrderPaymentUsdWithOrderRateBs(amountUsd, order ?? undefined);
+  if (inline) {
+    return (
+      <span className={className}>
+        <span className="font-medium">{formatted.primary}</span>
+        {formatted.secondary && (
+          <span className="text-xs text-muted-foreground ml-1">
+            ({formatted.secondary})
+          </span>
+        )}
+      </span>
+    );
+  }
+  return (
+    <div className={`text-right ${className || ""}`}>
+      <div className="font-medium">{formatted.primary}</div>
+      {formatted.secondary && (
+        <div className="text-xs text-muted-foreground">
+          {formatted.secondary}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrderCurrency({
+  amount,
+  className,
+  inline,
+  paymentUsdRate,
+  amountCurrency,
+}: {
+  amount: number;
+  className?: string;
+  inline?: boolean;
+  paymentUsdRate?: number;
+  amountCurrency?: Currency;
+}) {
+  const { order, orderBaseCurrency, localExchangeRates } = useContext(OrderDisplayContext);
+  const effectiveBaseCurrency: Currency = amountCurrency ?? orderBaseCurrency;
+  const commercialRates =
+    paymentUsdRate && paymentUsdRate > 0
+      ? {
+          ...localExchangeRates,
+          USD: {
+            ...(localExchangeRates.USD ?? {
+              id: "payment-usd",
+              fromCurrency: "Bs" as const,
+              toCurrency: "USD" as const,
+              effectiveDate: "",
+              isActive: true,
+              createdAt: "",
+              updatedAt: "",
+            }),
+            rate: paymentUsdRate,
+            effectiveDate:
+              localExchangeRates.USD?.effectiveDate ?? "",
+          },
+        }
+      : localExchangeRates;
+  if (paymentUsdRate && paymentUsdRate > 0) {
+    const ratesInput = {
+      USD: commercialRates.USD
+        ? { rate: commercialRates.USD.rate }
+        : undefined,
+      EUR: commercialRates.EUR
+        ? { rate: commercialRates.EUR.rate }
+        : undefined,
+    };
+    const formatted = formatDualCurrencyAmounts(
+      amount,
+      effectiveBaseCurrency,
+      {
+        commercialRates: ratesInput,
+        liveRates: ratesInput,
+      },
+    );
+    if (inline) {
+      return (
+        <span className={className}>
+          <span className="font-medium">{formatted.primary}</span>
+          {formatted.secondary && (
+            <span className="text-xs text-muted-foreground ml-1">
+              ({formatted.secondary})
+            </span>
+          )}
+        </span>
+      );
+    }
+    return (
+      <div className={`text-right ${className}`}>
+        <div className="font-medium">{formatted.primary}</div>
+        {formatted.secondary && (
+          <div className="text-xs text-muted-foreground">
+            {formatted.secondary}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const formatted = order
+    ? formatOrderAmountWithOrderRateBs(amount, {
+        ...order,
+        baseCurrency: effectiveBaseCurrency,
+      })
+    : formatCurrencyWithUsdPrimary(
+        amount,
+        effectiveBaseCurrency,
+        localExchangeRates,
+      );
+
+  if (inline) {
+    return (
+      <span className={className}>
+        <span className="font-medium">{formatted.primary}</span>
+        {formatted.secondary && (
+          <span className="text-xs text-muted-foreground ml-1">
+            ({formatted.secondary})
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <div className={`text-right ${className}`}>
+      <div className="font-medium">{formatted.primary}</div>
+      {formatted.secondary && (
+        <div className="text-xs text-muted-foreground">
+          {formatted.secondary}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -640,163 +810,17 @@ export default function OrderDetailPage() {
     [activePayments],
   );
 
-  /** Cobros y saldo: USD comercial; con showCollectedBs el secundario es la suma real de Bs. */
-  const OrderPaymentCurrency = ({
-    amountUsd,
-    className,
-    inline,
-    showCollectedBs,
-  }: {
-    amountUsd: number;
-    className?: string;
-    inline?: boolean;
-    showCollectedBs?: boolean;
-  }) => {
-    const formatted = showCollectedBs
-      ? formatOrderPaymentTotalsDisplay(
-          amountUsd,
-          inStorePaymentsForDisplay,
-          order ?? undefined,
-        )
-      : formatOrderPaymentUsdWithOrderRateBs(amountUsd, order ?? undefined);
-    if (inline) {
-      return (
-        <span className={className}>
-          <span className="font-medium">{formatted.primary}</span>
-          {formatted.secondary && (
-            <span className="text-xs text-muted-foreground ml-1">
-              ({formatted.secondary})
-            </span>
-          )}
-        </span>
-      );
-    }
-    return (
-      <div className={`text-right ${className || ""}`}>
-        <div className="font-medium">{formatted.primary}</div>
-        {formatted.secondary && (
-          <div className="text-xs text-muted-foreground">
-            {formatted.secondary}
-          </div>
-        )}
-      </div>
-    );
-  };
+  // ponytail: memoize context value to eliminate inner static component recreations
+  const orderDisplayContextValue = useMemo(
+    () => ({
+      order,
+      orderBaseCurrency,
+      localExchangeRates,
+      inStorePaymentsForDisplay,
+    }),
+    [order, orderBaseCurrency, localExchangeRates, inStorePaymentsForDisplay],
+  );
 
-  const OrderCurrency = ({
-    amount,
-    className,
-    inline,
-    paymentUsdRate,
-    amountCurrency,
-  }: {
-    amount: number;
-    className?: string;
-    inline?: boolean;
-    paymentUsdRate?: number;
-    amountCurrency?: Currency;
-  }) => {
-    // Moneda en la que se interpreta `amount`. Para pagos cuya moneda original
-    // difiere de la base del pedido (ej. pago en Bs en un pedido USD), el caller
-    // debe pasar `amountCurrency` para evitar tratar el monto como si estuviera
-    // en la base del pedido.
-    const effectiveBaseCurrency: Currency = amountCurrency ?? orderBaseCurrency;
-    const commercialRates =
-      paymentUsdRate && paymentUsdRate > 0
-        ? {
-            ...localExchangeRates,
-            USD: {
-              ...(localExchangeRates.USD ?? {
-                id: "payment-usd",
-                fromCurrency: "Bs" as const,
-                toCurrency: "USD" as const,
-                effectiveDate: "",
-                isActive: true,
-                createdAt: "",
-                updatedAt: "",
-              }),
-              rate: paymentUsdRate,
-              effectiveDate:
-                localExchangeRates.USD?.effectiveDate ?? "",
-            },
-          }
-        : localExchangeRates;
-    if (paymentUsdRate && paymentUsdRate > 0) {
-      const ratesInput = {
-        USD: commercialRates.USD
-          ? { rate: commercialRates.USD.rate }
-          : undefined,
-        EUR: commercialRates.EUR
-          ? { rate: commercialRates.EUR.rate }
-          : undefined,
-      };
-      const formatted = formatDualCurrencyAmounts(
-        amount,
-        effectiveBaseCurrency,
-        {
-          commercialRates: ratesInput,
-          liveRates: ratesInput,
-        },
-      );
-      if (inline) {
-        return (
-          <span className={className}>
-            <span className="font-medium">{formatted.primary}</span>
-            {formatted.secondary && (
-              <span className="text-xs text-muted-foreground ml-1">
-                ({formatted.secondary})
-              </span>
-            )}
-          </span>
-        );
-      }
-      return (
-        <div className={`text-right ${className}`}>
-          <div className="font-medium">{formatted.primary}</div>
-          {formatted.secondary && (
-            <div className="text-xs text-muted-foreground">
-              {formatted.secondary}
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    const formatted = order
-      ? formatOrderAmountWithOrderRateBs(amount, {
-          ...order,
-          baseCurrency: effectiveBaseCurrency,
-        })
-      : formatCurrencyWithUsdPrimary(
-          amount,
-          effectiveBaseCurrency,
-          localExchangeRates,
-        );
-
-    if (inline) {
-      return (
-        <span className={className}>
-          <span className="font-medium">{formatted.primary}</span>
-          {formatted.secondary && (
-            <span className="text-xs text-muted-foreground ml-1">
-              ({formatted.secondary})
-            </span>
-          )}
-        </span>
-      );
-    }
-
-    return (
-      <div className={`text-right ${className}`}>
-        <div className="font-medium">{formatted.primary}</div>
-        {formatted.secondary && (
-          <div className="text-xs text-muted-foreground">
-            {formatted.secondary}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const casheaPaidInStoreUsd = useMemo(() => {
     if (!order || !isCasheaOrder(order)) return 0;
@@ -1734,7 +1758,8 @@ export default function OrderDetailPage() {
 
   return (
     <ProtectedRoute>
-      <div className="flex h-full bg-background">
+      <OrderDisplayContext value={orderDisplayContextValue}>
+        <div className="flex h-full bg-background">
         <Sidebar open={sidebarOpen} onOpenChange={setSidebarOpen} />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <DashboardHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
@@ -3251,6 +3276,7 @@ export default function OrderDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </OrderDisplayContext>
     </ProtectedRoute>
   );
 }

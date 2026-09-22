@@ -59,5 +59,62 @@ describe('SyncManager Outbox Enqueue', () => {
       syncManager.enqueueMutation = originalEnqueue
     }
   })
+
+  test('drainOutbox reconciles localEntityId with server response entity in IndexedDB', async () => {
+    const { put, get, clearStore } = await import('../indexeddb')
+    await clearStore('orders')
+
+    // Local provisional order in IndexedDB
+    await put('orders', {
+      id: 'ord_off_123',
+      orderNumber: 'ORD-OFF-123',
+      clientName: 'Offline Client'
+    })
+
+    // Mock global fetch to return server order
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (url: any, init: any) => {
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        json: async () => ({
+          id: 'ord_server_789',
+          orderNumber: 'ORD-2026-0001',
+          clientName: 'Offline Client'
+        })
+      } as any
+    }) as any
+
+    const { connectivityManager } = await import('../connectivity')
+    // Simulate unreachable so it enqueues to outbox without firing immediate background drain
+    connectivityManager.reportFailure(new TypeError('Failed to fetch'))
+
+    try {
+      // Enqueue mutation with localEntityId and storeName while offline
+      await syncManager.enqueueMutation({
+        endpoint: '/api/orders',
+        method: 'POST',
+        payload: { clientName: 'Offline Client' },
+        localEntityId: 'ord_off_123',
+        storeName: 'orders'
+      })
+
+      // Now server is reachable and we drain the outbox
+      connectivityManager.reportSuccess()
+      await syncManager.drainOutbox()
+
+      // Provisional order should be removed
+      const oldOrder = await get('orders', 'ord_off_123')
+      expect(oldOrder).toBeUndefined()
+
+      // Server order should be stored
+      const newOrder = await get<any>('orders', 'ord_server_789')
+      expect(newOrder).toBeDefined()
+      expect(newOrder.orderNumber).toBe('ORD-2026-0001')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
 })
 

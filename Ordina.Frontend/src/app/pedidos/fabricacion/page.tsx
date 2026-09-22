@@ -56,6 +56,7 @@ import {
   MANUFACTURING_MANAGE,
 } from "@/lib/user-extra-permissions"
 import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
+import { useActiveProviders } from "@/hooks/use-active-catalogs"
 
 // Tipo para productos agrupados por pedido
 interface ProductRow {
@@ -296,19 +297,8 @@ export default function FabricacionPage() {
 
   const isLoadingServer = isLoadingCount || isLoadingPages
 
-  // Proveedores únicos (de productos en fabricación, de la página actual)
-  const uniqueProviders = useMemo(() => {
-    const providers = new Set<string>()
-    serverOrders.forEach(order => {
-      if (isReservationOrder(order as unknown as Order)) return
-      order.products.forEach(p => {
-        if (p.locationStatus !== "FABRICACION") return
-        const name = p.manufacturingProviderName?.trim()
-        if (name) providers.add(name)
-      })
-    })
-    return Array.from(providers).sort()
-  }, [serverOrders])
+  // Proveedores únicos activos de fabricación (cacheados)
+  const { providerNames: uniqueProviders } = useActiveProviders("manufacturing")
 
   // Filtrado client-side sobre las filas de la página actual
   const productRows = useMemo(() => {

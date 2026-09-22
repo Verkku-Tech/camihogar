@@ -31,11 +31,12 @@ import {
   providerFromBackendDto,
   providerToCreateDto,
   providerToUpdateDto,
-  type Provider 
+  type Provider,
 } from "@/lib/storage"
 import { apiClient } from "@/lib/api-client"
 import { syncManager } from "@/lib/sync-manager"
 import * as db from "@/lib/indexeddb"
+import { useConnectivity } from "@/hooks/use-connectivity"
 
 const tipoOptions = [
   { value: "materia-prima", label: "Materia Prima" },
@@ -75,7 +76,7 @@ export function ProvidersPage() {
   const [providers, setProviders] = useState<Provider[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [dataSource, setDataSource] = useState<ProvidersDataSource>("syncing")
-  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true)
+  const { isServerReachable: isOnline } = useConnectivity()
   const [pendingSyncCount, setPendingSyncCount] = useState(0)
   const hadBeenOffline = useRef(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -95,22 +96,12 @@ export function ProvidersPage() {
     tipo: "materia-prima" as Provider["tipo"],
   })
 
-  // Escuchar conexión y marcar cuando hemos estado offline
+  // ponytail: track if we were offline based on server reachability
   useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true)
-    }
-    const handleOffline = () => {
-      setIsOnline(false)
+    if (!isOnline) {
       hadBeenOffline.current = true
     }
-    window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
-    return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
-    }
-  }, [])
+  }, [isOnline])
 
   const refreshPendingCount = async () => {
     const pending = await syncManager.getPendingOperations()
@@ -130,7 +121,7 @@ export function ProvidersPage() {
         setIsLoading(true)
         setDataSource("syncing")
         // Intentar sincronizar desde el backend primero
-        if (navigator.onLine) {
+        if (isOnline) {
           try {
             const syncedProviders = await syncProvidersFromBackend()
             setProviders(syncedProviders)
@@ -222,7 +213,7 @@ export function ProvidersPage() {
       }
 
       // Intentar crear en el backend primero
-      if (navigator.onLine) {
+      if (isOnline) {
         try {
           const createDto = providerToCreateDto(providerData)
           const backendProvider = await apiClient.createProvider(createDto)
@@ -287,7 +278,7 @@ export function ProvidersPage() {
 
     try {
       // Intentar actualizar en el backend primero
-      if (navigator.onLine) {
+      if (isOnline) {
         try {
           const updateDto = providerToUpdateDto(formData)
           const backendProvider = await apiClient.updateProvider(selectedProvider.id, updateDto)
@@ -338,7 +329,7 @@ export function ProvidersPage() {
       const newEstado = provider.estado === "activo" ? "inactivo" : "activo"
       
       // Intentar actualizar en el backend primero
-      if (navigator.onLine) {
+      if (isOnline) {
         try {
           const updateDto = providerToUpdateDto({ estado: newEstado })
           const backendProvider = await apiClient.updateProvider(provider.id, updateDto)

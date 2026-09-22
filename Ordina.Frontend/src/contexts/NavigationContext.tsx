@@ -352,7 +352,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <NavigationContext.Provider
+    <NavigationContext
       value={{
         navigationItems,
         updateNavigationItems,
@@ -362,7 +362,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-    </NavigationContext.Provider>
+    </NavigationContext>
   )
 }
 

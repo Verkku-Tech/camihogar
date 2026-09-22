@@ -9,6 +9,7 @@ import { buildOrderSearchValue } from "@/lib/order-client-search"
 import { textIncludesForSearch } from "@/lib/text-search"
 import { isReservationOrder, isReservationType } from "@/lib/order-document-types"
 import { apiClient, type OrderSearchResultDto } from "@/lib/api-client"
+import { useConnectivity } from "@/hooks/use-connectivity"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Command,
@@ -107,8 +108,8 @@ export function OrderSearchCombobox() {
     clientById: Map<string, Client>
   } | null>(null)
 
-  const isBrowserOnline =
-    typeof navigator !== "undefined" ? navigator.onLine : true
+  // ponytail: use server reachability instead of navigator.onLine
+  const { isServerReachable: isServerOnline } = useConnectivity()
 
   const runSearch = useCallback(
     async (term: string) => {
@@ -121,7 +122,7 @@ export function OrderSearchCombobox() {
 
       setIsSearching(true)
       try {
-        if (isBrowserOnline) {
+        if (isServerOnline) {
           const results = await apiClient.searchOrders(trimmed, 20)
           setRows(results.map(mapApiRow))
           return
@@ -157,7 +158,7 @@ export function OrderSearchCombobox() {
         setIsSearching(false)
       }
     },
-    [isBrowserOnline, onlineSellerFilter, isTeamOrder],
+    [isServerOnline, onlineSellerFilter, isTeamOrder],
   )
 
   useEffect(() => {

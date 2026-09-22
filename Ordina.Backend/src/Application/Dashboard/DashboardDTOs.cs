@@ -1,6 +1,6 @@
 namespace Ordina.Application.Dashboard;
 
-public class MetricChangeDto
+public record MetricChangeDto
 {
     public decimal Current { get; set; }
     public decimal Previous { get; set; }
@@ -9,7 +9,7 @@ public class MetricChangeDto
     public string Direction { get; set; } = "higher_is_better";
 }
 
-public class DashboardMetricsDto
+public record DashboardMetricsDto
 {
     public int CompletedOrders { get; set; }
     public MetricChangeDto? CompletedOrdersChange { get; set; }

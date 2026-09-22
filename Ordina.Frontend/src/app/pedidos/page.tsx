@@ -83,7 +83,8 @@ import { toLocalDateKey } from "@/lib/date-utils";
 import { textIncludesForSearch } from "@/lib/text-search";
 import { isReservationOrderNumber } from "@/lib/order-document-types";
 import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
-
+import { useActiveVendors } from "@/hooks/use-active-catalogs";
+import { useConnectivity } from "@/hooks/use-connectivity";
 
 const EMPTY_ORDERS: UnifiedOrder[] = [];
 
@@ -168,10 +169,9 @@ export default function PedidosPage() {
     );
   }, [searchTerm, filters, dateFrom, dateTo]);
 
-  const isBrowserOnline =
-    typeof navigator !== "undefined" ? navigator.onLine : true;
-  // Usar modo servidor siempre que haya conexión, para evitar cargar todo de IndexedDB
-  const useServerMode = isBrowserOnline;
+  const { isServerReachable } = useConnectivity();
+  // ponytail: modo servidor condicionado estrictamente a que el backend responda y esté saludable
+  const useServerMode = isServerReachable;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 400);
@@ -179,17 +179,17 @@ export default function PedidosPage() {
   }, [searchTerm]);
 
   useEffect(() => {
-    if (!hasListFilters || isBrowserOnline) return;
+    if (!hasListFilters || isServerReachable) return;
     if (offlineFilterToastShown.current) return;
     offlineFilterToastShown.current = true;
-    toast.info("Sin conexión: los filtros se aplican solo sobre datos locales.");
-  }, [hasListFilters, isBrowserOnline]);
+    toast.info("Sin conexión con el servidor: los filtros se aplican sobre datos locales.");
+  }, [hasListFilters, isServerReachable]);
 
   useEffect(() => {
-    if (hasListFilters && isBrowserOnline) {
+    if (hasListFilters && isServerReachable) {
       offlineFilterToastShown.current = false;
     }
-  }, [hasListFilters, isBrowserOnline]);
+  }, [hasListFilters, isServerReachable]);
 
   const serverFilters = useMemo(() => {
     let rangeFrom = dateFrom;
@@ -401,9 +401,7 @@ export default function PedidosPage() {
   const serverResultsPending = useServerMode && !textFiltersSettled;
 
   const ordersForFilters = useServerMode ? serverCurrentItems : orders;
-  const uniqueVendors = Array.from(
-    new Set(ordersForFilters.map((o) => o.vendorName)),
-  ).sort();
+  const { vendorNames: uniqueVendors } = useActiveVendors();
 
   const statusFilterOptions = useMemo(
     () =>

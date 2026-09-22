@@ -84,4 +84,64 @@ describe('ApiClient Offline Grace Period and LocalApi routing', () => {
     expect(newClient.id.startsWith('cli_off_')).toBe(true)
     expect(newClient.nombreRazonSocial).toBe('Cliente Local Offline')
   })
+
+  test('getStores, getAccounts, and getProviders fall back to localApi when server is unreachable', async () => {
+    await clearStore('stores')
+    await clearStore('accounts')
+    await clearStore('providers')
+
+    await localApi.cacheEntities('stores', [
+      { id: 'st-1', name: 'Sucursal Norte', code: 'NORTE', status: 'active' }
+    ])
+    await localApi.cacheEntities('accounts', [
+      { id: 'acc-1', storeId: 'st-1', accountNumber: '0102-1111', isActive: true }
+    ])
+    await localApi.cacheEntities('providers', [
+      { id: 'prv-1', razonSocial: 'Proveedor ABC', estado: 'activo' }
+    ])
+
+    connectivityManager.reportFailure(new TypeError('Network down'))
+    expect(connectivityManager.isServerUnreachable()).toBe(true)
+
+    const stores = await apiClient.getStores('active')
+    expect(stores.length).toBe(1)
+    expect(stores[0].name).toBe('Sucursal Norte')
+
+    const accounts = await apiClient.getAccounts('st-1', true)
+    expect(accounts.length).toBe(1)
+    expect(accounts[0].accountNumber).toBe('0102-1111')
+
+    const providers = await apiClient.getProviders()
+    expect(providers.length).toBe(1)
+    expect(providers[0].razonSocial).toBe('Proveedor ABC')
+  })
+
+  test('getOrdersPaged, getOrderById, and updateOrder fall back to localApi when server is unreachable', async () => {
+    await clearStore('orders')
+    await localApi.cacheEntities('orders', [
+      { id: 'ord-test-1', orderNumber: 'ORD-777', clientName: 'Valeria Ramos', vendorName: 'Carlos Diaz', status: 'Registrado' }
+    ])
+
+    connectivityManager.reportFailure(new TypeError('Server down'))
+    expect(connectivityManager.isServerUnreachable()).toBe(true)
+
+    // getOrdersPaged fallback
+    const paged = await apiClient.getOrdersPaged(1, 10)
+    expect(paged.orders.length).toBe(1)
+    expect(paged.orders[0].orderNumber).toBe('ORD-777')
+
+    // getOrderById fallback
+    const single = await apiClient.getOrderById('ord-test-1')
+    expect(single).toBeDefined()
+    expect(single.orderNumber).toBe('ORD-777')
+
+    // getOrderByOrderNumber fallback
+    const byNumber = await apiClient.getOrderByOrderNumber('ORD-777')
+    expect(byNumber).toBeDefined()
+    expect(byNumber.id).toBe('ord-test-1')
+
+    // updateOrder fallback
+    const updated = await apiClient.updateOrder('ord-test-1', { status: 'Entregado' } as any)
+    expect(updated.status).toBe('Entregado')
+  })
 })

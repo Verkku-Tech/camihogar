@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { apiClient, type UserResponseDto, type CreateUserDto, type UpdateUserDto } from '@/lib/api-client'
 import * as db from '@/lib/indexeddb'
 import { syncManager } from '@/lib/sync-manager'
+import { useConnectivity } from '@/hooks/use-connectivity'
 
 interface User {
   id: string
@@ -44,20 +45,8 @@ export function useUsers(options: UseUsersOptions = {}) {
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [error, setError] = useState<Error | null>(null)
-  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true)
-
-  // Detectar conexión
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const updateOnlineStatus = () => setIsOnline(navigator.onLine)
-    window.addEventListener('online', updateOnlineStatus)
-    window.addEventListener('offline', updateOnlineStatus)
-    return () => {
-      window.removeEventListener('online', updateOnlineStatus)
-      window.removeEventListener('offline', updateOnlineStatus)
-    }
-  }, [])
+  // ponytail: use server reachability instead of navigator.onLine
+  const { isServerReachable: isOnline } = useConnectivity()
 
   // Cargar usuarios desde IndexedDB primero, luego sincronizar
   const loadUsers = useCallback(async () => {

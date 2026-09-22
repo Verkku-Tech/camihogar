@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 namespace Ordina.Domain.Users;
 
 /// <summary>
@@ -14,18 +16,21 @@ public static class AssignableUserPermissions
         new(Permissions.Manufacturing.Manage, "Gestionar fabricación"),
     ];
 
+    private static readonly FrozenDictionary<string, string> AssignableMap =
+        All.ToFrozenDictionary(p => p.Id, p => p.Label, StringComparer.Ordinal);
+
     public static IReadOnlyList<AssignablePermission> GetAll() => All;
 
     public static bool IsAssignable(string permission)
     {
         if (string.IsNullOrWhiteSpace(permission)) return false;
-        return All.Any(p => string.Equals(p.Id, permission.Trim(), StringComparison.Ordinal));
+        return AssignableMap.ContainsKey(permission.Trim());
     }
 
     public static string? GetLabel(string permission)
     {
         if (string.IsNullOrWhiteSpace(permission)) return null;
-        return All.FirstOrDefault(p => string.Equals(p.Id, permission.Trim(), StringComparison.Ordinal))?.Label;
+        return AssignableMap.GetValueOrDefault(permission.Trim());
     }
 
     public static List<string> Normalize(IEnumerable<string>? permissions)

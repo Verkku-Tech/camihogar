@@ -13,6 +13,7 @@ import { apiClient, type ClientResponseDto } from "@/lib/api-client"
 import { CreateClientDialog } from "@/components/clients/create-client-dialog"
 import { toast } from "sonner"
 import { useNestedModalGuard } from "@/hooks/use-nested-modal-guard"
+import { useConnectivity } from "@/hooks/use-connectivity"
 
 interface ClientLookupDialogProps {
   open: boolean
@@ -42,7 +43,13 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
   const [pageSize] = useState(10)
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
-  const [offlineMode, setOfflineMode] = useState(false)
+  // ponytail: use server reachability instead of navigator.onLine
+  const { isServerReachable } = useConnectivity()
+  const [offlineMode, setOfflineMode] = useState(!isServerReachable)
+
+  useEffect(() => {
+    setOfflineMode(!isServerReachable)
+  }, [isServerReachable])
 
   useEffect(() => {
     if (open) {
@@ -67,25 +74,12 @@ export function ClientLookupDialog({ open, onOpenChange, onClientSelect }: Clien
     return () => clearTimeout(timer)
   }, [searchTerm, open])
 
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    const syncOnline = () => setOfflineMode(!navigator.onLine)
-    syncOnline()
-    window.addEventListener("online", syncOnline)
-    window.addEventListener("offline", syncOnline)
-    return () => {
-      window.removeEventListener("online", syncOnline)
-      window.removeEventListener("offline", syncOnline)
-    }
-  }, [])
-
   const loadClients = async () => {
     if (!open) return
     try {
       setIsLoading(true)
-      const online = typeof navigator !== "undefined" && navigator.onLine
 
-      if (!online) {
+      if (!isServerReachable) {
         setOfflineMode(true)
         const loaded = await getClients()
         const active = filterActiveClients(loaded)

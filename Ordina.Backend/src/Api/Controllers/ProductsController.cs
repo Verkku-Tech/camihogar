@@ -8,15 +8,8 @@ namespace Ordina.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class ProductsController : ControllerBase
+public class ProductsController(IProductService productService) : ControllerBase
 {
-    private readonly IProductService _productService;
-
-    public ProductsController(IProductService productService)
-    {
-        _productService = productService;
-    }
-
     [HttpGet]
     public async Task<ActionResult<PagedResult<ProductResponseDto>>> GetPaged(
         [FromQuery] int pageNumber = 1,
@@ -27,7 +20,7 @@ public class ProductsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var request = new PagedRequest(Page: pageNumber, PageSize: pageSize, SearchTerm: searchTerm, SortBy: sortBy, SortDescending: isDescending);
-        var result = await _productService.GetPagedAsync(request, cancellationToken);
+        var result = await productService.GetPagedAsync(request, cancellationToken: cancellationToken);
         return Ok(result);
     }
 
@@ -41,24 +34,14 @@ public class ProductsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var request = new PagedRequest(Page: Math.Max(1, page), PageSize: Math.Clamp(pageSize, 1, 200), SearchTerm: search);
-        var result = await _productService.GetPagedAsync(request, cancellationToken);
+        var result = await productService.GetPagedAsync(request, categoryId, status, cancellationToken);
         
-        var items = result.Items;
-        if (!string.IsNullOrWhiteSpace(categoryId))
-        {
-            items = items.Where(p => p.CategoryId == categoryId).ToList();
-        }
-        if (!string.IsNullOrWhiteSpace(status))
-        {
-            items = items.Where(p => string.Equals(p.Status, status, StringComparison.OrdinalIgnoreCase)).ToList();
-        }
-
         var totalCount = result.TotalCount;
         var totalPages = pageSize > 0 ? (int)Math.Ceiling((double)totalCount / pageSize) : 1;
 
         return Ok(new
         {
-            items,
+            items = result.Items,
             totalCount,
             page,
             pageSize,
@@ -81,7 +64,7 @@ public class ProductsController : ControllerBase
             {
                 try
                 {
-                    var success = await _productService.DeleteAsync(id, cancellationToken);
+                    var success = await productService.DeleteAsync(id, cancellationToken);
                     if (success) deleted++;
                     else failed++;
                 }
@@ -99,14 +82,14 @@ public class ProductsController : ControllerBase
     [HttpGet("all")]
     public async Task<ActionResult<IReadOnlyList<ProductResponseDto>>> GetAll(CancellationToken cancellationToken)
     {
-        var result = await _productService.GetAllAsync(cancellationToken);
+        var result = await productService.GetAllAsync(cancellationToken);
         return Ok(result);
     }
 
     [HttpGet("{id}")]
     public async Task<ActionResult<ProductResponseDto>> GetById(string id, CancellationToken cancellationToken)
     {
-        var product = await _productService.GetByIdAsync(id, cancellationToken);
+        var product = await productService.GetByIdAsync(id, cancellationToken);
         if (product == null)
         {
             return NotFound();
@@ -117,7 +100,7 @@ public class ProductsController : ControllerBase
     [HttpGet("sku/{sku}")]
     public async Task<ActionResult<ProductResponseDto>> GetBySku(string sku, CancellationToken cancellationToken)
     {
-        var product = await _productService.GetBySkuAsync(sku, cancellationToken);
+        var product = await productService.GetBySkuAsync(sku, cancellationToken);
         if (product == null)
         {
             return NotFound();
@@ -128,28 +111,28 @@ public class ProductsController : ControllerBase
     [HttpGet("category/{categoryId}")]
     public async Task<ActionResult<IReadOnlyList<ProductResponseDto>>> GetByCategory(string categoryId, CancellationToken cancellationToken)
     {
-        var products = await _productService.GetByCategoryIdAsync(categoryId, cancellationToken);
+        var products = await productService.GetByCategoryIdAsync(categoryId, cancellationToken);
         return Ok(products);
     }
 
     [HttpPost]
     public async Task<ActionResult<ProductResponseDto>> Create([FromBody] CreateProductDto dto, CancellationToken cancellationToken)
     {
-        var created = await _productService.CreateAsync(dto, cancellationToken);
+        var created = await productService.CreateAsync(dto, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
     [HttpPut("{id}")]
     public async Task<ActionResult<ProductResponseDto>> Update(string id, [FromBody] UpdateProductDto dto, CancellationToken cancellationToken)
     {
-        var updated = await _productService.UpdateAsync(id, dto, cancellationToken);
+        var updated = await productService.UpdateAsync(id, dto, cancellationToken);
         return Ok(updated);
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id, CancellationToken cancellationToken)
     {
-        var deleted = await _productService.DeleteAsync(id, cancellationToken);
+        var deleted = await productService.DeleteAsync(id, cancellationToken);
         if (!deleted)
         {
             return NotFound();

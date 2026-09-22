@@ -41,9 +41,9 @@ export function ThemeProvider({ children, defaultTheme = 'light', storageKey = '
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme }}>
+    <ThemeContext value={{ theme, setTheme }}>
       {children}
-    </ThemeContext.Provider>
+    </ThemeContext>
   )
 }
 

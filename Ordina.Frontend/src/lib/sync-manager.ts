@@ -1,7 +1,8 @@
 import { getDb, OutboxMutation } from './db'
-import { apiFetch, ApiError } from './api-client'
+import { apiFetch } from './api-client'
 import { connectivityManager } from './connectivity'
 import { QueryClient } from '@tanstack/react-query'
+import { remove, put } from './indexeddb'
 
 export class SyncManager {
   private isSyncing = false
@@ -49,6 +50,8 @@ export class SyncManager {
     endpoint: string
     method: string
     payload?: any
+    localEntityId?: string
+    storeName?: string
   }): Promise<string> {
     const mutationId = crypto.randomUUID()
     const outboxItem: OutboxMutation = {
@@ -58,7 +61,9 @@ export class SyncManager {
       payload: mutation.payload,
       status: 'pending',
       createdAt: Date.now(),
-      retryCount: 0
+      retryCount: 0,
+      localEntityId: mutation.localEntityId,
+      storeName: mutation.storeName
     }
 
     const db = await getDb()
@@ -113,7 +118,7 @@ export class SyncManager {
         this.notify()
 
         try {
-          await apiFetch(item.endpoint, {
+          const res = await apiFetch<any>(item.endpoint, {
             method: item.method,
             body: item.payload ? JSON.stringify(item.payload) : undefined,
             mutationId: item.mutationId
@@ -121,6 +126,15 @@ export class SyncManager {
 
           // Success: delete from outbox
           await db.delete('outbox_mutations', item.id)
+
+          // Reconcile provisional local entity if present
+          if (item.localEntityId && item.storeName) {
+            await remove(item.storeName, item.localEntityId).catch(() => {})
+            if (res && res.id) {
+              await put(item.storeName, res).catch(() => {})
+            }
+          }
+
           this.notify()
 
           // Invalidate relevant caches

@@ -765,7 +765,19 @@ export class ApiClientClass {
 
   // Providers
   async getProviders(): Promise<ProviderResponseDto[]> {
-    return apiFetch<ProviderResponseDto[]>('/api/providers/all')
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.getProviders()) as unknown as ProviderResponseDto[]
+    }
+    try {
+      const res = await apiFetch<ProviderResponseDto[]>('/api/providers/all')
+      localApi.cacheEntities('providers', res).catch(() => {})
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.getProviders()) as unknown as ProviderResponseDto[]
+      }
+      throw err
+    }
   }
 
   async getProvidersPaged(page = 1, pageSize = 20, search?: string, signal?: AbortSignal): Promise<PagedResult<ProviderResponseDto>> {
@@ -883,8 +895,20 @@ export class ApiClientClass {
 
   // Stores & Accounts
   async getStores(status?: string): Promise<StoreResponseDto[]> {
-    const query = status ? `?status=${encodeURIComponent(status)}` : ''
-    return apiFetch<StoreResponseDto[]>(`/api/stores${query}`)
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.getStores(status)) as unknown as StoreResponseDto[]
+    }
+    try {
+      const query = status ? `?status=${encodeURIComponent(status)}` : ''
+      const res = await apiFetch<StoreResponseDto[]>(`/api/stores${query}`)
+      localApi.cacheEntities('stores', res).catch(() => {})
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.getStores(status)) as unknown as StoreResponseDto[]
+      }
+      throw err
+    }
   }
 
   async getStore(id: string): Promise<StoreResponseDto> {
@@ -910,11 +934,23 @@ export class ApiClientClass {
   }
 
   async getAccounts(storeId?: string, isActive?: boolean): Promise<AccountResponseDto[]> {
-    const query = new URLSearchParams()
-    if (storeId) query.set('storeId', storeId)
-    if (isActive !== undefined) query.set('isActive', isActive.toString())
-    const qStr = query.toString() ? `?${query.toString()}` : ''
-    return apiFetch<AccountResponseDto[]>(`/api/stores/accounts${qStr}`)
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.getAccounts(storeId, isActive)) as unknown as AccountResponseDto[]
+    }
+    try {
+      const query = new URLSearchParams()
+      if (storeId) query.set('storeId', storeId)
+      if (isActive !== undefined) query.set('isActive', isActive.toString())
+      const qStr = query.toString() ? `?${query.toString()}` : ''
+      const res = await apiFetch<AccountResponseDto[]>(`/api/stores/accounts${qStr}`)
+      localApi.cacheEntities('accounts', res).catch(() => {})
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.getAccounts(storeId, isActive)) as unknown as AccountResponseDto[]
+      }
+      throw err
+    }
   }
 
   async getAccountById(id: string): Promise<AccountResponseDto> {
@@ -960,24 +996,67 @@ export class ApiClientClass {
     },
     signal?: AbortSignal
   ): Promise<PagedOrdersResponseDto> {
-    const query = new URLSearchParams({ page: page.toString(), pageSize: pageSize.toString() })
-    if (since) query.set('since', since)
-    if (filters) {
-      Object.entries(filters).forEach(([k, v]) => {
-        if (v !== undefined && v !== null && v !== '') {
-          query.set(k, String(v))
-        }
-      })
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.getOrdersPaged(page, pageSize, filters)) as unknown as PagedOrdersResponseDto
     }
-    return apiFetch<PagedOrdersResponseDto>(`/api/orders?${query.toString()}`, { signal })
+    try {
+      const query = new URLSearchParams({ page: page.toString(), pageSize: pageSize.toString() })
+      if (since) query.set('since', since)
+      if (filters) {
+        Object.entries(filters).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== '') {
+            query.set(k, String(v))
+          }
+        })
+      }
+      const res = await apiFetch<PagedOrdersResponseDto>(`/api/orders?${query.toString()}`, { signal })
+      const orderList = res?.orders || (res as any)?.items || []
+      if (Array.isArray(orderList) && orderList.length > 0) {
+        localApi.cacheEntities('orders', orderList).catch(() => {})
+      }
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.getOrdersPaged(page, pageSize, filters)) as unknown as PagedOrdersResponseDto
+      }
+      throw err
+    }
   }
 
   async getOrderById(id: string): Promise<OrderResponseDto> {
-    return apiFetch<OrderResponseDto>(`/api/orders/${id}`)
+    if (connectivityManager.isServerUnreachable()) {
+      const cached = await localApi.getOrder(id)
+      if (cached) return cached as unknown as OrderResponseDto
+    }
+    try {
+      const res = await apiFetch<OrderResponseDto>(`/api/orders/${id}`)
+      localApi.cacheEntities('orders', [res]).catch(() => {})
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        const cached = await localApi.getOrder(id)
+        if (cached) return cached as unknown as OrderResponseDto
+      }
+      throw err
+    }
   }
 
   async getOrderByOrderNumber(orderNumber: string): Promise<OrderResponseDto> {
-    return apiFetch<OrderResponseDto>(`/api/orders/number/${encodeURIComponent(orderNumber)}`)
+    if (connectivityManager.isServerUnreachable()) {
+      const cached = await localApi.getOrderByOrderNumber(orderNumber)
+      if (cached) return cached as unknown as OrderResponseDto
+    }
+    try {
+      const res = await apiFetch<OrderResponseDto>(`/api/orders/number/${encodeURIComponent(orderNumber)}`)
+      localApi.cacheEntities('orders', [res]).catch(() => {})
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        const cached = await localApi.getOrderByOrderNumber(orderNumber)
+        if (cached) return cached as unknown as OrderResponseDto
+      }
+      throw err
+    }
   }
 
   async createOrder(order: CreateOrderDto): Promise<OrderResponseDto> {
@@ -998,10 +1077,22 @@ export class ApiClientClass {
   }
 
   async updateOrder(id: string, order: UpdateOrderDto): Promise<OrderResponseDto> {
-    return apiFetch<OrderResponseDto>(`/api/orders/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(order)
-    })
+    if (connectivityManager.isServerUnreachable()) {
+      return (await localApi.updateOrder(id, order)) as unknown as OrderResponseDto
+    }
+    try {
+      const res = await apiFetch<OrderResponseDto>(`/api/orders/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(order)
+      })
+      localApi.cacheEntities('orders', [res]).catch(() => {})
+      return res
+    } catch (err: any) {
+      if (connectivityManager.isServerUnreachable()) {
+        return (await localApi.updateOrder(id, order)) as unknown as OrderResponseDto
+      }
+      throw err
+    }
   }
 
   async convertBudgetToOrder(id: string, body: ConvertBudgetToOrderDto): Promise<OrderResponseDto> {

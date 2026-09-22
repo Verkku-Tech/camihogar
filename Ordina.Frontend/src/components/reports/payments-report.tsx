@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Download, Loader2 } from "lucide-react"
-import { getOrders, getAccounts, type Order, type PartialPayment, type Account } from "@/lib/storage"
+import { getOrders, type Order, type PartialPayment, type Account } from "@/lib/storage"
+import { useActiveAccounts } from "@/hooks/use-active-catalogs"
 import {
   getActivePaymentsForReport,
   CASHEA_FINANCED_METHOD_LABEL,
@@ -16,6 +17,7 @@ import { toast } from "sonner"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { apiClient } from "@/lib/api-client"
 import { useAuth } from "@/contexts/auth-context"
+import { useConnectivity } from "@/hooks/use-connectivity"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { digitalPaymentMethods, paymentMethodUsesCashForm } from "@/components/orders/constants"
@@ -260,8 +262,8 @@ function paymentMatchesAccountFilter(
 export function PaymentsReport() {
   const { hasPermission } = useAuth()
   const canConciliate = hasPermission("finance.conciliate")
+  const { accounts } = useActiveAccounts()
   const [orders, setOrders] = useState<Order[]>([])
-  const [accounts, setAccounts] = useState<Account[]>([])
   const [startDate, setStartDate] = useState<string>("")
   const [endDate, setEndDate] = useState<string>("")
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("Todos")
@@ -269,7 +271,8 @@ export function PaymentsReport() {
   const [conciliationFilter, setConciliationFilter] = useState<string>("Todos")
   const [reportData, setReportData] = useState<PaymentReportRow[]>([])
   const [isDownloading, setIsDownloading] = useState(false)
-  const [isOnline, setIsOnline] = useState(true)
+  // ponytail: use server reachability instead of navigator.onLine
+  const { isServerReachable: isOnline } = useConnectivity()
   const [conciliatingId, setConciliatingId] = useState<string | null>(null)
   const [conciliatingBulk, setConciliatingBulk] = useState(false)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(() => new Set())
@@ -364,39 +367,9 @@ export function PaymentsReport() {
     setSelectedRowIds(new Set())
   }, [])
 
-  // Limpiar selección al cambiar filtros (nueva consulta)
+
+  // Cargar pedidos
   useEffect(() => {
-    setSelectedRowIds(new Set())
-  }, [startDate, endDate, selectedPaymentMethod, selectedAccount, conciliationFilter])
-
-  // Detectar estado de conexión
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setIsOnline(navigator.onLine)
-
-      const handleOnline = () => setIsOnline(true)
-      const handleOffline = () => setIsOnline(false)
-
-      window.addEventListener("online", handleOnline)
-      window.addEventListener("offline", handleOffline)
-
-      return () => {
-        window.removeEventListener("online", handleOnline)
-        window.removeEventListener("offline", handleOffline)
-      }
-    }
-  }, [])
-
-  // Cargar pedidos y cuentas
-  useEffect(() => {
-    // Load accounts independently — filter must always be populated
-    getAccounts()
-      .then(setAccounts)
-      .catch((e) => {
-        console.error("Error loading accounts:", e)
-        toast.error("Error al cargar las cuentas")
-      })
-
     // Load orders independently
     getOrders()
       .then(setOrders)
@@ -406,82 +379,8 @@ export function PaymentsReport() {
       })
   }, [])
 
-  // Cargar datos del reporte desde el backend
-  useEffect(() => {
-    const loadReportData = async () => {
-      if (!isOnline) {
-        // Si está offline, generar datos localmente como fallback
-        generateLocalReportData()
-        return
-      }
-
-      try {
-        const params = new URLSearchParams()
-        if (startDate) params.append("startDate", startDate)
-        if (endDate) params.append("endDate", endDate)
-        const backendPm = backendPaymentMethodForFilter(selectedPaymentMethod)
-        if (backendPm !== "Todos") {
-          params.append("paymentMethod", backendPm)
-        }
-        appendAccountFilterToParams(params, selectedAccount)
-
-        const endpoint = `/api/Reports/Payments/Preview?${params.toString()}`
-        const data = await apiClient.request<Record<string, unknown>[]>(endpoint)
-        // Mapear datos del backend (camelCase desde ASP.NET)
-        const mappedData: PaymentReportRow[] = data.map((row) => {
-          const orderId = String(row.orderId ?? "")
-          const paymentType = (row.paymentType as string) || "main"
-          const paymentIndex =
-            typeof row.paymentIndex === "number" ? row.paymentIndex : -1
-          return {
-            id: `${orderId}-${paymentType}-${paymentIndex}`,
-            fecha: String(row.fecha ?? ""),
-            pedido: String(row.pedido ?? ""),
-            cliente: String(row.cliente ?? ""),
-            metodoPago: String(row.metodoPago ?? ""),
-            montoOriginal: Number(row.montoOriginal ?? 0),
-            monedaOriginal: String(row.monedaOriginal ?? ""),
-            montoBs: (() => {
-              const raw =
-                row.montoBs ?? (row as Record<string, unknown>).MontoBs
-              if (raw === null || raw === undefined || raw === "")
-                return null
-              const n = Number(raw)
-              return Number.isFinite(n) ? n : null
-            })(),
-            montoUsd: (() => {
-              const raw =
-                row.montoUsd ??
-                (row as Record<string, unknown>).MontoUsd
-              if (raw == null || raw === "") return undefined
-              const n = Number(raw)
-              return Number.isFinite(n) ? n : undefined
-            })(),
-            referencia: String(row.referencia ?? ""),
-            cuenta: resolveReportCuentaDisplay(
-              String(row.monedaOriginal ?? ""),
-              String(row.cuenta ?? ""),
-            ),
-            orderId,
-            paymentIndex,
-            paymentType: paymentType as "mixed" | "partial" | "main",
-            isConciliated: Boolean(row.isConciliated),
-          }
-        })
-
-        setReportData(mappedData)
-      } catch (error) {
-        console.error("Error loading report from backend:", error)
-        // Fallback a datos locales
-        generateLocalReportData()
-      }
-    }
-
-    loadReportData()
-  }, [orders, accounts, startDate, endDate, selectedPaymentMethod, selectedAccount, isOnline])
-
   // Función helper para obtener el monto original del pago en su moneda
-  const getOriginalPaymentAmount = (
+  const getOriginalPaymentAmount = useCallback((
     payment: PartialPayment
   ): { amount: number; currency: string } => {
     const details = payment.paymentDetails;
@@ -518,10 +417,133 @@ export function PaymentsReport() {
       amount: payment.amount,
       currency: payment.currency || "Bs",
     };
-  };
+  }, []);
+
+  const getPaymentReference = useCallback((payment: PartialPayment, order: Order): string => {
+    if (!order.paymentDetails && !payment.paymentDetails) return ""
+
+    // Para Zelle, priorizar nombre del remitente (envia), luego ref. bancaria
+    if (payment.method === "Zelle") {
+      const envia =
+        payment.paymentDetails?.envia?.trim() || order.paymentDetails?.envia?.trim()
+      if (envia) return envia
+      const ref =
+        payment.paymentDetails?.transferenciaReference ||
+        order.paymentDetails?.transferenciaReference
+      return ref || ""
+    }
+
+    // Para Pago Móvil
+    if (payment.method === "Pago Móvil") {
+      const ref = payment.paymentDetails?.pagomovilReference || order.paymentDetails?.pagomovilReference
+      return ref || ""
+    }
+
+    // Para Transferencia
+    if (payment.method === "Transferencia") {
+      const ref = payment.paymentDetails?.transferenciaReference || order.paymentDetails?.transferenciaReference
+      return ref || ""
+    }
+
+    return ""
+  }, []);
+
+  const getMainPaymentReference = useCallback((order: Order): string => {
+    if (!order.paymentDetails) return ""
+
+    if (order.paymentMethod === "Zelle" && order.paymentDetails) {
+      if (order.paymentDetails.envia?.trim()) {
+        return order.paymentDetails.envia.trim()
+      }
+      if (order.paymentDetails.transferenciaReference) {
+        return order.paymentDetails.transferenciaReference
+      }
+    }
+
+    if (order.paymentMethod === "Pago Móvil" && order.paymentDetails.pagomovilReference) {
+      return order.paymentDetails.pagomovilReference
+    }
+
+    if (order.paymentMethod === "Transferencia" && order.paymentDetails.transferenciaReference) {
+      return order.paymentDetails.transferenciaReference
+    }
+
+    return ""
+  }, []);
+
+  // Función para obtener el display de cuenta desde un pago parcial/mixto
+  const getAccountDisplay = useCallback((payment: PartialPayment): string => {
+    if (!payment.paymentDetails) return "-"
+    
+    // Si es cuenta digital, mostrar email
+    if (payment.paymentDetails.email) {
+      return payment.paymentDetails.email
+    }
+    
+    // Si es cuenta bancaria, mostrar número enmascarado y banco
+    if (payment.paymentDetails.accountNumber && payment.paymentDetails.bank) {
+      return `${payment.paymentDetails.accountNumber} - ${payment.paymentDetails.bank}`
+    }
+    
+    // Fallback: buscar en accounts por accountId
+    if (payment.paymentDetails.accountId) {
+      const account = accounts.find(acc => acc.id === payment.paymentDetails?.accountId)
+      if (account) {
+        if (account.accountType === "Cuentas Digitales") {
+          return account.email || "-"
+        } else {
+          return `${account.label || account.code || ""}`
+        }
+      }
+    }
+
+    // TDD/TDC y similares: solo persisten bank (label del catálogo)
+    if (payment.paymentDetails.bank?.trim()) {
+      return payment.paymentDetails.bank.trim()
+    }
+    
+    return "-"
+  }, [accounts]);
+
+  // Función para obtener el display de cuenta desde el pago principal
+  const getMainAccountDisplay = useCallback((order: Order): string => {
+    if (!order.paymentDetails) return "-"
+    
+    // Si es cuenta digital, mostrar email
+    if (order.paymentDetails.email) {
+      return order.paymentDetails.email
+    }
+    
+    // Si es cuenta bancaria, mostrar número enmascarado y banco
+    if (order.paymentDetails.accountNumber && order.paymentDetails.bank) {
+      return `${order.paymentDetails.accountNumber} - ${order.paymentDetails.bank}`
+    }
+    
+    // Fallback: buscar en accounts por accountId
+    if (order.paymentDetails.accountId) {
+      const account = accounts.find(acc => acc.id === order.paymentDetails?.accountId)
+      if (account) {
+        if (account.accountType === "Cuentas Digitales") {
+          return account.email || "-"
+        } else {
+          return `${account.label || account.code || ""}`
+        }
+      }
+    }
+
+    if (order.paymentDetails.bank?.trim()) {
+      return order.paymentDetails.bank.trim()
+    }
+    
+    return "-"
+  }, [accounts]);
+
+  const formatDate = useCallback((dateString: string): string => {
+    return formatPaymentDateForDisplay(dateString)
+  }, []);
 
   // Función para generar datos localmente (fallback offline)
-  const generateLocalReportData = () => {
+  const generateLocalReportData = useCallback(() => {
     const backendPm = backendPaymentMethodForFilter(selectedPaymentMethod)
 
     const rows: PaymentReportRow[] = []
@@ -700,130 +722,102 @@ export function PaymentsReport() {
       finalRows.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
 
       setReportData(finalRows)
-    }
+  }, [
+    selectedPaymentMethod,
+    startDate,
+    endDate,
+    orders,
+    selectedAccount,
+    accounts,
+    getPaymentReference,
+    getAccountDisplay,
+    getOriginalPaymentAmount,
+    formatDate,
+    getMainPaymentReference,
+    getMainAccountDisplay,
+  ])
 
-  const getPaymentReference = (payment: PartialPayment, order: Order): string => {
-    if (!order.paymentDetails && !payment.paymentDetails) return ""
-
-    // Para Zelle, priorizar nombre del remitente (envia), luego ref. bancaria
-    if (payment.method === "Zelle") {
-      const envia =
-        payment.paymentDetails?.envia?.trim() || order.paymentDetails?.envia?.trim()
-      if (envia) return envia
-      const ref =
-        payment.paymentDetails?.transferenciaReference ||
-        order.paymentDetails?.transferenciaReference
-      return ref || ""
-    }
-
-    // Para Pago Móvil
-    if (payment.method === "Pago Móvil") {
-      const ref = payment.paymentDetails?.pagomovilReference || order.paymentDetails?.pagomovilReference
-      return ref || ""
-    }
-
-    // Para Transferencia
-    if (payment.method === "Transferencia") {
-      const ref = payment.paymentDetails?.transferenciaReference || order.paymentDetails?.transferenciaReference
-      return ref || ""
-    }
-
-    return ""
-  }
-
-  const getMainPaymentReference = (order: Order): string => {
-    if (!order.paymentDetails) return ""
-
-    if (order.paymentMethod === "Zelle" && order.paymentDetails) {
-      if (order.paymentDetails.envia?.trim()) {
-        return order.paymentDetails.envia.trim()
+  // Cargar datos del reporte desde el backend
+  useEffect(() => {
+    const loadReportData = async () => {
+      setSelectedRowIds(new Set())
+      if (!isOnline) {
+        // Si está offline, generar datos localmente como fallback
+        generateLocalReportData()
+        return
       }
-      if (order.paymentDetails.transferenciaReference) {
-        return order.paymentDetails.transferenciaReference
-      }
-    }
 
-    if (order.paymentMethod === "Pago Móvil" && order.paymentDetails.pagomovilReference) {
-      return order.paymentDetails.pagomovilReference
-    }
-
-    if (order.paymentMethod === "Transferencia" && order.paymentDetails.transferenciaReference) {
-      return order.paymentDetails.transferenciaReference
-    }
-
-    return ""
-  }
-
-  // Función para obtener el display de cuenta desde un pago parcial/mixto
-  const getAccountDisplay = (payment: PartialPayment): string => {
-    if (!payment.paymentDetails) return "-"
-    
-    // Si es cuenta digital, mostrar email
-    if (payment.paymentDetails.email) {
-      return payment.paymentDetails.email
-    }
-    
-    // Si es cuenta bancaria, mostrar número enmascarado y banco
-    if (payment.paymentDetails.accountNumber && payment.paymentDetails.bank) {
-      return `${payment.paymentDetails.accountNumber} - ${payment.paymentDetails.bank}`
-    }
-    
-    // Fallback: buscar en accounts por accountId
-    if (payment.paymentDetails.accountId) {
-      const account = accounts.find(acc => acc.id === payment.paymentDetails?.accountId)
-      if (account) {
-        if (account.accountType === "Cuentas Digitales") {
-          return account.email || "-"
-        } else {
-          return `${account.label || account.code || ""}`
+      try {
+        const params = new URLSearchParams()
+        if (startDate) params.append("startDate", startDate)
+        if (endDate) params.append("endDate", endDate)
+        const backendPm = backendPaymentMethodForFilter(selectedPaymentMethod)
+        if (backendPm !== "Todos") {
+          params.append("paymentMethod", backendPm)
         }
+        appendAccountFilterToParams(params, selectedAccount)
+
+        const endpoint = `/api/Reports/Payments/Preview?${params.toString()}`
+        const data = await apiClient.request<Record<string, unknown>[]>(endpoint)
+        // Mapear datos del backend (camelCase desde ASP.NET)
+        const mappedData: PaymentReportRow[] = data.map((row) => {
+          const orderId = String(row.orderId ?? "")
+          const paymentType = (row.paymentType as string) || "main"
+          const paymentIndex =
+            typeof row.paymentIndex === "number" ? row.paymentIndex : -1
+          return {
+            id: `${orderId}-${paymentType}-${paymentIndex}`,
+            fecha: String(row.fecha ?? ""),
+            pedido: String(row.pedido ?? ""),
+            cliente: String(row.cliente ?? ""),
+            metodoPago: String(row.metodoPago ?? ""),
+            montoOriginal: Number(row.montoOriginal ?? 0),
+            monedaOriginal: String(row.monedaOriginal ?? ""),
+            montoBs: (() => {
+              const raw =
+                row.montoBs ?? (row as Record<string, unknown>).MontoBs
+              if (raw === null || raw === undefined || raw === "")
+                return null
+              const n = Number(raw)
+              return Number.isFinite(n) ? n : null
+            })(),
+            montoUsd: (() => {
+              const raw =
+                row.montoUsd ??
+                (row as Record<string, unknown>).MontoUsd
+              if (raw == null || raw === "") return undefined
+              const n = Number(raw)
+              return Number.isFinite(n) ? n : undefined
+            })(),
+            referencia: String(row.referencia ?? ""),
+            cuenta: resolveReportCuentaDisplay(
+              String(row.monedaOriginal ?? ""),
+              String(row.cuenta ?? ""),
+            ),
+            orderId,
+            paymentIndex,
+            paymentType: paymentType as "mixed" | "partial" | "main",
+            isConciliated: Boolean(row.isConciliated),
+          }
+        })
+
+        setReportData(mappedData)
+      } catch (error) {
+        console.error("Error loading report from backend:", error)
+        // Fallback a datos locales
+        generateLocalReportData()
       }
     }
 
-    // TDD/TDC y similares: solo persisten bank (label del catálogo)
-    if (payment.paymentDetails.bank?.trim()) {
-      return payment.paymentDetails.bank.trim()
-    }
-    
-    return "-"
-  }
-
-  // Función para obtener el display de cuenta desde el pago principal
-  const getMainAccountDisplay = (order: Order): string => {
-    if (!order.paymentDetails) return "-"
-    
-    // Si es cuenta digital, mostrar email
-    if (order.paymentDetails.email) {
-      return order.paymentDetails.email
-    }
-    
-    // Si es cuenta bancaria, mostrar número enmascarado y banco
-    if (order.paymentDetails.accountNumber && order.paymentDetails.bank) {
-      return `${order.paymentDetails.accountNumber} - ${order.paymentDetails.bank}`
-    }
-    
-    // Fallback: buscar en accounts por accountId
-    if (order.paymentDetails.accountId) {
-      const account = accounts.find(acc => acc.id === order.paymentDetails?.accountId)
-      if (account) {
-        if (account.accountType === "Cuentas Digitales") {
-          return account.email || "-"
-        } else {
-          return `${account.label || account.code || ""}`
-        }
-      }
-    }
-
-    if (order.paymentDetails.bank?.trim()) {
-      return order.paymentDetails.bank.trim()
-    }
-    
-    return "-"
-  }
-
-  const formatDate = (dateString: string): string => {
-    return formatPaymentDateForDisplay(dateString)
-  }
+    loadReportData()
+  }, [
+    startDate,
+    endDate,
+    selectedPaymentMethod,
+    selectedAccount,
+    isOnline,
+    generateLocalReportData,
+  ])
 
   const formatCurrency = (amount: number, currency: string): string => {
     const currencyCode = currency === "Bs" ? "VES" : currency === "USD" ? "USD" : "EUR"
@@ -1000,7 +994,10 @@ export function PaymentsReport() {
                 id="startDate"
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => {
+                  setStartDate(e.target.value)
+                  setSelectedRowIds(new Set())
+                }}
               />
             </div>
 
@@ -1011,14 +1008,23 @@ export function PaymentsReport() {
                 id="endDate"
                 type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => {
+                  setEndDate(e.target.value)
+                  setSelectedRowIds(new Set())
+                }}
               />
             </div>
 
             {/* Método de pago */}
             <div className="space-y-2">
               <Label htmlFor="paymentMethod">Forma de Pago</Label>
-              <Select value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
+              <Select
+                value={selectedPaymentMethod}
+                onValueChange={(value) => {
+                  setSelectedPaymentMethod(value)
+                  setSelectedRowIds(new Set())
+                }}
+              >
                 <SelectTrigger id="paymentMethod">
                   <SelectValue placeholder="Seleccionar método" />
                 </SelectTrigger>
@@ -1035,7 +1041,13 @@ export function PaymentsReport() {
             {/* Cuenta */}
             <div className="space-y-2">
               <Label htmlFor="account">Cuenta</Label>
-              <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+              <Select
+                value={selectedAccount}
+                onValueChange={(value) => {
+                  setSelectedAccount(value)
+                  setSelectedRowIds(new Set())
+                }}
+              >
                 <SelectTrigger id="account">
                   <SelectValue placeholder="Seleccionar cuenta" />
                 </SelectTrigger>
@@ -1060,7 +1072,10 @@ export function PaymentsReport() {
               <Label htmlFor="conciliationFilter">Conciliación</Label>
               <Select
                 value={conciliationFilter}
-                onValueChange={setConciliationFilter}
+                onValueChange={(value) => {
+                  setConciliationFilter(value)
+                  setSelectedRowIds(new Set())
+                }}
               >
                 <SelectTrigger id="conciliationFilter">
                   <SelectValue placeholder="Estado de conciliación" />

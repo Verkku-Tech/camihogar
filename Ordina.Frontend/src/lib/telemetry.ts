@@ -1,4 +1,5 @@
 import { getDb, TelemetryLog } from './db'
+import { connectivityManager } from './connectivity'
 
 class TelemetryService {
   private isFlushing = false
@@ -6,7 +7,9 @@ class TelemetryService {
 
   constructor() {
     if (typeof window !== 'undefined') {
-      window.addEventListener('online', () => this.flush())
+      connectivityManager.subscribe(() => {
+        if (connectivityManager.isServerReachable) void this.flush()
+      })
       this.flushTimer = setInterval(() => this.flush(), 30000)
 
       // Catch global errors
@@ -39,13 +42,14 @@ class TelemetryService {
       console.warn('Could not buffer telemetry log:', err)
     }
 
-    if (navigator.onLine && (level === 'error' || level === 'critical')) {
+    // ponytail: use server reachability instead of navigator.onLine
+    if (connectivityManager.isServerReachable && (level === 'error' || level === 'critical')) {
       this.flush().catch(() => {})
     }
   }
 
   async flush() {
-    if (this.isFlushing || !navigator.onLine) return
+    if (this.isFlushing || !connectivityManager.isServerReachable) return
     this.isFlushing = true
 
     try {

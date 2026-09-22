@@ -5,7 +5,11 @@ namespace Ordina.Application.Catalog;
 public interface IProductService
 {
     Task<IReadOnlyList<ProductResponseDto>> GetAllAsync(CancellationToken cancellationToken = default);
-    Task<PagedResult<ProductResponseDto>> GetPagedAsync(PagedRequest request, CancellationToken cancellationToken = default);
+    Task<PagedResult<ProductResponseDto>> GetPagedAsync(
+        PagedRequest request,
+        string? categoryId = null,
+        string? status = null,
+        CancellationToken cancellationToken = default);
     Task<ProductResponseDto?> GetByIdAsync(string id, CancellationToken cancellationToken = default);
     Task<ProductResponseDto?> GetBySkuAsync(string sku, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ProductResponseDto>> GetByCategoryIdAsync(string categoryId, CancellationToken cancellationToken = default);

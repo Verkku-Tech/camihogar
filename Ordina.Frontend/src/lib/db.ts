@@ -11,6 +11,8 @@ export interface OutboxMutation {
   errorMessage?: string
   createdAt: number
   retryCount: number
+  localEntityId?: string
+  storeName?: string
 }
 
 export interface TelemetryLog {

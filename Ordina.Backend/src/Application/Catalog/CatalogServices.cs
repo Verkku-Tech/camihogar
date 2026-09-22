@@ -5,39 +5,42 @@ using Ordina.Domain.Enums;
 
 namespace Ordina.Application.Catalog;
 
-public class ProductService : IProductService
+public class ProductService(
+    IProductRepository productRepository,
+    ICacheService cacheService,
+    ILogger<ProductService> logger) : IProductService
 {
-    private readonly IProductRepository _productRepository;
-    private readonly ICacheService _cacheService;
-    private readonly ILogger<ProductService> _logger;
-
-    public ProductService(
-        IProductRepository productRepository,
-        ICacheService cacheService,
-        ILogger<ProductService> logger)
-    {
-        _productRepository = productRepository;
-        _cacheService = cacheService;
-        _logger = logger;
-    }
-
     public async Task<IReadOnlyList<ProductResponseDto>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        var cached = await _cacheService.GetAsync<IReadOnlyList<ProductResponseDto>>(CacheKeys.Products, cancellationToken);
+        var cached = await cacheService.GetAsync<IReadOnlyList<ProductResponseDto>>(CacheKeys.Products, cancellationToken);
         if (cached != null) return cached;
 
-        var products = await _productRepository.GetAllAsync(cancellationToken);
+        var products = await productRepository.GetAllAsync(cancellationToken);
         var dtos = products.Select(MapToDto).ToList();
-        await _cacheService.SetAsync(CacheKeys.Products, dtos, slidingExpiration: CacheTtl.CatalogSliding, cancellationToken: cancellationToken);
+        await cacheService.SetAsync(CacheKeys.Products, dtos, slidingExpiration: CacheTtl.CatalogSliding, cancellationToken: cancellationToken);
         return dtos;
     }
 
-    public async Task<PagedResult<ProductResponseDto>> GetPagedAsync(PagedRequest request, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<ProductResponseDto>> GetPagedAsync(
+        PagedRequest request,
+        string? categoryId = null,
+        string? status = null,
+        CancellationToken cancellationToken = default)
     {
-        var result = await _productRepository.GetPagedAsync(
+        var hasSearch = !string.IsNullOrWhiteSpace(request.SearchTerm);
+        var hasCategory = !string.IsNullOrWhiteSpace(categoryId);
+        var hasStatus = !string.IsNullOrWhiteSpace(status);
+
+        System.Linq.Expressions.Expression<Func<Product, bool>>? filter = (hasSearch || hasCategory || hasStatus)
+            ? p => (!hasSearch || p.Name.Contains(request.SearchTerm!) || p.SKU.Contains(request.SearchTerm!) || p.Category.Contains(request.SearchTerm!))
+                && (!hasCategory || p.CategoryId == categoryId)
+                && (!hasStatus || p.StatusString == status)
+            : null;
+
+        var result = await productRepository.GetPagedAsync(
             request.Page,
             request.PageSize,
-            string.IsNullOrWhiteSpace(request.SearchTerm) ? null : p => p.Name.Contains(request.SearchTerm) || p.SKU.Contains(request.SearchTerm) || p.Category.Contains(request.SearchTerm),
+            filter,
             cancellationToken);
 
         return new PagedResult<ProductResponseDto>(
@@ -49,25 +52,25 @@ public class ProductService : IProductService
 
     public async Task<ProductResponseDto?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
     {
-        var product = await _productRepository.GetByIdAsync(id, cancellationToken);
+        var product = await productRepository.GetByIdAsync(id, cancellationToken);
         return product != null ? MapToDto(product) : null;
     }
 
     public async Task<ProductResponseDto?> GetBySkuAsync(string sku, CancellationToken cancellationToken = default)
     {
-        var product = await _productRepository.GetBySkuAsync(sku, cancellationToken);
+        var product = await productRepository.GetBySkuAsync(sku, cancellationToken);
         return product != null ? MapToDto(product) : null;
     }
 
     public async Task<IReadOnlyList<ProductResponseDto>> GetByCategoryIdAsync(string categoryId, CancellationToken cancellationToken = default)
     {
-        var products = await _productRepository.GetByCategoryIdAsync(categoryId, cancellationToken);
+        var products = await productRepository.GetByCategoryIdAsync(categoryId, cancellationToken);
         return products.Select(MapToDto).ToList();
     }
 
     public async Task<ProductResponseDto> CreateAsync(CreateProductDto createDto, CancellationToken cancellationToken = default)
     {
-        var existingSku = await _productRepository.GetBySkuAsync(createDto.SKU, cancellationToken);
+        var existingSku = await productRepository.GetBySkuAsync(createDto.SKU, cancellationToken);
         if (existingSku != null)
         {
             throw new InvalidOperationException($"Ya existe un producto con el SKU '{createDto.SKU}'");
@@ -90,15 +93,15 @@ public class ProductService : IProductService
             UpdatedAt = DateTime.UtcNow
         };
 
-        var created = await _productRepository.AddAsync(product, cancellationToken);
+        var created = await productRepository.AddAsync(product, cancellationToken);
         await InvalidateProductCacheAsync(cancellationToken);
-        _logger.LogInformation("Producto creado: {ProductId} ({SKU})", created.Id, created.SKU);
+        logger.LogInformation("Producto creado: {ProductId} ({SKU})", created.Id, created.SKU);
         return MapToDto(created);
     }
 
     public async Task<ProductResponseDto> UpdateAsync(string id, UpdateProductDto updateDto, CancellationToken cancellationToken = default)
     {
-        var product = await _productRepository.GetByIdAsync(id, cancellationToken)
+        var product = await productRepository.GetByIdAsync(id, cancellationToken)
             ?? throw new KeyNotFoundException($"Producto no encontrado: {id}");
 
         if (!string.IsNullOrWhiteSpace(updateDto.Name)) product.Name = updateDto.Name.Trim();
@@ -110,7 +113,7 @@ public class ProductService : IProductService
         if (!string.IsNullOrWhiteSpace(updateDto.Status)) product.StatusString = updateDto.Status;
         if (!string.IsNullOrWhiteSpace(updateDto.SKU) && updateDto.SKU != product.SKU)
         {
-            var existingSku = await _productRepository.GetBySkuAsync(updateDto.SKU, cancellationToken);
+            var existingSku = await productRepository.GetBySkuAsync(updateDto.SKU, cancellationToken);
             if (existingSku != null && existingSku.Id != id)
                 throw new InvalidOperationException($"El SKU '{updateDto.SKU}' ya está registrado");
             product.SKU = updateDto.SKU.Trim();
@@ -120,21 +123,21 @@ public class ProductService : IProductService
         if (updateDto.Description != null) product.Description = updateDto.Description;
 
         product.UpdatedAt = DateTime.UtcNow;
-        await _productRepository.UpdateAsync(product, cancellationToken);
+        await productRepository.UpdateAsync(product, cancellationToken);
         await InvalidateProductCacheAsync(cancellationToken);
         return MapToDto(product);
     }
 
     public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
-        var deleted = await _productRepository.DeleteAsync(id, cancellationToken);
+        var deleted = await productRepository.DeleteAsync(id, cancellationToken);
         if (deleted) await InvalidateProductCacheAsync(cancellationToken);
         return deleted;
     }
 
     private async Task InvalidateProductCacheAsync(CancellationToken cancellationToken)
     {
-        await _cacheService.RemoveAsync(CacheKeys.Products, cancellationToken);
+        await cacheService.RemoveAsync(CacheKeys.Products, cancellationToken);
     }
 
     private static ProductResponseDto MapToDto(Product p) => new(

@@ -34,6 +34,10 @@ export class ConnectivityManager {
     return this.status === 'unreachable'
   }
 
+  get isServerReachable(): boolean {
+    return this.status !== 'unreachable'
+  }
+
   subscribe(listener: () => void): () => void {
     this.listeners.push(listener)
     return () => {

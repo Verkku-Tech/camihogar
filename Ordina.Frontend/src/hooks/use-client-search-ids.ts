@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { apiClient } from "@/lib/api-client"
 import { filterClientsLocal } from "@/lib/order-client-search"
 import { getClients } from "@/lib/storage"
+import { useConnectivity } from "@/hooks/use-connectivity"
 
 const CLIENT_SEARCH_PAGE_SIZE = 100
 
@@ -24,6 +25,8 @@ export function useClientSearchIds(
   const [isLoading, setIsLoading] = useState(false)
   const [isTruncated, setIsTruncated] = useState(false)
   const [totalCount, setTotalCount] = useState(0)
+  // ponytail: use server reachability instead of navigator.onLine
+  const { isServerReachable } = useConnectivity()
 
   useEffect(() => {
     const trimmed = searchTerm.trim()
@@ -40,10 +43,7 @@ export function useClientSearchIds(
       void (async () => {
         setIsLoading(true)
         try {
-          const online =
-            typeof navigator !== "undefined" ? navigator.onLine : true
-
-          if (!online) {
+          if (!isServerReachable) {
             const cached = await getClients()
             const matched = filterClientsLocal(cached, trimmed)
             if (cancelled) return
@@ -80,7 +80,7 @@ export function useClientSearchIds(
       cancelled = true
       clearTimeout(timer)
     }
-  }, [searchTerm, debounceMs])
+  }, [searchTerm, debounceMs, isServerReachable])
 
   return { matchingClientIds, isLoading, isTruncated, totalCount }
 }

@@ -7,26 +7,19 @@ namespace Ordina.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class CategoriesController : ControllerBase
+public class CategoriesController(ICategoryService categoryService) : ControllerBase
 {
-    private readonly ICategoryService _categoryService;
-
-    public CategoriesController(ICategoryService categoryService)
-    {
-        _categoryService = categoryService;
-    }
-
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<CategoryResponseDto>>> GetAll(CancellationToken cancellationToken)
     {
-        var result = await _categoryService.GetAllAsync(cancellationToken);
+        var result = await categoryService.GetAllAsync(cancellationToken);
         return Ok(result);
     }
 
     [HttpGet("{id}")]
     public async Task<ActionResult<CategoryResponseDto>> GetById(string id, CancellationToken cancellationToken)
     {
-        var category = await _categoryService.GetByIdAsync(id, cancellationToken);
+        var category = await categoryService.GetByIdAsync(id, cancellationToken);
         if (category == null)
         {
             return NotFound();
@@ -37,21 +30,21 @@ public class CategoriesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<CategoryResponseDto>> Create([FromBody] CreateCategoryDto dto, CancellationToken cancellationToken)
     {
-        var created = await _categoryService.CreateAsync(dto, cancellationToken);
+        var created = await categoryService.CreateAsync(dto, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
     [HttpPut("{id}")]
     public async Task<ActionResult<CategoryResponseDto>> Update(string id, [FromBody] UpdateCategoryDto dto, CancellationToken cancellationToken)
     {
-        var updated = await _categoryService.UpdateAsync(id, dto, cancellationToken);
+        var updated = await categoryService.UpdateAsync(id, dto, cancellationToken);
         return Ok(updated);
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id, CancellationToken cancellationToken)
     {
-        var deleted = await _categoryService.DeleteAsync(id, cancellationToken);
+        var deleted = await categoryService.DeleteAsync(id, cancellationToken);
         if (!deleted)
         {
             return NotFound();
@@ -72,7 +65,7 @@ public class CategoriesController : ControllerBase
             {
                 try
                 {
-                    var success = await _categoryService.DeleteAsync(id, cancellationToken);
+                    var success = await categoryService.DeleteAsync(id, cancellationToken);
                     if (success) deleted++;
                     else failed++;
                 }

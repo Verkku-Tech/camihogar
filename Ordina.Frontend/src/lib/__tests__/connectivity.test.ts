@@ -105,5 +105,27 @@ describe('ConnectivityManager', () => {
       globalThis.fetch = originalFetch
     }
   })
+
+  test('probeHealth marks unreachable when health endpoint returns Unhealthy or Degraded', async () => {
+    connectivityManager.reportSuccess()
+    expect(connectivityManager.isServerUnreachable()).toBe(false)
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = () =>
+      Promise.resolve(
+        new Response(JSON.stringify({ status: 'Unhealthy', reason: 'Database connection failed' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      )
+
+    try {
+      const isHealthy = await connectivityManager.probeHealth()
+      expect(isHealthy).toBe(false)
+      expect(connectivityManager.isServerUnreachable()).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
 })
 

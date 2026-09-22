@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react"
 import { APP_UI_VERSION } from "@/lib/app-version"
 import { notifyVersionMismatch } from "@/lib/pwa-update"
+import { connectivityManager } from "@/lib/connectivity"
 
 type VersionJson = {
   version?: string
@@ -17,7 +18,8 @@ export function useAppVersionCheck(onMismatch: () => void): void {
   onMismatchRef.current = onMismatch
 
   useEffect(() => {
-    if (typeof window === "undefined" || !navigator.onLine) return
+    // ponytail: use server reachability instead of navigator.onLine
+    if (typeof window === "undefined" || !connectivityManager.isServerReachable) return
     if (APP_UI_VERSION === "dev") return
 
     let cancelled = false

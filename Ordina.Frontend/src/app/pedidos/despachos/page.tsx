@@ -334,7 +334,6 @@ export default function DespachosPage() {
     "Solo puedes pasar pedidos a ruta, no confirmar entrega ni devolver a almacén."
   const { exchangeRates } = useCurrency()
   const router = useRouter()
-  const [orders, setOrders] = useState<UnifiedOrder[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
 
@@ -404,7 +403,23 @@ export default function DespachosPage() {
 
   const { refetch } = pagination
 
-  const [isLoading, setIsLoading] = useState(true)
+  // ponytail: derive orders and loading state directly without setState in useEffect
+  const orders = useMemo(
+    () =>
+      pagination.currentItems.filter(
+        (order) =>
+          (order.type || "").toLowerCase() === "order" ||
+          !order.orderNumber?.toUpperCase().startsWith("PRE-"),
+      ),
+    [pagination.currentItems],
+  )
+  const [isExecutingBulkAction, setIsExecutingBulkAction] = useState(false)
+  const isLoading =
+    isExecutingBulkAction ||
+    !textFiltersSettled ||
+    pagination.isLoadingCount ||
+    pagination.isLoadingPages
+
   const [orderTotals, setOrderTotals] = useState<Record<string, string>>({})
   const usdRate = exchangeRates?.USD?.rate
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
@@ -433,12 +448,6 @@ export default function DespachosPage() {
       return next
     })
   }
-
-  // Sync server-paginated orders with local state
-  useEffect(() => {
-    setOrders(pagination.currentItems.filter((order) => (order.type || "").toLowerCase() === "order" || !order.orderNumber?.toUpperCase().startsWith("PRE-")))
-    setIsLoading(!textFiltersSettled || pagination.isLoadingCount || pagination.isLoadingPages)
-  }, [pagination.currentItems, pagination.isLoadingCount, pagination.isLoadingPages, textFiltersSettled])
 
   /** Online Seller: pedidos del equipo online (ver). */
   const visibleOrders = useMemo(() => {
@@ -470,15 +479,17 @@ export default function DespachosPage() {
     void loadCatalog()
   }, [])
 
-  // Limpiar selecciones y filtro de fecha al cambiar de pestaña
-  useEffect(() => {
+  // ponytail: handle tab transitions cleanly in event handler instead of effect
+  const handleTabChange = (val: string) => {
+    const nextTab = val as TabType
+    setActiveTab(nextTab)
     setSelectedOrders(new Set())
     setExpandedOrders(new Set())
-    if (activeTab !== "despachados") {
+    if (nextTab !== "despachados") {
       setDeliveredDateFrom("")
       setDeliveredDateTo("")
     }
-  }, [activeTab])
+  }
 
   useEffect(() => {
     const updateTotals = async () => {
@@ -962,7 +973,7 @@ export default function DespachosPage() {
     }
 
     try {
-      setIsLoading(true)
+      setIsExecutingBulkAction(true)
       const selectedItems = Array.from(selectedOrders)
       const itemsToUpdate: { orderId: string; productId: string }[] = []
 
@@ -982,7 +993,7 @@ export default function DespachosPage() {
 
       if (itemsToUpdate.length === 0) {
         setIsBulkActionDialogOpen(false)
-        setIsLoading(false)
+        setIsExecutingBulkAction(false)
         return
       }
 
@@ -996,7 +1007,7 @@ export default function DespachosPage() {
       console.error("Error executing bulk action:", error)
       toast.error("Error al procesar la acción masiva. Por favor intenta nuevamente.")
     } finally {
-      setIsLoading(false)
+      setIsExecutingBulkAction(false)
     }
   }
 
@@ -1036,7 +1047,7 @@ export default function DespachosPage() {
               <AppBreadcrumb />
 
               {/* TABS DE SECCIÓN */}
-              <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as TabType)} className="w-full">
+              <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
                 <TabsList className="flex h-auto w-full justify-start overflow-x-auto sm:overflow-visible sm:grid sm:grid-cols-3 max-w-xl mx-auto mb-6 no-scrollbar">
                   <TabsTrigger value="por_despachar" className="text-sm font-medium whitespace-nowrap">En Almacen</TabsTrigger>
                   <TabsTrigger value="en_despacho" className="text-sm font-medium whitespace-nowrap">En Despacho (En Ruta)</TabsTrigger>

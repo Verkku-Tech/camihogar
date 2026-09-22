@@ -9,15 +9,8 @@ namespace Ordina.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class OrdersController : ControllerBase
+public class OrdersController(IOrderCoreService orderService) : ControllerBase
 {
-    private readonly IOrderCoreService _orderService;
-
-    public OrdersController(IOrderCoreService orderService)
-    {
-        _orderService = orderService;
-    }
-
     [HttpGet]
     public async Task<ActionResult<object>> GetPaged(
         [FromQuery] int? page = null,
@@ -59,7 +52,7 @@ public class OrdersController : ControllerBase
             DateFrom: dateFrom,
             DateTo: dateTo,
             IncludeBudgets: includeBudgets);
-        var result = await _orderService.GetPagedAsync(request, filter, cancellationToken);
+        var result = await orderService.GetPagedAsync(request, filter, cancellationToken);
         var totalPages = result.PageSize > 0 ? (int)Math.Ceiling((double)result.TotalCount / result.PageSize) : 1;
 
         return Ok(new
@@ -78,7 +71,7 @@ public class OrdersController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<OrderResponseDto>> GetById(string id, CancellationToken cancellationToken)
     {
-        var order = await _orderService.GetByIdAsync(id, cancellationToken);
+        var order = await orderService.GetByIdAsync(id, cancellationToken);
         if (order == null)
         {
             return NotFound();
@@ -89,7 +82,7 @@ public class OrdersController : ControllerBase
     [HttpGet("number/{orderNumber}")]
     public async Task<ActionResult<OrderResponseDto>> GetByOrderNumber(string orderNumber, CancellationToken cancellationToken)
     {
-        var order = await _orderService.GetByOrderNumberAsync(orderNumber, cancellationToken);
+        var order = await orderService.GetByOrderNumberAsync(orderNumber, cancellationToken);
         if (order == null)
         {
             return NotFound();
@@ -100,7 +93,7 @@ public class OrdersController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<OrderResponseDto>> Create([FromBody] CreateOrderDto dto, CancellationToken cancellationToken)
     {
-        var created = await _orderService.CreateOrderAsync(dto, cancellationToken);
+        var created = await orderService.CreateOrderAsync(dto, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
@@ -123,21 +116,21 @@ public class OrdersController : ControllerBase
             }
         }
 
-        var updated = await _orderService.UpdateOrderAsync(id, dto, parsedExpectedUpdatedAt, cancellationToken);
+        var updated = await orderService.UpdateOrderAsync(id, dto, parsedExpectedUpdatedAt, cancellationToken);
         return Ok(updated);
     }
 
     [HttpPost("convert-budget")]
     public async Task<ActionResult<OrderResponseDto>> ConvertBudget([FromBody] ConvertBudgetDto dto, CancellationToken cancellationToken)
     {
-        var order = await _orderService.ConvertBudgetToOrderAsync(dto, cancellationToken);
+        var order = await orderService.ConvertBudgetToOrderAsync(dto, cancellationToken);
         return Ok(order);
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> Cancel(string id, [FromQuery] string reason = "Cancelled by user", CancellationToken cancellationToken = default)
     {
-        var result = await _orderService.CancelOrderAsync(id, reason, cancellationToken);
+        var result = await orderService.CancelOrderAsync(id, reason, cancellationToken);
         if (!result)
         {
             return NotFound();
@@ -150,7 +143,7 @@ public class OrdersController : ControllerBase
         [FromBody] List<ConciliatePaymentRequestDto> requests,
         CancellationToken cancellationToken)
     {
-        var result = await _orderService.ConciliatePaymentsAsync(requests, cancellationToken);
+        var result = await orderService.ConciliatePaymentsAsync(requests, cancellationToken);
         return Ok(result);
     }
 }

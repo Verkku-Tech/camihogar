@@ -15,11 +15,10 @@ import {
   type AttributeOption,
 } from "@/components/inventory/attribute-multi-search-select"
 import {
-  getUsers,
-  getStores,
   type User,
   type Store,
 } from "@/lib/storage"
+import { useActiveVendors, useActiveStores } from "@/hooks/use-active-catalogs"
 import {
   apiClient,
   type CommissionReportRowDto,
@@ -126,23 +125,12 @@ export function CommissionsReport() {
   const [selectedSellerType, setSelectedSellerType] = useState<string>("all")
   const [selectedReferrerId, setSelectedReferrerId] = useState<string>("all")
   const [referrersInRange, setReferrersInRange] = useState<CommissionReferrerOptionDto[]>([])
-  const [commissionSellers, setCommissionSellers] = useState<User[]>([])
-  const [stores, setStores] = useState<Store[]>([])
+  const { sellers: commissionSellers } = useActiveVendors()
+  const { stores } = useActiveStores()
   const [reportData, setReportData] = useState<CommissionReportRow[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [hasError, setHasError] = useState(false)
-
-  useEffect(() => {
-    Promise.all([getUsers(), getStores()])
-      .then(([users, allStores]) => {
-        setCommissionSellers(
-          users.filter((u) => u.status === "active" && isCommissionSeller(u)),
-        )
-        setStores(allStores.filter((s) => s.status === "active"))
-      })
-      .catch(console.error)
-  }, [])
 
   const sellersForStoreFilter = filterSellersByStore(
     commissionSellers,

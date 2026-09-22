@@ -9,15 +9,8 @@ namespace Ordina.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class ClientsController : ControllerBase
+public class ClientsController(IClientService clientService) : ControllerBase
 {
-    private readonly IClientService _clientService;
-
-    public ClientsController(IClientService clientService)
-    {
-        _clientService = clientService;
-    }
-
     [HttpGet]
     public async Task<ActionResult<PagedResult<ClientResponseDto>>> GetAll(
         [FromQuery] int? page = null,
@@ -32,14 +25,14 @@ public class ClientsController : ControllerBase
         var curPage = page ?? pageNumber ?? 1;
         var querySearch = !string.IsNullOrWhiteSpace(search) ? search : searchTerm;
         var request = new PagedRequest(Page: Math.Max(1, curPage), PageSize: Math.Clamp(pageSize, 1, 1000), SearchTerm: querySearch, SortBy: sortBy, SortDescending: isDescending);
-        var result = await _clientService.GetAllAsync(request, cancellationToken);
+        var result = await clientService.GetAllAsync(request, cancellationToken);
         return Ok(result);
     }
 
     [HttpGet("{id}")]
     public async Task<ActionResult<ClientResponseDto>> GetById(string id, CancellationToken cancellationToken)
     {
-        var client = await _clientService.GetByIdAsync(id, cancellationToken);
+        var client = await clientService.GetByIdAsync(id, cancellationToken);
         if (client == null)
         {
             return NotFound();
@@ -50,7 +43,7 @@ public class ClientsController : ControllerBase
     [HttpGet("rut/{rutId}")]
     public async Task<ActionResult<ClientResponseDto>> GetByRut(string rutId, CancellationToken cancellationToken)
     {
-        var client = await _clientService.GetByRutIdAsync(rutId, cancellationToken);
+        var client = await clientService.GetByRutIdAsync(rutId, cancellationToken);
         if (client == null)
         {
             return NotFound();
@@ -61,21 +54,21 @@ public class ClientsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ClientResponseDto>> Create([FromBody] CreateClientDto dto, CancellationToken cancellationToken)
     {
-        var created = await _clientService.CreateAsync(dto, cancellationToken);
+        var created = await clientService.CreateAsync(dto, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
     [HttpPut("{id}")]
     public async Task<ActionResult<ClientResponseDto>> Update(string id, [FromBody] UpdateClientDto dto, CancellationToken cancellationToken)
     {
-        var updated = await _clientService.UpdateAsync(id, dto, cancellationToken);
+        var updated = await clientService.UpdateAsync(id, dto, cancellationToken);
         return Ok(updated);
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id, CancellationToken cancellationToken)
     {
-        var deleted = await _clientService.DeleteAsync(id, cancellationToken);
+        var deleted = await clientService.DeleteAsync(id, cancellationToken);
         if (!deleted)
         {
             return NotFound();
@@ -92,7 +85,7 @@ public class ClientsController : ControllerBase
         }
 
         using var stream = file.OpenReadStream();
-        var result = await _clientService.ImportClientsFromCsvAsync(stream, cancellationToken);
+        var result = await clientService.ImportClientsFromCsvAsync(stream, cancellationToken);
         return Ok(result);
     }
 }

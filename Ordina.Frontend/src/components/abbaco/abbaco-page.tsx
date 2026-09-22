@@ -1,5 +1,6 @@
-import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
 "use client";
+
+import { AppBreadcrumb } from "@/components/ui/app-breadcrumb";
 
 import { useEffect, useMemo, useState } from "react";
 import { Sidebar } from "@/components/dashboard/sidebar";
@@ -45,6 +46,16 @@ import {
   Loader2,
   AlertTriangle,
 } from "lucide-react";
+
+// ponytail: canonical statuses pre-seeded so filters don't vanish based on loaded pages
+const ABBACO_CANONICAL_STATUSES = [
+  "Validado",
+  "Borrador (a validar)",
+  "Emitido",
+  "Facturado",
+  "Completado",
+  "Cancelado",
+];
 
 function estadoColor(estado: string): string {
   const e = estado.trim().toLowerCase();
@@ -111,7 +122,12 @@ export function AbbacoPage() {
 
   const statusOptions = useMemo(
     () =>
-      Array.from(new Set(orders.map((o) => o.estado.trim()).filter(Boolean))).sort(),
+      Array.from(
+        new Set([
+          ...ABBACO_CANONICAL_STATUSES,
+          ...orders.map((o) => o.estado.trim()).filter(Boolean),
+        ]),
+      ).sort(),
     [orders],
   );
 
