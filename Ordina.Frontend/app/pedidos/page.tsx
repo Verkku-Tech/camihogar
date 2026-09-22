@@ -50,6 +50,7 @@ import {
   getUnifiedOrders,
   getOrderByOrderNumberPreferBackend,
   orderDtoToUnifiedOrder,
+  getUsers,
   type UnifiedOrder,
   type Order,
 } from "@/lib/storage";
@@ -147,6 +148,7 @@ export default function PedidosPage() {
     Record<string, string>
   >({});
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [userVendors, setUserVendors] = useState<string[]>([]);
   const {
     matchingClientIds,
   } = useClientSearchIds(searchTerm);
@@ -398,10 +400,38 @@ export default function PedidosPage() {
 
   const serverResultsPending = useServerMode && !textFiltersSettled;
 
+  useEffect(() => {
+    const loadVendors = async () => {
+      try {
+        const users = await getUsers();
+        const sellerNames = users
+          .filter(
+            (u) =>
+              u.role === "Store Seller" ||
+              u.role === "Online Seller" ||
+              (u.role as string) === "Vendedor de tienda" ||
+              (u.role as string) === "Vendedor Online",
+          )
+          .map((u) => u.name?.trim())
+          .filter((name): name is string => Boolean(name));
+        setUserVendors(sellerNames);
+      } catch (error) {
+        console.warn("Error loading users for vendor filter:", error);
+      }
+    };
+    void loadVendors();
+  }, []);
+
   const ordersForFilters = useServerMode ? serverCurrentItems : orders;
-  const uniqueVendors = Array.from(
-    new Set(ordersForFilters.map((o) => o.vendorName)),
-  ).sort();
+  const uniqueVendors = useMemo(() => {
+    const vendorsSet = new Set<string>(userVendors);
+    ordersForFilters.forEach((o) => {
+      if (o.vendorName?.trim()) {
+        vendorsSet.add(o.vendorName.trim());
+      }
+    });
+    return Array.from(vendorsSet).sort();
+  }, [userVendors, ordersForFilters]);
 
   const statusFilterOptions = useMemo(
     () =>
