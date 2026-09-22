@@ -298,6 +298,7 @@ export interface TopSeller {
   vendorName: string
   ordersCount: number
   totalUsd: number
+  estimatedCommissionUsd?: number
 }
 
 export interface TopProduct {
@@ -360,6 +361,10 @@ export interface PipelineSnapshot {
   warehouse: number
   dispatch: number
   delivered: number
+  manufacturingUsd?: number
+  warehouseUsd?: number
+  dispatchUsd?: number
+  deliveredUsd?: number
 }
 
 export interface ExpiredLayawayAgeRange {
@@ -367,6 +372,174 @@ export interface ExpiredLayawayAgeRange {
   label: string
   count: number
   totalUsd: number
+}
+
+export interface AovByBranch {
+  branchId: string
+  branchName: string
+  averageOrderValue: number
+  ordersCount: number
+  totalSalesUsd: number
+}
+
+export interface AgingReport {
+  range: string
+  label: string
+  count: number
+  totalBalanceUsd: number
+}
+
+export interface PaymentMix {
+  method: string
+  label: string
+  count: number
+  totalUsd: number
+  percentage: number
+}
+
+export interface ManufacturingLeadTime {
+  category: string
+  averageDays: number
+  completedUnits: number
+}
+
+export interface OtifMetrics {
+  otifRate: number
+  onTimeOrders: number
+  delayedOrders: number
+  totalDeliveredOrders: number
+}
+
+export interface StageDwellTime {
+  stageName: string
+  averageDays: number
+  activeOrdersCount: number
+}
+
+export interface FulfillmentRatio {
+  immediateCount: number
+  immediatePercentage: number
+  madeToOrderCount: number
+  madeToOrderPercentage: number
+}
+
+export interface ConversionRate {
+  totalReservations: number
+  convertedOrders: number
+  winRatePercentage: number
+  convertedVolumeUsd: number
+}
+
+export interface ClosingVelocity {
+  averageDaysToClose: number
+  medianHoursToFirstPayment: number
+  analyzedOrdersCount: number
+}
+
+export interface ReplenishmentSuggestion {
+  productName: string
+  variantName: string
+  attributes: Record<string, string>
+  salesRank: number
+  currentStockTerrinca: number
+  currentStockStores: number
+  suggestedQuantity: number
+  priority: string
+}
+
+export interface StockTurnover {
+  averageDaysInWarehouse: number
+  slowMovingItemsCount: number
+  totalActiveStockUnits: number
+}
+
+export interface StockoutRate {
+  stockoutRatePercentage: number
+  stockoutIncidentsCount: number
+  statusNote: string
+}
+
+export interface StoreOccupancy {
+  storeId: string
+  storeName: string
+  currentItems: number
+  maxCapacity: number
+  occupancyPercentage: number
+  statusNote: string
+}
+
+export interface AgingOrderDetail {
+  orderId: string
+  orderNumber: string
+  createdAt: string
+  clientName: string
+  vendorName: string
+  storeName: string
+  status: string
+  saleType: string
+  totalUsd: number
+  paidUsd: number
+  pendingBalanceUsd: number
+  daysElapsed: number
+  daysExpired: number
+  rangeKey: string
+  rangeLabel: string
+}
+
+export interface PaymentDrillDown {
+  paymentId: string
+  orderId: string
+  orderNumber: string
+  paymentDate: string
+  orderDate: string
+  clientName: string
+  vendorName: string
+  storeName: string
+  method: string
+  reference: string
+  bank: string
+  amountUsd: number
+  amountBs: number
+  exchangeRate: number
+  isConciliated: boolean
+  status: string
+  isFromCurrentPeriodOrder: boolean
+}
+
+export interface CollectedDrillDownResponse {
+  totalCollectedUsd: number
+  currentPeriodCollectedUsd: number
+  priorPeriodCollectedUsd: number
+  currentPeriodPercentage: number
+  priorPeriodPercentage: number
+  currentPeriodPayments: PaymentDrillDown[]
+  priorPeriodPayments: PaymentDrillDown[]
+}
+
+export interface CasheaDrillDownItem {
+  orderId: string
+  orderNumber: string
+  orderDate: string
+  clientName: string
+  vendorName: string
+  storeName: string
+  totalOrderUsd: number
+  downPaymentUsd: number
+  financedCasheaUsd: number
+  collectedCasheaUsd: number
+  pendingCasheaUsd: number
+  isFullyReconciled: boolean
+  status: string
+}
+
+export interface CasheaDrillDownResponse {
+  totalOrdersCount: number
+  totalOrdersVolumeUsd: number
+  totalDownPaymentUsd: number
+  totalFinancedCasheaUsd: number
+  totalCollectedCasheaUsd: number
+  totalPendingCasheaUsd: number
+  orders: CasheaDrillDownItem[]
 }
 
 export class ApiClientClass {
@@ -983,6 +1156,190 @@ export class ApiClientClass {
 
   async getExpiredLayawaysByAge(signal?: AbortSignal): Promise<ExpiredLayawayAgeRange[]> {
     return apiFetch<ExpiredLayawayAgeRange[]>(`/api/dashboard/expired-layaways-by-age`, { signal }).then(r => r ?? [])
+  }
+
+  // BI Fase 1: Finanzas y Consolidación
+  async getAovByBranch(period = 'month', signal?: AbortSignal): Promise<AovByBranch[]> {
+    return apiFetch<AovByBranch[]>(`/api/dashboard/aov-by-branch?period=${period}`, { signal }).then(r => r ?? [])
+  }
+
+  async getAgingUnliquidated(signal?: AbortSignal): Promise<AgingReport[]> {
+    return apiFetch<AgingReport[]>(`/api/dashboard/aging-unliquidated`, { signal }).then(r => r ?? [])
+  }
+
+  async getPaymentMix(period = 'month', signal?: AbortSignal): Promise<PaymentMix[]> {
+    return apiFetch<PaymentMix[]>(`/api/dashboard/payment-mix?period=${period}`, { signal }).then(r => r ?? [])
+  }
+
+  // BI Fase 2: Operaciones
+  async getManufacturingLeadTime(period = 'month', signal?: AbortSignal): Promise<ManufacturingLeadTime[]> {
+    return apiFetch<ManufacturingLeadTime[]>(`/api/dashboard/manufacturing-lead-time?period=${period}`, { signal }).then(r => r ?? [])
+  }
+
+  async getOtif(period = 'month', signal?: AbortSignal): Promise<OtifMetrics> {
+    return apiFetch<OtifMetrics>(`/api/dashboard/otif?period=${period}`, { signal })
+      .then(r => r ?? { otifRate: 100, onTimeOrders: 0, delayedOrders: 0, totalDeliveredOrders: 0 })
+  }
+
+  async getStageDwellTimes(signal?: AbortSignal): Promise<StageDwellTime[]> {
+    return apiFetch<StageDwellTime[]>(`/api/dashboard/stage-dwell-times`, { signal }).then(r => r ?? [])
+  }
+
+  async getFulfillmentRatio(period = 'month', signal?: AbortSignal): Promise<FulfillmentRatio> {
+    return apiFetch<FulfillmentRatio>(`/api/dashboard/fulfillment-ratio?period=${period}`, { signal })
+      .then(r => r ?? { immediateCount: 0, immediatePercentage: 0, madeToOrderCount: 0, madeToOrderPercentage: 0 })
+  }
+
+  // BI Fase 3: Funnel y Ventas
+  async getConversionRate(period = 'month', signal?: AbortSignal): Promise<ConversionRate> {
+    return apiFetch<ConversionRate>(`/api/dashboard/conversion-rate?period=${period}`, { signal })
+      .then(r => r ?? { totalReservations: 0, convertedOrders: 0, winRatePercentage: 0, convertedVolumeUsd: 0 })
+  }
+
+  async getClosingVelocity(period = 'month', signal?: AbortSignal): Promise<ClosingVelocity> {
+    return apiFetch<ClosingVelocity>(`/api/dashboard/closing-velocity?period=${period}`, { signal })
+      .then(r => r ?? { averageDaysToClose: 0, medianHoursToFirstPayment: 0, analyzedOrdersCount: 0 })
+  }
+
+  // BI Fase 4: Inventario y Reposición
+  async getReplenishmentSuggestions(signal?: AbortSignal): Promise<ReplenishmentSuggestion[]> {
+    return apiFetch<ReplenishmentSuggestion[]>(`/api/dashboard/replenishment-suggestions`, { signal }).then(r => r ?? [])
+  }
+
+  async getStockTurnover(signal?: AbortSignal): Promise<StockTurnover> {
+    return apiFetch<StockTurnover>(`/api/dashboard/stock-turnover`, { signal })
+      .then(r => r ?? { averageDaysInWarehouse: 0, slowMovingItemsCount: 0, totalActiveStockUnits: 0 })
+  }
+
+  async getStockoutRate(signal?: AbortSignal): Promise<StockoutRate> {
+    return apiFetch<StockoutRate>(`/api/dashboard/stockout-rate`, { signal })
+      .then(r => r ?? { stockoutRatePercentage: 0, stockoutIncidentsCount: 0, statusNote: '' })
+  }
+
+  async getStoreOccupancy(signal?: AbortSignal): Promise<StoreOccupancy[]> {
+    return apiFetch<StoreOccupancy[]>(`/api/dashboard/store-occupancy`, { signal }).then(r => r ?? [])
+  }
+
+  // Aging Drill-down & Excel Export
+  async getAgingOrders(type = 'unliquidated', range?: string, signal?: AbortSignal): Promise<AgingOrderDetail[]> {
+    const q = new URLSearchParams({ type })
+    if (range) q.set('range', range)
+    return apiFetch<AgingOrderDetail[]>(`/api/dashboard/aging-orders?${q.toString()}`, { signal }).then(r => r ?? [])
+  }
+
+  async downloadAgingOrdersExcel(type = 'unliquidated', range?: string): Promise<void> {
+    const q = new URLSearchParams({ type })
+    if (range) q.set('range', range)
+    const token = getAuthToken()
+    const url = `/api/dashboard/aging-orders/excel?${q.toString()}`
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+    if (!response.ok) {
+      throw new Error(`Error al exportar reporte Excel: ${response.status}`)
+    }
+    const blob = await response.blob()
+    const urlBlob = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = urlBlob
+    const typeLabel = type === 'expired_layaways' ? 'apartados_vencidos' : 'saldos_pendientes'
+    const rangeLabel = range ? `_${range}` : ''
+    a.download = `reporte_${typeLabel}${rangeLabel}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(urlBlob)
+    document.body.removeChild(a)
+  }
+
+  // Top KPI Drill-downs & Excel Exports
+  async getOrdersDrilldown(type = 'orders', period = 'month', signal?: AbortSignal): Promise<AgingOrderDetail[]> {
+    const q = new URLSearchParams({ type, period })
+    return apiFetch<AgingOrderDetail[]>(`/api/dashboard/drilldown/orders?${q.toString()}`, { signal }).then(r => r ?? [])
+  }
+
+  async downloadOrdersDrilldownExcel(type = 'orders', period = 'month'): Promise<void> {
+    const q = new URLSearchParams({ type, period })
+    const token = getAuthToken()
+    const response = await fetch(`/api/dashboard/drilldown/orders/excel?${q.toString()}`, {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+    if (!response.ok) throw new Error(`Error al exportar pedidos a Excel: ${response.status}`)
+    const blob = await response.blob()
+    const urlBlob = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = urlBlob
+    a.download = `detalle_pedidos_${type}_${period}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(urlBlob)
+    document.body.removeChild(a)
+  }
+
+  async getCollectedDrilldown(period = 'month', signal?: AbortSignal): Promise<CollectedDrillDownResponse> {
+    return apiFetch<CollectedDrillDownResponse>(`/api/dashboard/drilldown/collected?period=${period}`, { signal })
+      .then(r => r ?? {
+        totalCollectedUsd: 0,
+        currentPeriodCollectedUsd: 0,
+        priorPeriodCollectedUsd: 0,
+        currentPeriodPercentage: 0,
+        priorPeriodPercentage: 0,
+        currentPeriodPayments: [],
+        priorPeriodPayments: []
+      })
+  }
+
+  async downloadCollectedDrilldownExcel(period = 'month', tab?: string): Promise<void> {
+    const q = new URLSearchParams({ period })
+    if (tab) q.set('tab', tab)
+    const token = getAuthToken()
+    const response = await fetch(`/api/dashboard/drilldown/collected/excel?${q.toString()}`, {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+    if (!response.ok) throw new Error(`Error al exportar cobranza a Excel: ${response.status}`)
+    const blob = await response.blob()
+    const urlBlob = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = urlBlob
+    a.download = `detalle_cobranza_${period}_${tab || 'completo'}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(urlBlob)
+    document.body.removeChild(a)
+  }
+
+  async getCasheaDrilldown(period = 'month', signal?: AbortSignal): Promise<CasheaDrillDownResponse> {
+    return apiFetch<CasheaDrillDownResponse>(`/api/dashboard/drilldown/cashea?period=${period}`, { signal })
+      .then(r => r ?? {
+        totalOrdersCount: 0,
+        totalOrdersVolumeUsd: 0,
+        totalDownPaymentUsd: 0,
+        totalFinancedCasheaUsd: 0,
+        totalCollectedCasheaUsd: 0,
+        totalPendingCasheaUsd: 0,
+        orders: []
+      })
+  }
+
+  async downloadCasheaDrilldownExcel(period = 'month'): Promise<void> {
+    const q = new URLSearchParams({ period })
+    const token = getAuthToken()
+    const response = await fetch(`/api/dashboard/drilldown/cashea/excel?${q.toString()}`, {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+    if (!response.ok) throw new Error(`Error al exportar Cashea a Excel: ${response.status}`)
+    const blob = await response.blob()
+    const urlBlob = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = urlBlob
+    a.download = `detalle_cashea_${period}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(urlBlob)
+    document.body.removeChild(a)
   }
 
   // Reports

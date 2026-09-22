@@ -9,9 +9,10 @@ import { CHART_THEME, AGING_COLORS } from "./chart-theme"
 interface Props {
   data: ExpiredLayawayAgeRange[]
   isLoading?: boolean
+  onSelectRange?: (range: string, label: string) => void
 }
 
-export function ExpiredAgeChart({ data, isLoading }: Props) {
+export function ExpiredAgeChart({ data, isLoading, onSelectRange }: Props) {
   const totalExpiredAmount = data.reduce((s, d) => s + d.totalUsd, 0)
   const totalExpiredOrders = data.reduce((s, d) => s + d.count, 0)
 
@@ -27,13 +28,17 @@ export function ExpiredAgeChart({ data, isLoading }: Props) {
               <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
                 Apartados Vencidos por Antigüedad
               </CardTitle>
-              <p className="text-xs text-muted-foreground">Distribución temporal de apartados vencidos (+90 días sin liquidar)</p>
+              <p className="text-xs text-muted-foreground">Distribución temporal de apartados vencidos (+30 días sin liquidar)</p>
             </div>
           </div>
           {totalExpiredOrders > 0 && (
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-              ${totalExpiredAmount.toLocaleString("es-VE", { maximumFractionDigits: 0 })} por cobrar
-            </span>
+            <button
+              onClick={() => onSelectRange?.("all", "Todos los rangos")}
+              className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 transition-colors cursor-pointer font-mono"
+              title="Ver listado completo de apartados vencidos"
+            >
+              ${totalExpiredAmount.toLocaleString("es-VE", { maximumFractionDigits: 0 })} por cobrar ({totalExpiredOrders} apartados) →
+            </button>
           )}
         </div>
       </CardHeader>
@@ -46,8 +51,17 @@ export function ExpiredAgeChart({ data, isLoading }: Props) {
             <span>No hay apartados vencidos pendientes en el sistema</span>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={data} margin={{ top: 16, right: 16, left: -10, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart
+              data={data}
+              margin={{ top: 16, right: 16, left: -10, bottom: 0 }}
+              onClick={(state) => {
+                if (state && state.activePayload && state.activePayload.length > 0) {
+                  const entry = state.activePayload[0].payload as ExpiredLayawayAgeRange
+                  if (entry) onSelectRange?.(entry.range, entry.label)
+                }
+              }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.gridStroke} vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: CHART_THEME.axisTick }} stroke={CHART_THEME.gridStroke} interval={0} />
               <YAxis tick={{ fontSize: 11, fill: CHART_THEME.axisTick }} width={35} stroke={CHART_THEME.gridStroke} />
@@ -60,14 +74,21 @@ export function ExpiredAgeChart({ data, isLoading }: Props) {
                   boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
                   fontSize: 12,
                 }}
-                formatter={(v: number, n: string) => [
-                  n === "count" ? `${v} apartados` : `$${Number(v).toLocaleString("es-VE", { minimumFractionDigits: 2 })}`,
+                formatter={(v: number, n: string, item: any) => [
+                  n === "count"
+                    ? `${v} apartados ($${item.payload.totalUsd?.toLocaleString("es-VE", { minimumFractionDigits: 2 })}) - Clic para ver`
+                    : `$${Number(v).toLocaleString("es-VE", { minimumFractionDigits: 2 })}`,
                   n === "count" ? "Cantidad" : "Saldo Pendiente"
                 ]}
               />
-              <Bar dataKey="count" radius={[5, 5, 0, 0]} maxBarSize={40}>
-                {data.map((_, i) => (
-                  <Cell key={i} fill={AGING_COLORS[i % AGING_COLORS.length]} />
+              <Bar dataKey="count" radius={[5, 5, 0, 0]} maxBarSize={40} className="cursor-pointer">
+                {data.map((d, i) => (
+                  <Cell
+                    key={i}
+                    fill={AGING_COLORS[i % AGING_COLORS.length]}
+                    className="cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => onSelectRange?.(d.range, d.label)}
+                  />
                 ))}
                 <LabelList
                   dataKey="count"

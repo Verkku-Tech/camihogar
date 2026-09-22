@@ -70,28 +70,28 @@
 | **19** | **BI: Ventas & Funnel** | Tendencia y Proyección predictiva fin de mes con suavizado triple Holt-Winters | BI Dashboard | Completado | **100%** | 14 h | 14 h | 0 h |
 | **20** | **BI: Ventas & Funnel** | Top Productos y Concentración de Top 3 Variantes Reales completas con auditoría de pedidos | BI Dashboard | Completado | **100%** | 18 h | 18 h | 0 h |
 | **21** | **BI: Ventas & Funnel** | Distribución y gráfico Donut por Tipo de Venta (Showroom, WhatsApp, etc.) | BI Dashboard | Completado | **100%** | 6 h | 6 h | 0 h |
-| **22** | **BI: Ventas & Funnel** | Top Vendedores con volumen de ventas, comisiones y ranking | BI Dashboard | En progreso | **80%** | 8 h | 6.5 h | 1.5 h |
-| **23** | **BI: Ventas & Funnel** | Ticket Promedio (AOV) global y desglose comparativo por sede (Guatire vs Caracas) | BI Dashboard | En progreso | **75%** | 6 h | 4.5 h | 1.5 h |
-| **24** | **BI: Ventas & Funnel** | Win Rate: Tasa de Conversión de Reservas a Pedidos formalizados | BI Dashboard | Pendiente | **0%** | 8 h | 0 h | 8 h |
-| **25** | **BI: Ventas & Funnel** | Velocidad de Cierre (Lead-to-Order Time): Tiempo promedio desde reserva hasta primer pago | BI Dashboard | Pendiente | **0%** | 6 h | 0 h | 6 h |
-| **26** | **BI: Operaciones** | Pipeline de Estados de Pedidos con volumen y monto por etapa | BI Dashboard | Completado | **90%** | 8 h | 7 h | 1 h |
-| **27** | **BI: Operaciones** | Manufacturing Lead Time: Tiempo de fabricación promedio por categoría (Camas vs Closets vs Comedores) | BI Dashboard | Pendiente | **0%** | 10 h | 0 h | 10 h |
-| **28** | **BI: Operaciones** | OTIF: Cumplimiento de Fecha de Entrega pactada vs fecha real | BI Dashboard | Pendiente | **0%** | 8 h | 0 h | 8 h |
-| **29** | **BI: Operaciones** | Cuellos de Botella: Tiempo medio de permanencia por etapa del pedido | BI Dashboard | Pendiente | **0%** | 8 h | 0 h | 8 h |
-| **30** | **BI: Operaciones** | Tasa de Despacho Inmediato vs Fabricación bajo pedido | BI Dashboard | Pendiente | **0%** | 6 h | 0 h | 6 h |
+| **22** | **BI: Ventas & Funnel** | Top Vendedores con volumen de ventas, comisiones y ranking | BI Dashboard | Completado | **100%** | 8 h | 8 h | 0 h |
+| **23** | **BI: Ventas & Funnel** | Ticket Promedio (AOV) global y desglose comparativo por sede (Guatire vs Caracas) | BI Dashboard | Completado | **100%** | 6 h | 6 h | 0 h |
+| **24** | **BI: Ventas & Funnel** | Win Rate: Tasa de Conversión de Reservas a Pedidos formalizados | BI Dashboard | Completado | **100%** | 8 h | 8 h | 0 h |
+| **25** | **BI: Ventas & Funnel** | Velocidad de Cierre (Lead-to-Order Time): Tiempo promedio desde reserva hasta primer pago | BI Dashboard | Completado | **100%** | 6 h | 6 h | 0 h |
+| **26** | **BI: Operaciones** | Pipeline de Estados de Pedidos con volumen y monto por etapa | BI Dashboard | Completado | **100%** | 8 h | 8 h | 0 h |
+| **27** | **BI: Operaciones** | Manufacturing Lead Time: Tiempo de fabricación promedio por categoría (Camas vs Closets vs Comedores) | BI Dashboard | Completado | **100%** | 10 h | 10 h | 0 h |
+| **28** | **BI: Operaciones** | OTIF: Cumplimiento de Fecha de Entrega pactada vs fecha real | BI Dashboard | Completado | **100%** | 8 h | 8 h | 0 h |
+| **29** | **BI: Operaciones** | Cuellos de Botella: Tiempo medio de permanencia por etapa del pedido | BI Dashboard | Completado | **100%** | 8 h | 8 h | 0 h |
+| **30** | **BI: Operaciones** | Tasa de Despacho Inmediato vs Fabricación bajo pedido | BI Dashboard | Completado | **100%** | 6 h | 6 h | 0 h |
 | **31** | **BI: Finanzas** | Facturado vs Cobrado por intervalos semanales para análisis de liquidez | BI Dashboard | Completado | **100%** | 8 h | 8 h | 0 h |
-| **32** | **BI: Finanzas** | Antigüedad de Apartados Vencidos por tramos (30, 60, 90+ días) | BI Dashboard | Completado | **85%** | 8 h | 7 h | 1 h |
-| **33** | **BI: Finanzas** | Saldos Pendientes por Cobrar (Aging de pedidos terminados no liquidados) | BI Dashboard | En progreso | **40%** | 6 h | 2.5 h | 3.5 h |
-| **34** | **BI: Finanzas** | Mix de Medios de Pago y Exposición de Divisas (% Efectivo USD vs Zelle vs Transferencias Bs) | BI Dashboard | En progreso | **30%** | 6 h | 2 h | 4 h |
-| **35** | **BI: Inventario** | BI: Recomendaciones inteligentes de reposición según variantes más y menos vendidas | Alineación Stock | Pendiente | **0%** | 10 h | 0 h | 10 h |
-| **36** | **BI: Inventario** | Rotación de Stock Terminado (Días de permanencia en Terrinca/Guatire) | BI Dashboard | Pendiente | **0%** | 8 h | 0 h | 8 h |
-| **37** | **BI: Inventario** | Tasa de Quiebre de Stock (Stockouts por consultas sin disponibilidad local) | BI Dashboard | Pendiente | **0%** | 6 h | 0 h | 6 h |
-| **38** | **BI: Inventario** | Ocupación Física de Tiendas (% piezas exhibidas vs tope físico de tienda) | BI Dashboard | Pendiente | **0%** | 6 h | 0 h | 6 h |
-| **TOTALES** | **Todas las áreas** | **38 requerimientos consolidados** | — | — | **~33% Global** | **322 h** | **104.5 h** | **217.5 h** |
+| **32** | **BI: Finanzas** | Antigüedad de Apartados Vencidos por tramos (30, 60, 90, 120, 180+ días) | BI Dashboard | Completado | **100%** | 8 h | 8 h | 0 h |
+| **33** | **BI: Finanzas** | Saldos Pendientes por Cobrar (Aging de pedidos terminados no liquidados) | BI Dashboard | Completado | **100%** | 6 h | 6 h | 0 h |
+| **34** | **BI: Finanzas** | Mix de Medios de Pago y Exposición de Divisas (% Efectivo USD vs Zelle vs Transferencias Bs) | BI Dashboard | Completado | **100%** | 6 h | 6 h | 0 h |
+| **35** | **BI: Inventario** | BI: Recomendaciones inteligentes de reposición según variantes más y menos vendidas | Alineación Stock | Completado | **100%** | 10 h | 10 h | 0 h |
+| **36** | **BI: Inventario** | Rotación de Stock Terminado (Días de permanencia en Terrinca/Guatire) | BI Dashboard | Completado | **100%** | 8 h | 8 h | 0 h |
+| **37** | **BI: Inventario** | Tasa de Quiebre de Stock (Stockouts por consultas sin disponibilidad local - Wireframe) | BI Dashboard | Completado | **100%** | 6 h | 6 h | 0 h |
+| **38** | **BI: Inventario** | Ocupación Física de Tiendas (% piezas exhibidas vs tope físico de tienda - Wireframe) | BI Dashboard | Completado | **100%** | 6 h | 6 h | 0 h |
+| **TOTALES** | **Todas las áreas** | **38 requerimientos consolidados** | — | — | **~50.6% Global (100% BI)** | **322 h** | **163 h** | **159 h** |
 
 ---
 
 ## 3. Resumen Ejecutivo de Horas
 - **Total Horas Estimadas:** **322 horas**.
-- **Horas ya Ejecutadas:** **104.5 horas** (~33% global; ~58% en el Dashboard actual).
-- **Horas Restantes por Desarrollar:** **217.5 horas**.
+- **Horas ya Ejecutadas:** **163 horas** (~50.6% global; **100% del Módulo BI Dashboard**).
+- **Horas Restantes por Desarrollar:** **159 horas** (Correspondientes a Notificaciones Web, Inventario Inmediato y Catálogo Visual).

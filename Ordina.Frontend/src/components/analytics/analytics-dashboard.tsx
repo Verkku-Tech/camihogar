@@ -31,6 +31,19 @@ import {
   type PipelineSnapshot,
   type ExpiredLayawayAgeRange,
   type SalesForecastResponse,
+  type AovByBranch,
+  type AgingReport,
+  type PaymentMix,
+  type ManufacturingLeadTime,
+  type OtifMetrics,
+  type StageDwellTime,
+  type FulfillmentRatio,
+  type ConversionRate,
+  type ClosingVelocity,
+  type ReplenishmentSuggestion,
+  type StockTurnover,
+  type StockoutRate,
+  type StoreOccupancy,
 } from "@/lib/api-client"
 import { Skeleton as BoneyardSkeleton } from "boneyard-js/react"
 import { TrendChart } from "./trend-chart"
@@ -40,6 +53,13 @@ import { PipelineChart } from "./pipeline-chart"
 import { TopSellersChart } from "./top-sellers-chart"
 import { ExpiredAgeChart } from "./expired-age-chart"
 import { TopProductsTable } from "./top-products-table"
+import { PaymentMixDonut } from "./payment-mix-donut"
+import { UnliquidatedAgingChart } from "./unliquidated-aging-chart"
+import { AgingOrdersModal } from "./aging-orders-modal"
+import { KpiDrillDownModal, type KpiDrillDownType } from "./kpi-drilldown-modal"
+import { OperationsMetricsCard } from "./operations-metrics-card"
+import { FunnelMetricsCard } from "./funnel-metrics-card"
+import { InventoryIntelligenceCard } from "./inventory-intelligence-card"
 import {
   TrendChartSkeleton,
   SaleTypeDonutSkeleton,
@@ -48,6 +68,11 @@ import {
   TopSellersSkeleton,
   ExpiredAgeSkeleton,
   TopProductsTableSkeleton,
+  OperationsMetricsSkeleton,
+  FunnelMetricsSkeleton,
+  PaymentMixDonutSkeleton,
+  UnliquidatedAgingSkeleton,
+  InventoryIntelligenceSkeleton,
 } from "./chart-skeletons"
 
 function KpiCardSkeleton({ accentClass }: { accentClass: string }) {
@@ -98,6 +123,50 @@ export function AnalyticsDashboard() {
   const [pipelineData, setPipelineData] = useState<PipelineSnapshot | null>(null)
   const [expiredAging, setExpiredAging] = useState<ExpiredLayawayAgeRange[]>([])
 
+  // BI Data states
+  const [aovBranches, setAovBranches] = useState<AovByBranch[]>([])
+  const [agingUnliquidated, setAgingUnliquidated] = useState<AgingReport[]>([])
+  const [paymentMix, setPaymentMix] = useState<PaymentMix[]>([])
+  const [leadTimes, setLeadTimes] = useState<ManufacturingLeadTime[]>([])
+  const [otif, setOtif] = useState<OtifMetrics | null>(null)
+  const [stageDwellTimes, setStageDwellTimes] = useState<StageDwellTime[]>([])
+  const [fulfillment, setFulfillment] = useState<FulfillmentRatio | null>(null)
+  const [conversion, setConversion] = useState<ConversionRate | null>(null)
+  const [velocity, setVelocity] = useState<ClosingVelocity | null>(null)
+  const [suggestions, setSuggestions] = useState<ReplenishmentSuggestion[]>([])
+  const [turnover, setStockTurnover] = useState<StockTurnover | null>(null)
+  const [stockouts, setStockouts] = useState<StockoutRate | null>(null)
+  const [occupancy, setOccupancy] = useState<StoreOccupancy[]>([])
+
+  // Modal drill-down state
+  const [agingModalOpen, setAgingModalOpen] = useState(false)
+  const [agingModalType, setAgingModalType] = useState<"unliquidated" | "expired_layaways">("unliquidated")
+  const [agingModalRange, setAgingModalRange] = useState<string | null>(null)
+  const [agingModalTitle, setAgingModalTitle] = useState<string>("")
+
+  const handleOpenUnliquidatedModal = (range: string, label: string) => {
+    setAgingModalType("unliquidated")
+    setAgingModalRange(range)
+    setAgingModalTitle(range === "all" ? "Saldos Pendientes por Cobrar (Todos)" : `Saldos Pendientes (${label})`)
+    setAgingModalOpen(true)
+  }
+
+  const handleOpenExpiredLayawaysModal = (range: string, label: string) => {
+    setAgingModalType("expired_layaways")
+    setAgingModalRange(range)
+    setAgingModalTitle(range === "all" ? "Apartados Vencidos (Todos)" : `Apartados Vencidos (${label})`)
+    setAgingModalOpen(true)
+  }
+
+  // Top KPI Drill-down modal state
+  const [kpiModalOpen, setKpiModalOpen] = useState(false)
+  const [kpiModalType, setKpiModalType] = useState<KpiDrillDownType>("orders")
+
+  const handleOpenKpiModal = (kpiType: KpiDrillDownType) => {
+    setKpiModalType(kpiType)
+    setKpiModalOpen(true)
+  }
+
   const loadData = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true)
     try {
@@ -111,6 +180,19 @@ export function AnalyticsDashboard() {
         topProductsRes,
         pipelineRes,
         expiredAgingRes,
+        aovBranchesRes,
+        agingUnliquidatedRes,
+        paymentMixRes,
+        leadTimesRes,
+        otifRes,
+        dwellTimesRes,
+        fulfillmentRes,
+        conversionRes,
+        velocityRes,
+        suggestionsRes,
+        turnoverRes,
+        stockoutsRes,
+        occupancyRes,
       ] = await Promise.allSettled([
         apiClient.getDashboardMetrics(period, signal),
         apiClient.getSalesTrend(trendDays, signal),
@@ -120,6 +202,19 @@ export function AnalyticsDashboard() {
         apiClient.getTopProducts(period, 10, signal),
         apiClient.getPipelineSnapshot(signal),
         apiClient.getExpiredLayawaysByAge(signal),
+        apiClient.getAovByBranch(period, signal),
+        apiClient.getAgingUnliquidated(signal),
+        apiClient.getPaymentMix(period, signal),
+        apiClient.getManufacturingLeadTime(period, signal),
+        apiClient.getOtif(period, signal),
+        apiClient.getStageDwellTimes(signal),
+        apiClient.getFulfillmentRatio(period, signal),
+        apiClient.getConversionRate(period, signal),
+        apiClient.getClosingVelocity(period, signal),
+        apiClient.getReplenishmentSuggestions(signal),
+        apiClient.getStockTurnover(signal),
+        apiClient.getStockoutRate(signal),
+        apiClient.getStoreOccupancy(signal),
       ])
 
       // ponytail: if aborted by StrictMode cleanup or period change, do not overwrite state or clear loading
@@ -133,6 +228,19 @@ export function AnalyticsDashboard() {
       if (topProductsRes.status === "fulfilled") setTopProducts(topProductsRes.value)
       if (pipelineRes.status === "fulfilled") setPipelineData(pipelineRes.value)
       if (expiredAgingRes.status === "fulfilled") setExpiredAging(expiredAgingRes.value)
+      if (aovBranchesRes.status === "fulfilled") setAovBranches(aovBranchesRes.value)
+      if (agingUnliquidatedRes.status === "fulfilled") setAgingUnliquidated(agingUnliquidatedRes.value)
+      if (paymentMixRes.status === "fulfilled") setPaymentMix(paymentMixRes.value)
+      if (leadTimesRes.status === "fulfilled") setLeadTimes(leadTimesRes.value)
+      if (otifRes.status === "fulfilled") setOtif(otifRes.value)
+      if (dwellTimesRes.status === "fulfilled") setStageDwellTimes(dwellTimesRes.value)
+      if (fulfillmentRes.status === "fulfilled") setFulfillment(fulfillmentRes.value)
+      if (conversionRes.status === "fulfilled") setConversion(conversionRes.value)
+      if (velocityRes.status === "fulfilled") setVelocity(velocityRes.value)
+      if (suggestionsRes.status === "fulfilled") setSuggestions(suggestionsRes.value)
+      if (turnoverRes.status === "fulfilled") setStockTurnover(turnoverRes.value)
+      if (stockoutsRes.status === "fulfilled") setStockouts(stockoutsRes.value)
+      if (occupancyRes.status === "fulfilled") setOccupancy(occupancyRes.value)
     } catch {
       // Handled by allSettled
     } finally {
@@ -266,13 +374,17 @@ export function AnalyticsDashboard() {
               name="kpi-orders"
               fallback={<KpiCardSkeleton accentClass="bg-amber-500" />}
             >
-              <Card className="h-full flex flex-col justify-between border-border/70 hover:border-amber-500/40 hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 shadow-sm overflow-hidden relative">
+              <Card
+                onClick={() => handleOpenKpiModal("orders")}
+                className="h-full flex flex-col justify-between border-border/70 hover:border-amber-500/60 hover:-translate-y-0.5 hover:shadow-md hover:scale-[1.01] transition-all duration-200 shadow-sm overflow-hidden relative cursor-pointer group"
+                title="Clic para ver detalle de pedidos"
+              >
                 <div className="h-1 w-full bg-amber-500 absolute top-0 left-0" />
                 <CardContent className="p-4 pt-4 flex-1 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between text-muted-foreground mb-1.5">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90">Pedidos</span>
-                      <div className="w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-amber-500">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90 group-hover:text-amber-600 transition-colors">Pedidos</span>
+                      <div className="w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-amber-500 group-hover:bg-amber-500/20 transition-colors">
                         <ShoppingCart className="w-3.5 h-3.5" />
                       </div>
                     </div>
@@ -281,7 +393,10 @@ export function AnalyticsDashboard() {
                     </div>
                   </div>
                   <div className="mt-2 min-h-[34px] flex flex-col justify-end">
-                    <p className="text-[11px] text-muted-foreground">Órdenes generadas</p>
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Órdenes generadas</span>
+                      <span className="text-[10px] text-amber-600 font-medium group-hover:translate-x-0.5 transition-transform">Ver lista →</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -294,13 +409,17 @@ export function AnalyticsDashboard() {
               name="kpi-invoiced"
               fallback={<KpiCardSkeleton accentClass="bg-emerald-500" />}
             >
-              <Card className="h-full flex flex-col justify-between border-border/70 hover:border-emerald-500/40 hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 shadow-sm overflow-hidden relative">
+              <Card
+                onClick={() => handleOpenKpiModal("invoiced")}
+                className="h-full flex flex-col justify-between border-border/70 hover:border-emerald-500/60 hover:-translate-y-0.5 hover:shadow-md hover:scale-[1.01] transition-all duration-200 shadow-sm overflow-hidden relative cursor-pointer group"
+                title="Clic para ver detalle de facturación"
+              >
                 <div className="h-1 w-full bg-emerald-500 absolute top-0 left-0" />
                 <CardContent className="p-4 pt-4 flex-1 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between text-muted-foreground mb-1.5">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90">Facturado</span>
-                      <div className="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90 group-hover:text-emerald-600 transition-colors">Facturado</span>
+                      <div className="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-500/20 transition-colors">
                         <DollarSign className="w-3.5 h-3.5" />
                       </div>
                     </div>
@@ -309,7 +428,10 @@ export function AnalyticsDashboard() {
                     </div>
                   </div>
                   <div className="mt-2 min-h-[34px] flex flex-col justify-end">
-                    <p className="text-[11px] text-muted-foreground">Venta bruta del período</p>
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Venta bruta del período</span>
+                      <span className="text-[10px] text-emerald-600 font-medium group-hover:translate-x-0.5 transition-transform">Ver pedidos →</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -322,13 +444,17 @@ export function AnalyticsDashboard() {
               name="kpi-collected"
               fallback={<KpiCardSkeleton accentClass="bg-blue-500" />}
             >
-              <Card className="h-full flex flex-col justify-between border-border/70 hover:border-blue-500/40 hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 shadow-sm overflow-hidden relative">
+              <Card
+                onClick={() => handleOpenKpiModal("collected")}
+                className="h-full flex flex-col justify-between border-border/70 hover:border-blue-500/60 hover:-translate-y-0.5 hover:shadow-md hover:scale-[1.01] transition-all duration-200 shadow-sm overflow-hidden relative cursor-pointer group"
+                title="Clic para ver abonos cobrados (ventas actuales vs cartera anterior)"
+              >
                 <div className="h-1 w-full bg-blue-500 absolute top-0 left-0" />
                 <CardContent className="p-4 pt-4 flex-1 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between text-muted-foreground mb-1.5">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90">Cobrado</span>
-                      <div className="w-6 h-6 rounded-md bg-blue-500/10 flex items-center justify-center text-blue-500">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90 group-hover:text-blue-600 transition-colors">Cobrado</span>
+                      <div className="w-6 h-6 rounded-md bg-blue-500/10 flex items-center justify-center text-blue-500 group-hover:bg-blue-500/20 transition-colors">
                         <Receipt className="w-3.5 h-3.5" />
                       </div>
                     </div>
@@ -337,7 +463,10 @@ export function AnalyticsDashboard() {
                     </div>
                   </div>
                   <div className="mt-2 min-h-[34px] flex flex-col justify-end">
-                    <p className="text-[11px] text-muted-foreground">Recaudo real efectivo/banco</p>
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Recaudo real efectivo/banco</span>
+                      <span className="text-[10px] text-blue-600 font-medium group-hover:translate-x-0.5 transition-transform">Ver 2 listas →</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -350,13 +479,17 @@ export function AnalyticsDashboard() {
               name="kpi-collection-rate"
               fallback={<KpiCardSkeleton accentClass="bg-emerald-500" />}
             >
-              <Card className="h-full flex flex-col justify-between border-border/70 hover:border-emerald-500/40 hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 shadow-sm overflow-hidden relative">
+              <Card
+                onClick={() => handleOpenKpiModal("collection_rate")}
+                className="h-full flex flex-col justify-between border-border/70 hover:border-emerald-500/60 hover:-translate-y-0.5 hover:shadow-md hover:scale-[1.01] transition-all duration-200 shadow-sm overflow-hidden relative cursor-pointer group"
+                title="Clic para ver desglose de cobranza (ventas actuales vs cartera anterior)"
+              >
                 <div className="h-1 w-full bg-emerald-500 absolute top-0 left-0" />
                 <CardContent className="p-4 pt-4 flex-1 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between text-muted-foreground mb-1.5">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90">% Cobranza</span>
-                      <div className="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90 group-hover:text-emerald-600 transition-colors">% Cobranza</span>
+                      <div className="w-6 h-6 rounded-md bg-emerald-500/10 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-500/20 transition-colors">
                         <Percent className="w-3.5 h-3.5" />
                       </div>
                     </div>
@@ -371,12 +504,16 @@ export function AnalyticsDashboard() {
                         style={{ width: `${Math.min(Number(collectionRate), 100)}%` }}
                       />
                     </div>
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground mt-1">
+                      <span>Eficiencia cobro</span>
+                      <span className="text-emerald-600 font-medium group-hover:translate-x-0.5 transition-transform">Ver abonos →</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
             </BoneyardSkeleton>
 
-            {/* Ticket Promedio */}
+            {/* Ticket Promedio (AOV) */}
             <BoneyardSkeleton
               className="h-full flex flex-col"
               loading={isLoading}
@@ -388,7 +525,7 @@ export function AnalyticsDashboard() {
                 <CardContent className="p-4 pt-4 flex-1 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between text-muted-foreground mb-1.5">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90">Ticket Prom.</span>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90">Ticket Prom. (AOV)</span>
                       <div className="w-6 h-6 rounded-md bg-indigo-500/10 flex items-center justify-center text-indigo-500">
                         <TrendingUp className="w-3.5 h-3.5" />
                       </div>
@@ -398,7 +535,20 @@ export function AnalyticsDashboard() {
                     </div>
                   </div>
                   <div className="mt-2 min-h-[34px] flex flex-col justify-end">
-                    <p className="text-[11px] text-muted-foreground">Promedio por orden</p>
+                    {aovBranches.length > 0 ? (
+                      <div className="flex flex-wrap gap-1 items-center">
+                        {aovBranches.slice(0, 2).map((b) => (
+                          <span
+                            key={b.branchId || b.branchName}
+                            className="inline-flex items-center text-[10px] bg-muted/60 px-1.5 py-0.5 rounded border border-border/40 font-mono text-muted-foreground"
+                          >
+                            <strong className="text-foreground mr-1">{b.branchName.replace("Sede ", "")}:</strong> ${b.averageOrderValue.toFixed(0)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">Promedio por orden</p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -411,13 +561,17 @@ export function AnalyticsDashboard() {
               name="kpi-active-layaways"
               fallback={<KpiCardSkeleton accentClass="bg-cyan-500" />}
             >
-              <Card className="h-full flex flex-col justify-between border-border/70 hover:border-cyan-500/40 hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 shadow-sm overflow-hidden relative">
+              <Card
+                onClick={() => handleOpenKpiModal("active_layaways")}
+                className="h-full flex flex-col justify-between border-border/70 hover:border-cyan-500/60 hover:-translate-y-0.5 hover:shadow-md hover:scale-[1.01] transition-all duration-200 shadow-sm overflow-hidden relative cursor-pointer group"
+                title="Clic para ver listado de apartados activos (< 90 días)"
+              >
                 <div className="h-1 w-full bg-cyan-500 absolute top-0 left-0" />
                 <CardContent className="p-4 pt-4 flex-1 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between text-muted-foreground mb-1.5">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90">SA Activos</span>
-                      <div className="w-6 h-6 rounded-md bg-cyan-500/10 flex items-center justify-center text-cyan-500">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90 group-hover:text-cyan-600 transition-colors">SA Activos</span>
+                      <div className="w-6 h-6 rounded-md bg-cyan-500/10 flex items-center justify-center text-cyan-500 group-hover:bg-cyan-500/20 transition-colors">
                         <Clock className="w-3.5 h-3.5" />
                       </div>
                     </div>
@@ -426,7 +580,10 @@ export function AnalyticsDashboard() {
                     </div>
                   </div>
                   <div className="mt-2 min-h-[34px] flex flex-col justify-end">
-                    <p className="text-[11px] text-muted-foreground font-medium">{activeLayawaysCount} apartados vigentes</p>
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span className="font-medium">{activeLayawaysCount} apartados vigentes</span>
+                      <span className="text-[10px] text-cyan-600 font-medium group-hover:translate-x-0.5 transition-transform">Ver lista →</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -439,13 +596,17 @@ export function AnalyticsDashboard() {
               name="kpi-expired-layaways"
               fallback={<KpiCardSkeleton accentClass="bg-rose-500" />}
             >
-              <Card className="h-full flex flex-col justify-between border-rose-500/30 bg-rose-500/[0.02] hover:border-rose-500/60 hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 shadow-sm overflow-hidden relative">
+              <Card
+                onClick={() => handleOpenKpiModal("expired_layaways")}
+                className="h-full flex flex-col justify-between border-rose-500/30 bg-rose-500/[0.02] hover:border-rose-500/80 hover:-translate-y-0.5 hover:shadow-md hover:scale-[1.01] transition-all duration-200 shadow-sm overflow-hidden relative cursor-pointer group"
+                title="Clic para ver listado de apartados vencidos (+90 días)"
+              >
                 <div className="h-1 w-full bg-rose-500 absolute top-0 left-0" />
                 <CardContent className="p-4 pt-4 flex-1 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between text-rose-500 mb-1.5">
-                      <span className="text-[11px] font-bold uppercase tracking-wider">SA Vencidos</span>
-                      <div className="w-6 h-6 rounded-md bg-rose-500/10 flex items-center justify-center text-rose-500">
+                      <span className="text-[11px] font-bold uppercase tracking-wider group-hover:text-rose-600 transition-colors">SA Vencidos</span>
+                      <div className="w-6 h-6 rounded-md bg-rose-500/10 flex items-center justify-center text-rose-500 group-hover:bg-rose-500/20 transition-colors">
                         <AlertTriangle className="w-3.5 h-3.5" />
                       </div>
                     </div>
@@ -454,11 +615,14 @@ export function AnalyticsDashboard() {
                     </div>
                   </div>
                   <div className="mt-2 min-h-[34px] flex flex-col justify-end">
-                    <div className="flex items-center gap-1.5">
-                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 font-mono font-bold">
-                        {expiredLayawaysCount} pedidos
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground">Excl. reservas</span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 font-mono font-bold">
+                          {expiredLayawaysCount} pedidos
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground">Excl. reservas</span>
+                      </div>
+                      <span className="text-[10px] text-rose-600 font-medium group-hover:translate-x-0.5 transition-transform">Ver lista →</span>
                     </div>
                   </div>
                 </CardContent>
@@ -469,16 +633,20 @@ export function AnalyticsDashboard() {
             <BoneyardSkeleton
               className="h-full flex flex-col"
               loading={isLoading}
-              name="kpi-collected"
+              name="kpi-cashea"
               fallback={<KpiCardSkeleton accentClass="bg-yellow-500" />}
             >
-              <Card className="h-full flex flex-col justify-between border-border/70 hover:border-yellow-500/40 hover:-translate-y-0.5 hover:shadow-md transition-all duration-300 shadow-sm overflow-hidden relative">
+              <Card
+                onClick={() => handleOpenKpiModal("cashea")}
+                className="h-full flex flex-col justify-between border-border/70 hover:border-yellow-500/60 hover:-translate-y-0.5 hover:shadow-md hover:scale-[1.01] transition-all duration-200 shadow-sm overflow-hidden relative cursor-pointer group"
+                title="Clic para ver detalle de pedidos Cashea"
+              >
                 <div className="h-1 w-full bg-yellow-500 absolute top-0 left-0" />
                 <CardContent className="p-4 pt-4 flex-1 flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between text-muted-foreground mb-1.5">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90">Cashea</span>
-                      <div className="w-6 h-6 rounded-md bg-yellow-500/10 flex items-center justify-center text-yellow-500">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/90 group-hover:text-yellow-600 transition-colors">Cashea</span>
+                      <div className="w-6 h-6 rounded-md bg-yellow-500/10 flex items-center justify-center text-yellow-500 group-hover:bg-yellow-500/20 transition-colors">
                         <Receipt className="w-3.5 h-3.5" />
                       </div>
                     </div>
@@ -487,7 +655,10 @@ export function AnalyticsDashboard() {
                     </div>
                   </div>
                   <div className="mt-2 min-h-[34px] flex flex-col justify-end">
-                    <p className="text-[11px] text-muted-foreground">Financiado con cashea</p>
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Financiado con cashea</span>
+                      <span className="text-[10px] text-yellow-600 font-medium group-hover:translate-x-0.5 transition-transform">Ver detalle →</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -517,7 +688,7 @@ export function AnalyticsDashboard() {
             </div>
           </div>
 
-          {/* Charts Row 2: Invoiced vs Collected & Production Pipeline */}
+          {/* Charts Row 2: Invoiced vs Collected & Payment Mix */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
             <div className="h-full flex flex-col">
               {isLoading ? (
@@ -528,14 +699,64 @@ export function AnalyticsDashboard() {
             </div>
             <div className="h-full flex flex-col">
               {isLoading ? (
+                <PaymentMixDonutSkeleton />
+              ) : (
+                <PaymentMixDonut data={paymentMix} isLoading={isLoading} />
+              )}
+            </div>
+          </div>
+
+          {/* Charts Row 3: Aging Unliquidated & Expired Layaways Aging */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+            <div className="h-full flex flex-col">
+              {isLoading ? (
+                <UnliquidatedAgingSkeleton />
+              ) : (
+                <UnliquidatedAgingChart
+                  data={agingUnliquidated}
+                  isLoading={isLoading}
+                  onSelectRange={handleOpenUnliquidatedModal}
+                />
+              )}
+            </div>
+            <div className="h-full flex flex-col">
+              {isLoading ? (
+                <ExpiredAgeSkeleton />
+              ) : (
+                <ExpiredAgeChart
+                  data={expiredAging}
+                  isLoading={isLoading}
+                  onSelectRange={handleOpenExpiredLayawaysModal}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Charts Row 4: Production Pipeline & Operations Lead Time / OTIF */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+            <div className="h-full flex flex-col">
+              {isLoading ? (
                 <PipelineChartSkeleton />
               ) : (
                 <PipelineChart data={pipelineData} isLoading={isLoading} />
               )}
             </div>
+            <div className="h-full flex flex-col">
+              {isLoading ? (
+                <OperationsMetricsSkeleton />
+              ) : (
+                <OperationsMetricsCard
+                  leadTimes={leadTimes}
+                  otif={otif}
+                  dwellTimes={stageDwellTimes}
+                  fulfillment={fulfillment}
+                  isLoading={isLoading}
+                />
+              )}
+            </div>
           </div>
 
-          {/* Charts Row 3: Top Sellers & Expired Layaway Aging */}
+          {/* Charts Row 5: Top Sellers & Commercial Funnel */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
             <div className="h-full flex flex-col">
               {isLoading ? (
@@ -546,14 +767,33 @@ export function AnalyticsDashboard() {
             </div>
             <div className="h-full flex flex-col">
               {isLoading ? (
-                <ExpiredAgeSkeleton />
+                <FunnelMetricsSkeleton />
               ) : (
-                <ExpiredAgeChart data={expiredAging} isLoading={isLoading} />
+                <FunnelMetricsCard
+                  conversion={conversion}
+                  velocity={velocity}
+                  isLoading={isLoading}
+                />
               )}
             </div>
           </div>
 
-          {/* Top Products Table */}
+          {/* Charts Row 6: Inventory Intelligence & Replenishment Suggestions */}
+          <div>
+            {isLoading ? (
+              <InventoryIntelligenceSkeleton />
+            ) : (
+              <InventoryIntelligenceCard
+                suggestions={suggestions}
+                turnover={turnover}
+                stockouts={stockouts}
+                occupancy={occupancy}
+                isLoading={isLoading}
+              />
+            )}
+          </div>
+
+          {/* Charts Row 7: Top Products Table */}
           <div>
             {isLoading ? (
               <TopProductsTableSkeleton />
@@ -564,6 +804,23 @@ export function AnalyticsDashboard() {
         </div>
       </main>
       </div>
+
+      {/* Drill-down modal for Aging and Expired Layaway Orders */}
+      <AgingOrdersModal
+        open={agingModalOpen}
+        onOpenChange={setAgingModalOpen}
+        type={agingModalType}
+        initialRange={agingModalRange}
+        title={agingModalTitle}
+      />
+
+      {/* Drill-down modal for Top 7 KPIs */}
+      <KpiDrillDownModal
+        open={kpiModalOpen}
+        onOpenChange={setKpiModalOpen}
+        type={kpiModalType}
+        period={period}
+      />
     </div>
   )
 }

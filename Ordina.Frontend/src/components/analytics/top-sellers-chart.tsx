@@ -36,10 +36,11 @@ export function TopSellersChart({ data, isLoading }: Props) {
     name: formatVendorName(s.vendorName, idx),
     total: s.totalUsd,
     orders: s.ordersCount,
+    commission: s.estimatedCommissionUsd ?? 0,
     rank: idx + 1,
   }))
 
-  const chartHeight = Math.max(280, chartData.length * 32)
+  const chartHeight = Math.max(280, Math.min(chartData.length * 30, 300))
 
   return (
     <Card className="h-full flex-1 flex flex-col justify-between border-border/70 shadow-sm hover:shadow-md transition-shadow duration-300">
@@ -50,9 +51,9 @@ export function TopSellersChart({ data, isLoading }: Props) {
           </div>
           <div>
             <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
-              Ranking de Vendedores
+              Ranking de Vendedores y Comisiones
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Volumen total facturado y cantidad de pedidos cerrados</p>
+            <p className="text-xs text-muted-foreground">Volumen facturado, pedidos y comisiones estimadas</p>
           </div>
         </div>
       </CardHeader>
@@ -97,11 +98,9 @@ export function TopSellersChart({ data, isLoading }: Props) {
                   boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
                   fontSize: 12,
                 }}
-                formatter={(v: number, n: string) => [
-                  n === "total"
-                    ? `$${Number(v).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                    : `${v} órdenes`,
-                  n === "total" ? "Facturado" : "Pedidos"
+                formatter={(v: number, n: string, item: any) => [
+                  `$${Number(v).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Comisión: $${(item.payload.commission ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2 })})`,
+                  "Facturado"
                 ]}
               />
               <Bar dataKey="total" radius={[0, 6, 6, 0]} maxBarSize={16}>

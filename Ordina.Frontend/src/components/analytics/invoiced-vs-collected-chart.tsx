@@ -124,7 +124,7 @@ export function InvoicedVsCollectedChart({ data, isLoading }: Props) {
             Sin datos suficientes para calcular semanas
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={250}>
+          <ResponsiveContainer width="100%" height={270}>
             <BarChart data={weekly} margin={{ top: 22, right: 20, left: 10, bottom: 0 }} barGap={6}>
               <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.gridStroke} vertical={false} />
               <XAxis
