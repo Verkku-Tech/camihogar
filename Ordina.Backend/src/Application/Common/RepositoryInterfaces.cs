@@ -66,3 +66,18 @@ public interface IIdempotencyRepository
     Task<IdempotencyRecord?> GetByMutationIdAsync(string mutationId, CancellationToken cancellationToken = default);
     Task SaveAsync(IdempotencyRecord record, CancellationToken cancellationToken = default);
 }
+
+public interface IOrderAuditLogRepository : IRepository<OrderAuditLog>
+{
+    Task<PagedResult<OrderAuditLog>> GetPagedLogsAsync(
+        int page,
+        int pageSize,
+        string? userId = null,
+        string? orderNumber = null,
+        string? action = null,
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        bool sortAscending = false,
+        CancellationToken cancellationToken = default);
+}
+

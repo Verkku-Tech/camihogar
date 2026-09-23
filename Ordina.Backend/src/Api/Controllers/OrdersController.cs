@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MongoDB.Bson;
 using Ordina.Application.Common;
 using Ordina.Application.Orders;
 
@@ -9,7 +10,9 @@ namespace Ordina.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class OrdersController(IOrderCoreService orderService) : ControllerBase
+public class OrdersController(
+    IOrderCoreService orderService,
+    IOrderAuditLogService auditLogService) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<object>> GetPaged(
@@ -68,9 +71,32 @@ public class OrdersController(IOrderCoreService orderService) : ControllerBase
         });
     }
 
+    [HttpGet("audit-logs")]
+    [ProducesResponseType(typeof(PagedAuditLogsResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedAuditLogsResponseDto>> GetAuditLogs(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? userId = null,
+        [FromQuery] string? orderNumber = null,
+        [FromQuery] string? action = null,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
+        [FromQuery] bool sortAscending = false,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await auditLogService.GetPagedLogsAsync(
+            page, pageSize, userId, orderNumber, action, from, to, sortAscending, cancellationToken);
+        return Ok(result);
+    }
+
     [HttpGet("{id}")]
     public async Task<ActionResult<OrderResponseDto>> GetById(string id, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(id) || id.Length != 24 || !ObjectId.TryParse(id, out _))
+        {
+            return NotFound();
+        }
+
         var order = await orderService.GetByIdAsync(id, cancellationToken);
         if (order == null)
         {

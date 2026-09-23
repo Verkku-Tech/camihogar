@@ -63,4 +63,5 @@ public class MongoDbContext
     public IMongoCollection<RefreshToken> RefreshTokens => _database.GetCollection<RefreshToken>("refreshTokens");
     public IMongoCollection<IdempotencyRecord> IdempotencyRecords => _database.GetCollection<IdempotencyRecord>("idempotency_keys");
     public IMongoCollection<AccessPin> AccessPins => _database.GetCollection<AccessPin>("accessPins");
+    public IMongoCollection<OrderAuditLog> OrderAuditLogs => _database.GetCollection<OrderAuditLog>("orderAuditLogs");
 }

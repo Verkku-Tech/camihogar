@@ -29,6 +29,7 @@ public static class ApplicationServiceExtensions
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IOrderCoreService, OrderCoreService>();
+        services.AddScoped<IOrderAuditLogService, OrderAuditLogService>();
         services.AddScoped<IManufacturingService, ManufacturingService>();
         services.AddScoped<IDispatchService, DispatchService>();
         services.AddScoped<IPaymentService, PaymentService>();

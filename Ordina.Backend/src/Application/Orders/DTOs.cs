@@ -201,3 +201,32 @@ public record ConciliatePaymentRequestDto(
     string PaymentType,
     int PaymentIndex,
     bool IsConciliated);
+
+public record AuditChangeDto(
+    string Field,
+    string? OldValue = null,
+    string? NewValue = null,
+    string? DisplayField = null,
+    string? DisplayOldValue = null,
+    string? DisplayNewValue = null,
+    string? ProductName = null,
+    string? Category = null);
+
+public record OrderAuditLogDto(
+    string Id,
+    string OrderId,
+    string OrderNumber,
+    string Action,
+    string UserId,
+    string UserName,
+    string Summary,
+    IReadOnlyList<AuditChangeDto> Changes,
+    DateTime Timestamp);
+
+public record PagedAuditLogsResponseDto(
+    IEnumerable<OrderAuditLogDto> Items,
+    int Page,
+    int PageSize,
+    long TotalCount,
+    int TotalPages);
+

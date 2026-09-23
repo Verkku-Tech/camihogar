@@ -94,6 +94,7 @@ public class DependencyInjectionValidationTests
         Assert.NotNull(sp.GetRequiredService<IMongoClient>());
         Assert.NotNull(sp.GetRequiredService<MongoDbContext>());
         Assert.NotNull(sp.GetRequiredService<IMongoDatabase>());
+        Assert.NotNull(sp.GetRequiredService<IOrderAuditLogRepository>());
 
         // Application Services
         Assert.NotNull(sp.GetRequiredService<IAuthService>());
@@ -101,6 +102,7 @@ public class DependencyInjectionValidationTests
         Assert.NotNull(sp.GetRequiredService<IClientService>());
         Assert.NotNull(sp.GetRequiredService<IProductService>());
         Assert.NotNull(sp.GetRequiredService<IOrderCoreService>());
+        Assert.NotNull(sp.GetRequiredService<IOrderAuditLogService>());
         Assert.NotNull(sp.GetRequiredService<IManufacturingService>());
         Assert.NotNull(sp.GetRequiredService<IDispatchService>());
         Assert.NotNull(sp.GetRequiredService<IPaymentService>());

@@ -82,6 +82,15 @@ public class IndexManager
                     new CreateIndexOptions { ExpireAfter = TimeSpan.FromHours(24) })
             }, cancellationToken);
 
+            // 7. OrderAuditLogs Indexes
+            await _context.OrderAuditLogs.Indexes.CreateManyAsync([
+                new CreateIndexModel<OrderAuditLog>(Builders<OrderAuditLog>.IndexKeys.Descending(x => x.Timestamp)),
+                new CreateIndexModel<OrderAuditLog>(Builders<OrderAuditLog>.IndexKeys.Ascending(x => x.OrderNumber)),
+                new CreateIndexModel<OrderAuditLog>(Builders<OrderAuditLog>.IndexKeys.Ascending(x => x.OrderId)),
+                new CreateIndexModel<OrderAuditLog>(Builders<OrderAuditLog>.IndexKeys.Ascending(x => x.UserId)),
+                new CreateIndexModel<OrderAuditLog>(Builders<OrderAuditLog>.IndexKeys.Ascending(x => x.Action))
+            ], cancellationToken);
+
             _logger.LogInformation("Índices de MongoDB inicializados exitosamente.");
         }
         catch (Exception ex)
