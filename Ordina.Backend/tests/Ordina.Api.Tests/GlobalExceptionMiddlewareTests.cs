@@ -79,4 +79,50 @@ public class GlobalExceptionMiddlewareTests
         // Assert
         Assert.Equal(401, context.Response.StatusCode);
     }
+
+    [Fact]
+    public async Task InvokeAsync_MapsGenericException_To500InternalServerError()
+    {
+        // Arrange
+        RequestDelegate next = (ctx) =>
+            throw new Exception("Unexpected catastrophic failure.");
+
+        var middleware = new GlobalExceptionMiddleware(next, _loggerMock.Object);
+
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        Assert.Equal(500, context.Response.StatusCode);
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var body = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        Assert.Contains("500", body);
+        Assert.Contains("Unexpected catastrophic failure", body);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_MapsClientCancellation_To499ClientClosedRequest()
+    {
+        // Arrange
+        using var cts = new System.Threading.CancellationTokenSource();
+        cts.Cancel(); // Simulate aborted request
+
+        RequestDelegate next = (ctx) =>
+            throw new OperationCanceledException(ctx.RequestAborted);
+
+        var middleware = new GlobalExceptionMiddleware(next, _loggerMock.Object);
+
+        var context = new DefaultHttpContext();
+        context.RequestAborted = cts.Token;
+        context.Response.Body = new MemoryStream();
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        Assert.Equal(499, context.Response.StatusCode);
+    }
 }

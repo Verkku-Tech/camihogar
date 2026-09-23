@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using MongoDB.Bson;
 using MongoDB.Driver;
 using Ordina.Infrastructure;
 using Ordina.Infrastructure.Mongo;
@@ -10,136 +9,131 @@ namespace Ordina.Api.Tests;
 
 public class DatabaseConfigurationAndConnectionTests
 {
-    private readonly IConfiguration _configuration;
-    private readonly string _connectionString;
-    private readonly string _expectedDatabaseName;
+    private readonly string _apiProjectDir;
+    private readonly string _appsettingsPath;
+    private readonly string _appsettingsDevPath;
 
     public DatabaseConfigurationAndConnectionTests()
     {
         var baseDir = AppContext.BaseDirectory;
-        var apiProjectDir = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "src", "Api"));
-        var appsettingsPath = Path.Combine(apiProjectDir, "appsettings.Development.json");
+        var apiDir = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "src", "Api"));
 
-        if (!File.Exists(appsettingsPath))
+        if (!Directory.Exists(apiDir))
         {
             var current = new DirectoryInfo(baseDir);
-            while (current != null && !File.Exists(Path.Combine(current.FullName, "src", "Api", "appsettings.Development.json")))
+            while (current != null && !Directory.Exists(Path.Combine(current.FullName, "src", "Api")))
             {
                 current = current.Parent;
             }
 
             if (current != null)
             {
-                appsettingsPath = Path.Combine(current.FullName, "src", "Api", "appsettings.Development.json");
+                apiDir = Path.Combine(current.FullName, "src", "Api");
             }
         }
 
-        var builder = new ConfigurationBuilder();
-        if (File.Exists(appsettingsPath))
-        {
-            builder.AddJsonFile(appsettingsPath);
-        }
-        else
-        {
-            builder.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:MongoDB"] = "mongodb://localhost:27017/ordina_db",
-                ["Jwt:SecretKey"] = "OrdinaSuperSecretKeyForDevelopmentMustBeAtLeast32CharsLong!"
-            });
-        }
-
-        _configuration = builder.Build();
-        _connectionString = _configuration.GetConnectionString("MongoDB")
-                            ?? _configuration["MongoDb:ConnectionString"]
-                            ?? "mongodb://localhost:27017/ordina_db";
-
-        var url = new MongoUrl(_connectionString);
-        _expectedDatabaseName = !string.IsNullOrWhiteSpace(url.DatabaseName)
-            ? url.DatabaseName
-            : _configuration["ConnectionStrings:DatabaseName"] ?? _configuration["MongoDb:DatabaseName"] ?? _configuration["DatabaseName"] ?? "ordina_db";
+        _apiProjectDir = apiDir;
+        _appsettingsPath = Path.Combine(_apiProjectDir, "appsettings.json");
+        _appsettingsDevPath = Path.Combine(_apiProjectDir, "appsettings.Development.json");
     }
 
     [Fact]
-    public void AppsettingsDevelopment_ContainsMongoDbConnectionString()
+    public void PhysicalConfigurationFiles_MustExist_WithoutFallbacks()
     {
-        // Assert
-        Assert.NotNull(_connectionString);
-        Assert.StartsWith("mongodb://", _connectionString);
-        Assert.NotEmpty(_expectedDatabaseName);
+        Assert.True(File.Exists(_appsettingsPath), $"appsettings.json not found at {_appsettingsPath}");
+        Assert.True(File.Exists(_appsettingsDevPath), $"appsettings.Development.json not found at {_appsettingsDevPath}");
+    }
+
+    [Theory]
+    [InlineData("appsettings.json")]
+    [InlineData("appsettings.Development.json")]
+    public void Appsettings_MustContainValidMongoAndJwtContracts(string fileName)
+    {
+        var filePath = Path.Combine(_apiProjectDir, fileName);
+        var config = new ConfigurationBuilder().AddJsonFile(filePath, optional: false).Build();
+
+        // 1. MongoDB Connection String
+        var connectionString = config.GetConnectionString("MongoDB");
+        Assert.False(string.IsNullOrWhiteSpace(connectionString), $"Missing ConnectionStrings:MongoDB in {fileName}");
+        Assert.True(connectionString!.StartsWith("mongodb://", StringComparison.OrdinalIgnoreCase) || connectionString.StartsWith("mongodb+srv://", StringComparison.OrdinalIgnoreCase),
+            $"Invalid MongoDB connection string scheme in {fileName}: {connectionString}");
+
+        // 2. Database Name
+        var dbName = config["ConnectionStrings:DatabaseName"];
+        Assert.False(string.IsNullOrWhiteSpace(dbName), $"Missing ConnectionStrings:DatabaseName in {fileName}");
+        Assert.Equal("ordina_db", dbName);
+
+        // 3. JWT Security
+        var jwtSecret = config["Jwt:SecretKey"];
+        Assert.False(string.IsNullOrWhiteSpace(jwtSecret), $"Missing Jwt:SecretKey in {fileName}");
+        Assert.True(jwtSecret!.Length >= 32, $"Jwt:SecretKey in {fileName} must be at least 32 characters long for HMAC-SHA256 security.");
+
+        Assert.False(string.IsNullOrWhiteSpace(config["Jwt:Issuer"]), $"Missing Jwt:Issuer in {fileName}");
+        Assert.False(string.IsNullOrWhiteSpace(config["Jwt:Audience"]), $"Missing Jwt:Audience in {fileName}");
+
+        // 4. CORS
+        var corsOrigins = config.GetSection("Cors:AllowedOrigins").Get<string[]>();
+        Assert.NotNull(corsOrigins);
+        Assert.NotEmpty(corsOrigins);
     }
 
     [Fact]
-    public void MongoDbContext_InitializesCorrectDatabaseName_FromConnectionString()
+    public void AddInfrastructure_ThrowsInvalidOperationException_WhenMongoConnectionStringIsMissing()
     {
-        // Arrange
-        var client = new MongoClient(_connectionString);
-
-        // Act
-        var context = new MongoDbContext(client, _configuration);
-
-        // Assert
-        Assert.NotNull(context.Database);
-        Assert.Equal(_expectedDatabaseName, context.Database.DatabaseNamespace.DatabaseName);
-        Assert.NotNull(context.Orders);
-        Assert.NotNull(context.Users);
-        Assert.NotNull(context.Stores);
-        Assert.NotNull(context.Clients);
-    }
-
-    [Fact]
-    public void DependencyInjection_RegistersMongoDbServices_Successfully()
-    {
-        // Arrange
+        // Empty configuration without ConnectionStrings
+        var emptyConfig = new ConfigurationBuilder().Build();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddMemoryCache();
 
-        // Act
-        services.AddInfrastructure(_configuration);
+        // Must throw immediately on AddInfrastructure or when resolving IMongoClient
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            services.AddInfrastructure(emptyConfig);
+            var sp = services.BuildServiceProvider();
+            sp.GetRequiredService<IMongoClient>();
+        });
+    }
+
+    [Fact]
+    public void MongoDbContext_ThrowsInvalidOperationException_WhenDatabaseNameIsMissing()
+    {
+        var client = new MongoClient("mongodb://localhost:27017");
+        var configWithoutDbName = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:MongoDB"] = "mongodb://localhost:27017"
+            })
+            .Build();
+
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            _ = new MongoDbContext(client, configWithoutDbName);
+        });
+    }
+
+    [Fact]
+    public void DependencyInjection_RegistersMongoDbServices_Successfully_WithRealDevSettings()
+    {
+        var config = new ConfigurationBuilder()
+            .AddJsonFile(_appsettingsDevPath, optional: false)
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddMemoryCache();
+
+        services.AddInfrastructure(config);
         var provider = services.BuildServiceProvider();
 
         var client = provider.GetService<IMongoClient>();
         var context = provider.GetService<MongoDbContext>();
+        var database = provider.GetService<IMongoDatabase>();
 
-        // Assert
         Assert.NotNull(client);
         Assert.NotNull(context);
-        Assert.Equal(_expectedDatabaseName, context.Database.DatabaseNamespace.DatabaseName);
-    }
-
-    [Fact]
-    public async Task MongoDb_PingCommand_AttemptsConnectionWithDevelopmentSettings()
-    {
-        // Arrange
-        var settings = MongoClientSettings.FromConnectionString(_connectionString);
-        settings.ServerSelectionTimeout = TimeSpan.FromSeconds(2);
-
-        var client = new MongoClient(settings);
-        var db = client.GetDatabase(_expectedDatabaseName);
-
-        try
-        {
-            // Act: Attempt ping
-            var pingResult = await db.RunCommandAsync((Command<BsonDocument>)"{ping:1}", cancellationToken: TestContext.Current.CancellationToken);
-
-            // Assert: If reachable and authenticated
-            Assert.NotNull(pingResult);
-            Assert.True(pingResult.Contains("ok"));
-        }
-        catch (TimeoutException)
-        {
-            // Validated connection timeout when MongoDB daemon is not currently active
-            Assert.True(true);
-        }
-        catch (MongoAuthenticationException)
-        {
-            // Validated that driver reached the host/port and initiated authentication exchange
-            Assert.True(true);
-        }
-        catch (MongoException)
-        {
-            // Validated that driver reached the host/port
-            Assert.True(true);
-        }
+        Assert.NotNull(database);
+        Assert.Equal("ordina_db", context.Database.DatabaseNamespace.DatabaseName);
+        Assert.Equal("ordina_db", database.DatabaseNamespace.DatabaseName);
     }
 }

@@ -100,4 +100,59 @@ public class IdempotencyMiddlewareTests
             rec.ResponseStatusCode == 200 &&
             rec.ResponseBody == "{\"status\":\"ok\"}"), It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task InvokeAsync_WhenGetRequest_IgnoresMutationIdAndDoesNotCheckRepo()
+    {
+        // Arrange
+        var nextCalled = false;
+        RequestDelegate next = (ctx) =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        };
+
+        var middleware = new IdempotencyMiddleware(next, _loggerMock.Object);
+
+        var context = new DefaultHttpContext();
+        context.Request.Method = "GET";
+        context.Request.Path = "/api/orders";
+        context.Request.Headers["X-Mutation-Id"] = "some-mutation-id";
+
+        // Act
+        await middleware.InvokeAsync(context, _repoMock.Object);
+
+        // Assert
+        Assert.True(nextCalled);
+        _repoMock.Verify(r => r.GetByMutationIdAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenResponseIs500_DoesNotSaveIdempotencyRecord()
+    {
+        // Arrange
+        var mutationId = "mutation-error-500";
+        _repoMock.Setup(r => r.GetByMutationIdAsync(mutationId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IdempotencyRecord?)null);
+
+        RequestDelegate next = (ctx) =>
+        {
+            ctx.Response.StatusCode = 500;
+            return Task.CompletedTask;
+        };
+
+        var middleware = new IdempotencyMiddleware(next, _loggerMock.Object);
+
+        var context = new DefaultHttpContext();
+        context.Request.Method = "POST";
+        context.Request.Headers["X-Mutation-Id"] = mutationId;
+        context.Response.Body = new MemoryStream();
+
+        // Act
+        await middleware.InvokeAsync(context, _repoMock.Object);
+
+        // Assert
+        Assert.Equal(500, context.Response.StatusCode);
+        _repoMock.Verify(r => r.SaveAsync(It.IsAny<IdempotencyRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

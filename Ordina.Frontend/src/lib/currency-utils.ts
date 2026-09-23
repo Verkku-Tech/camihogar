@@ -260,5 +260,5 @@ export const convertAttributeAdjustmentToBs = async (
 export {
   formatCurrencyWithUsdPrimaryFromOrder,
   formatUsdOnlyFromOrderTotal,
-} from "@/lib/order-currency-display";
+} from "./order-currency-display";
 

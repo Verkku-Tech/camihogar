@@ -33,7 +33,10 @@ public class MongoDbContext
 
         var dbName = !string.IsNullOrWhiteSpace(dbFromUrl)
             ? dbFromUrl
-            : configuration["ConnectionStrings:DatabaseName"];
+            : configuration["ConnectionStrings:DatabaseName"]
+              ?? configuration["MongoDb:DatabaseName"]
+              ?? configuration["DatabaseName"]
+              ?? throw new InvalidOperationException("DatabaseName is not configured in ConnectionStrings:MongoDB or ConnectionStrings:DatabaseName.");
 
         _database = client.GetDatabase(dbName);
     }

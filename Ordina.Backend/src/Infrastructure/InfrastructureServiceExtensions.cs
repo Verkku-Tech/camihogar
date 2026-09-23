@@ -24,6 +24,8 @@ public static class InfrastructureServiceExtensions
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddSingleton(configuration);
+
         // 0. Register Mongo Conventions (Ignore extra elements globally for backward compatibility with production dumps)
         var pack = new MongoDB.Bson.Serialization.Conventions.ConventionPack
         {
@@ -35,7 +37,7 @@ public static class InfrastructureServiceExtensions
         var connectionString = configuration.GetConnectionString("MongoDB")
                                ?? configuration["MongoDb:ConnectionString"]
                                ?? configuration["MongoDB"]
-                               ?? "mongodb://localhost:27017";
+                               ?? throw new InvalidOperationException("ConnectionStrings:MongoDB must be configured.");
 
         services.AddSingleton<IMongoClient>(_ => new MongoClient(connectionString));
         services.AddSingleton(sp => new MongoDbContext(sp.GetRequiredService<IMongoClient>(), configuration));
