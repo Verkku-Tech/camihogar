@@ -406,3 +406,133 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
 export function formatAuditAction(action: string): string {
   return AUDIT_ACTION_LABELS[action] ?? action;
 }
+
+export interface StructuredAuditItem {
+  type: "status" | "payment_add" | "payment_remove" | "field_diff" | "creation_summary";
+  label?: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  paymentText?: string;
+}
+
+export function formatRelativeTime(dateInput: string | Date, now: Date = new Date()): string {
+  const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+  const diffSec = Math.max(0, Math.floor((now.getTime() - d.getTime()) / 1000));
+
+  if (diffSec < 60) return "Hace momentos";
+  if (diffSec < 3600) return `Hace ${Math.floor(diffSec / 60)} min`;
+  const hours = Math.floor(diffSec / 3600);
+  if (hours < 24) return hours === 1 ? "Hace 1 hora" : `Hace ${hours} horas`;
+  const days = Math.floor(diffSec / 86400);
+  if (days < 30) return days === 1 ? "Hace 1 día" : `Hace ${days} días`;
+  return d.toLocaleDateString("es-VE", { day: "numeric", month: "short" });
+}
+
+export function extractStructuredChanges(log: OrderAuditLogDto): StructuredAuditItem[] {
+  const items: StructuredAuditItem[] = [];
+  const changes = log.changes ?? [];
+
+  if (changes.length > 0) {
+    for (const c of changes) {
+      if (c.field === "Status") {
+        items.push({
+          type: "status",
+          label: getDisplayField(c),
+          oldValue: getDisplayOldValue(c),
+          newValue: getDisplayNewValue(c),
+        });
+      } else if (c.field === "mixedPayments[+]" || c.field === "partialPayments[+]") {
+        items.push({
+          type: "payment_add",
+          paymentText: getDisplayNewValue(c),
+        });
+      } else if (c.field === "mixedPayments[-]" || c.field === "partialPayments[-]") {
+        items.push({
+          type: "payment_remove",
+          paymentText: getDisplayOldValue(c),
+        });
+      } else {
+        items.push({
+          type: "field_diff",
+          label: getDisplayField(c),
+          oldValue: getDisplayOldValue(c),
+          newValue: getDisplayNewValue(c),
+        });
+      }
+    }
+    return items;
+  }
+
+  // Fallback to parsing summary if no granular changes are present
+  const summary = log.summary || "";
+  const creationMatch = summary.match(/creación del pedido:\s*(.+)$/i);
+  if (creationMatch) {
+    items.push({
+      type: "creation_summary",
+      paymentText: creationMatch[1].trim(),
+    });
+    return items;
+  }
+
+  if (log.action === "created") {
+    items.push({
+      type: "creation_summary",
+      paymentText: summary.trim(),
+    });
+    return items;
+  }
+
+  const parts = summary.split(/\s*—\s*/);
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith("Agregó pago:")) {
+      items.push({
+        type: "payment_add",
+        paymentText: trimmed.slice("Agregó pago:".length).trim(),
+      });
+    } else if (trimmed.startsWith("Eliminó pago:")) {
+      items.push({
+        type: "payment_remove",
+        paymentText: trimmed.slice("Eliminó pago:".length).trim(),
+      });
+    } else if (trimmed.startsWith("Estado del pedido:")) {
+      const valStr = trimmed.slice("Estado del pedido:".length).trim();
+      const [oldVal, newVal] = valStr.split(/\s*→\s*/);
+      items.push({
+        type: "status",
+        label: "Estado del pedido",
+        oldValue: oldVal?.trim() ?? "",
+        newValue: newVal?.trim() ?? "",
+      });
+    } else if (trimmed.includes(" → ")) {
+      const [left, right] = trimmed.split(/\s*→\s*/);
+      const colonIdx = left.indexOf(":");
+      if (colonIdx > -1) {
+        const label = left.slice(0, colonIdx).replace(/^Actualizó\s*/i, "").trim();
+        const oldVal = left.slice(colonIdx + 1).trim();
+        items.push({
+          type: "field_diff",
+          label,
+          oldValue: oldVal,
+          newValue: right.trim(),
+        });
+      } else {
+        items.push({
+          type: "field_diff",
+          oldValue: left.trim(),
+          newValue: right.trim(),
+        });
+      }
+    }
+  }
+
+  if (items.length === 0 && summary) {
+    items.push({
+      type: "field_diff",
+      newValue: summary,
+    });
+  }
+
+  return items;
+}
+
