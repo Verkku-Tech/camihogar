@@ -22,6 +22,7 @@ Para directrices detalladas por área técnica, consulta los siguientes document
 2. [02-backend-dotnet10.md](file:///.agents/rules/02-backend-dotnet10.md): .NET 10, DTOs inmutables (`record`), `CancellationToken` obligatorio, Singleton de `MongoClient`, Paginación en Servidor y Scopes OpenTelemetry.
 3. [03-frontend-bun-react19.md](file:///.agents/rules/03-frontend-bun-react19.md): Tooling con Bun, TypeScript estricto, 3 Stores de IndexedDB (`tanstack_cache`, `outbox_mutations`, `telemetry_buffer`), Idempotencia `X-Mutation-Id` y Telemetría.
 4. [04-testing-tdd.md](file:///.agents/rules/04-testing-tdd.md): Metodología TDD estricta (Red-Green-Refactor) orientada exclusivamente a flujos de alto valor y condiciones de borde.
+5. [05-infrastructure-and-devops.md](file:///.agents/rules/05-infrastructure-and-devops.md): Topología Cloudflare + Raspberry Pi 5 (Debian 12), Acceso SSH seguro por túnel, Monitoreo (Aspire/DB) y Regla Absoluta de Comandos No Destructivos.
 
 ---
 
@@ -56,6 +57,7 @@ Antes de generar o modificar código en este repositorio, verifica:
 - [ ] **TDD:** ¿Escribiste primero la prueba que valide el flujo real o caso de borde y la viste fallar (RED) antes de implementar?
 - [ ] **Ponytail (Simplicidad Radical):** ¿Estás agregando abstracciones, fábricas o interfaces innecesarias para casos de un solo uso? Si es así, **elimínalas y escribe el código más simple y directo posible**.
 - [ ] **Prohibición de Fallbacks no Solicitados:** Los "fallbacks" no son solución y enmascaran errores de contrato. **NUNCA agregues mecanismos de fallback silenciosos** (como consultar endpoints alternativos, simular datos o enmascarar fallos) a menos que se te indique explícitamente.
+- [ ] **Seguridad en Servidor e Infraestructura:** ¿Vas a interactuar con el servidor (RPi 5)? **PROHIBICIÓN ABSOLUTA de ejecutar comandos destructivos** (`rm -rf`, `docker volume prune`, `dropDatabase`, etc.) sin confirmación previa y explícita del usuario humano.
 
 ---
 
@@ -73,3 +75,38 @@ bun install
 bun test
 bun run build
 ```
+
+---
+
+## 5. Infraestructura, Servidor (RPi 5) y Conexión SSH
+
+* **Cloudflare:** Actúa como WAF, CDN, sirve el Frontend (PWA) y mantiene los túneles VPN Zero Trust hacia el servidor.
+* **Servidor de Producción:**
+  - **Hardware:** Raspberry Pi 5 (16 GB RAM, 64 GB Almacenamiento).
+  - **Sistema Operativo:** Debian 12 (Bookworm, ARM64).
+  - **Contenedores Docker:** Backend (.NET 10 API ReadyToRun ARM64), Base de Datos (MongoDB) y Dashboard de Aspire.
+  - **Gestor de Túnel:** Cloudflare Tunnel administrado localmente en `/etc/cloudflared/config.yaml`.
+
+### Protocolo de Conexión SSH al Servidor:
+1. **Paso 1: Abrir el túnel TCP local de Cloudflared (en máquina de desarrollo):**
+   ```bash
+   cloudflared access tcp --hostname ssh-camihogar.verkku.com --url localhost:9888
+   ```
+2. **Paso 2: Conectar vía SSH:**
+   ```bash
+   ssh sa@localhost -p 9888
+   ```
+   *(La máquina local ya cuenta con la llave SSH autorizada; no requiere contraseña).*
+
+### Regla Inquebrantable de Operaciones en el Servidor:
+> [!CAUTION]
+> **CERO COMANDOS DESTRUCTIVOS SIN PERMISO.**
+> Ningún agente debe ejecutar comandos de eliminación de datos, depuración de volúmenes Docker (`docker volume prune`), borrado de colecciones en MongoDB o modificaciones en `/etc/` sin autorización expresa y previa del usuario.
+
+### Tareas DevOps Planificadas:
+1. **Validación de Estatus:** Monitoreo de recursos (RAM 16GB, disco 64GB, temperaturas/throttling del RPi 5) y salud de contenedores (`docker ps`, `docker stats`).
+2. **Dashboard de Aspire:** Publicación segura vía túnel de Cloudflare para observabilidad unificada (Backend y Frontend).
+3. **Monitoreo de MongoDB:** Supervisión de rendimiento de la base de datos, memoria y conexiones activas.
+4. **Backups en la Nube:** Scripts automatizados periódicos de `mongodump` cifrados y sincronizados a almacenamiento en la nube (S3/R2).
+5. **Scripts de Mantenimiento:** Rotación de logs de Docker y depuración segura de imágenes huérfanas.
+
