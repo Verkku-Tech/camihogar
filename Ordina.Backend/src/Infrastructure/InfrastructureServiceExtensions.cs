@@ -12,8 +12,10 @@ using Ordina.Domain.Notifications;
 using Ordina.Domain.Orders;
 using Ordina.Domain.Security;
 using Ordina.Domain.Stores;
+using Ordina.Domain.Support;
 using Ordina.Domain.Users;
 using Ordina.Infrastructure.Caching;
+using Ordina.Infrastructure.Email;
 using Ordina.Infrastructure.Mongo;
 using Ordina.Infrastructure.Repositories;
 using Ordina.Infrastructure.Security;
@@ -68,11 +70,14 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IRepository<WorkOrder>>(sp => new MongoRepository<WorkOrder>(sp.GetRequiredService<MongoDbContext>().Database, "work_orders"));
         services.AddScoped<IRepository<AccessPin>>(sp => new MongoRepository<AccessPin>(sp.GetRequiredService<MongoDbContext>().Database, "accessPins"));
         services.AddScoped<IRepository<NavigationSettings>>(sp => new MongoRepository<NavigationSettings>(sp.GetRequiredService<MongoDbContext>().Database, "navigation_settings"));
+        services.AddScoped<IRepository<SupportTicket>>(sp => new MongoRepository<SupportTicket>(sp.GetRequiredService<MongoDbContext>().Database, "support_tickets"));
 
-        // 3. Security & Caching
+        // 3. Security, Caching & Communication
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddSingleton<ITokenService, JwtTokenGenerator>();
         services.AddSingleton<ICacheService, MemoryCacheService>();
+        services.Configure<SmtpSettings>(options => configuration.GetSection(SmtpSettings.SectionName).Bind(options));
+        services.AddScoped<IEmailService, SmtpEmailService>();
 
         // 4. Index Manager and Database Seeder
         services.AddSingleton<IndexManager>();

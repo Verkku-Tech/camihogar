@@ -1,11 +1,15 @@
 # Manual y Directrices de Ingeniería para Agentes AI (AGENTS.md)
 
-Este documento es el punto de referencia maestro para cualquier agente de Inteligencia Artificial o desarrollador que opere sobre el repositorio **Camihogar / Ordina**.
+Este documento es el punto de referencia maestro para cualquier agente de Inteligencia Artificial o desarrollador que opere sobre el repositorio **FORGE ERP (Camihogar)**.
+
+> [!IMPORTANT]
+> **Nombre Oficial del ERP:** El sistema se llama oficialmente **FORGE** (o **Forge ERP**). En interfaces de usuario, correos electrónicos, títulos, diálogos, notificaciones y comunicaciones al usuario final, se debe utilizar siempre **FORGE**. Los nombres técnicos o namespaces existentes (`Ordina.*`) se preservan internamente por compatibilidad de ensamblados.
 
 ---
 
 ## 1. Visión General del Proyecto y Arquitectura
 
+* **Nombre de Producto:** **FORGE ERP** (CamiHogar).
 * **Backend:** Monolito Modular Clean en **.NET 10** (`Ordina.Api`, `Ordina.Application`, `Ordina.Domain`, `Ordina.Infrastructure`), compilado en ReadyToRun (ARM64) y desplegado en Raspberry Pi 5.
 * **Base de Datos:** **100% MongoDB** (cero dependencias de PostgreSQL, Supabase o Redis).
 * **Frontend:** SPA Estática en **Bun + Vite + React 19 + TypeScript + TanStack Query + PWA Offline**, desplegable en Cloudflare Pages.
@@ -31,6 +35,7 @@ Para directrices detalladas por área técnica, consulta los siguientes document
 Antes de generar o modificar código en este repositorio, verifica:
 
 - [ ] **Idioma:** Nombres de variables, clases, métodos, DTOs y esquemas en **Inglés**. Textos de UI y mensajes al usuario en **Español**.
+- [ ] **Identidad de Producto:** El ERP es **FORGE** (o **Forge ERP**). Prohibido terminantemente mostrar "Ordina" o "Ordina ERP" en UI, correos, asuntos, notificaciones o pies de firma.
 - [ ] **Anti-Hardcoding:** ¿Estás usando un string libre para un estado, rol o etapa? **Reemplázalo por un Enum o Constante fuertemente tipada**.
 - [ ] **Backend .NET 10:**
   - [ ] ¿Los DTOs son `public record` o `public readonly record struct`?

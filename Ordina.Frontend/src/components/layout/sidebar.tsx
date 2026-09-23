@@ -35,7 +35,10 @@ import {
   UserPen,
   Upload,
   Download,
+  LifeBuoy,
+  TrendingDown,
 } from "lucide-react"
+import { SupportTicketDialog } from "@/components/support/support-ticket-dialog"
 import { usePwaInstall } from "@/components/pwa/install-prompt"
 import { processAvatarImage } from "@/lib/image-utils"
 import {
@@ -154,6 +157,7 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
     deleteAllNotifications
   } = useNotifications()
   const [isPinGeneratorOpen, setIsPinGeneratorOpen] = useState(false)
+  const [isSupportDialogOpen, setIsSupportDialogOpen] = useState(false)
   const { canInstall, isStandalone, install } = usePwaInstall()
 
   const handleInstallPwa = async () => {
@@ -746,15 +750,42 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
                 <span className="sr-only">Cambiar tema</span>
               </Button>
 
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                title="Ayuda"
-              >
-                <HelpCircle className="w-4 h-4" />
-                <span className="sr-only">Ayuda</span>
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    title="Centro de Ayuda y Soporte"
+                  >
+                    <HelpCircle className="w-4 h-4" />
+                    <span className="sr-only">Ayuda</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="center" className="w-56 z-[9999] mb-2">
+                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                    Centro de Ayuda
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="cursor-pointer gap-2"
+                    onClick={() => setIsSupportDialogOpen(true)}
+                  >
+                    <LifeBuoy className="w-4 h-4 text-primary" />
+                    <span>Reportar un problema</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled
+                    className="gap-2 opacity-60 cursor-not-allowed"
+                  >
+                    <TrendingDown className="w-4 h-4 text-muted-foreground" />
+                    <div className="flex items-center justify-between flex-1">
+                      <span>Ventas no concretadas</span>
+                      <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-medium">Próx.</span>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {!isStandalone && (
                 <Button
@@ -1067,6 +1098,11 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
           </form>
         </DialogContent>
       </Dialog>
+
+      <SupportTicketDialog
+        open={isSupportDialogOpen}
+        onOpenChange={setIsSupportDialogOpen}
+      />
     </>
   )
 }

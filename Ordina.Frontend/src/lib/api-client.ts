@@ -54,7 +54,9 @@ import type {
   PagedResult,
   BulkDeleteResultDto,
   PaginatedResultDto,
-  ProductListItemDto
+  ProductListItemDto,
+  CreateSupportTicketDto,
+  SupportTicketResponseDto
 } from './api-client-dtos'
 import type { ExchangeRate } from './currency-utils'
 
@@ -1737,6 +1739,14 @@ export class ApiClientClass {
       method: 'DELETE'
     })
     return res.success
+  }
+
+  // Support Tickets
+  async createSupportTicket(dto: CreateSupportTicketDto): Promise<SupportTicketResponseDto> {
+    return apiFetch<SupportTicketResponseDto>('/api/support/tickets', {
+      method: 'POST',
+      body: JSON.stringify(dto)
+    })
   }
 }
 

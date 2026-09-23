@@ -10,6 +10,7 @@ using Ordina.Application.Orders;
 using Ordina.Application.Reports;
 using Ordina.Application.Security;
 using Ordina.Application.Stores;
+using Ordina.Application.Support;
 using Ordina.Application.Users;
 
 namespace Ordina.Application;
@@ -38,6 +39,7 @@ public static class ApplicationServiceExtensions
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<INavigationSettingsService, NavigationSettingsService>();
+        services.AddScoped<ISupportService, SupportService>();
         services.AddSingleton<ITimeSeriesForecastingService, HoltWintersForecastingService>();
         services.AddSingleton<INotificationService, NotificationService>();
 

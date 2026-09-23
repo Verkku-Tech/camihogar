@@ -1010,3 +1010,21 @@ export interface BulkUpdateProductStatusResponseDto {
   errorCount: number;
   errors: string[];
 }
+
+export interface CreateSupportTicketDto {
+  category: string;
+  priority: string;
+  subject: string;
+  description: string;
+  currentUrl: string;
+  clientInfo?: string;
+}
+
+export interface SupportTicketResponseDto {
+  id: string;
+  ticketCode: string;
+  status: string;
+  emailSent: boolean;
+  message: string;
+}
+

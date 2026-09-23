@@ -16,7 +16,21 @@ Este documento establece las directrices universales para cualquier agente o des
 
 ---
 
-## 2. Prohibición Absoluta de Hardcoding
+## 2. Identidad y Nombre del Producto (FORGE ERP)
+
+> [!IMPORTANT]
+> **Nombre Oficial del ERP: FORGE (o Forge ERP)**
+> - **Regla Fundamental:** El ERP se llama oficialmente **FORGE**.
+> - **Prohibición Estricta:** Queda terminantemente prohibido referirse al sistema como "Ordina", "Ordina ERP" o "Ordina CamiHogar" en:
+>   - Textos de interfaz de usuario (UI), barras laterales, botones, cabeceras y modales.
+>   - Asuntos (`Subject`) y cuerpos HTML de correos electrónicos salientes (ej. `[SOPORTE FORGE]`, `Generado automáticamente desde FORGE`).
+>   - Remitentes de correo (`SenderName: "FORGE Soporte"`).
+>   - Mensajes toast, alertas y notificaciones a usuarios.
+> - **Excepción Técnica Interna:** Los nombres técnicos de proyectos, ensamblados o namespaces de .NET (`Ordina.Api`, `Ordina.Application`, `Ordina.Domain`, etc.) se preservan exclusivamente por estabilidad de compilación y compatibilidad de arquitectura interna. Nunca deben filtrarse al usuario.
+
+---
+
+## 3. Prohibición Absoluta de Hardcoding
 
 1. **Cero Strings Mágicos para Estados:**
    - **Backend:** Usar Enums fuertemente tipados o constantes de clase sellada (`public enum OrderStatus`, `public static class ManufacturingStages`).
