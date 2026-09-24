@@ -9,6 +9,8 @@ import { AppBreadcrumb } from "@/components/ui/app-breadcrumb"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   DollarSign,
   TrendingUp,
@@ -21,6 +23,8 @@ import {
   ShieldAlert,
   BarChart3,
   Sparkles,
+  Store,
+  ChevronDown,
 } from "lucide-react"
 import {
   apiClient,
@@ -111,7 +115,17 @@ export function AnalyticsDashboard() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [period, setPeriod] = useState<Period>("month")
+  const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([])
+  const [availableStores, setAvailableStores] = useState<{ id: string; name: string }[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    apiClient.getStores().then((stores) => {
+      if (stores && Array.isArray(stores)) {
+        setAvailableStores(stores.map(s => ({ id: s.id, name: s.name })))
+      }
+    }).catch(() => {})
+  }, [])
 
   // Data states
   const [metrics, setMetrics] = useState<any>(null)
@@ -171,6 +185,7 @@ export function AnalyticsDashboard() {
     setIsLoading(true)
     try {
       const trendDays = period === "year" ? 1095 : 180
+      const storeFilter = selectedStoreIds.length > 0 ? selectedStoreIds : undefined
       const [
         metricsRes,
         trendRes,
@@ -194,13 +209,13 @@ export function AnalyticsDashboard() {
         stockoutsRes,
         occupancyRes,
       ] = await Promise.allSettled([
-        apiClient.getDashboardMetrics(period, signal),
-        apiClient.getSalesTrend(trendDays, signal),
+        apiClient.getDashboardMetrics(period, storeFilter, signal),
+        apiClient.getSalesTrend(trendDays, storeFilter, signal),
         apiClient.getSalesForecast(period, signal),
-        apiClient.getBySaleType(period, signal),
-        apiClient.getTopSellers(period, 20, signal),
-        apiClient.getTopProducts(period, 10, signal),
-        apiClient.getPipelineSnapshot(signal),
+        apiClient.getBySaleType(period, storeFilter, signal),
+        apiClient.getTopSellers(period, 20, storeFilter, signal),
+        apiClient.getTopProducts(period, 10, storeFilter, signal),
+        apiClient.getPipelineSnapshot(storeFilter, signal),
         apiClient.getExpiredLayawaysByAge(signal),
         apiClient.getAovByBranch(period, signal),
         apiClient.getAgingUnliquidated(signal),
@@ -248,7 +263,7 @@ export function AnalyticsDashboard() {
         setIsLoading(false)
       }
     }
-  }, [period])
+  }, [period, selectedStoreIds])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -327,6 +342,92 @@ export function AnalyticsDashboard() {
             </div>
 
             <div className="flex items-center gap-2.5 flex-wrap max-w-full overflow-x-auto no-scrollbar">
+              {/* Multi-Store Selector Popover */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    id="store-filter-trigger"
+                    className="h-9 gap-2 shadow-sm rounded-xl hover:bg-muted/80 transition-colors text-xs font-medium border-border/70 bg-background/80"
+                  >
+                    <Store className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="truncate max-w-[140px] sm:max-w-[180px]">
+                      {selectedStoreIds.length === 0
+                        ? "Todas las tiendas"
+                        : selectedStoreIds.length === 1
+                        ? availableStores.find((s) => s.id === selectedStoreIds[0])?.name || "1 tienda"
+                        : `${selectedStoreIds.length} tiendas`}
+                    </span>
+                    {selectedStoreIds.length > 1 && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-primary/20">
+                        {selectedStoreIds.length}
+                      </Badge>
+                    )}
+                    <ChevronDown className="w-3 h-3 text-muted-foreground ml-auto opacity-70" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-64 p-3 shadow-lg border-border/80">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-border/50">
+                      <span className="text-xs font-semibold text-foreground">Filtrar por Tienda</span>
+                      {selectedStoreIds.length > 0 && (
+                        <button
+                          onClick={() => setSelectedStoreIds([])}
+                          className="text-[11px] text-primary hover:underline font-medium"
+                        >
+                          Ver todas
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
+                      <label
+                        className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted/60 cursor-pointer transition-colors text-xs"
+                      >
+                        <Checkbox
+                          id="store-all"
+                          checked={selectedStoreIds.length === 0}
+                          onCheckedChange={() => setSelectedStoreIds([])}
+                        />
+                        <span className="flex-1 font-medium text-foreground select-none">
+                          Todas las tiendas
+                        </span>
+                      </label>
+
+                      {availableStores.map((store) => {
+                        const isChecked = selectedStoreIds.includes(store.id)
+                        return (
+                          <label
+                            key={store.id}
+                            className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted/60 cursor-pointer transition-colors text-xs"
+                          >
+                            <Checkbox
+                              id={`store-${store.id}`}
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                if (selectedStoreIds.length === 0) {
+                                  setSelectedStoreIds([store.id])
+                                } else if (!checked) {
+                                  const next = selectedStoreIds.filter((id) => id !== store.id)
+                                  setSelectedStoreIds(next)
+                                } else {
+                                  const next = [...selectedStoreIds, store.id]
+                                  setSelectedStoreIds(next.length === availableStores.length ? [] : next)
+                                }
+                              }}
+                            />
+                            <span className="flex-1 text-muted-foreground hover:text-foreground select-none">
+                              {store.name}
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
               {/* Period Selector Tabs */}
               <div className="inline-flex rounded-xl border border-border bg-muted/40 p-1 shadow-inner shrink-0">
                 {(
