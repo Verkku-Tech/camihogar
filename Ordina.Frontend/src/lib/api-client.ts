@@ -1,6 +1,7 @@
 import { telemetry } from './telemetry'
 import { connectivityManager } from './connectivity'
 import { localApi } from './local-api'
+import type { OperationsMetricsSettings } from './metrics-thresholds'
 import type {
   ClientResponseDto,
   CreateClientDto,
@@ -1748,6 +1749,59 @@ export class ApiClientClass {
       body: JSON.stringify(dto)
     })
   }
+
+  // Operations Metrics & Threshold Settings
+  async getOperationsMetricsSettings(signal?: AbortSignal): Promise<OperationsMetricsSettings> {
+    return apiFetch<OperationsMetricsSettings>('/api/operations-metrics/settings', { signal })
+  }
+
+  async updateOperationsMetricsSettings(settings: OperationsMetricsSettings, signal?: AbortSignal): Promise<OperationsMetricsSettings> {
+    return apiFetch<OperationsMetricsSettings>('/api/operations-metrics/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+      signal
+    })
+  }
+
+  // Notification Rules & Settings
+  async getNotificationSettings(signal?: AbortSignal): Promise<NotificationRuleSettings> {
+    return apiFetch<NotificationRuleSettings>('/api/notifications/settings', { signal })
+  }
+
+  async updateNotificationSettings(settings: NotificationRuleSettings, signal?: AbortSignal): Promise<NotificationRuleSettings> {
+    return apiFetch<NotificationRuleSettings>('/api/notifications/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+      signal
+    })
+  }
+
+  async testNotificationAlert(signal?: AbortSignal): Promise<{ success: boolean }> {
+    return apiFetch<{ success: boolean }>('/api/notifications/settings/test-alert', {
+      method: 'POST',
+      signal
+    })
+  }
+}
+
+export interface NotificationRuleSettings {
+  id?: string
+  biAlertsEnabled: boolean
+  biFrequency: string
+  biDayOfWeek: number // 1 = Monday
+  biHourOfDay: number
+  biMinuteOfHour: number
+  biTargetRoles: string[]
+  manufacturingDelayEnabled: boolean
+  manufacturingDelayDays: number
+  reservationExpiringEnabled: boolean
+  reservationExpiringDays: number
+  emergencyPinUsedEnabled: boolean
+  exchangeRateChangedEnabled: boolean
+  syncConflictEnabled: boolean
+  soundEnabled: boolean
 }
 
 export interface NotificationDto {
