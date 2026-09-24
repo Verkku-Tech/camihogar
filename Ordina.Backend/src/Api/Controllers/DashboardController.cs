@@ -20,18 +20,20 @@ public class DashboardController : ControllerBase
     [HttpGet("metrics")]
     public async Task<ActionResult<DashboardMetricsDto>> GetMetrics(
         [FromQuery] string period = "day",
+        [FromQuery] string? storeIds = null,
         CancellationToken ct = default)
     {
-        var metrics = await _dashboardService.GetDashboardMetricsAsync(period, ct);
+        var metrics = await _dashboardService.GetDashboardMetricsAsync(period, storeIds, ct);
         return Ok(metrics);
     }
 
     [HttpGet("trend")]
     public async Task<ActionResult<IReadOnlyList<TrendDataPointDto>>> GetTrend(
         [FromQuery] int days = 30,
+        [FromQuery] string? storeIds = null,
         CancellationToken ct = default)
     {
-        var data = await _dashboardService.GetSalesTrendAsync(Math.Clamp(days, 1, 1100), ct);
+        var data = await _dashboardService.GetSalesTrendAsync(Math.Clamp(days, 1, 1100), storeIds, ct);
         return Ok(data);
     }
 
@@ -47,9 +49,10 @@ public class DashboardController : ControllerBase
     [HttpGet("by-sale-type")]
     public async Task<ActionResult<IReadOnlyList<SaleTypeDataDto>>> GetBySaleType(
         [FromQuery] string period = "month",
+        [FromQuery] string? storeIds = null,
         CancellationToken ct = default)
     {
-        var data = await _dashboardService.GetBySaleTypeAsync(period, ct);
+        var data = await _dashboardService.GetBySaleTypeAsync(period, storeIds, ct);
         return Ok(data);
     }
 
@@ -57,9 +60,10 @@ public class DashboardController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<TopSellerDto>>> GetTopSellers(
         [FromQuery] string period = "month",
         [FromQuery] int limit = 10,
+        [FromQuery] string? storeIds = null,
         CancellationToken ct = default)
     {
-        var data = await _dashboardService.GetTopSellersAsync(period, Math.Clamp(limit, 1, 50), ct);
+        var data = await _dashboardService.GetTopSellersAsync(period, Math.Clamp(limit, 1, 50), storeIds, ct);
         return Ok(data);
     }
 
@@ -67,9 +71,10 @@ public class DashboardController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<TopProductDto>>> GetTopProducts(
         [FromQuery] string period = "month",
         [FromQuery] int limit = 10,
+        [FromQuery] string? storeIds = null,
         CancellationToken ct = default)
     {
-        var data = await _dashboardService.GetTopProductsAsync(period, Math.Clamp(limit, 1, 50), ct);
+        var data = await _dashboardService.GetTopProductsAsync(period, Math.Clamp(limit, 1, 50), storeIds, ct);
         return Ok(data);
     }
 
@@ -88,9 +93,11 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet("pipeline")]
-    public async Task<ActionResult<PipelineSnapshotDto>> GetPipeline(CancellationToken ct = default)
+    public async Task<ActionResult<PipelineSnapshotDto>> GetPipeline(
+        [FromQuery] string? storeIds = null,
+        CancellationToken ct = default)
     {
-        var data = await _dashboardService.GetPipelineSnapshotAsync(ct);
+        var data = await _dashboardService.GetPipelineSnapshotAsync(storeIds, ct);
         return Ok(data);
     }
 
