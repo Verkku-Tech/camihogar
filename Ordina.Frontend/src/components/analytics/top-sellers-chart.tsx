@@ -292,26 +292,26 @@ export function TopSellersChart({ data, isLoading }: Props) {
                           <span className="text-muted-foreground font-medium">
                             {currentMetric.shortLabel}:
                           </span>
-                          <span className="font-mono font-bold text-foreground">
+                          <span className="font-mono font-bold" style={{ color: rankColor }}>
                             {currentMetric.formatLabel(item.value)}
                           </span>
                         </div>
                         {metricKey !== "total" && (
                           <div className="flex items-center justify-between gap-4">
                             <span className="text-muted-foreground">Facturado:</span>
-                            <span className="font-mono font-semibold text-foreground">
+                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
                               ${item.total.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
                             </span>
                           </div>
                         )}
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-muted-foreground">Pedidos concretados:</span>
-                          <span className="font-mono font-semibold text-foreground">{item.orders}</span>
+                          <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{item.orders}</span>
                         </div>
                         {item.commission > 0 && (
                           <div className="flex items-center justify-between gap-4">
                             <span className="text-muted-foreground">Comisión est.:</span>
-                            <span className="font-mono font-semibold text-foreground">
+                            <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
                               ${item.commission.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
                             </span>
                           </div>

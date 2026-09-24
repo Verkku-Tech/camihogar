@@ -156,9 +156,9 @@ export function InvoicedVsCollectedChart({ data, isLoading }: Props) {
                             <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />
                             Facturado:
                           </span>
-                          <span className="font-mono font-bold text-foreground">
+                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
                             ${item.invoiced.toLocaleString("es-VE", { minimumFractionDigits: 2 })}{" "}
-                            <span className="text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">
+                            <span className="font-bold text-[11px] opacity-85">
                               ({item.invoicedPct.toFixed(1)}%)
                             </span>
                           </span>
@@ -168,9 +168,9 @@ export function InvoicedVsCollectedChart({ data, isLoading }: Props) {
                             <span className="w-2.5 h-2.5 rounded-sm bg-blue-500 inline-block" />
                             Cobrado:
                           </span>
-                          <span className="font-mono font-bold text-foreground">
+                          <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
                             ${item.collected.toLocaleString("es-VE", { minimumFractionDigits: 2 })}{" "}
-                            <span className="text-blue-600 dark:text-blue-400 font-bold text-[11px]">
+                            <span className="font-bold text-[11px] opacity-85">
                               ({item.collectedPct.toFixed(1)}%)
                             </span>
                           </span>

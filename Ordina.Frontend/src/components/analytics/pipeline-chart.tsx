@@ -84,18 +84,18 @@ export function PipelineChart({ data, isLoading }: Props) {
                           <span className="w-2.5 h-2.5 rounded-sm inline-block shrink-0" style={{ backgroundColor: item.color }} />
                           <span className="font-semibold truncate">{item.stage}</span>
                         </span>
-                        <span className="text-[11px] font-mono text-muted-foreground font-semibold shrink-0">
+                        <span className="text-[11px] font-mono font-bold shrink-0" style={{ color: item.color }}>
                           {pct}%
                         </span>
                       </div>
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-muted-foreground font-medium">Piezas en etapa:</span>
-                          <span className="font-mono font-bold text-foreground">{item.value} unid.</span>
+                          <span className="font-mono font-bold" style={{ color: item.color }}>{item.value} unid.</span>
                         </div>
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-muted-foreground font-medium">Monto valorizado:</span>
-                          <span className="font-mono font-bold text-foreground">
+                          <span className="font-mono font-bold" style={{ color: item.color }}>
                             ${(item.usd ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>

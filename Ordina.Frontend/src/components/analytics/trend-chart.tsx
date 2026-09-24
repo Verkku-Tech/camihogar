@@ -361,7 +361,7 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
                             <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
                               <span className="w-2.5 h-1 rounded-full bg-emerald-500 inline-block" /> Facturado (Real):
                             </span>
-                            <span className="font-mono font-bold text-foreground">
+                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
                               ${point.invoicedUsd.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
                             </span>
                           </div>
@@ -371,7 +371,7 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
                             <span className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-medium">
                               <span className="w-2.5 h-1 rounded-full bg-purple-500 inline-block" /> Fact. Proyectada:
                             </span>
-                            <span className="font-mono font-bold text-foreground">
+                            <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
                               ${point.projectedInvoiced.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
                             </span>
                           </div>
@@ -381,7 +381,7 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
                             <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-medium">
                               <span className="w-2.5 h-1 rounded-full bg-blue-500 inline-block" /> Cobrado (Real):
                             </span>
-                            <span className="font-mono font-bold text-foreground">
+                            <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
                               ${point.collectedUsd.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
                             </span>
                           </div>
@@ -391,7 +391,7 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
                             <span className="flex items-center gap-1.5 text-orange-600 dark:text-orange-400 font-medium">
                               <span className="w-2.5 h-1 rounded-full bg-orange-500 inline-block" /> Cobro Proyectado:
                             </span>
-                            <span className="font-mono font-bold text-foreground">
+                            <span className="font-mono font-bold text-orange-600 dark:text-orange-400">
                               ${point.projectedCollected.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
                             </span>
                           </div>

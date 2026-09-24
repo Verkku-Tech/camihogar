@@ -101,14 +101,14 @@ export function PaymentMixDonut({ data, isLoading }: Props) {
                           <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{ backgroundColor: color }} />
                           <span className="font-semibold truncate">{entry.label}</span>
                         </span>
-                        <span className="text-[11px] font-mono text-muted-foreground font-semibold shrink-0">
+                        <span className="text-[11px] font-mono font-bold shrink-0" style={{ color }}>
                           {entry.percentage ? `${entry.percentage.toFixed(1)}%` : `${pct}%`}
                         </span>
                       </div>
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between gap-4">
                           <span className="text-muted-foreground font-medium">Monto Cobrado:</span>
-                          <span className="font-mono font-bold text-foreground">
+                          <span className="font-mono font-bold" style={{ color }}>
                             ${entry.totalUsd.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
