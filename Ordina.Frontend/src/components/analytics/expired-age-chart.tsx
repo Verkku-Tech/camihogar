@@ -66,20 +66,40 @@ export function ExpiredAgeChart({ data, isLoading, onSelectRange }: Props) {
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: CHART_THEME.axisTick }} stroke={CHART_THEME.gridStroke} interval={0} />
               <YAxis tick={{ fontSize: 11, fill: CHART_THEME.axisTick }} width={35} stroke={CHART_THEME.gridStroke} />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgba(255, 255, 255, 0.95)",
-                  backdropFilter: "blur(8px)",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: 10,
-                  boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
-                  fontSize: 12,
+                content={({ active, payload }) => {
+                  if (!active || !payload || !payload.length) return null
+                  const item = payload[0].payload as ExpiredLayawayAgeRange
+                  const color = payload[0].color || AGING_COLORS[data.indexOf(item) % AGING_COLORS.length] || AGING_COLORS[0]
+                  const pct = totalExpiredOrders > 0 ? ((item.count / totalExpiredOrders) * 100).toFixed(1) : "0"
+                  return (
+                    <div className="bg-popover/95 backdrop-blur-md border border-border/80 p-3 rounded-xl shadow-xl text-xs space-y-2 min-w-[210px]">
+                      <div className="font-bold text-foreground border-b border-border/40 pb-1.5 flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="w-2.5 h-2.5 rounded-sm inline-block shrink-0" style={{ backgroundColor: color }} />
+                          <span className="font-semibold truncate">{item.label}</span>
+                        </span>
+                        <span className="text-[11px] font-mono text-muted-foreground font-semibold shrink-0">
+                          {pct}%
+                        </span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground font-medium">Apartados:</span>
+                          <span className="font-mono font-bold text-foreground">{item.count}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground font-medium">Saldo Vencido:</span>
+                          <span className="font-mono font-bold text-foreground">
+                            ${(item.totalUsd ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="pt-1.5 border-t border-border/30 text-[11px] text-muted-foreground text-center">
+                        Clic en la barra para ver detalle →
+                      </div>
+                    </div>
+                  )
                 }}
-                formatter={(v: number, n: string, item: any) => [
-                  n === "count"
-                    ? `${v} apartados ($${item.payload.totalUsd?.toLocaleString("es-VE", { minimumFractionDigits: 2 })}) - Clic para ver`
-                    : `$${Number(v).toLocaleString("es-VE", { minimumFractionDigits: 2 })}`,
-                  n === "count" ? "Cantidad" : "Saldo Pendiente"
-                ]}
               />
               <Bar dataKey="count" radius={[5, 5, 0, 0]} maxBarSize={40} className="cursor-pointer">
                 {data.map((d, i) => (

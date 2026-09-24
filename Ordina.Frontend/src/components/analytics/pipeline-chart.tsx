@@ -67,24 +67,42 @@ export function PipelineChart({ data, isLoading }: Props) {
               <YAxis
                 type="category"
                 dataKey="stage"
-                tick={{ fontSize: 11, fill: "#475569" }}
+                tick={{ fontSize: 11, fill: CHART_THEME.axisTick, fontWeight: 500 }}
                 width={85}
                 interval={0}
                 stroke={CHART_THEME.gridStroke}
               />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgba(255, 255, 255, 0.95)",
-                  backdropFilter: "blur(8px)",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: 10,
-                  boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
-                  fontSize: 12,
+                content={({ active, payload }) => {
+                  if (!active || !payload || !payload.length) return null
+                  const item = payload[0].payload
+                  const pct = totalPieces > 0 ? ((item.value / totalPieces) * 100).toFixed(1) : "0"
+                  return (
+                    <div className="bg-popover/95 backdrop-blur-md border border-border/80 p-3 rounded-xl shadow-xl text-xs space-y-2 min-w-[210px]">
+                      <div className="font-bold text-foreground border-b border-border/40 pb-1.5 flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="w-2.5 h-2.5 rounded-sm inline-block shrink-0" style={{ backgroundColor: item.color }} />
+                          <span className="font-semibold truncate">{item.stage}</span>
+                        </span>
+                        <span className="text-[11px] font-mono text-muted-foreground font-semibold shrink-0">
+                          {pct}%
+                        </span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground font-medium">Piezas en etapa:</span>
+                          <span className="font-mono font-bold text-foreground">{item.value} unid.</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground font-medium">Monto valorizado:</span>
+                          <span className="font-mono font-bold text-foreground">
+                            ${(item.usd ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
                 }}
-                formatter={(v: number, name: string, item: any) => [
-                  `${v} unidades ($${(item.payload.usd ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2 })})`,
-                  "En Etapa"
-                ]}
               />
               <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={24}>
                 {chartData.map((entry, i) => (

@@ -259,7 +259,7 @@ export function TopSellersChart({ data, isLoading }: Props) {
               <YAxis
                 type="category"
                 dataKey="name"
-                tick={{ fontSize: 11, fill: "#475569", fontWeight: 500 }}
+                tick={{ fontSize: 11, fill: CHART_THEME.axisTick, fontWeight: 500 }}
                 width={130}
                 interval={0}
                 stroke={CHART_THEME.gridStroke}
@@ -267,17 +267,65 @@ export function TopSellersChart({ data, isLoading }: Props) {
                 tickLine={false}
               />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgba(255, 255, 255, 0.95)",
-                  backdropFilter: "blur(8px)",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: 10,
-                  boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
-                  fontSize: 12,
+                content={({ active, payload }) => {
+                  if (!active || !payload || !payload.length) return null
+                  const item = payload[0].payload
+                  const rankColor = RANK_COLORS[Math.min((item.rank ?? 1) - 1, RANK_COLORS.length - 1)]
+                  return (
+                    <div className="bg-popover/95 backdrop-blur-md border border-border/80 p-3 rounded-xl shadow-xl text-xs space-y-2 min-w-[220px]">
+                      <div className="font-bold text-foreground border-b border-border/40 pb-1.5 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                            style={{ backgroundColor: rankColor }}
+                          >
+                            #{item.rank}
+                          </span>
+                          <span className="font-semibold truncate">{item.name}</span>
+                        </div>
+                        <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground capitalize shrink-0">
+                          {item.sellerType === "online" ? "Online" : "Tienda"}
+                        </span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground font-medium">
+                            {currentMetric.shortLabel}:
+                          </span>
+                          <span className="font-mono font-bold text-foreground">
+                            {currentMetric.formatLabel(item.value)}
+                          </span>
+                        </div>
+                        {metricKey !== "total" && (
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-muted-foreground">Facturado:</span>
+                            <span className="font-mono font-semibold text-foreground">
+                              ${item.total.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground">Pedidos concretados:</span>
+                          <span className="font-mono font-semibold text-foreground">{item.orders}</span>
+                        </div>
+                        {item.commission > 0 && (
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="text-muted-foreground">Comisión est.:</span>
+                            <span className="font-mono font-semibold text-foreground">
+                              ${item.commission.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        )}
+                        {item.storeName && (
+                          <div className="pt-1.5 border-t border-border/30 flex justify-between text-[11px] text-muted-foreground">
+                            <span>Tienda:</span>
+                            <span className="font-medium text-foreground truncate max-w-[120px]">{item.storeName}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
                 }}
-                formatter={(v: any, _name: string, item: any) =>
-                  currentMetric.formatTooltip(Number(v), item)
-                }
               />
               <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={16}>
                 {chartData.map((_, i) => (

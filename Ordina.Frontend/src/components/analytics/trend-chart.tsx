@@ -352,48 +352,58 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
                   const point = payload[0]?.payload as TrendChartPoint
                   return (
                     <div className="bg-popover/95 backdrop-blur-md border border-border/80 p-3 rounded-xl shadow-xl text-xs space-y-2 min-w-[210px]">
-                      <div className="font-bold text-foreground border-b border-border/40 pb-1 flex items-center justify-between">
+                      <div className="font-bold text-foreground border-b border-border/40 pb-1.5 flex items-center justify-between">
                         <span>{point.label || label}</span>
                       </div>
-                      <div className="space-y-1">
+                      <div className="space-y-1.5">
                         {point.invoicedUsd !== undefined && (
-                          <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 font-light">
-                            <span className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-0.5 bg-emerald-500 inline-block" /> Facturado (Real):
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                              <span className="w-2.5 h-1 rounded-full bg-emerald-500 inline-block" /> Facturado (Real):
                             </span>
-                            <span className="font-mono font-bold text-emerald-500">${point.invoicedUsd.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-mono font-bold text-foreground">
+                              ${point.invoicedUsd.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                            </span>
                           </div>
                         )}
                         {point.projectedInvoiced !== undefined && (
-                          <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 font-light">
-                            <span className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-0.5 border-b border-dashed border-purple-500 inline-block" /> Fact. Proyectada:
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 font-medium">
+                              <span className="w-2.5 h-1 rounded-full bg-purple-500 inline-block" /> Fact. Proyectada:
                             </span>
-                            <span className="font-mono font-bold text-purple-500">${point.projectedInvoiced.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-mono font-bold text-foreground">
+                              ${point.projectedInvoiced.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                            </span>
                           </div>
                         )}
                         {point.collectedUsd !== undefined && (
-                          <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 font-light">
-                            <span className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-0.5 bg-blue-500 inline-block" /> Cobrado (Real):
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-medium">
+                              <span className="w-2.5 h-1 rounded-full bg-blue-500 inline-block" /> Cobrado (Real):
                             </span>
-                            <span className="font-mono font-bold text-blue-500">${point.collectedUsd.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-mono font-bold text-foreground">
+                              ${point.collectedUsd.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                            </span>
                           </div>
                         )}
                         {point.projectedCollected !== undefined && (
-                          <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 font-light">
-                            <span className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-0.5 border-b border-dashed border-orange-500 inline-block" /> Cobro Proyectado:
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="flex items-center gap-1.5 text-orange-600 dark:text-orange-400 font-medium">
+                              <span className="w-2.5 h-1 rounded-full bg-orange-500 inline-block" /> Cobro Proyectado:
                             </span>
-                            <span className="font-mono font-bold text-orange-500">${point.projectedCollected.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-mono font-bold text-foreground">
+                              ${point.projectedCollected.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                            </span>
                           </div>
                         )}
                         {point.benchmark3Yr !== undefined && (
-                          <div className="flex items-center justify-between gap-3 text-slate-500 dark:text-slate-400 font-light pt-1 border-t border-border/30">
-                            <span className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-0.5 border-b border-dotted border-slate-500 inline-block" /> Benchmark 3 Años:
+                          <div className="flex items-center justify-between gap-4 pt-1.5 border-t border-border/30">
+                            <span className="flex items-center gap-1.5 text-muted-foreground font-medium">
+                              <span className="w-2.5 h-1 rounded-full bg-slate-400 inline-block" /> Benchmark 3 Años:
                             </span>
-                            <span className="font-mono font-semibold">${point.benchmark3Yr.toLocaleString("es-VE", { minimumFractionDigits: 2 })}</span>
+                            <span className="font-mono font-bold text-foreground">
+                              ${point.benchmark3Yr.toLocaleString("es-VE", { minimumFractionDigits: 2 })}
+                            </span>
                           </div>
                         )}
                       </div>
