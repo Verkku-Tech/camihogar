@@ -446,7 +446,7 @@ public class DashboardService : IDashboardService
                 decimal avgTicketUsd = ordersCount > 0 ? Math.Round(totalSales / ordersCount, 2) : 0m;
                 double unitsPerOrder = ordersCount > 0 ? Math.Round((double)totalUnits / ordersCount, 2) : 0;
                 decimal avgDiscountPercent = totalGrossSubtotalUsd > 0
-                    ? Math.Round((totalDiscountsUsd / totalGrossSubtotalUsd) * 100m, 1)
+                    ? Math.Round((totalDiscountsUsd / totalGrossSubtotalUsd) * 100m, 1, MidpointRounding.AwayFromZero)
                     : 0m;
 
                 var vendorReservationsCount = allOrders.Count(o =>
@@ -462,7 +462,7 @@ public class DashboardService : IDashboardService
 
                 var totalReservationOps = vendorReservationsCount + convertedReservationsCount;
                 decimal reservationConversionRate = totalReservationOps > 0
-                    ? Math.Round(((decimal)convertedReservationsCount / totalReservationOps) * 100m, 1)
+                    ? Math.Round(((decimal)convertedReservationsCount / totalReservationOps) * 100m, 1, MidpointRounding.AwayFromZero)
                     : 0m;
 
                 return new TopSellerDto(

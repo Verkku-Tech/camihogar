@@ -129,6 +129,92 @@ public class DashboardComprehensiveBiTests
     }
 
     [Fact]
+    public async Task TopSellers_Calculates_Performance_Metrics_Correctly()
+    {
+        var orders = new List<Order>
+        {
+            new()
+            {
+                Id = "ord-1",
+                OrderNumber = "ORD-001",
+                VendorId = "ven-1",
+                VendorName = "María Gómez",
+                TypeString = "Order",
+                SaleTypeString = "Directo",
+                Subtotal = 1000m,
+                Total = 1000m,
+                ConvertedFromNumber = "RES-999",
+                Products = new List<OrderProduct>
+                {
+                    new() { Name = "Cama Matrimonial", Quantity = 1, Price = 700m },
+                    new() { Name = "Mesa de Noche", Quantity = 2, Price = 150m }
+                },
+                CreatedAt = _now
+            },
+            new()
+            {
+                Id = "ord-2",
+                OrderNumber = "ORD-002",
+                VendorId = "ven-1",
+                VendorName = "María Gómez",
+                TypeString = "Order",
+                SaleTypeString = "Directo",
+                SubtotalBeforeDiscounts = 600m,
+                Subtotal = 500m,
+                Total = 500m,
+                GeneralDiscountAmount = 100m,
+                Products = new List<OrderProduct>
+                {
+                    new() { Name = "Colchón Queen", Quantity = 2, Price = 300m }
+                },
+                CreatedAt = _now
+            },
+            // Reservation (should not count as concrete order, but counts in reservation opportunities)
+            new()
+            {
+                Id = "res-1",
+                OrderNumber = "RES-101",
+                VendorId = "ven-1",
+                VendorName = "María Gómez",
+                TypeString = "Reservation",
+                Total = 800m,
+                CreatedAt = _now
+            },
+            // Cancelled order (should be excluded completely)
+            new()
+            {
+                Id = "ord-can",
+                OrderNumber = "ORD-999",
+                VendorId = "ven-1",
+                VendorName = "María Gómez",
+                StatusString = "Cancelado",
+                Total = 2000m,
+                CreatedAt = _now
+            }
+        };
+
+        _repoMock.Setup(r => r.GetAllOrdersForDashboardAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(orders);
+
+        var service = new DashboardService(_repoMock.Object);
+        var result = await service.GetTopSellersAsync("month");
+
+        Assert.Single(result);
+        var seller = result[0];
+        Assert.Equal("ven-1", seller.VendorId);
+        Assert.Equal("María Gómez", seller.VendorName);
+        Assert.Equal(2, seller.OrdersCount);
+        Assert.Equal(1500m, seller.TotalUsd);
+        Assert.Equal(750m, seller.AverageTicketUsd); // 1500 / 2
+        Assert.Equal(2.5, seller.UnitsPerOrder); // (3 units + 2 units) / 2 orders = 2.5
+        // Discounts: 100 discount on 1600 gross subtotal = 6.25% -> 6.3%
+        Assert.Equal(6.3m, seller.AverageDiscountPercent);
+        // Conversion: 1 converted order (from RES-999) + 1 pending reservation (RES-101) = 2 ops -> 50%
+        Assert.Equal(50.0m, seller.ReservationConversionRate);
+        Assert.Equal(1, seller.ConvertedReservationsCount);
+    }
+
+    [Fact]
     public async Task AovByBranch_Groups_By_StoreName_Correctly()
     {
         var orders = new List<Order>
@@ -456,13 +542,13 @@ public class DashboardComprehensiveBiTests
                 SaleTypeString = "directa",
                 StatusString = "Pagado",
                 VendorId = "ven-1",
-                CreatedAt = _now.AddMinutes(-60),
+                CreatedAt = _now.AddSeconds(-30),
                 PartialPayments = new List<PartialPayment>
                 {
                     new()
                     {
                         Id = "pay-1",
-                        Date = _now.AddMinutes(-30),
+                        Date = _now.AddSeconds(-15),
                         Amount = 150m,
                         Method = "Transferencia",
                         PaymentDetails = new PaymentDetails { OriginalCurrency = "USD", OriginalAmount = 150m, TransferenciaReference = "REF-1" }
@@ -483,7 +569,7 @@ public class DashboardComprehensiveBiTests
                     new()
                     {
                         Id = "pay-2",
-                        Date = _now.AddMinutes(-20),
+                        Date = _now.AddSeconds(-10),
                         Amount = 250m,
                         Method = "Efectivo",
                         PaymentDetails = new PaymentDetails { OriginalCurrency = "USD", CashReceived = 250m }
