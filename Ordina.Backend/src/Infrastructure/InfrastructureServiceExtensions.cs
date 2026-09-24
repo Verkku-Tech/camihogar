@@ -72,6 +72,8 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IRepository<AccessPin>>(sp => new MongoRepository<AccessPin>(sp.GetRequiredService<MongoDbContext>().Database, "accessPins"));
         services.AddScoped<IRepository<NavigationSettings>>(sp => new MongoRepository<NavigationSettings>(sp.GetRequiredService<MongoDbContext>().Database, "navigation_settings"));
         services.AddScoped<IRepository<SupportTicket>>(sp => new MongoRepository<SupportTicket>(sp.GetRequiredService<MongoDbContext>().Database, "support_tickets"));
+        services.AddScoped<IRepository<Ordina.Domain.Analytics.OperationsMetricsSettings>>(sp => new MongoRepository<Ordina.Domain.Analytics.OperationsMetricsSettings>(sp.GetRequiredService<MongoDbContext>().Database, "operations_metrics_settings"));
+        services.AddScoped<IRepository<Ordina.Domain.Notifications.NotificationRuleSettings>>(sp => new MongoRepository<Ordina.Domain.Notifications.NotificationRuleSettings>(sp.GetRequiredService<MongoDbContext>().Database, "notification_settings"));
 
         // 3. Security, Caching & Communication
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
@@ -86,6 +88,7 @@ public static class InfrastructureServiceExtensions
 
         // 5. Background Workers
         services.AddHostedService<Ordina.Infrastructure.BackgroundServices.DelayedOrdersNotifierWorker>();
+        services.AddHostedService<Ordina.Infrastructure.BackgroundServices.OperationsMetricsAlertWorker>();
 
         return services;
     }
