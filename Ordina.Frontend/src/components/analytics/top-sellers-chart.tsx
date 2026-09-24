@@ -1,8 +1,16 @@
 "use client"
 
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts"
 import { Trophy } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type { TopSeller } from "@/lib/api-client"
 import { CHART_THEME } from "./chart-theme"
 
@@ -10,6 +18,103 @@ interface Props {
   data: TopSeller[]
   isLoading?: boolean
 }
+
+export type SellerMetricKey =
+  | "total"
+  | "ticket"
+  | "orders"
+  | "upt"
+  | "discount"
+  | "conversion"
+  | "commission"
+
+interface MetricDef {
+  key: SellerMetricKey
+  label: string
+  shortLabel: string
+  getValue: (s: TopSeller) => number
+  formatAxis: (v: number) => string
+  formatLabel: (v: number) => string
+  formatTooltip: (v: number, item: any) => [string, string]
+}
+
+const METRICS: MetricDef[] = [
+  {
+    key: "total",
+    label: "Facturación Total ($)",
+    shortLabel: "Facturación Total",
+    getValue: s => s.totalUsd,
+    formatAxis: v => `$${v >= 1000 ? (v / 1000).toFixed(0) + "k" : v.toFixed(0)}`,
+    formatLabel: v => `$${v >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0)}`,
+    formatTooltip: (v, item) => [
+      `$${Number(v).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${item.payload.commission ? ` (Comisión: $${Number(item.payload.commission).toLocaleString("es-VE", { minimumFractionDigits: 2 })})` : ""}`,
+      "Facturado",
+    ],
+  },
+  {
+    key: "ticket",
+    label: "Ticket Promedio ($)",
+    shortLabel: "Ticket Promedio",
+    getValue: s => s.averageTicketUsd ?? (s.ordersCount > 0 ? s.totalUsd / s.ordersCount : 0),
+    formatAxis: v => `$${v >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0)}`,
+    formatLabel: v => `$${Number(v).toFixed(0)}`,
+    formatTooltip: v => [
+      `$${Number(v).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      "Ticket Promedio",
+    ],
+  },
+  {
+    key: "orders",
+    label: "Pedidos Concretados (#)",
+    shortLabel: "Pedidos Concretados",
+    getValue: s => s.ordersCount,
+    formatAxis: v => String(Math.round(v)),
+    formatLabel: v => `${Math.round(v)} ped.`,
+    formatTooltip: v => [`${Math.round(v)} pedidos concretados`, "Pedidos Concretados"],
+  },
+  {
+    key: "upt",
+    label: "Unidades por Pedido (UPT)",
+    shortLabel: "Unidades por Pedido",
+    getValue: s => s.unitsPerOrder ?? 0,
+    formatAxis: v => v.toFixed(1),
+    formatLabel: v => `${v.toFixed(1)} uds`,
+    formatTooltip: v => [`${Number(v).toFixed(2)} artículos por pedido`, "Unidades por Pedido (UPT)"],
+  },
+  {
+    key: "discount",
+    label: "Tasa de Descuento Promedio (%)",
+    shortLabel: "Descuento Promedio",
+    getValue: s => s.averageDiscountPercent ?? 0,
+    formatAxis: v => `${v.toFixed(0)}%`,
+    formatLabel: v => `${v.toFixed(1)}%`,
+    formatTooltip: v => [`${Number(v).toFixed(1)}% descuento promedio`, "Tasa de Descuento"],
+  },
+  {
+    key: "conversion",
+    label: "Conversión de Reservas (%)",
+    shortLabel: "Conversión de Reservas",
+    getValue: s => s.reservationConversionRate ?? 0,
+    formatAxis: v => `${v.toFixed(0)}%`,
+    formatLabel: v => `${v.toFixed(1)}%`,
+    formatTooltip: (v, item) => [
+      `${Number(v).toFixed(1)}% (${item.payload.convertedReservations ?? 0} convertidas)`,
+      "Tasa Conversión Reservas",
+    ],
+  },
+  {
+    key: "commission",
+    label: "Comisión Estimada ($)",
+    shortLabel: "Comisión Estimada",
+    getValue: s => s.estimatedCommissionUsd ?? 0,
+    formatAxis: v => `$${v >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0)}`,
+    formatLabel: v => `$${Number(v).toFixed(0)}`,
+    formatTooltip: v => [
+      `$${Number(v).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      "Comisión Estimada",
+    ],
+  },
+]
 
 // Colors by podium ranking
 const RANK_COLORS = [
@@ -32,28 +137,70 @@ function formatVendorName(rawName: string, idx: number): string {
 }
 
 export function TopSellersChart({ data, isLoading }: Props) {
-  const chartData = data.map((s, idx) => ({
-    name: formatVendorName(s.vendorName, idx),
-    total: s.totalUsd,
-    orders: s.ordersCount,
-    commission: s.estimatedCommissionUsd ?? 0,
-    rank: idx + 1,
-  }))
+  const [metricKey, setMetricKey] = useState<SellerMetricKey>("total")
 
-  const chartHeight = Math.max(280, Math.min(chartData.length * 30, 300))
+  const currentMetric = useMemo(
+    () => METRICS.find(m => m.key === metricKey) ?? METRICS[0],
+    [metricKey]
+  )
+
+  const chartData = useMemo(() => {
+    return [...data]
+      .map((s, idx) => ({
+        name: formatVendorName(s.vendorName, idx),
+        value: currentMetric.getValue(s),
+        total: s.totalUsd,
+        orders: s.ordersCount,
+        commission: s.estimatedCommissionUsd ?? 0,
+        ticket: s.averageTicketUsd ?? (s.ordersCount > 0 ? s.totalUsd / s.ordersCount : 0),
+        upt: s.unitsPerOrder ?? 0,
+        discount: s.averageDiscountPercent ?? 0,
+        conversion: s.reservationConversionRate ?? 0,
+        convertedReservations: s.convertedReservationsCount ?? 0,
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+      .map((item, rankIdx) => ({
+        ...item,
+        rank: rankIdx + 1,
+      }))
+  }, [data, currentMetric])
+
+  const chartHeight = Math.max(280, Math.min(chartData.length * 32, 330))
 
   return (
     <Card className="h-full flex-1 flex flex-col justify-between border-border/70 shadow-sm hover:shadow-md transition-shadow duration-300">
       <CardHeader className="p-4 sm:p-5 border-b border-border/40 bg-muted/20">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
-            <Trophy className="w-4 h-4" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500 shrink-0">
+              <Trophy className="w-4 h-4" />
+            </div>
+            <div>
+              <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
+                Ranking de Vendedores
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                {currentMetric.shortLabel} en pedidos concretados
+              </p>
+            </div>
           </div>
-          <div>
-            <CardTitle className="text-sm font-semibold tracking-tight text-foreground">
-              Ranking de Vendedores y Comisiones
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Volumen facturado, pedidos y comisiones estimadas</p>
+          <div className="flex items-center gap-2">
+            <Select value={metricKey} onValueChange={(val: SellerMetricKey) => setMetricKey(val)}>
+              <SelectTrigger
+                id="seller-metric-selector"
+                className="h-8 text-xs w-full sm:w-[200px] bg-background/80 border-border/70 shadow-none font-medium"
+              >
+                <SelectValue placeholder="Métrica" />
+              </SelectTrigger>
+              <SelectContent align="end" className="text-xs">
+                {METRICS.map(m => (
+                  <SelectItem key={m.key} value={m.key} className="text-xs">
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </CardHeader>
@@ -69,14 +216,14 @@ export function TopSellersChart({ data, isLoading }: Props) {
             <BarChart
               data={chartData}
               layout="vertical"
-              margin={{ top: 8, right: 54, left: 10, bottom: 0 }}
+              margin={{ top: 8, right: 65, left: 10, bottom: 0 }}
               barCategoryGap={8}
             >
               <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.gridStroke} horizontal={false} />
               <XAxis
                 type="number"
                 tick={{ fontSize: 11, fill: CHART_THEME.axisTick }}
-                tickFormatter={v => `$${(v / 1000).toFixed(0)}k`}
+                tickFormatter={currentMetric.formatAxis}
                 stroke={CHART_THEME.gridStroke}
               />
               <YAxis
@@ -98,19 +245,18 @@ export function TopSellersChart({ data, isLoading }: Props) {
                   boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
                   fontSize: 12,
                 }}
-                formatter={(v: number, n: string, item: any) => [
-                  `$${Number(v).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Comisión: $${(item.payload.commission ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2 })})`,
-                  "Facturado"
-                ]}
+                formatter={(v: any, _name: string, item: any) =>
+                  currentMetric.formatTooltip(Number(v), item)
+                }
               />
-              <Bar dataKey="total" radius={[0, 6, 6, 0]} maxBarSize={16}>
+              <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={16}>
                 {chartData.map((_, i) => (
                   <Cell key={i} fill={RANK_COLORS[Math.min(i, RANK_COLORS.length - 1)]} />
                 ))}
                 <LabelList
-                  dataKey="total"
+                  dataKey="value"
                   position="right"
-                  formatter={(v: any) => `$${(Number(v) / 1000).toFixed(1)}k`}
+                  formatter={(v: any) => currentMetric.formatLabel(Number(v))}
                   style={{ fontSize: 11, fill: "#64748B", fontWeight: 600 }}
                   offset={8}
                 />
