@@ -2,6 +2,7 @@ using Ordina.Application.Reports;
 using Ordina.Domain.Enums;
 using Ordina.Domain.Finance;
 using Ordina.Domain.Orders;
+using Ordina.Domain.Users;
 
 namespace Ordina.Application.Dashboard;
 
@@ -40,6 +41,27 @@ public class DashboardService : IDashboardService
             p.Method.Contains("financia", StringComparison.OrdinalIgnoreCase))
         {
             return true;
+        }
+        return false;
+    }
+
+    private static HashSet<string> ParseStoreIds(string? storeIds)
+    {
+        if (string.IsNullOrWhiteSpace(storeIds)) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return storeIds
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool IsOrderInStoreSet(Order o, HashSet<string> allowedStoreIds, Dictionary<string, User> userMap)
+    {
+        if (allowedStoreIds.Count == 0) return true;
+        if (!string.IsNullOrWhiteSpace(o.VendorId) && userMap.TryGetValue(o.VendorId, out var user))
+        {
+            if (!string.IsNullOrWhiteSpace(user.StoreId) && allowedStoreIds.Contains(user.StoreId))
+                return true;
+            if (!string.IsNullOrWhiteSpace(user.StoreName) && allowedStoreIds.Contains(user.StoreName))
+                return true;
         }
         return false;
     }
@@ -111,7 +133,7 @@ public class DashboardService : IDashboardService
         };
     }
 
-    public async Task<DashboardMetricsDto> GetDashboardMetricsAsync(string period = "day", CancellationToken cancellationToken = default)
+    public async Task<DashboardMetricsDto> GetDashboardMetricsAsync(string period = "day", string? storeIds = null, CancellationToken cancellationToken = default)
     {
         var nowUtc = DateTime.UtcNow;
         var caracasOffset = TimeSpan.FromHours(-4);
@@ -165,7 +187,12 @@ public class DashboardService : IDashboardService
         if (liveUsdRate <= 0) liveUsdRate = 1.0m;
         var liveEurRate = allRates.FirstOrDefault(r => (r.ToCurrency == "EUR" || r.FromCurrency == "EUR") && r.IsActive)?.Rate ?? (liveUsdRate * 1.15m);
 
-        var orders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
+        var targetStores = ParseStoreIds(storeIds);
+        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
+
+        var allOrders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
+        var orders = allOrders.Where(o => IsOrderInStoreSet(o, targetStores, userMap)).ToList();
 
         var currentVentas = orders.Where(o => IsValidOrder(o) && o.CreatedAt >= periodStart && o.CreatedAt <= periodEnd).ToList();
         var currentOrdersCount = currentVentas.Count;
@@ -322,11 +349,15 @@ public class DashboardService : IDashboardService
         };
     }
 
-    public async Task<IReadOnlyList<TrendDataPointDto>> GetSalesTrendAsync(int days = 30, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TrendDataPointDto>> GetSalesTrendAsync(int days = 30, string? storeIds = null, CancellationToken cancellationToken = default)
     {
+        var targetStores = ParseStoreIds(storeIds);
+        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
+
         var from = DateTime.UtcNow.AddDays(-days).Date;
         var allOrders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
-        var orders = allOrders.Where(o => IsValidOrder(o) && o.CreatedAt >= from).ToList();
+        var orders = allOrders.Where(o => IsValidOrder(o) && o.CreatedAt >= from && IsOrderInStoreSet(o, targetStores, userMap)).ToList();
 
         var allRates = await _dashboardRepository.GetExchangeRatesAsync(cancellationToken);
         var liveUsdRate = allRates.FirstOrDefault(r => (r.ToCurrency == "USD" || r.FromCurrency == "USD") && r.IsActive)?.Rate ?? 1.0m;
@@ -355,11 +386,15 @@ public class DashboardService : IDashboardService
             .ToList();
     }
 
-    public async Task<IReadOnlyList<SaleTypeDataDto>> GetBySaleTypeAsync(string period = "month", CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<SaleTypeDataDto>> GetBySaleTypeAsync(string period = "month", string? storeIds = null, CancellationToken cancellationToken = default)
     {
+        var targetStores = ParseStoreIds(storeIds);
+        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
+
         var periodStart = ComputePeriodStart(period);
         var allOrders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
-        var orders = allOrders.Where(o => IsValidOrder(o) && o.CreatedAt >= periodStart).ToList();
+        var orders = allOrders.Where(o => IsValidOrder(o) && o.CreatedAt >= periodStart && IsOrderInStoreSet(o, targetStores, userMap)).ToList();
 
         var allRates = await _dashboardRepository.GetExchangeRatesAsync(cancellationToken);
         var liveUsdRate = allRates.FirstOrDefault(r => (r.ToCurrency == "USD" || r.FromCurrency == "USD") && r.IsActive)?.Rate ?? 1.0m;
@@ -387,11 +422,15 @@ public class DashboardService : IDashboardService
             .ToList();
     }
 
-    public async Task<IReadOnlyList<TopSellerDto>> GetTopSellersAsync(string period = "month", int limit = 10, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TopSellerDto>> GetTopSellersAsync(string period = "month", int limit = 10, string? storeIds = null, CancellationToken cancellationToken = default)
     {
+        var targetStores = ParseStoreIds(storeIds);
+        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
+
         var periodStart = ComputePeriodStart(period);
         var allOrders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
-        var orders = allOrders.Where(o => IsValidOrder(o) && o.CreatedAt >= periodStart && !string.IsNullOrWhiteSpace(o.VendorId)).ToList();
+        var orders = allOrders.Where(o => IsValidOrder(o) && o.CreatedAt >= periodStart && !string.IsNullOrWhiteSpace(o.VendorId) && IsOrderInStoreSet(o, targetStores, userMap)).ToList();
 
         var allRates = await _dashboardRepository.GetExchangeRatesAsync(cancellationToken);
         var liveUsdRate = allRates.FirstOrDefault(r => (r.ToCurrency == "USD" || r.FromCurrency == "USD") && r.IsActive)?.Rate ?? 1.0m;
@@ -465,6 +504,13 @@ public class DashboardService : IDashboardService
                     ? Math.Round(((decimal)convertedReservationsCount / totalReservationOps) * 100m, 1, MidpointRounding.AwayFromZero)
                     : 0m;
 
+                userMap.TryGetValue(g.Key.VendorId, out var vendorUser);
+                var sellerType = vendorUser?.Role == UserRole.OnlineSeller || string.Equals(vendorUser?.RoleString, "Online Seller", StringComparison.OrdinalIgnoreCase)
+                    ? "online"
+                    : "store";
+                var vendorStoreId = vendorUser?.StoreId;
+                var vendorStoreName = vendorUser?.StoreName;
+
                 return new TopSellerDto(
                     g.Key.VendorId,
                     g.Key.Name,
@@ -475,18 +521,25 @@ public class DashboardService : IDashboardService
                     unitsPerOrder,
                     avgDiscountPercent,
                     reservationConversionRate,
-                    convertedReservationsCount);
+                    convertedReservationsCount,
+                    sellerType,
+                    vendorStoreId,
+                    vendorStoreName);
             })
             .OrderByDescending(x => x.TotalUsd)
             .Take(limit)
             .ToList();
     }
 
-    public async Task<IReadOnlyList<TopProductDto>> GetTopProductsAsync(string period = "month", int limit = 10, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TopProductDto>> GetTopProductsAsync(string period = "month", int limit = 10, string? storeIds = null, CancellationToken cancellationToken = default)
     {
+        var targetStores = ParseStoreIds(storeIds);
+        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
+
         var periodStart = ComputePeriodStart(period);
         var allOrders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
-        var orders = allOrders.Where(o => IsValidOrder(o) && o.CreatedAt >= periodStart).ToList();
+        var orders = allOrders.Where(o => IsValidOrder(o) && o.CreatedAt >= periodStart && IsOrderInStoreSet(o, targetStores, userMap)).ToList();
 
         var allRates = await _dashboardRepository.GetExchangeRatesAsync(cancellationToken);
         var liveUsdRate = allRates.FirstOrDefault(r => (r.ToCurrency == "USD" || r.FromCurrency == "USD") && r.IsActive)?.Rate ?? 1.0m;
@@ -526,8 +579,12 @@ public class DashboardService : IDashboardService
             .ToList();
     }
 
-    public async Task<PipelineSnapshotDto> GetPipelineSnapshotAsync(CancellationToken cancellationToken = default)
+    public async Task<PipelineSnapshotDto> GetPipelineSnapshotAsync(string? storeIds = null, CancellationToken cancellationToken = default)
     {
+        var targetStores = ParseStoreIds(storeIds);
+        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
+
         var allOrders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
         var allRates = await _dashboardRepository.GetExchangeRatesAsync(cancellationToken);
         var liveUsdRate = allRates.FirstOrDefault(r => (r.ToCurrency == "USD" || r.FromCurrency == "USD") && r.IsActive)?.Rate ?? 1.0m;
@@ -536,7 +593,8 @@ public class DashboardService : IDashboardService
         var orders = allOrders.Where(o =>
             IsValidOrder(o) &&
             o.StatusString != "Declinado" && o.StatusString != "Cancelado" &&
-            o.StatusString != "Completado" && o.StatusString != "Completada" && o.StatusString != "Entregado"
+            o.StatusString != "Completado" && o.StatusString != "Completada" && o.StatusString != "Entregado" &&
+            IsOrderInStoreSet(o, targetStores, userMap)
         ).ToList();
 
         var mProducts = new List<decimal>();
@@ -1688,7 +1746,7 @@ public class DashboardService : IDashboardService
 
     public async Task<IReadOnlyList<ReplenishmentSuggestionDto>> GetReplenishmentSuggestionsAsync(CancellationToken cancellationToken = default)
     {
-        var topProducts = await GetTopProductsAsync("month", 5, cancellationToken);
+        var topProducts = await GetTopProductsAsync("month", 5, cancellationToken: cancellationToken);
         var suggestions = new List<ReplenishmentSuggestionDto>();
         int rank = 1;
 
