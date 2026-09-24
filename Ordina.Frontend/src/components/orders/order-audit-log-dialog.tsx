@@ -195,12 +195,14 @@ export function OrderAuditLogDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden bg-surface border-border/60 shadow-2xl">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden bg-background border-border/80 shadow-2xl">
         {/* Dialog Header */}
-        <DialogHeader className="p-6 pb-4 border-b border-border/40">
+        <DialogHeader className="p-5 px-6 border-b border-border/50 bg-card/40 shrink-0">
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              <History className="w-5 h-5 text-emerald-400" />
+            <DialogTitle className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                <History className="w-4 h-4 text-emerald-500" />
+              </div>
               Auditoría de pedidos
             </DialogTitle>
           </div>
@@ -210,14 +212,14 @@ export function OrderAuditLogDialog({
         </DialogHeader>
 
         {/* Filter Bar */}
-        <div className="p-5 border-b border-border/40 bg-surface/40 backdrop-blur-sm">
+        <div className="p-4 px-6 border-b border-border/50 bg-muted/20 shrink-0">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">
                 Usuario
               </Label>
               <Select value={filterUserId} onValueChange={setFilterUserId}>
-                <SelectTrigger className="h-9 text-xs">
+                <SelectTrigger className="h-9 text-xs bg-background border-border/70">
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
@@ -231,8 +233,8 @@ export function OrderAuditLogDialog({
               </Select>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">
                 Número de pedido
               </Label>
               <div className="relative">
@@ -240,7 +242,7 @@ export function OrderAuditLogDialog({
                   value={filterOrderNumber}
                   onChange={(e) => setFilterOrderNumber(e.target.value)}
                   placeholder="ORD-001 o 1642"
-                  className="h-9 text-xs font-mono pr-8"
+                  className="h-9 text-xs font-mono pr-8 bg-background border-border/70"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -252,12 +254,12 @@ export function OrderAuditLogDialog({
               </div>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">
                 Acción
               </Label>
               <Select value={filterAction} onValueChange={setFilterAction}>
-                <SelectTrigger className="h-9 text-xs">
+                <SelectTrigger className="h-9 text-xs bg-background border-border/70">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -270,34 +272,34 @@ export function OrderAuditLogDialog({
               </Select>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">
                 Desde
               </Label>
               <Input
                 type="datetime-local"
                 value={filterFrom}
                 onChange={(e) => setFilterFrom(e.target.value)}
-                className="h-9 text-xs"
+                className="h-9 text-xs bg-background border-border/70"
               />
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">
                 Hasta
               </Label>
               <Input
                 type="datetime-local"
                 value={filterTo}
                 onChange={(e) => setFilterTo(e.target.value)}
-                className="h-9 text-xs"
+                className="h-9 text-xs bg-background border-border/70"
               />
             </div>
 
             <div className="flex items-end">
               <Button
                 type="button"
-                className="w-full h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-950/30"
+                className="w-full h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow-xs transition-all cursor-pointer"
                 onClick={handleApplyFilters}
               >
                 Aplicar filtros
@@ -307,11 +309,11 @@ export function OrderAuditLogDialog({
         </div>
 
         {/* Timeline Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 max-h-[550px]">
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 max-h-[550px] bg-background">
           {loading ? (
             <AuditTimelineSkeleton count={4} />
           ) : logs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-xl border border-dashed border-border/50 bg-muted/10">
+            <div className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-xl border border-dashed border-border/60 bg-muted/20">
               <History className="w-10 h-10 text-muted-foreground/40 mb-3" />
               <p className="text-sm font-semibold text-foreground">
                 No se encontraron registros de auditoría
@@ -321,7 +323,7 @@ export function OrderAuditLogDialog({
               </p>
             </div>
           ) : (
-            <div className="relative pl-8 space-y-4 before:absolute before:left-[11px] before:top-3 before:bottom-3 before:w-0.5 before:bg-gradient-to-b before:from-emerald-500/40 before:via-sky-500/20 before:to-border/20">
+            <div className="relative pl-8 space-y-4 before:absolute before:left-[11px] before:top-3 before:bottom-3 before:w-0.5 before:bg-border/60">
               {logs.map((log) => (
                 <AuditTimelineItem
                   key={log.id}
@@ -337,7 +339,7 @@ export function OrderAuditLogDialog({
         </div>
 
         {/* Dialog Footer with Pagination */}
-        <div className="p-4 px-6 border-t border-border/40 bg-surface/60 flex items-center justify-between text-xs text-muted-foreground">
+        <div className="p-4 px-6 border-t border-border/50 bg-muted/20 flex items-center justify-between text-xs text-muted-foreground shrink-0">
           <div>
             Total: <span className="font-semibold text-foreground font-mono">{totalCount}</span> registros · Página{" "}
             <span className="font-semibold text-foreground font-mono">{page}</span> de{" "}
@@ -348,7 +350,7 @@ export function OrderAuditLogDialog({
               type="button"
               variant="outline"
               size="sm"
-              className="h-8 text-xs font-semibold"
+              className="h-8 text-xs font-medium cursor-pointer"
               disabled={page <= 1 || loading}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
@@ -358,7 +360,7 @@ export function OrderAuditLogDialog({
               type="button"
               variant="outline"
               size="sm"
-              className="h-8 text-xs font-semibold"
+              className="h-8 text-xs font-medium cursor-pointer"
               disabled={page >= totalPages || loading}
               onClick={() => setPage((p) => p + 1)}
             >

@@ -23,7 +23,7 @@ export function AuditActionBadge({
 }: AuditActionBadgeProps): JSX.Element {
   if (hasPaymentChanges || action === "payment_conciliated") {
     return (
-      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase bg-purple-500/10 text-purple-400 border border-purple-500/25">
+      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold tracking-wide uppercase bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20">
         <DollarSign className="w-3 h-3 shrink-0" />
         {action === "payment_conciliated"
           ? "Conciliación"
@@ -35,7 +35,7 @@ export function AuditActionBadge({
   switch (action) {
     case "created":
       return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold tracking-wide uppercase bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
           <PackagePlus className="w-3 h-3 shrink-0" />
           Creado
         </span>
@@ -43,7 +43,7 @@ export function AuditActionBadge({
 
     case "updated":
       return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase bg-sky-500/10 text-sky-400 border border-sky-500/25">
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold tracking-wide uppercase bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-500/20">
           <Sparkles className="w-3 h-3 shrink-0" />
           Actualizado
         </span>
@@ -51,7 +51,7 @@ export function AuditActionBadge({
 
     case "deleted":
       return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase bg-rose-500/10 text-rose-400 border border-rose-500/25">
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold tracking-wide uppercase bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20">
           <Trash2 className="w-3 h-3 shrink-0" />
           Eliminado
         </span>
@@ -59,7 +59,7 @@ export function AuditActionBadge({
 
     case "order_declined":
       return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase bg-rose-500/10 text-rose-400 border border-rose-500/25">
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold tracking-wide uppercase bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20">
           <XCircle className="w-3 h-3 shrink-0" />
           Declinado
         </span>
@@ -67,7 +67,7 @@ export function AuditActionBadge({
 
     case "order_decline_reverted":
       return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase bg-amber-500/10 text-amber-400 border border-amber-500/25">
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold tracking-wide uppercase bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
           <RotateCcw className="w-3 h-3 shrink-0" />
           Revertido
         </span>
@@ -78,7 +78,7 @@ export function AuditActionBadge({
     case "manufacturing_queued":
     case "manufacturing_reverted":
       return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase bg-amber-500/10 text-amber-400 border border-amber-500/25">
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold tracking-wide uppercase bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
           <Factory className="w-3 h-3 shrink-0" />
           {formatAuditAction(action)}
         </span>
@@ -86,7 +86,7 @@ export function AuditActionBadge({
 
     case "item_validated":
       return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold tracking-wide uppercase bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
           <CheckCircle2 className="w-3 h-3 shrink-0" />
           Ítem Validado
         </span>
@@ -94,7 +94,7 @@ export function AuditActionBadge({
 
     default:
       return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold tracking-wider uppercase bg-slate-500/10 text-slate-400 border border-slate-500/20">
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold tracking-wide uppercase bg-muted text-muted-foreground border border-border/60">
           <RefreshCw className="w-3 h-3 shrink-0" />
           {formatAuditAction(action)}
         </span>

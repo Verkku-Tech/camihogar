@@ -75,48 +75,48 @@ export function AuditTimelineItem({
       return {
         icon: <DollarSign className="w-3.5 h-3.5" />,
         className:
-          "border-purple-500/80 text-purple-400 bg-background shadow-[0_0_10px_rgba(168,85,247,0.35)]",
+          "border-purple-500/50 text-purple-600 dark:text-purple-400 shadow-xs",
       };
     }
     if (log.action === "created") {
       return {
         icon: <PackagePlus className="w-3.5 h-3.5" />,
         className:
-          "border-emerald-500/80 text-emerald-400 bg-background shadow-[0_0_10px_rgba(28,181,105,0.35)]",
+          "border-emerald-500/50 text-emerald-600 dark:text-emerald-400 shadow-xs",
       };
     }
     if (log.action === "deleted" || log.action === "order_declined") {
       return {
         icon: <Trash2 className="w-3.5 h-3.5" />,
         className:
-          "border-rose-500/80 text-rose-400 bg-background shadow-[0_0_10px_rgba(244,63,94,0.35)]",
+          "border-rose-500/50 text-rose-600 dark:text-rose-400 shadow-xs",
       };
     }
     if (log.action === "order_decline_reverted") {
       return {
         icon: <RotateCcw className="w-3.5 h-3.5" />,
         className:
-          "border-amber-500/80 text-amber-400 bg-background shadow-[0_0_10px_rgba(245,158,11,0.35)]",
+          "border-amber-500/50 text-amber-600 dark:text-amber-400 shadow-xs",
       };
     }
     if (log.action.startsWith("manufacturing_")) {
       return {
         icon: <Factory className="w-3.5 h-3.5" />,
         className:
-          "border-amber-500/80 text-amber-400 bg-background shadow-[0_0_10px_rgba(245,158,11,0.35)]",
+          "border-amber-500/50 text-amber-600 dark:text-amber-400 shadow-xs",
       };
     }
     if (log.action === "item_validated") {
       return {
         icon: <CheckCircle2 className="w-3.5 h-3.5" />,
         className:
-          "border-emerald-500/80 text-emerald-400 bg-background shadow-[0_0_10px_rgba(28,181,105,0.35)]",
+          "border-emerald-500/50 text-emerald-600 dark:text-emerald-400 shadow-xs",
       };
     }
     return {
       icon: <Sparkles className="w-3.5 h-3.5" />,
       className:
-        "border-sky-500/80 text-sky-400 bg-background shadow-[0_0_10px_rgba(56,189,248,0.35)]",
+        "border-sky-500/50 text-sky-600 dark:text-sky-400 shadow-xs",
     };
   }, [log.action, hasPaymentChanges]);
 
@@ -124,13 +124,13 @@ export function AuditTimelineItem({
     <div className="relative group">
       {/* Node on vertical timeline */}
       <div
-        className={`absolute -left-8 top-3.5 w-6 h-6 rounded-full border-2 flex items-center justify-center z-10 transition-transform duration-200 group-hover:scale-110 ${nodeIcon.className}`}
+        className={`absolute -left-8 top-3.5 w-6 h-6 rounded-full border flex items-center justify-center z-10 transition-transform duration-200 group-hover:scale-105 bg-card ${nodeIcon.className}`}
       >
         {nodeIcon.icon}
       </div>
 
       {/* Event Card */}
-      <div className="rounded-xl border border-border/50 bg-card/60 hover:bg-card/90 hover:border-border transition-all duration-200 p-3.5 shadow-sm space-y-2.5">
+      <div className="rounded-xl border border-border/60 bg-card hover:border-border hover:shadow-xs transition-all duration-200 p-4 shadow-2xs space-y-3">
         {/* Card Header */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -138,7 +138,7 @@ export function AuditTimelineItem({
             <button
               type="button"
               onClick={() => onSelectOrder?.(log.orderNumber)}
-              className="inline-flex items-center gap-1 font-mono text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-md hover:bg-emerald-500/20 hover:border-emerald-500/60 transition-all cursor-pointer shadow-sm"
+              className="inline-flex items-center gap-1 font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md hover:bg-emerald-500/20 hover:border-emerald-500/40 transition-all cursor-pointer"
               title={`Ver pedido ${log.orderNumber}`}
             >
               <FileText className="w-3 h-3 shrink-0" />
@@ -146,8 +146,8 @@ export function AuditTimelineItem({
             </button>
 
             {/* Actor identity */}
-            <div className="flex items-center gap-1.5 text-xs text-foreground font-semibold">
-              <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-300 border border-border/60 text-[10px] font-bold flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-1.5 text-xs text-foreground font-medium">
+              <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground border border-border/60 text-[10px] font-bold flex items-center justify-center shrink-0">
                 {getInitials(log.userName)}
               </span>
               <span>{log.userName}</span>
@@ -162,10 +162,10 @@ export function AuditTimelineItem({
 
           {/* Timestamp with tooltip */}
           <div
-            className="flex items-center gap-1 text-[11px] text-muted-foreground font-mono ml-auto"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono ml-auto"
             title={new Date(log.timestamp).toLocaleString("es-VE")}
           >
-            <Clock className="w-3 h-3 text-muted-foreground/80 shrink-0" />
+            <Clock className="w-3.5 h-3.5 text-muted-foreground/70 shrink-0" />
             <span>
               {formatRelativeTime(log.timestamp)}
               {formatExactTime(log.timestamp)
@@ -186,7 +186,7 @@ export function AuditTimelineItem({
             <button
               type="button"
               onClick={() => setIsExpanded((prev) => !prev)}
-              className="inline-flex items-center gap-1 mt-1 text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 px-2.5 py-1 rounded-md transition-all cursor-pointer"
+              className="inline-flex items-center gap-1 mt-1 text-[11px] font-semibold text-sky-700 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 px-2.5 py-1 rounded-md transition-all cursor-pointer"
             >
               <ChevronDown
                 className={`w-3.5 h-3.5 transition-transform duration-200 ${
