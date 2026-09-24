@@ -72,7 +72,10 @@ public record TopSellerDto(
     double UnitsPerOrder = 0,
     decimal AverageDiscountPercent = 0m,
     decimal ReservationConversionRate = 0m,
-    int ConvertedReservationsCount = 0);
+    int ConvertedReservationsCount = 0,
+    string SellerType = "store",
+    string? StoreId = null,
+    string? StoreName = null);
 
 public record TopProductDto(
     string ProductName,
