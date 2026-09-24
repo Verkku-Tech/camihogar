@@ -98,7 +98,7 @@ public class DashboardAndFinanceTests
         var service = new DashboardService(dashboardRepoMock.Object);
 
         // Act
-        var metrics = await service.GetDashboardMetricsAsync("day", CancellationToken.None);
+        var metrics = await service.GetDashboardMetricsAsync("day", cancellationToken: CancellationToken.None);
 
         // Assert
         // Total Invoiced: Ord1 ($100) + Ord2 (80,000 Bs / 800 = $100) = $200 USD

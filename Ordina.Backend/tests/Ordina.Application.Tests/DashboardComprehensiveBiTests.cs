@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Moq;
 using Ordina.Application.Dashboard;
 using Ordina.Domain.Catalog;
+using Ordina.Domain.Enums;
 using Ordina.Domain.Finance;
 using Ordina.Domain.Orders;
 using Ordina.Domain.Stores;
@@ -695,6 +697,95 @@ public class DashboardComprehensiveBiTests
         Assert.NotNull(excelBytes);
         Assert.Equal(0x50, excelBytes[0]);
         Assert.Equal(0x4B, excelBytes[1]);
+    }
+
+    [Fact]
+    public async Task GetTopSellers_Filters_By_Store_And_Classifies_SellerType()
+    {
+        var users = new List<User>
+        {
+            new() { Id = "ven-1", Name = "Vendedor Tienda", StoreId = "store-guatire", StoreName = "Tienda Guatire", Role = UserRole.StoreSeller },
+            new() { Id = "ven-2", Name = "Vendedor Online", StoreId = "store-caracas", StoreName = "Tienda Caracas (Las Mercedes)", Role = UserRole.OnlineSeller }
+        };
+        _repoMock.Setup(r => r.GetUsersAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(users);
+
+        var orders = new List<Order>
+        {
+            new()
+            {
+                Id = "ord-1",
+                OrderNumber = "ORD-001",
+                VendorId = "ven-1",
+                VendorName = "Vendedor Tienda",
+                Total = 500m,
+                CreatedAt = _now,
+                StatusString = "Entregado"
+            },
+            new()
+            {
+                Id = "ord-2",
+                OrderNumber = "ORD-002",
+                VendorId = "ven-2",
+                VendorName = "Vendedor Online",
+                Total = 300m,
+                CreatedAt = _now,
+                StatusString = "Entregado"
+            }
+        };
+        _repoMock.Setup(r => r.GetAllOrdersForDashboardAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(orders);
+
+        var service = new DashboardService(_repoMock.Object);
+
+        // When storeIds = null (All stores)
+        var allResult = await service.GetTopSellersAsync("month", 10, null);
+        Assert.Equal(2, allResult.Count);
+        var seller1 = allResult.First(s => s.VendorId == "ven-1");
+        var seller2 = allResult.First(s => s.VendorId == "ven-2");
+        Assert.Equal("store", seller1.SellerType);
+        Assert.Equal("store-guatire", seller1.StoreId);
+        Assert.Equal("online", seller2.SellerType);
+        Assert.Equal("store-caracas", seller2.StoreId);
+
+        // When storeIds = "store-guatire"
+        var filteredResult = await service.GetTopSellersAsync("month", 10, "store-guatire");
+        Assert.Single(filteredResult);
+        Assert.Equal("ven-1", filteredResult[0].VendorId);
+    }
+
+    [Fact]
+    public async Task GetDashboardMetrics_Filters_By_Store_MultiSelect()
+    {
+        var users = new List<User>
+        {
+            new() { Id = "ven-1", StoreId = "store-guatire", StoreName = "Tienda Guatire" },
+            new() { Id = "ven-2", StoreId = "store-caracas", StoreName = "Tienda Caracas" },
+            new() { Id = "ven-3", StoreId = "store-valencia", StoreName = "Tienda Valencia" }
+        };
+        _repoMock.Setup(r => r.GetUsersAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(users);
+
+        var orders = new List<Order>
+        {
+            new() { Id = "ord-1", OrderNumber = "ORD-001", VendorId = "ven-1", Total = 100m, CreatedAt = _now, StatusString = "Entregado" },
+            new() { Id = "ord-2", OrderNumber = "ORD-002", VendorId = "ven-2", Total = 200m, CreatedAt = _now, StatusString = "Entregado" },
+            new() { Id = "ord-3", OrderNumber = "ORD-003", VendorId = "ven-3", Total = 300m, CreatedAt = _now, StatusString = "Entregado" }
+        };
+        _repoMock.Setup(r => r.GetAllOrdersForDashboardAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(orders);
+
+        var service = new DashboardService(_repoMock.Object);
+
+        // Filter by two stores
+        var metricsMulti = await service.GetDashboardMetricsAsync("day", "store-guatire,store-caracas");
+        Assert.Equal(300m, metricsMulti.TotalSalesUsd);
+        Assert.Equal(2, metricsMulti.TotalOrders);
+
+        // Filter by single store
+        var metricsSingle = await service.GetDashboardMetricsAsync("day", "store-valencia");
+        Assert.Equal(300m, metricsSingle.TotalSalesUsd);
+        Assert.Equal(1, metricsSingle.TotalOrders);
     }
 }
 

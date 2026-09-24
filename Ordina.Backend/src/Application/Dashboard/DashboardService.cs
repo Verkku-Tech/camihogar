@@ -188,7 +188,7 @@ public class DashboardService : IDashboardService
         var liveEurRate = allRates.FirstOrDefault(r => (r.ToCurrency == "EUR" || r.FromCurrency == "EUR") && r.IsActive)?.Rate ?? (liveUsdRate * 1.15m);
 
         var targetStores = ParseStoreIds(storeIds);
-        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var users = (await _dashboardRepository.GetUsersAsync(cancellationToken)) ?? [];
         var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
 
         var allOrders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
@@ -352,7 +352,7 @@ public class DashboardService : IDashboardService
     public async Task<IReadOnlyList<TrendDataPointDto>> GetSalesTrendAsync(int days = 30, string? storeIds = null, CancellationToken cancellationToken = default)
     {
         var targetStores = ParseStoreIds(storeIds);
-        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var users = (await _dashboardRepository.GetUsersAsync(cancellationToken)) ?? [];
         var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
 
         var from = DateTime.UtcNow.AddDays(-days).Date;
@@ -389,7 +389,7 @@ public class DashboardService : IDashboardService
     public async Task<IReadOnlyList<SaleTypeDataDto>> GetBySaleTypeAsync(string period = "month", string? storeIds = null, CancellationToken cancellationToken = default)
     {
         var targetStores = ParseStoreIds(storeIds);
-        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var users = (await _dashboardRepository.GetUsersAsync(cancellationToken)) ?? [];
         var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
 
         var periodStart = ComputePeriodStart(period);
@@ -425,7 +425,7 @@ public class DashboardService : IDashboardService
     public async Task<IReadOnlyList<TopSellerDto>> GetTopSellersAsync(string period = "month", int limit = 10, string? storeIds = null, CancellationToken cancellationToken = default)
     {
         var targetStores = ParseStoreIds(storeIds);
-        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var users = (await _dashboardRepository.GetUsersAsync(cancellationToken)) ?? [];
         var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
 
         var periodStart = ComputePeriodStart(period);
@@ -534,7 +534,7 @@ public class DashboardService : IDashboardService
     public async Task<IReadOnlyList<TopProductDto>> GetTopProductsAsync(string period = "month", int limit = 10, string? storeIds = null, CancellationToken cancellationToken = default)
     {
         var targetStores = ParseStoreIds(storeIds);
-        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var users = (await _dashboardRepository.GetUsersAsync(cancellationToken)) ?? [];
         var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
 
         var periodStart = ComputePeriodStart(period);
@@ -582,7 +582,7 @@ public class DashboardService : IDashboardService
     public async Task<PipelineSnapshotDto> GetPipelineSnapshotAsync(string? storeIds = null, CancellationToken cancellationToken = default)
     {
         var targetStores = ParseStoreIds(storeIds);
-        var users = await _dashboardRepository.GetUsersAsync(cancellationToken);
+        var users = (await _dashboardRepository.GetUsersAsync(cancellationToken)) ?? [];
         var userMap = users.Where(u => !string.IsNullOrWhiteSpace(u.Id)).ToDictionary(u => u.Id!, u => u);
 
         var allOrders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
