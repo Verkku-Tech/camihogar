@@ -43,6 +43,32 @@
 ### E. Inteligencia de Reposición en BI
 - El módulo de BI cruzará el inventario actual de cada tienda/almacén contra el **ranking de variantes más vendidas (Top 3 completas) y menos vendidas** para generar sugerencias automáticas de fabricación y reposición prioritaria.
 
+### F. Auditoría de Madurez de Métricas en el Dashboard de BI
+Para total transparencia técnica y operativa, las métricas del tablero de Business Intelligence se clasifican en tres niveles de madurez:
+
+1. **Métricas 100% Reales (Transaccionales en Producción):**
+   - **Facturación vs Cobranza (Semanal y Diario):** Datos consolidados de pedidos y pagos parciales convertidos a USD con tasa de cambio histórica/activa.
+   - **Tendencia y Proyección Fin de Mes:** Historial real continuo proyectado con el modelo matemático Holt-Winters / Suavizado Triple.
+   - **Mix de Medios de Pago y Exposición Cambiaria:** Desglose real de métodos de pago (Zelle, Efectivo USD, Cashea, Pago Móvil) y balance Divisas vs Bs.
+   - **Saldos Pendientes de Liquidación (Aging):** Órdenes terminadas no liquidadas con cálculo exacto de días de mora.
+   - **Apartados Vencidos por Antigüedad:** Apartados reales con más de 30 días sin completar pago.
+   - **Ranking de Vendedores y Comisiones:** Facturación en pedidos concretados, pedidos, ticket promedio y comisiones calculadas.
+   - **Distribución por Tipo de Venta:** Canal comercial real (Showroom, Online, WhatsApp).
+   - **Top Productos y Atributos:** Variantes reales vendidas (telas, colores, medidas).
+   - **Pipeline de Piezas:** Conteo y valorización real de productos según su estado de ubicación en la orden (`FABRICACION`, `ALMACEN`, `EN DESPACHO`, `DESPACHADO`).
+
+2. **Métricas Estimadas / con Heurísticas (Basadas en pedidos reales, con aproximación temporal):**
+   - **Manufacturing Lead Time:** Calcula días entre `ManufacturingStartedAt` y `ManufacturingCompletedAt`. Si los operarios de taller no registraron estas marcas en el pedido, usa promedios estándar de catálogo (Camas: 5.2d, Closets: 8.4d, Comedores: 6.1d).
+   - **Cumplimiento de Entrega OTIF:** Al no existir un campo obligatorio de fecha pactada de entrega al cliente en todas las órdenes históricas, asume un SLA de 15 días desde la creación (`CreatedAt + 15d`).
+   - **Cuellos de Botella / Permanencia por Etapa (Stage Dwell Times):** Calcula la antigüedad total de pedidos activos en cada etapa o valores base de referencia (1.8d, 3.5d, 4.2d, 2.1d) por no contar con una tabla de auditoría de transiciones de estado histórico.
+   - **Ratio de Cumplimiento (Inmediato vs Fabricación):** Desglose real de productos marcados con disponibilidad inmediata vs fabricación (con fallback 35%/65% si la orden no lo especificó).
+
+3. **Métricas en Wireframe / Mock (A la espera del Módulo de Inventario Inmediato y Multisede):**
+   - **Ocupación Física de Tiendas (`StoreOccupancy`):** Muestra capacidades teóricas (Guatire 72%, Caracas 70%, Terrinca 65%). No existe aún el modelo de capacidad física o tope de exhibición en BD (marcado con badge *"Próximamente"*).
+   - **Tasa de Quiebre de Stock (`StockoutRate`):** Retorna 4.8% y 6 incidentes fijos. Requiere registrar consultas en mostrador sin stock disponible (demanda insatisfecha, marcado con badge *"Próximamente"*).
+   - **Stock en Terrinca y Tiendas para Reposición (`ReplenishmentSuggestions`):** Las variantes más vendidas son 100% reales, pero las existencias en almacén y tienda se calculan con fórmula simulada (`5 - rank`, `4 - rank`) al no existir aún el inventario físico en tiempo real.
+   - **Días de Rotación en Almacén (`StockTurnover`):** Días fijos (21.4d) y 15% de piezas lentas al no existir trazabilidad de entrada/salida de bodega (WMS).
+
 ---
 
 ## 2. Tabla Única Consolidada: Requerimientos, BI, Estado y Horas
