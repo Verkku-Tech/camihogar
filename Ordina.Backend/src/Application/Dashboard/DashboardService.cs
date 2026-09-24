@@ -407,6 +407,10 @@ public class DashboardService : IDashboardService
                 var vendorOrders = g.ToList();
                 var totalSales = vendorOrders.Sum(o => ConvertOrderTotalToUsd(o, liveUsdRate));
                 decimal commissionTotal = 0m;
+                decimal totalDiscountsUsd = 0m;
+                decimal totalGrossSubtotalUsd = 0m;
+                int totalUnits = 0;
+
                 foreach (var ord in vendorOrders)
                 {
                     var ordTotalUsd = ConvertOrderTotalToUsd(ord, liveUsdRate);
@@ -415,14 +419,63 @@ public class DashboardService : IDashboardService
                         ? (rule.VendorRate > 1m ? rule.VendorRate / 100m : rule.VendorRate)
                         : defaultRate;
                     commissionTotal += ordTotalUsd * rate;
+
+                    if (ord.Products != null)
+                    {
+                        totalUnits += ord.Products.Sum(p => p.Quantity);
+                    }
+
+                    decimal prodDiscount = ord.ProductDiscountTotal ?? ord.Products?.Sum(p => (p.Discount ?? 0m) * p.Quantity) ?? 0m;
+                    decimal genDiscount = ord.GeneralDiscountAmount ?? (ord.GeneralDiscountPercent.HasValue ? ord.Subtotal * (ord.GeneralDiscountPercent.Value / 100m) : 0m);
+                    decimal ordDiscount = prodDiscount + genDiscount;
+                    decimal grossSub = ord.SubtotalBeforeDiscounts ?? (ord.Subtotal + ordDiscount);
+                    if (grossSub > 0 && ordDiscount > 0)
+                    {
+                        decimal factor = ord.Total > 0 ? ordTotalUsd / ord.Total : 1m;
+                        totalDiscountsUsd += ordDiscount * factor;
+                        totalGrossSubtotalUsd += grossSub * factor;
+                    }
+                    else if (grossSub > 0)
+                    {
+                        decimal factor = ord.Total > 0 ? ordTotalUsd / ord.Total : 1m;
+                        totalGrossSubtotalUsd += grossSub * factor;
+                    }
                 }
+
+                int ordersCount = vendorOrders.Count;
+                decimal avgTicketUsd = ordersCount > 0 ? Math.Round(totalSales / ordersCount, 2) : 0m;
+                double unitsPerOrder = ordersCount > 0 ? Math.Round((double)totalUnits / ordersCount, 2) : 0;
+                decimal avgDiscountPercent = totalGrossSubtotalUsd > 0
+                    ? Math.Round((totalDiscountsUsd / totalGrossSubtotalUsd) * 100m, 1)
+                    : 0m;
+
+                var vendorReservationsCount = allOrders.Count(o =>
+                    (o.VendorId == g.Key.VendorId || o.SourceReservationVendorId == g.Key.VendorId) &&
+                    (o.Type is OrderType.Reservation or OrderType.Budget ||
+                     o.OrderNumber.StartsWith("RES-", StringComparison.OrdinalIgnoreCase) ||
+                     o.OrderNumber.StartsWith("PRE-", StringComparison.OrdinalIgnoreCase)) &&
+                    o.CreatedAt >= periodStart);
+
+                var convertedReservationsCount = vendorOrders.Count(o =>
+                    !string.IsNullOrWhiteSpace(o.ConvertedFromNumber) ||
+                    !string.IsNullOrWhiteSpace(o.SourceReservationVendorId));
+
+                var totalReservationOps = vendorReservationsCount + convertedReservationsCount;
+                decimal reservationConversionRate = totalReservationOps > 0
+                    ? Math.Round(((decimal)convertedReservationsCount / totalReservationOps) * 100m, 1)
+                    : 0m;
 
                 return new TopSellerDto(
                     g.Key.VendorId,
                     g.Key.Name,
-                    vendorOrders.Count,
+                    ordersCount,
                     Math.Round(totalSales, 2),
-                    Math.Round(commissionTotal, 2));
+                    Math.Round(commissionTotal, 2),
+                    avgTicketUsd,
+                    unitsPerOrder,
+                    avgDiscountPercent,
+                    reservationConversionRate,
+                    convertedReservationsCount);
             })
             .OrderByDescending(x => x.TotalUsd)
             .Take(limit)
