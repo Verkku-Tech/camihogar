@@ -31,6 +31,30 @@ public class NotificationService : INotificationService
     public async Task<NotificationDto> PublishAsync(CreateNotificationDto dto, CancellationToken ct = default)
     {
         using var scope = _scopeFactory.CreateScope();
+
+        // ponytail: check if notification type is enabled in rule settings
+        var ruleService = scope.ServiceProvider.GetService<INotificationRuleSettingsService>();
+        if (ruleService != null)
+        {
+            var rules = await ruleService.GetSettingsAsync(ct);
+            var isEnabled = dto.Type switch
+            {
+                "ManufacturingDelay" => rules.ManufacturingDelayEnabled,
+                "ReservationExpiring" => rules.ReservationExpiringEnabled,
+                "EmergencyPinUsed" => rules.EmergencyPinUsedEnabled,
+                "ExchangeRateChanged" => rules.ExchangeRateChangedEnabled,
+                "SyncConflict" => rules.SyncConflictEnabled,
+                "OperationsMetricsAlert" => rules.BiAlertsEnabled,
+                _ => true
+            };
+
+            if (!isEnabled)
+            {
+                _logger.LogInformation("Notification type {Type} is disabled by rule settings. Skipping.", dto.Type);
+                return new NotificationDto(string.Empty, dto.Type, dto.Title, dto.Message, dto.Severity, dto.Link, dto.TargetUserId, dto.TargetRoles, false, DateTime.UtcNow, dto.Metadata);
+            }
+        }
+
         var repo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
 
         var entity = new Notification

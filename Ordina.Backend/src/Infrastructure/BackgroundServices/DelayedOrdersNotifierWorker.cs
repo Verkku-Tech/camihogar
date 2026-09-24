@@ -46,35 +46,44 @@ public class DelayedOrdersNotifierWorker : BackgroundService
         var orderRepo = scope.ServiceProvider.GetRequiredService<IOrderRepository>();
         var notificationRepo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
         var notificationService = scope.ServiceProvider.GetRequiredService<INotificationService>();
+        var ruleService = scope.ServiceProvider.GetService<INotificationRuleSettingsService>();
+        var rules = ruleService != null ? await ruleService.GetSettingsAsync(ct) : new NotificationRuleSettings();
 
-        // 1. Fabricación retrasada (> 25 días sin cambio de estatus)
-        var delayedOrdersResult = await orderRepo.GetFilteredPagedAsync(1, 1, new OrderQueryFilter
+        // 1. Fabricación retrasada
+        if (rules.ManufacturingDelayEnabled)
         {
-            LocationStatus = "FABRICACION",
-            ProductFilterPreset = "fabricacion_retrasada"
-        }, ct);
-
-        if (delayedOrdersResult.TotalCount > 0)
-        {
-            var existing = await notificationRepo.GetActiveConsolidatedAsync("ManufacturingDelay", null, ct);
-            if (existing == null)
+            var delayDays = rules.ManufacturingDelayDays > 0 ? rules.ManufacturingDelayDays : 25;
+            var delayedOrdersResult = await orderRepo.GetFilteredPagedAsync(1, 1, new OrderQueryFilter
             {
-                await notificationService.PublishAsync(new CreateNotificationDto(
-                    Type: "ManufacturingDelay",
-                    Title: "Alerta de retraso en fabricación",
-                    Message: $"Hay {delayedOrdersResult.TotalCount} pedido(s) con más de 25 días en fabricación sin cambio de estatus.",
-                    Severity: "warning",
-                    Link: "/pedidos/fabricacion?filter=delayed",
-                    TargetRoles: new() { "Administrator", "Super Administrator", "Supervisor" }), ct);
+                LocationStatus = "FABRICACION",
+                ProductFilterPreset = "fabricacion_retrasada"
+            }, ct);
+
+            if (delayedOrdersResult.TotalCount > 0)
+            {
+                var existing = await notificationRepo.GetActiveConsolidatedAsync("ManufacturingDelay", null, ct);
+                if (existing == null)
+                {
+                    await notificationService.PublishAsync(new CreateNotificationDto(
+                        Type: "ManufacturingDelay",
+                        Title: "Alerta de retraso en fabricación",
+                        Message: $"Hay {delayedOrdersResult.TotalCount} pedido(s) con más de {delayDays} días en fabricación sin cambio de estatus.",
+                        Severity: "warning",
+                        Link: "/pedidos/fabricacion?filter=delayed",
+                        TargetRoles: new() { "Administrator", "Super Administrator", "Supervisor" }), ct);
+                }
             }
         }
 
-        // 2. Reservas vencidas (> 30 días activas)
-        var expiredReservations = await orderRepo.GetFilteredPagedAsync(1, 100, new OrderQueryFilter
+        // 2. Reservas vencidas
+        if (rules.ReservationExpiringEnabled)
         {
-            Type = "Reservation",
-            ProductFilterPreset = "reservas_vencidas"
-        }, ct);
+            var expiringDays = rules.ReservationExpiringDays > 0 ? rules.ReservationExpiringDays : 30;
+            var expiredReservations = await orderRepo.GetFilteredPagedAsync(1, 100, new OrderQueryFilter
+            {
+                Type = "Reservation",
+                ProductFilterPreset = "reservas_vencidas"
+            }, ct);
 
         if (expiredReservations.Items.Count > 0)
         {
@@ -91,7 +100,7 @@ public class DelayedOrdersNotifierWorker : BackgroundService
                     await notificationService.PublishAsync(new CreateNotificationDto(
                         Type: "ReservationExpiring",
                         Title: "Expiración de reservas",
-                        Message: $"Tienes {count} reserva(s) con más de 30 días sin concretar.",
+                        Message: $"Tienes {count} reserva(s) con más de {expiringDays} días sin concretar.",
                         Severity: "warning",
                         Link: "/pedidos/reservas?filter=expired",
                         TargetUserId: vendorKey != "unknown" ? vendorKey : null,
@@ -100,4 +109,5 @@ public class DelayedOrdersNotifierWorker : BackgroundService
             }
         }
     }
+}
 }

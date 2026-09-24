@@ -54,6 +54,27 @@ public class NotificationServiceTests
     }
 
     [Fact]
+    public async Task PublishAsync_WhenNotificationTypeIsDisabled_DoesNotPersistOrEmit()
+    {
+        var mockRuleService = new Mock<INotificationRuleSettingsService>();
+        mockRuleService.Setup(s => s.GetSettingsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NotificationRuleSettings { ExchangeRateChangedEnabled = false });
+
+        _mockServiceProvider.Setup(p => p.GetService(typeof(INotificationRuleSettingsService)))
+            .Returns(mockRuleService.Object);
+
+        var dto = new CreateNotificationDto(
+            Type: "ExchangeRateChanged",
+            Title: "Tasa actualizada",
+            Message: "1 USD = 50.00 VES",
+            Severity: "info");
+
+        var result = await _service.PublishAsync(dto);
+
+        _mockRepo.Verify(r => r.CreateAsync(It.IsAny<Notification>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task SubscribeAsync_ReceivesMatchingBroadcastNotification()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
