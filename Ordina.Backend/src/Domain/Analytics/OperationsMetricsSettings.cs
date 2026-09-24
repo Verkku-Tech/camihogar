@@ -5,12 +5,6 @@ namespace Ordina.Domain.Analytics;
 
 public class OperationsMetricsSettings : BaseEntity
 {
-    public const string DefaultId = "default";
-
-    public OperationsMetricsSettings()
-    {
-        Id = DefaultId;
-    }
 
     [BsonElement("defaultLeadTime")]
     public LeadTimeCategoryThreshold DefaultLeadTime { get; set; } = new(5, 7, 30, 50);

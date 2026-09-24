@@ -5,12 +5,6 @@ namespace Ordina.Domain.Notifications;
 
 public class NotificationRuleSettings : BaseEntity
 {
-    public const string DefaultId = "default";
-
-    public NotificationRuleSettings()
-    {
-        Id = DefaultId;
-    }
 
     // BI Operations Schedule
     [BsonElement("biAlertsEnabled")]

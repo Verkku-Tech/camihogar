@@ -15,7 +15,8 @@ public class NotificationRuleSettingsService : INotificationRuleSettingsService
 
     public async Task<NotificationRuleSettings> GetSettingsAsync(CancellationToken ct = default)
     {
-        var existing = await _repo.GetByIdAsync(NotificationRuleSettings.DefaultId, ct);
+        var all = await _repo.GetAllAsync(ct);
+        var existing = all.FirstOrDefault();
         if (existing != null) return existing;
 
         var defaults = new NotificationRuleSettings();
@@ -24,15 +25,16 @@ public class NotificationRuleSettingsService : INotificationRuleSettingsService
 
     public async Task<NotificationRuleSettings> UpdateSettingsAsync(NotificationRuleSettings settings, CancellationToken ct = default)
     {
-        settings.Id = NotificationRuleSettings.DefaultId;
-        settings.UpdatedAt = DateTime.UtcNow;
-
-        var existing = await _repo.GetByIdAsync(NotificationRuleSettings.DefaultId, ct);
+        var all = await _repo.GetAllAsync(ct);
+        var existing = all.FirstOrDefault();
         if (existing == null)
         {
+            settings.Id = string.Empty;
             return await _repo.AddAsync(settings, ct);
         }
 
+        settings.Id = existing.Id;
+        settings.UpdatedAt = DateTime.UtcNow;
         await _repo.UpdateAsync(settings, ct);
         return settings;
     }
