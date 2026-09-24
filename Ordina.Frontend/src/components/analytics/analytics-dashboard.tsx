@@ -198,7 +198,7 @@ export function AnalyticsDashboard() {
         apiClient.getSalesTrend(trendDays, signal),
         apiClient.getSalesForecast(period, signal),
         apiClient.getBySaleType(period, signal),
-        apiClient.getTopSellers(period, 10, signal),
+        apiClient.getTopSellers(period, 20, signal),
         apiClient.getTopProducts(period, 10, signal),
         apiClient.getPipelineSnapshot(signal),
         apiClient.getExpiredLayawaysByAge(signal),

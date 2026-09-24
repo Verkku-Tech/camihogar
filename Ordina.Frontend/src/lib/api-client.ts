@@ -302,6 +302,11 @@ export interface TopSeller {
   ordersCount: number
   totalUsd: number
   estimatedCommissionUsd?: number
+  averageTicketUsd?: number
+  unitsPerOrder?: number
+  averageDiscountPercent?: number
+  reservationConversionRate?: number
+  convertedReservationsCount?: number
 }
 
 export interface TopProduct {
@@ -1218,7 +1223,7 @@ export class ApiClientClass {
     return apiFetch<SaleTypeData[]>(`/api/dashboard/by-sale-type?period=${period}`, { signal }).then(r => r ?? [])
   }
 
-  async getTopSellers(period = 'month', limit = 10, signal?: AbortSignal): Promise<TopSeller[]> {
+  async getTopSellers(period = 'month', limit = 20, signal?: AbortSignal): Promise<TopSeller[]> {
     return apiFetch<TopSeller[]>(`/api/dashboard/top-sellers?period=${period}&limit=${limit}`, { signal }).then(r => r ?? [])
   }
 
