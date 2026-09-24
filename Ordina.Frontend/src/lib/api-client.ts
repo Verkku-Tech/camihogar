@@ -307,6 +307,9 @@ export interface TopSeller {
   averageDiscountPercent?: number
   reservationConversionRate?: number
   convertedReservationsCount?: number
+  sellerType?: 'store' | 'online'
+  storeId?: string | null
+  storeName?: string | null
 }
 
 export interface TopProduct {
@@ -1206,12 +1209,30 @@ export class ApiClientClass {
   }
 
   // Dashboard
-  async getDashboardMetrics(period = 'day', signal?: AbortSignal): Promise<any> {
-    return apiFetch<any>(`/api/dashboard/metrics?period=${period}`, { signal })
+  async getDashboardMetrics(
+    period = 'day',
+    storeIdsOrSignal?: string[] | AbortSignal,
+    signal?: AbortSignal
+  ): Promise<any> {
+    const isSignal = storeIdsOrSignal instanceof AbortSignal
+    const storeIds = isSignal ? undefined : storeIdsOrSignal
+    const sig = isSignal ? storeIdsOrSignal : signal
+    const params = new URLSearchParams({ period })
+    if (storeIds && storeIds.length > 0) params.set('storeIds', storeIds.join(','))
+    return apiFetch<any>(`/api/dashboard/metrics?${params.toString()}`, { signal: sig })
   }
 
-  async getSalesTrend(days = 30, signal?: AbortSignal): Promise<TrendDataPoint[]> {
-    return apiFetch<TrendDataPoint[]>(`/api/dashboard/trend?days=${days}`, { signal }).then(r => r ?? [])
+  async getSalesTrend(
+    days = 30,
+    storeIdsOrSignal?: string[] | AbortSignal,
+    signal?: AbortSignal
+  ): Promise<TrendDataPoint[]> {
+    const isSignal = storeIdsOrSignal instanceof AbortSignal
+    const storeIds = isSignal ? undefined : storeIdsOrSignal
+    const sig = isSignal ? storeIdsOrSignal : signal
+    const params = new URLSearchParams({ days: String(days) })
+    if (storeIds && storeIds.length > 0) params.set('storeIds', storeIds.join(','))
+    return apiFetch<TrendDataPoint[]>(`/api/dashboard/trend?${params.toString()}`, { signal: sig }).then(r => r ?? [])
   }
 
   async getSalesForecast(period = 'month', signal?: AbortSignal): Promise<SalesForecastResponse> {
@@ -1219,16 +1240,45 @@ export class ApiClientClass {
       .then(r => r ?? { points: [], summary: { projectedInvoicedTotal: 0, projectedCollectedTotal: 0, mapeScore: 0 } })
   }
 
-  async getBySaleType(period = 'month', signal?: AbortSignal): Promise<SaleTypeData[]> {
-    return apiFetch<SaleTypeData[]>(`/api/dashboard/by-sale-type?period=${period}`, { signal }).then(r => r ?? [])
+  async getBySaleType(
+    period = 'month',
+    storeIdsOrSignal?: string[] | AbortSignal,
+    signal?: AbortSignal
+  ): Promise<SaleTypeData[]> {
+    const isSignal = storeIdsOrSignal instanceof AbortSignal
+    const storeIds = isSignal ? undefined : storeIdsOrSignal
+    const sig = isSignal ? storeIdsOrSignal : signal
+    const params = new URLSearchParams({ period })
+    if (storeIds && storeIds.length > 0) params.set('storeIds', storeIds.join(','))
+    return apiFetch<SaleTypeData[]>(`/api/dashboard/by-sale-type?${params.toString()}`, { signal: sig }).then(r => r ?? [])
   }
 
-  async getTopSellers(period = 'month', limit = 20, signal?: AbortSignal): Promise<TopSeller[]> {
-    return apiFetch<TopSeller[]>(`/api/dashboard/top-sellers?period=${period}&limit=${limit}`, { signal }).then(r => r ?? [])
+  async getTopSellers(
+    period = 'month',
+    limit = 20,
+    storeIdsOrSignal?: string[] | AbortSignal,
+    signal?: AbortSignal
+  ): Promise<TopSeller[]> {
+    const isSignal = storeIdsOrSignal instanceof AbortSignal
+    const storeIds = isSignal ? undefined : storeIdsOrSignal
+    const sig = isSignal ? storeIdsOrSignal : signal
+    const params = new URLSearchParams({ period, limit: String(limit) })
+    if (storeIds && storeIds.length > 0) params.set('storeIds', storeIds.join(','))
+    return apiFetch<TopSeller[]>(`/api/dashboard/top-sellers?${params.toString()}`, { signal: sig }).then(r => r ?? [])
   }
 
-  async getTopProducts(period = 'month', limit = 10, signal?: AbortSignal): Promise<TopProduct[]> {
-    return apiFetch<TopProduct[]>(`/api/dashboard/top-products?period=${period}&limit=${limit}`, { signal }).then(r => r ?? [])
+  async getTopProducts(
+    period = 'month',
+    limit = 10,
+    storeIdsOrSignal?: string[] | AbortSignal,
+    signal?: AbortSignal
+  ): Promise<TopProduct[]> {
+    const isSignal = storeIdsOrSignal instanceof AbortSignal
+    const storeIds = isSignal ? undefined : storeIdsOrSignal
+    const sig = isSignal ? storeIdsOrSignal : signal
+    const params = new URLSearchParams({ period, limit: String(limit) })
+    if (storeIds && storeIds.length > 0) params.set('storeIds', storeIds.join(','))
+    return apiFetch<TopProduct[]>(`/api/dashboard/top-products?${params.toString()}`, { signal: sig }).then(r => r ?? [])
   }
 
   async getProductAttributeBreakdown(
@@ -1248,8 +1298,17 @@ export class ApiClientClass {
     )
   }
 
-  async getPipelineSnapshot(signal?: AbortSignal): Promise<PipelineSnapshot> {
-    return apiFetch<PipelineSnapshot>(`/api/dashboard/pipeline`, { signal })
+  async getPipelineSnapshot(
+    storeIdsOrSignal?: string[] | AbortSignal,
+    signal?: AbortSignal
+  ): Promise<PipelineSnapshot> {
+    const isSignal = storeIdsOrSignal instanceof AbortSignal
+    const storeIds = isSignal ? undefined : storeIdsOrSignal
+    const sig = isSignal ? storeIdsOrSignal : signal
+    const params = new URLSearchParams()
+    if (storeIds && storeIds.length > 0) params.set('storeIds', storeIds.join(','))
+    const query = params.toString() ? `?${params.toString()}` : ''
+    return apiFetch<PipelineSnapshot>(`/api/dashboard/pipeline${query}`, { signal: sig })
       .then(r => r ?? { manufacturing: 0, warehouse: 0, dispatch: 0, delivered: 0 })
   }
 
