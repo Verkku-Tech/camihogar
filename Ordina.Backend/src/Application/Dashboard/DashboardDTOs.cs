@@ -67,7 +67,12 @@ public record TopSellerDto(
     string VendorName,
     int OrdersCount,
     decimal TotalUsd,
-    decimal EstimatedCommissionUsd = 0m);
+    decimal EstimatedCommissionUsd = 0m,
+    decimal AverageTicketUsd = 0m,
+    double UnitsPerOrder = 0,
+    decimal AverageDiscountPercent = 0m,
+    decimal ReservationConversionRate = 0m,
+    int ConvertedReservationsCount = 0);
 
 public record TopProductDto(
     string ProductName,
