@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableHeader,
@@ -238,40 +239,56 @@ export function AgingOrdersModal({
             <span className="text-[10px] text-muted-foreground block uppercase tracking-wider font-semibold">
               Pedidos en Rango
             </span>
-            <span className="text-lg font-bold font-mono text-foreground mt-0.5 block">
-              {filteredOrders.length} {filteredOrders.length === 1 ? "pedido" : "pedidos"}
-            </span>
+            {isLoading ? (
+              <Skeleton className="h-6 w-20 mt-1" />
+            ) : (
+              <span className="text-lg font-bold font-mono text-foreground mt-0.5 block">
+                {filteredOrders.length} {filteredOrders.length === 1 ? "pedido" : "pedidos"}
+              </span>
+            )}
           </div>
 
           <div className="p-3 rounded-xl bg-card border border-border/60 shadow-2xs">
             <span className="text-[10px] text-muted-foreground block uppercase tracking-wider font-semibold">
               Saldo Pendiente Total
             </span>
-            <span
-              className={`text-lg font-bold font-mono mt-0.5 block ${
-                isExpired ? "text-rose-600 dark:text-rose-400" : "text-orange-600 dark:text-orange-400"
-              }`}
-            >
-              ${totalPendingBalance.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
+            {isLoading ? (
+              <Skeleton className="h-6 w-28 mt-1" />
+            ) : (
+              <span
+                className={`text-lg font-bold font-mono mt-0.5 block ${
+                  isExpired ? "text-rose-600 dark:text-rose-400" : "text-orange-600 dark:text-orange-400"
+                }`}
+              >
+                ${totalPendingBalance.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            )}
           </div>
 
           <div className="p-3 rounded-xl bg-card border border-border/60 shadow-2xs">
             <span className="text-[10px] text-muted-foreground block uppercase tracking-wider font-semibold">
               Total Facturado
             </span>
-            <span className="text-lg font-bold font-mono text-foreground mt-0.5 block">
-              ${totalInvoiced.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
+            {isLoading ? (
+              <Skeleton className="h-6 w-28 mt-1" />
+            ) : (
+              <span className="text-lg font-bold font-mono text-foreground mt-0.5 block">
+                ${totalInvoiced.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            )}
           </div>
 
           <div className="p-3 rounded-xl bg-card border border-border/60 shadow-2xs">
             <span className="text-[10px] text-muted-foreground block uppercase tracking-wider font-semibold">
               {isExpired ? "Promedio Días Vencido" : "Promedio Días Antigüedad"}
             </span>
-            <span className="text-lg font-bold font-mono text-foreground mt-0.5 block">
-              {avgDays} días
-            </span>
+            {isLoading ? (
+              <Skeleton className="h-6 w-20 mt-1" />
+            ) : (
+              <span className="text-lg font-bold font-mono text-foreground mt-0.5 block">
+                {avgDays} días
+              </span>
+            )}
           </div>
         </div>
 
@@ -284,50 +301,85 @@ export function AgingOrdersModal({
               placeholder="Buscar por Nº de pedido, cliente, vendedor o sede..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              disabled={isLoading}
               className="h-9 pl-9 text-xs bg-muted/20 border-border/70 focus-visible:ring-emerald-500"
             />
           </div>
-          <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">
-            Mostrando <span className="font-semibold text-foreground">{filteredOrders.length}</span> de {orders.length} pedidos
-          </span>
+          {isLoading ? (
+            <Skeleton className="h-4 w-36" />
+          ) : (
+            <span className="text-xs text-muted-foreground font-mono whitespace-nowrap">
+              Mostrando <span className="font-semibold text-foreground">{filteredOrders.length}</span> de {orders.length} pedidos
+            </span>
+          )}
         </div>
 
         {/* Table Content - fits 100% width without horizontal scrolling */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-[320px] p-0">
-          {isLoading ? (
-            <div className="p-8 space-y-3.5">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="h-12 bg-muted/40 rounded-lg animate-pulse" />
-              ))}
-            </div>
-          ) : filteredOrders.length === 0 ? (
-            <div className="py-20 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
-              <Search className="w-7 h-7 text-muted-foreground/30" />
-              <span className="font-semibold text-sm text-foreground/80">No se encontraron pedidos</span>
-              <p className="text-xs text-muted-foreground max-w-sm">
-                {searchQuery
-                  ? `No hay registros que coincidan con "${searchQuery}" en este rango.`
-                  : "No hay pedidos pendientes en el rango de antigüedad seleccionado."}
-              </p>
-            </div>
-          ) : (
-            <Table className="w-full">
-              <TableHeader className="bg-muted/40 sticky top-0 z-10 backdrop-blur-xs">
-                <TableRow className="text-xs border-border/60">
-                  <TableHead className="w-[110px] pl-5 whitespace-nowrap">Nº Pedido</TableHead>
-                  <TableHead className="w-[95px] whitespace-nowrap">Fecha</TableHead>
-                  <TableHead className="min-w-[150px]">Cliente</TableHead>
-                  <TableHead className="min-w-[160px]">Vendedor / Sede</TableHead>
-                  <TableHead className="w-[105px] text-right whitespace-nowrap">Pagado</TableHead>
-                  <TableHead className="w-[125px] text-right whitespace-nowrap">Saldo Pendiente</TableHead>
-                  <TableHead className="w-[120px] text-center whitespace-nowrap">
-                    {isExpired ? "Días Vencido" : "Antigüedad"}
-                  </TableHead>
-                  <TableHead className="w-[110px] text-center whitespace-nowrap pr-5">Estado</TableHead>
+          <Table className="w-full">
+            <TableHeader className="bg-muted/40 sticky top-0 z-10 backdrop-blur-xs">
+              <TableRow className="text-xs border-border/60">
+                <TableHead className="w-[110px] pl-5 whitespace-nowrap">Nº Pedido</TableHead>
+                <TableHead className="w-[95px] whitespace-nowrap">Fecha</TableHead>
+                <TableHead className="min-w-[150px]">Cliente</TableHead>
+                <TableHead className="min-w-[160px]">Vendedor / Sede</TableHead>
+                <TableHead className="w-[105px] text-right whitespace-nowrap">Pagado</TableHead>
+                <TableHead className="w-[125px] text-right whitespace-nowrap">Saldo Pendiente</TableHead>
+                <TableHead className="w-[120px] text-center whitespace-nowrap">
+                  {isExpired ? "Días Vencido" : "Antigüedad"}
+                </TableHead>
+                <TableHead className="w-[110px] text-center whitespace-nowrap pr-5">Estado</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                Array.from({ length: 8 }).map((_, i) => (
+                  <TableRow key={i} className="border-border/30 hover:bg-transparent">
+                    <TableCell className="pl-5 py-3.5">
+                      <Skeleton className="h-4 w-20" />
+                    </TableCell>
+                    <TableCell className="py-3.5">
+                      <Skeleton className="h-3.5 w-16" />
+                    </TableCell>
+                    <TableCell className="py-3.5">
+                      <Skeleton className="h-4 w-32" />
+                    </TableCell>
+                    <TableCell className="py-3.5">
+                      <div className="space-y-1.5">
+                        <Skeleton className="h-3.5 w-28" />
+                        <Skeleton className="h-2.5 w-16" />
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-3.5 text-right">
+                      <Skeleton className="h-4 w-14 ml-auto" />
+                    </TableCell>
+                    <TableCell className="py-3.5 text-right">
+                      <Skeleton className="h-4 w-18 ml-auto" />
+                    </TableCell>
+                    <TableCell className="py-3.5 text-center">
+                      <Skeleton className="h-5 w-24 mx-auto rounded-full" />
+                    </TableCell>
+                    <TableCell className="py-3.5 text-center pr-5">
+                      <Skeleton className="h-5 w-16 mx-auto rounded-full" />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : filteredOrders.length === 0 ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={8} className="py-20 text-center">
+                    <div className="text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+                      <Search className="w-7 h-7 text-muted-foreground/30" />
+                      <span className="font-semibold text-sm text-foreground/80">No se encontraron pedidos</span>
+                      <p className="text-xs text-muted-foreground max-w-sm">
+                        {searchQuery
+                          ? `No hay registros que coincidan con "${searchQuery}" en este rango.`
+                          : "No hay pedidos pendientes en el rango de antigüedad seleccionado."}
+                      </p>
+                    </div>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredOrders.map((ord) => {
+              ) : (
+                filteredOrders.map((ord) => {
                   const dateStr = ord.createdAt
                     ? new Date(ord.createdAt).toLocaleDateString("es-VE", {
                         day: "2-digit",
@@ -411,20 +463,26 @@ export function AgingOrdersModal({
                       </TableCell>
                     </TableRow>
                   )
-                })}
-              </TableBody>
-            </Table>
-          )}
+                })
+              )}
+            </TableBody>
+          </Table>
         </div>
 
         {/* Footer */}
         <div className="p-4 px-6 border-t border-border/50 bg-muted/20 flex items-center justify-between gap-4 text-xs text-muted-foreground shrink-0">
           <div className="flex items-center gap-2.5 font-mono">
-            <span>Mostrando <strong className="text-foreground">{filteredOrders.length}</strong> pedidos</span>
-            <span>•</span>
-            <span className="font-semibold text-foreground">
-              Saldo Total: ${totalPendingBalance.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
+            {isLoading ? (
+              <Skeleton className="h-4 w-52" />
+            ) : (
+              <>
+                <span>Mostrando <strong className="text-foreground">{filteredOrders.length}</strong> pedidos</span>
+                <span>•</span>
+                <span className="font-semibold text-foreground">
+                  Saldo Total: ${totalPendingBalance.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </>
+            )}
           </div>
 
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="px-5">
