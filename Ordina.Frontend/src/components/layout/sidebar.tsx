@@ -25,6 +25,7 @@ import {
   Percent,
   Shield,
   Database,
+  BellRing,
   KeyRound,
   RectangleEllipsis,
   Sun,
@@ -107,6 +108,7 @@ const configurationSubmenu = [
   { id: "roles", name: "Roles y Permisos", href: "/configuracion/roles", icon: Shield, permission: "roles.read" },
   { id: "pin-acceso", name: "PIN de Acceso", href: "/configuracion/pin-acceso", icon: RectangleEllipsis, adminOnly: true },
   { id: "sistema", name: "Sistema", href: "/configuracion/sistema", icon: Database },
+  { id: "notificaciones", name: "Notificaciones", href: "/configuracion/notificaciones", icon: BellRing, adminOnly: true },
 ]
 
 const permissionMap: Record<string, string | string[] | { adminOnly: boolean }> = {
@@ -127,6 +129,7 @@ const permissionMap: Record<string, string | string[] | { adminOnly: boolean }> 
   "usuarios": "users.read",
   "navegacion": "settings.system.manage",
   "tasas": "settings.currency.manage",
+  "notificaciones": { adminOnly: true },
 }
 
 export function Sidebar({ open, onOpenChange }: SidebarProps) {

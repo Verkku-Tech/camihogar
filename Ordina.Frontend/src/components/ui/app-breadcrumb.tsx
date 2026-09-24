@@ -9,6 +9,7 @@ const SEGMENT_NAMES: Record<string, string> = {
   usuarios: "Usuarios",
   roles: "Roles",
   sistema: "Sistema",
+  notificaciones: "Notificaciones",
   navegacion: "Navegación",
   comisiones: "Comisiones",
   inventario: "Inventario",

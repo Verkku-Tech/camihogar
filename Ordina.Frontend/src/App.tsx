@@ -42,6 +42,7 @@ import ComisionesConfigPage from './app/configuracion/comisiones/page'
 import PinAccesoConfigPage from './app/configuracion/pin-acceso/page'
 import NavegacionConfigPage from './app/configuracion/navegacion/page'
 import SistemaConfigPage from './app/configuracion/sistema/page'
+import NotificacionesConfigPage from './app/configuracion/notificaciones/page'
 import AbbacoPage from './app/abbaco/page'
 
 const queryClient = new QueryClient({
@@ -142,6 +143,7 @@ export function App() {
                         <Route path="/configuracion/pin-acceso" element={<PinAccesoConfigPage />} />
                         <Route path="/configuracion/navegacion" element={<NavegacionConfigPage />} />
                         <Route path="/configuracion/sistema" element={<SistemaConfigPage />} />
+                        <Route path="/configuracion/notificaciones" element={<NotificacionesConfigPage />} />
                       </Route>
 
                       {/* Aliases for legacy or refactored paths */}
