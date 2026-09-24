@@ -136,16 +136,24 @@ function formatVendorName(rawName: string, idx: number): string {
     .join(" ")
 }
 
+export type SellerTypeFilter = "all" | "store" | "online"
+
 export function TopSellersChart({ data, isLoading }: Props) {
   const [metricKey, setMetricKey] = useState<SellerMetricKey>("total")
+  const [sellerTypeFilter, setSellerTypeFilter] = useState<SellerTypeFilter>("all")
 
   const currentMetric = useMemo(
     () => METRICS.find(m => m.key === metricKey) ?? METRICS[0],
     [metricKey]
   )
 
+  const filteredData = useMemo(() => {
+    if (sellerTypeFilter === "all") return data
+    return data.filter(s => (s.sellerType ?? "store") === sellerTypeFilter)
+  }, [data, sellerTypeFilter])
+
   const chartData = useMemo(() => {
-    return [...data]
+    return [...filteredData]
       .map((s, idx) => ({
         name: formatVendorName(s.vendorName, idx),
         value: currentMetric.getValue(s),
@@ -157,6 +165,8 @@ export function TopSellersChart({ data, isLoading }: Props) {
         discount: s.averageDiscountPercent ?? 0,
         conversion: s.reservationConversionRate ?? 0,
         convertedReservations: s.convertedReservationsCount ?? 0,
+        sellerType: s.sellerType ?? "store",
+        storeName: s.storeName,
       }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 10)
@@ -164,7 +174,7 @@ export function TopSellersChart({ data, isLoading }: Props) {
         ...item,
         rank: rankIdx + 1,
       }))
-  }, [data, currentMetric])
+  }, [filteredData, currentMetric])
 
   const chartHeight = Math.max(280, Math.min(chartData.length * 32, 330))
 
@@ -185,11 +195,31 @@ export function TopSellersChart({ data, isLoading }: Props) {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={sellerTypeFilter} onValueChange={(val: SellerTypeFilter) => setSellerTypeFilter(val)}>
+              <SelectTrigger
+                id="seller-type-selector"
+                className="h-8 text-xs w-full sm:w-[155px] bg-background/80 border-border/70 shadow-none font-medium"
+              >
+                <SelectValue placeholder="Tipo de vendedor" />
+              </SelectTrigger>
+              <SelectContent align="end" className="text-xs">
+                <SelectItem value="all" className="text-xs">
+                  Ambos (Tienda y Online)
+                </SelectItem>
+                <SelectItem value="store" className="text-xs">
+                  Vendedores de tienda
+                </SelectItem>
+                <SelectItem value="online" className="text-xs">
+                  Vendedores online
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
             <Select value={metricKey} onValueChange={(val: SellerMetricKey) => setMetricKey(val)}>
               <SelectTrigger
                 id="seller-metric-selector"
-                className="h-8 text-xs w-full sm:w-[200px] bg-background/80 border-border/70 shadow-none font-medium"
+                className="h-8 text-xs w-full sm:w-[185px] bg-background/80 border-border/70 shadow-none font-medium"
               >
                 <SelectValue placeholder="Métrica" />
               </SelectTrigger>
