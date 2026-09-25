@@ -38,6 +38,7 @@ import {
   Calendar,
   AlertCircle,
   Loader2,
+  Pencil,
 } from "lucide-react";
 import {
   getOrderByOrderNumberPreferBackend,
@@ -588,6 +589,9 @@ export default function OrderDetailPage() {
   >(null);
   const [isDeclineDialogOpen, setIsDeclineDialogOpen] = useState(false);
   const [declineReasonInput, setDeclineReasonInput] = useState("");
+  const [isEditingDeclineReason, setIsEditingDeclineReason] = useState(false);
+  const [editedDeclineReason, setEditedDeclineReason] = useState("");
+  const [savingDeclineReason, setSavingDeclineReason] = useState(false);
 
   const isOrderDeclined = useMemo(() => {
     if (!order) return false;
@@ -1006,6 +1010,25 @@ export default function OrderDetailPage() {
     } finally {
       setValidatingOrder(false);
       setConfirmAction(null);
+    }
+  };
+
+  const handleSaveDeclineReason = async () => {
+    if (!order) return;
+    setSavingDeclineReason(true);
+    try {
+      await apiClient.updateOrder(order.id, {
+        declineReason: editedDeclineReason.trim(),
+      });
+      const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
+      if (foundOrder) setOrder(foundOrder);
+      toast.success("Motivo del declinado actualizado");
+      setIsEditingDeclineReason(false);
+    } catch (error) {
+      console.error("Error actualizando motivo del declinado:", error);
+      toast.error("Error al actualizar el motivo del declinado");
+    } finally {
+      setSavingDeclineReason(false);
     }
   };
 
@@ -2024,18 +2047,76 @@ export default function OrderDetailPage() {
               {isOrderDeclined && (
                 <Card className="border-red-300 dark:border-red-800 bg-red-50/70 dark:bg-red-950/50 shadow-sm">
                   <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300 text-base font-semibold">
-                      <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-                      Pedido Declinado
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300 text-base font-semibold">
+                        <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                        Pedido Declinado
+                      </CardTitle>
+                      {!isEditingDeclineReason && canValidateOrders && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 text-xs text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40"
+                          onClick={() => {
+                            setEditedDeclineReason(displayDeclineReason);
+                            setIsEditingDeclineReason(true);
+                          }}
+                        >
+                          <Pencil className="w-3.5 h-3.5 mr-1" />
+                          Editar motivo
+                        </Button>
+                      )}
+                    </div>
                   </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-muted-foreground font-medium mb-1">
-                      Motivo de la declinación:
-                    </p>
-                    <p className="text-sm font-medium text-red-950 dark:text-red-100 bg-white dark:bg-red-950/80 border border-red-200 dark:border-red-800/60 p-3 rounded-md whitespace-pre-wrap">
-                      {displayDeclineReason || "Sin razón especificada"}
-                    </p>
+                  <CardContent className="space-y-3">
+                    {!isEditingDeclineReason ? (
+                      <div>
+                        <p className="text-xs text-muted-foreground font-medium mb-1">
+                          Motivo de la declinación:
+                        </p>
+                        <p className="text-sm font-medium text-red-950 dark:text-red-100 bg-white dark:bg-red-950/80 border border-red-200 dark:border-red-800/60 p-3 rounded-md whitespace-pre-wrap">
+                          {displayDeclineReason || "Sin razón especificada"}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground font-medium">
+                          Modificar motivo de la declinación:
+                        </p>
+                        <Textarea
+                          value={editedDeclineReason}
+                          onChange={(e) => setEditedDeclineReason(e.target.value)}
+                          placeholder="Motivo del declinado..."
+                          rows={3}
+                          className="bg-white dark:bg-zinc-900 border-red-200 dark:border-red-800 text-sm"
+                        />
+                        <div className="flex items-center gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={handleSaveDeclineReason}
+                            disabled={
+                              savingDeclineReason ||
+                              !editedDeclineReason.trim() ||
+                              editedDeclineReason.trim() === displayDeclineReason.trim()
+                            }
+                          >
+                            {savingDeclineReason && (
+                              <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                            )}
+                            Guardar motivo
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={savingDeclineReason}
+                            onClick={() => setIsEditingDeclineReason(false)}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
