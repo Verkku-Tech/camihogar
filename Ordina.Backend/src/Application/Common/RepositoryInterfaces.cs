@@ -22,7 +22,8 @@ public record OrderQueryFilter(
     DateTime? DateFrom = null,
     DateTime? DateTo = null,
     bool? IncludeBudgets = null,
-    string? SearchTerm = null);
+    string? SearchTerm = null,
+    bool IncludeImages = false);
 
 public interface IOrderRepository : IRepository<Order>
 {

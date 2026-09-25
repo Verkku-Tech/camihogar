@@ -190,7 +190,18 @@ public class OrderRepository : MongoRepository<Order>, IOrderRepository
         var combinedFilter = filters.Count > 0 ? fb.And(filters) : fb.Empty;
         var totalCount = await _collection.CountDocumentsAsync(combinedFilter, cancellationToken: cancellationToken);
 
-        var items = await _collection.Find(combinedFilter)
+        var findFluent = _collection.Find(combinedFilter);
+        if (!queryFilter.IncludeImages)
+        {
+            var projection = Builders<Order>.Projection
+                .Exclude("partialPayments.images")
+                .Exclude("mixedPayments.images")
+                .Exclude("products.images")
+                .Exclude("originalProducts.images");
+            findFluent = findFluent.Project<Order>(projection);
+        }
+
+        var items = await findFluent
             .SortByDescending(x => x.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Limit(pageSize)

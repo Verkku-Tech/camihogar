@@ -502,6 +502,10 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
     ...dto,
     type,
     orderNumber,
+    declineReason:
+      dto.declineReason ??
+      (dto as unknown as { DeclineReason?: string }).DeclineReason ??
+      undefined,
     products: (dto.products || []).map(p => ({
       ...p,
       priceCurrency: p.priceCurrency as any,

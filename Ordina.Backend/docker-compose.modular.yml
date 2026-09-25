@@ -1,0 +1,45 @@
+services:
+  # Aspire Dashboard dedicado para el Monolito Modular
+  modular-aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:9.0
+    container_name: ordina-modular-aspire-dashboard
+    restart: unless-stopped
+    ports:
+      - "18889:18888"
+    environment:
+      - ASPNETCORE_URLS=http://+:18888
+      - DOTNET_DASHBOARD_OTLP_ENDPOINT_URL=http://+:4317
+      - DASHBOARD__OTLP__PRIMARYENDPOINTURL=http://+:4317
+      - DOTNET_DASHBOARD_OTLP_AUTH_MODE=Unsecured
+      - DASHBOARD__OTLP__AUTHMODE=Unsecured
+      - DASHBOARD__FRONTEND__AUTHMODE=BrowserToken
+      - DASHBOARD__FRONTEND__BROWSERTOKEN=Camihogar_Modular_Aspire_2026!
+    networks:
+      - ordina-network
+
+  # Monolito Modular .NET 10 API
+  modular-api:
+    image: camihogar-modular-api:latest
+    build:
+      context: .
+      dockerfile: src/Api/Dockerfile
+    container_name: ordina-modular-api
+    restart: unless-stopped
+    ports:
+      - "8090:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__MongoDB=mongodb://admin:OrdinaPassword123!@mongodb:27017
+      - ConnectionStrings__DatabaseName=ordina_db
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://modular-aspire-dashboard:4317
+      - OTEL_SERVICE_NAME=Ordina.ModularApi
+    depends_on:
+      - modular-aspire-dashboard
+    networks:
+      - ordina-network
+
+networks:
+  ordina-network:
+    external: true
+    name: camihogar_ordina-network

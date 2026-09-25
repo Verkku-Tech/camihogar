@@ -1,5 +1,6 @@
 import { getDb, TelemetryLog } from './db'
 import { connectivityManager } from './connectivity'
+import { resolveApiUrl } from './api-client'
 
 class TelemetryService {
   private isFlushing = false
@@ -62,7 +63,7 @@ class TelemetryService {
 
       // Batch send up to 50 logs
       const batch = logs.slice(0, 50)
-      const res = await fetch('/api/telemetry/client-logs', {
+      const res = await fetch(resolveApiUrl('/api/telemetry/client-logs'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

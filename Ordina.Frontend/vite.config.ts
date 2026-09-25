@@ -8,7 +8,9 @@ import path from 'node:path'
 const certPath = path.resolve(import.meta.dirname, './.certs/localhost.pem')
 const keyPath = path.resolve(import.meta.dirname, './.certs/localhost.key')
 const hasCerts = fs.existsSync(certPath) && fs.existsSync(keyPath)
-const useHttps = process.env.HTTPS !== 'false' && hasCerts
+const isProd = process.env.NODE_ENV === 'production'
+// En desarrollo levantamos en HTTP por defecto. En producción o con HTTPS=true explícito usamos HTTPS si hay certificados.
+const useHttps = (process.env.HTTPS === 'true' || (isProd && process.env.HTTPS !== 'false')) && hasCerts
 
 const httpsConfig = useHttps
   ? {
@@ -28,7 +30,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       devOptions: {
-        enabled: true
+        enabled: false
       },
       includeAssets: ['favicon.png', 'apple-touch-icon.png', 'icon.png', 'icon-192.png', 'icon-512.png'],
       manifest: {

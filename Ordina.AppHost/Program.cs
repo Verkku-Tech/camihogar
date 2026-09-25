@@ -18,7 +18,7 @@ var api = builder.AddProject<Projects.Ordina_Api>("backend-api")
 // 3. Frontend Vite + React 19 ejecutado a través de Bun
 var frontend = builder.AddExecutable("frontend", "bun", "../Ordina.Frontend", "run", "dev")
                       .WithReference(api)
-                      .WithEnvironment("VITE_API_URL", api.GetEndpoint("https"))
-                      .WithHttpsEndpoint(env: "PORT", port: 5173);
+                      .WithEnvironment("VITE_API_URL", api.GetEndpoint("http"))
+                      .WithHttpEndpoint(env: "PORT", port: 5173);
 
 builder.Build().Run();

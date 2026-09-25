@@ -18,11 +18,12 @@ public class OrderCoreServiceTests
 {
     private readonly Mock<IOrderRepository> _orderRepoMock = new();
     private readonly Mock<ILogger<OrderCoreService>> _loggerMock = new();
+    private readonly Mock<IOrderAuditLogService> _auditLogMock = new();
     private readonly OrderCoreService _service;
 
     public OrderCoreServiceTests()
     {
-        _service = new OrderCoreService(_orderRepoMock.Object, _loggerMock.Object);
+        _service = new OrderCoreService(_orderRepoMock.Object, _loggerMock.Object, auditLogService: _auditLogMock.Object);
     }
 
     [Fact]
@@ -182,5 +183,106 @@ public class OrderCoreServiceTests
         Assert.True(order.PartialPayments[1].PaymentDetails!.IsConciliated);
         Assert.True(order.MixedPayments[0].PaymentDetails!.IsConciliated);
         _orderRepoMock.Verify(r => r.UpdateAsync(order, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeclineOrderAsync_CompletedOrder_DeclinesOrderAndAllProducts()
+    {
+        // Arrange
+        var orderId = "ord-decline-1";
+        var order = new Order
+        {
+            Id = orderId,
+            OrderNumber = "ORD-1292",
+            TypeString = "Order",
+            StatusString = "Completado",
+            Products = new List<OrderProduct>
+            {
+                new() { Id = "p-1", Name = "SOFA", LogisticStatusString = "Completado", LocationStatusString = "DESPACHADO" },
+                new() { Id = "p-2", Name = "MESA", LogisticStatusString = "Validado", LocationStatusString = "EN_TIENDA" }
+            }
+        };
+
+        _orderRepoMock.Setup(r => r.GetByIdAsync(orderId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(order);
+        _orderRepoMock.Setup(r => r.UpdateAsync(order, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _service.DeclineOrderAsync(orderId, "user-1", "Admin", "Solicitado por lisbeth", CancellationToken.None);
+
+        // Assert
+        Assert.Equal("Declinado", result.Status);
+        Assert.Equal("Solicitado por lisbeth", result.DeclineReason);
+        Assert.All(result.Products, p => Assert.Equal("Declinado", p.LogisticStatus));
+        _auditLogMock.Verify(a => a.LogOrderDeclinedAsync(order, "user-1", "Admin", "Solicitado por lisbeth", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeclineOrderAsync_ThrowsArgumentException_WhenNotAnOrder()
+    {
+        // Arrange
+        var orderId = "bud-1";
+        var order = new Order
+        {
+            Id = orderId,
+            OrderNumber = "PRE-100",
+            TypeString = "Budget",
+            StatusString = "Presupuesto"
+        };
+
+        _orderRepoMock.Setup(r => r.GetByIdAsync(orderId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(order);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _service.DeclineOrderAsync(orderId, "user-1", "Admin", "Razon", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ReactivateOrderAsync_ReactivatesDeclinedOrderToGenerado()
+    {
+        // Arrange
+        var orderId = "ord-reactivate-1";
+        var order = new Order
+        {
+            Id = orderId,
+            OrderNumber = "ORD-1292",
+            TypeString = "Order",
+            StatusString = "Declinado",
+            DeclineReason = "Solicitado por lisbeth",
+            Products = new List<OrderProduct>
+            {
+                new() { Id = "p-1", Name = "SOFA", LogisticStatusString = "Declinado" }
+            }
+        };
+
+        _orderRepoMock.Setup(r => r.GetByIdAsync(orderId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(order);
+        _orderRepoMock.Setup(r => r.UpdateAsync(order, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _service.ReactivateOrderAsync(orderId, "user-1", "Admin", CancellationToken.None);
+
+        // Assert
+        Assert.Equal("Generado", result.Status);
+        Assert.Null(result.DeclineReason);
+        Assert.All(result.Products, p => Assert.Equal("Generado", p.LogisticStatus));
+        _auditLogMock.Verify(a => a.LogOrderDeclineRevertedAsync(order, "user-1", "Admin", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void DeclineOrderRequestDto_SupportsBothReasonAndDeclineReason()
+    {
+        var json1 = "{\"reason\":\"Motivo 1\"}";
+        var dto1 = System.Text.Json.JsonSerializer.Deserialize<DeclineOrderRequestDto>(json1, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(dto1);
+        Assert.Equal("Motivo 1", dto1.GetReason());
+
+        var json2 = "{\"declineReason\":\"Motivo 2\"}";
+        var dto2 = System.Text.Json.JsonSerializer.Deserialize<DeclineOrderRequestDto>(json2, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(dto2);
+        Assert.Equal("Motivo 2", dto2.GetReason());
     }
 }

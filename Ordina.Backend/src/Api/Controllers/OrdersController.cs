@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
@@ -36,11 +37,14 @@ public class OrdersController(
         [FromQuery] DateTime? dateFrom = null,
         [FromQuery] DateTime? dateTo = null,
         [FromQuery] bool? includeBudgets = null,
+        [FromQuery] bool includeImages = false,
+        [FromQuery] bool? getImage = null,
         CancellationToken cancellationToken = default)
     {
         var currentPage = page ?? pageNumber ?? 1;
         var querySearch = !string.IsNullOrWhiteSpace(search) ? search : searchTerm;
         var request = new PagedRequest(Page: Math.Max(1, currentPage), PageSize: Math.Clamp(pageSize, 1, 200), SearchTerm: querySearch, SortBy: sortBy, SortDescending: isDescending);
+        var finalIncludeImages = getImage ?? includeImages;
         var filter = new OrderQueryFilter(
             Type: type,
             Status: status,
@@ -54,7 +58,8 @@ public class OrdersController(
             ClientId: clientId,
             DateFrom: dateFrom,
             DateTo: dateTo,
-            IncludeBudgets: includeBudgets);
+            IncludeBudgets: includeBudgets,
+            IncludeImages: finalIncludeImages);
         var result = await orderService.GetPagedAsync(request, filter, cancellationToken);
         var totalPages = result.PageSize > 0 ? (int)Math.Ceiling((double)result.TotalCount / result.PageSize) : 1;
 
@@ -90,14 +95,21 @@ public class OrdersController(
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<OrderResponseDto>> GetById(string id, CancellationToken cancellationToken)
+    public async Task<ActionResult<OrderResponseDto>> GetById(
+        string id,
+        CancellationToken cancellationToken = default,
+        [FromQuery] bool includeImages = true,
+        [FromQuery] bool? getImage = null)
     {
         if (string.IsNullOrWhiteSpace(id) || id.Length != 24 || !ObjectId.TryParse(id, out _))
         {
             return NotFound();
         }
 
-        var order = await orderService.GetByIdAsync(id, cancellationToken);
+        var finalIncludeImages = getImage ?? includeImages;
+        var order = finalIncludeImages
+            ? await orderService.GetByIdAsync(id, cancellationToken)
+            : await orderService.GetByIdAsync(id, false, cancellationToken);
         if (order == null)
         {
             return NotFound();
@@ -106,9 +118,16 @@ public class OrdersController(
     }
 
     [HttpGet("number/{orderNumber}")]
-    public async Task<ActionResult<OrderResponseDto>> GetByOrderNumber(string orderNumber, CancellationToken cancellationToken)
+    public async Task<ActionResult<OrderResponseDto>> GetByOrderNumber(
+        string orderNumber,
+        CancellationToken cancellationToken = default,
+        [FromQuery] bool includeImages = true,
+        [FromQuery] bool? getImage = null)
     {
-        var order = await orderService.GetByOrderNumberAsync(orderNumber, cancellationToken);
+        var finalIncludeImages = getImage ?? includeImages;
+        var order = finalIncludeImages
+            ? await orderService.GetByOrderNumberAsync(orderNumber, cancellationToken)
+            : await orderService.GetByOrderNumberAsync(orderNumber, false, cancellationToken);
         if (order == null)
         {
             return NotFound();
@@ -171,5 +190,56 @@ public class OrdersController(
     {
         var result = await orderService.ConciliatePaymentsAsync(requests, cancellationToken);
         return Ok(result);
+    }
+
+    [HttpPost("{id}/decline")]
+    [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderResponseDto>> Decline(
+        string id,
+        [FromBody] DeclineOrderRequestDto? request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "system";
+            var userName = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? User.FindFirst("name")?.Value ?? "Usuario";
+            var order = await orderService.DeclineOrderAsync(id, userId, userName, request?.GetReason(), cancellationToken);
+            return Ok(order);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{id}/reactivate")]
+    [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderResponseDto>> Reactivate(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "system";
+            var userName = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? User.FindFirst("name")?.Value ?? "Usuario";
+            var order = await orderService.ReactivateOrderAsync(id, userId, userName, cancellationToken);
+            return Ok(order);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 }

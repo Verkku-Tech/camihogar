@@ -104,6 +104,19 @@ export function getAuthToken(): string | null {
   return inMemoryToken
 }
 
+export const API_BASE_URL = (() => {
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('pages.dev')) {
+    return 'https://ch-api-v2.verkku.com'
+  }
+  return (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+})()
+
+export function resolveApiUrl(endpoint: string): string {
+  if (endpoint.startsWith('http')) return endpoint
+  const path = endpoint.startsWith('/') ? endpoint : `/api/${endpoint}`
+  return API_BASE_URL ? `${API_BASE_URL}${path}` : path
+}
+
 let refreshTokenPromise: Promise<string | null> | null = null
 
 export async function requestTokenRefresh(): Promise<string | null> {
@@ -114,7 +127,7 @@ export async function requestTokenRefresh(): Promise<string | null> {
   refreshTokenPromise = (async () => {
     let explicitRejection = false
     try {
-      const refreshRes = await fetch('/api/auth/refresh', {
+      const refreshRes = await fetch(resolveApiUrl('/api/auth/refresh'), {
         method: 'POST',
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
         credentials: 'include'
@@ -204,11 +217,7 @@ export async function apiFetch<T>(endpoint: string, options: RequestOptions = {}
     headers.set('X-Mutation-Id', mutationId)
   }
 
-  const url = endpoint.startsWith('http')
-    ? endpoint
-    : endpoint.startsWith('/')
-      ? endpoint
-      : `/api/${endpoint}`
+  const url = resolveApiUrl(endpoint)
 
   try {
     const timeoutSignal = typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(10000) : undefined
@@ -1198,6 +1207,7 @@ export class ApiClientClass {
       manufacturingStatus?: string
       excludeStatuses?: string
       productFilterPreset?: string
+      includeImages?: boolean
     },
     signal?: AbortSignal
   ): Promise<PagedOrdersResponseDto> {
@@ -1325,15 +1335,15 @@ export class ApiClientClass {
     })
   }
 
-  async declineOrder(orderId: string, reason?: string): Promise<void> {
-    return apiFetch<void>(`/api/orders/${orderId}/decline`, {
+  async declineOrder(orderId: string, reason?: string): Promise<OrderResponseDto> {
+    return apiFetch<OrderResponseDto>(`/api/orders/${orderId}/decline`, {
       method: 'POST',
-      body: JSON.stringify({ reason })
+      body: JSON.stringify({ reason, declineReason: reason })
     })
   }
 
-  async reactivateOrder(orderId: string): Promise<void> {
-    return apiFetch<void>(`/api/orders/${orderId}/reactivate`, {
+  async reactivateOrder(orderId: string): Promise<OrderResponseDto> {
+    return apiFetch<OrderResponseDto>(`/api/orders/${orderId}/reactivate`, {
       method: 'POST'
     })
   }

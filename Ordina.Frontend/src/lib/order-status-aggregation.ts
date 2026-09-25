@@ -114,6 +114,8 @@ export function resolveDisplayOrderStatus(order: OrderWithProducts): string {
   const type = order.type?.trim().toLowerCase();
   if (type === "budget" || isReservationOrder(order)) return order.status;
 
+  if (order.status === "Declinado" || order.status === "Cancelado") return order.status;
+
   const products = order.products;
   if (!products?.length) return order.status;
 

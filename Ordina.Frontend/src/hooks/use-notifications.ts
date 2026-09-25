@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { apiClient, getAuthToken, type NotificationDto } from "@/lib/api-client"
+import { apiClient, getAuthToken, resolveApiUrl, type NotificationDto } from "@/lib/api-client"
 import { useAuth } from "@/contexts/auth-context"
 import { toast } from "sonner"
 
@@ -96,7 +96,7 @@ export function useNotifications() {
     const token = getAuthToken()
     if (!token) return
 
-    const streamUrl = `/api/notifications/stream?token=${encodeURIComponent(token)}`
+    const streamUrl = resolveApiUrl(`/api/notifications/stream?token=${encodeURIComponent(token)}`)
     const es = new EventSource(streamUrl)
     eventSourceRef.current = es
 

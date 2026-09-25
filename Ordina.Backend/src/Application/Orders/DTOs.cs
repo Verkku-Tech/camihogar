@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Ordina.Application.Orders;
 
 public record ProductImageDto(
@@ -229,4 +231,15 @@ public record PagedAuditLogsResponseDto(
     int PageSize,
     long TotalCount,
     int TotalPages);
+
+public class DeclineOrderRequestDto
+{
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; }
+
+    [JsonPropertyName("declineReason")]
+    public string? DeclineReason { get; set; }
+
+    public string? GetReason() => !string.IsNullOrWhiteSpace(Reason) ? Reason : DeclineReason;
+}
 

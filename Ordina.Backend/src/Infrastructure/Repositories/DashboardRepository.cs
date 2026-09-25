@@ -15,8 +15,16 @@ public class DashboardRepository(MongoDbContext context, ICacheService cache) : 
         var cached = await cache.GetAsync<IReadOnlyList<Order>>("dashboard:orders", cancellationToken);
         if (cached != null) return cached;
 
-        // ponytail: exclude Cancelado orders directly at query time to avoid pulling dead orders into memory
-        var orders = await context.Orders.Find(o => o.StatusString != "Cancelado").ToListAsync(cancellationToken);
+        // ponytail: exclude images and Cancelado orders directly at query time to avoid pulling 270MB of dead image data into memory
+        var projection = Builders<Order>.Projection
+            .Exclude("partialPayments.images")
+            .Exclude("mixedPayments.images")
+            .Exclude("products.images")
+            .Exclude("originalProducts.images");
+
+        var orders = await context.Orders.Find(o => o.StatusString != "Cancelado")
+            .Project<Order>(projection)
+            .ToListAsync(cancellationToken);
         await cache.SetAsync("dashboard:orders", (IReadOnlyList<Order>)orders, slidingExpiration: TimeSpan.FromSeconds(20), cancellationToken: cancellationToken);
         return orders;
     }

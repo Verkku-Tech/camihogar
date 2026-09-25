@@ -143,7 +143,20 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowConfiguredOrigins", policy =>
     {
-        policy.WithOrigins(allowedOrigins)
+        policy.SetIsOriginAllowed(origin =>
+              {
+                  if (string.IsNullOrEmpty(origin)) return false;
+                  if (allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)) return true;
+                  try
+                  {
+                      var host = new Uri(origin).Host;
+                      return host.EndsWith("verkku.com", StringComparison.OrdinalIgnoreCase)
+                             || host.EndsWith("pages.dev", StringComparison.OrdinalIgnoreCase)
+                             || host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                             || host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+                  }
+                  catch { return false; }
+              })
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials()

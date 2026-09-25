@@ -12,27 +12,36 @@ public class OrderCoreService : IOrderCoreService
     private readonly IOrderRepository _orderRepository;
     private readonly ILogger<OrderCoreService> _logger;
     private readonly INotificationService? _notificationService;
+    private readonly IOrderAuditLogService? _auditLogService;
 
     public OrderCoreService(
         IOrderRepository orderRepository,
         ILogger<OrderCoreService> logger,
-        INotificationService? notificationService = null)
+        INotificationService? notificationService = null,
+        IOrderAuditLogService? auditLogService = null)
     {
         _orderRepository = orderRepository;
         _logger = logger;
         _notificationService = notificationService;
+        _auditLogService = auditLogService;
     }
 
-    public async Task<OrderResponseDto?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
+    public Task<OrderResponseDto?> GetByIdAsync(string id, CancellationToken cancellationToken = default) =>
+        GetByIdAsync(id, includeImages: true, cancellationToken);
+
+    public async Task<OrderResponseDto?> GetByIdAsync(string id, bool includeImages, CancellationToken cancellationToken = default)
     {
         var order = await _orderRepository.GetByIdAsync(id, cancellationToken);
-        return order != null ? MapToDto(order) : null;
+        return order != null ? MapToDto(order, includeImages) : null;
     }
 
-    public async Task<OrderResponseDto?> GetByOrderNumberAsync(string orderNumber, CancellationToken cancellationToken = default)
+    public Task<OrderResponseDto?> GetByOrderNumberAsync(string orderNumber, CancellationToken cancellationToken = default) =>
+        GetByOrderNumberAsync(orderNumber, includeImages: true, cancellationToken);
+
+    public async Task<OrderResponseDto?> GetByOrderNumberAsync(string orderNumber, bool includeImages, CancellationToken cancellationToken = default)
     {
         var order = await _orderRepository.GetByOrderNumberAsync(orderNumber, cancellationToken);
-        return order != null ? MapToDto(order) : null;
+        return order != null ? MapToDto(order, includeImages) : null;
     }
 
     public async Task<PagedResult<OrderResponseDto>> GetPagedAsync(
@@ -47,8 +56,9 @@ public class OrderCoreService : IOrderCoreService
             queryFilter,
             cancellationToken);
 
+        var includeImages = queryFilter.IncludeImages;
         return new PagedResult<OrderResponseDto>(
-            result.Items.Select(MapToDto).ToList(),
+            result.Items.Select(o => MapToDto(o, includeImages)).ToList(),
             result.TotalCount,
             result.Page,
             result.PageSize);
@@ -298,6 +308,84 @@ public class OrderCoreService : IOrderCoreService
         return await _orderRepository.UpdateAsync(order, cancellationToken);
     }
 
+    public async Task<OrderResponseDto> DeclineOrderAsync(
+        string id,
+        string userId,
+        string userName,
+        string? declineReason,
+        CancellationToken cancellationToken = default)
+    {
+        var order = await _orderRepository.GetByIdAsync(id, cancellationToken)
+            ?? throw new KeyNotFoundException($"Pedido no encontrado: {id}");
+
+        if (!string.Equals(order.TypeString, "Order", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Solo se pueden declinar pedidos (no presupuestos ni reservas).");
+        }
+
+        if (order.Products != null)
+        {
+            foreach (var product in order.Products)
+            {
+                product.LogisticStatusString = "Declinado";
+            }
+        }
+
+        order.StatusString = "Declinado";
+        order.DeclineReason = declineReason;
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _orderRepository.UpdateAsync(order, cancellationToken);
+
+        if (_auditLogService != null)
+        {
+            await _auditLogService.LogOrderDeclinedAsync(order, userId, userName, declineReason, cancellationToken);
+        }
+
+        _logger.LogInformation("Pedido {OrderNumber} declinado por {UserName}. Motivo: {Reason}", order.OrderNumber, userName, declineReason);
+        return MapToDto(order);
+    }
+
+    public async Task<OrderResponseDto> ReactivateOrderAsync(
+        string id,
+        string userId,
+        string userName,
+        CancellationToken cancellationToken = default)
+    {
+        var order = await _orderRepository.GetByIdAsync(id, cancellationToken)
+            ?? throw new KeyNotFoundException($"Pedido no encontrado: {id}");
+
+        if (!string.Equals(order.StatusString, "Declinado", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Solo se pueden reactivar pedidos que estén declinados.");
+        }
+
+        if (order.Products != null)
+        {
+            foreach (var product in order.Products)
+            {
+                if (string.Equals(product.LogisticStatusString, "Declinado", StringComparison.OrdinalIgnoreCase))
+                {
+                    product.LogisticStatusString = "Generado";
+                }
+            }
+        }
+
+        order.DeclineReason = null;
+        order.StatusString = "Generado";
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _orderRepository.UpdateAsync(order, cancellationToken);
+
+        if (_auditLogService != null)
+        {
+            await _auditLogService.LogOrderDeclineRevertedAsync(order, userId, userName, cancellationToken);
+        }
+
+        _logger.LogInformation("Pedido {OrderNumber} reactivado a Generado por {UserName}", order.OrderNumber, userName);
+        return MapToDto(order);
+    }
+
     public async Task<bool> ConciliatePaymentsAsync(List<ConciliatePaymentRequestDto> requests, CancellationToken cancellationToken = default)
     {
         if (requests == null || requests.Count == 0)
@@ -461,15 +549,15 @@ public class OrderCoreService : IOrderCoreService
         PaymentDetails = MapPaymentDetailsFromDto(dto.PaymentDetails)
     };
 
-    private static PartialPaymentDto MapPartialPaymentToDto(PartialPayment p) => new(
+    private static PartialPaymentDto MapPartialPaymentToDto(PartialPayment p, bool includeImages = true) => new(
         p.Id,
         p.Amount,
         p.Method,
         p.Date,
-        p.Images?.Select(MapImageToDto).ToList(),
+        includeImages && p.Images != null ? p.Images.Select(MapImageToDto).ToList() : null,
         MapPaymentDetailsToDto(p.PaymentDetails));
 
-    private static OrderResponseDto MapToDto(Order o) => new(
+    private static OrderResponseDto MapToDto(Order o, bool includeImages = true) => new(
         o.Id,
         o.OrderNumber,
         o.ConvertedFromNumber,
@@ -509,7 +597,7 @@ public class OrderCoreService : IOrderCoreService
             p.SurchargeEnabled,
             p.SurchargeAmount,
             p.SurchargeReason,
-            p.Images?.Select(MapImageToDto).ToList(),
+            includeImages && p.Images != null ? p.Images.Select(MapImageToDto).ToList() : null,
             p.CommissionLineSource,
             p.CatalogProductId)).ToList(),
         o.Subtotal,
@@ -525,8 +613,8 @@ public class OrderCoreService : IOrderCoreService
         o.PaymentMethod,
         o.PaymentCondition,
         MapPaymentDetailsToDto(o.PaymentDetails),
-        o.PartialPayments?.Select(MapPartialPaymentToDto).ToList(),
-        o.MixedPayments?.Select(MapPartialPaymentToDto).ToList(),
+        o.PartialPayments?.Select(p => MapPartialPaymentToDto(p, includeImages)).ToList(),
+        o.MixedPayments?.Select(p => MapPartialPaymentToDto(p, includeImages)).ToList(),
         o.AppliedStoreCreditUsd,
         o.DeliveryAddress,
         o.HasDelivery,

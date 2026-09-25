@@ -108,7 +108,9 @@ export class ConnectivityManager {
     this.isProbing = true
 
     try {
-      const res = await fetch('/api/health', {
+      const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+      const healthUrl = apiBase ? `${apiBase}/api/health` : '/api/health'
+      const res = await fetch(healthUrl, {
         method: 'GET',
         cache: 'no-store',
         signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(2500) : undefined

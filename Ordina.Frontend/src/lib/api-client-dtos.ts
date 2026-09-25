@@ -674,6 +674,7 @@ export interface OrderResponseDto {
   originalProducts?: OrderProductDto[];
   sourceReservationVendorId?: string;
   sourceReservationVendorName?: string;
+  declineReason?: string;
 }
 
 export interface ConvertBudgetToOrderDto {

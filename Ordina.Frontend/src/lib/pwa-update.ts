@@ -112,3 +112,31 @@ export async function registerForUpdates(): Promise<ServiceWorkerRegistration | 
 export function notifyVersionMismatch(): void {
   notifyUpdateAvailable();
 }
+
+/**
+ * Desregistra todos los Service Workers y elimina todos los caches de CacheStorage.
+ * Especialmente útil en dispositivos móviles para salir de estados bloqueados o con caché desactualizada.
+ */
+export async function unregisterAllServiceWorkersAndClearCaches(): Promise<void> {
+  if (typeof window === "undefined") return;
+
+  // 1. Desregistrar todos los Service Workers activos
+  if ("serviceWorker" in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((reg) => reg.unregister()));
+    } catch (e) {
+      console.warn("Error desregistrando service workers:", e);
+    }
+  }
+
+  // 2. Eliminar todas las memorias caché de CacheStorage (Workbox / assets)
+  if ("caches" in window) {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    } catch (e) {
+      console.warn("Error eliminando CacheStorage:", e);
+    }
+  }
+}

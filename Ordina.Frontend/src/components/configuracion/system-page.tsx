@@ -19,8 +19,11 @@ import {
   getIndexedDBStoreStats,
 } from "@/lib/storage"
 import { APP_UI_VERSION } from "@/lib/app-version"
-import { checkForServiceWorkerUpdate } from "@/lib/pwa-update"
-import { Loader2, RefreshCw, Trash2 } from "lucide-react"
+import {
+  checkForServiceWorkerUpdate,
+  unregisterAllServiceWorkersAndClearCaches,
+} from "@/lib/pwa-update"
+import { Loader2, RefreshCw, RotateCcw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 export function SystemPage() {
@@ -28,8 +31,10 @@ export function SystemPage() {
   const [stats, setStats] = useState<{ name: string; count: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
+  const [clearingPwa, setClearingPwa] = useState(false)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmPwaOpen, setConfirmPwaOpen] = useState(false)
   const [serverVersion, setServerVersion] = useState<string | null>(null)
 
   const loadStats = useCallback(async () => {
@@ -93,6 +98,24 @@ export function SystemPage() {
       toast.error("Error al limpiar IndexedDB")
     } finally {
       setClearing(false)
+    }
+  }
+
+  const handleClearPwa = async () => {
+    setClearingPwa(true)
+    setConfirmPwaOpen(false)
+    try {
+      await unregisterAllServiceWorkersAndClearCaches()
+      toast.success(
+        "Service Worker y caché eliminados correctamente. Recargando aplicación...",
+      )
+      setTimeout(() => {
+        window.location.reload()
+      }, 800)
+    } catch (e) {
+      console.error(e)
+      toast.error("Error al limpiar Service Worker y caché")
+      setClearingPwa(false)
     }
   }
 
@@ -197,18 +220,34 @@ export function SystemPage() {
               </div>
             )}
 
-            <Button
-              variant="destructive"
-              disabled={loading || clearing}
-              onClick={() => setConfirmOpen(true)}
-            >
-              {clearing ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="mr-2 h-4 w-4" />
-              )}
-              Limpiar cache local (IndexedDB)
-            </Button>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="destructive"
+                disabled={loading || clearing || clearingPwa}
+                onClick={() => setConfirmOpen(true)}
+              >
+                {clearing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="mr-2 h-4 w-4" />
+                )}
+                Limpiar cache local (IndexedDB)
+              </Button>
+
+              <Button
+                variant="outline"
+                className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/50"
+                disabled={loading || clearing || clearingPwa}
+                onClick={() => setConfirmPwaOpen(true)}
+              >
+                {clearingPwa ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                )}
+                Restablecer Service Worker y Caché PWA
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -232,6 +271,30 @@ export function SystemPage() {
               }}
             >
               Sí, limpiar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmPwaOpen} onOpenChange={setConfirmPwaOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Restablecer Service Worker y Caché PWA?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se desregistrarán todos los Service Workers y se vaciarán las memorias caché (CacheStorage de Workbox) de este navegador.
+              La aplicación se recargará de inmediato descargando los archivos frescos desde el servidor. Ideal para solucionar bloqueos en teléfonos móviles o tras cambios de versión.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-800"
+              onClick={(e) => {
+                e.preventDefault()
+                void handleClearPwa()
+              }}
+            >
+              Sí, restablecer y recargar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
