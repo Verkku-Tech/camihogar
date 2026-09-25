@@ -1,4 +1,3 @@
-export * as db from "./indexeddb";
 import * as db from "./indexeddb";
 import type { Currency } from "./currency-utils";
 import { normalizeExchangeRatesAtCreation } from "./currency-utils";
