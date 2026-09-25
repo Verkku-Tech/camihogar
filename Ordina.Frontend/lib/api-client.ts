@@ -1483,11 +1483,11 @@ export class ApiClient {
     );
   }
 
-  /** Declina un pedido en estado Generado (todas sus líneas pasan a Declinado). */
+  /** Declina un pedido (todas sus líneas pasan a Declinado). */
   async declineOrder(orderId: string, reason?: string) {
     return this.request<OrderResponseDto>(`/api/Orders/${orderId}/decline`, {
       method: "POST",
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason, declineReason: reason }),
     });
   }
 
