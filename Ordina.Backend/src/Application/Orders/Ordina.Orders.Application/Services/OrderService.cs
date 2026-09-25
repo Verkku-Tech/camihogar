@@ -1484,24 +1484,17 @@ public class OrderService : IOrderService
                 throw new ArgumentException("Solo se pueden declinar pedidos (no presupuestos ni reservas).");
             }
 
-            if (!OrderStatusAggregation.IsDeclinedStatus(existingOrder.Status)
-                && existingOrder.Products != null)
+            if (existingOrder.Products != null)
             {
-                var softStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                    { "Generado", "Validado" };
-
                 foreach (var product in existingOrder.Products)
                 {
-                    if (softStatuses.Contains(product.LogisticStatus))
-                    {
-                        product.LogisticStatus = "Declinado";
-                    }
+                    product.LogisticStatus = "Declinado";
                 }
             }
 
+            existingOrder.Status = "Declinado";
             existingOrder.DeclineReason = declineReason;
             existingOrder.UpdatedAt = DateTime.UtcNow;
-            RecalculateOrderStatus(existingOrder);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
             await _auditLogService.LogOrderDeclinedAsync(updatedOrder, userId, userName, declineReason);
             return MapToDto(updatedOrder);
@@ -1537,11 +1530,15 @@ public class OrderService : IOrderService
             {
                 foreach (var product in existingOrder.Products)
                 {
-                    product.LogisticStatus = "Generado";
+                    if (string.Equals(product.LogisticStatus, "Declinado", StringComparison.OrdinalIgnoreCase))
+                    {
+                        product.LogisticStatus = "Generado";
+                    }
                 }
             }
 
             existingOrder.DeclineReason = null;
+            existingOrder.Status = "Generado";
             existingOrder.UpdatedAt = DateTime.UtcNow;
             RecalculateOrderStatus(existingOrder);
             var updatedOrder = await _orderRepository.UpdateAsync(existingOrder);
@@ -1875,6 +1872,9 @@ public class OrderService : IOrderService
     {
         if (string.Equals(order.Type, "Budget", StringComparison.Ordinal)
             || OrderDocumentTypes.IsReservationType(order.Type))
+            return;
+
+        if (OrderStatusAggregation.IsDeclinedStatus(order.Status))
             return;
 
         if (order.Products == null || !order.Products.Any())
