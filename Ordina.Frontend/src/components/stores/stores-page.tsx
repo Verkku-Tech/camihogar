@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,9 +21,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Plus, Search, Edit, Power, PowerOff, Building2 } from "lucide-react"
+import { Plus, Search, Edit, Power, PowerOff, Building2, SlidersHorizontal, Layers } from "lucide-react"
 import { toast } from "sonner"
 import { getStores, addStore, updateStore, deleteStore, type Store } from "@/lib/storage"
+import { StoreProductLimitsDialog, StoreProductLimitsEditor } from "./store-product-limits-dialog"
 
 export function StoresPage() {
   const [stores, setStores] = useState<Store[]>([])
@@ -32,6 +34,7 @@ export function StoresPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingStore, setEditingStore] = useState<Store | null>(null)
+  const [selectedStoreForLimits, setSelectedStoreForLimits] = useState<Store | null>(null)
   const [formData, setFormData] = useState({
     name: "",
     code: "",
@@ -39,6 +42,7 @@ export function StoresPage() {
     phone: "",
     email: "",
     rif: "",
+    maxCapacity: 25,
     status: "active" as "active" | "inactive",
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -187,6 +191,7 @@ export function StoresPage() {
       phone: "",
       email: "",
       rif: "",
+      maxCapacity: 25,
       status: "active",
     })
     setErrors({})
@@ -202,6 +207,7 @@ export function StoresPage() {
       phone: store.phone,
       email: store.email,
       rif: store.rif,
+      maxCapacity: store.maxCapacity ?? 25,
       status: store.status,
     })
     setIsEditDialogOpen(true)
@@ -216,7 +222,8 @@ export function StoresPage() {
           <h1 className="text-2xl font-bold text-foreground">Gestión de Tiendas</h1>
         </div>
 
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <div>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={resetForm} className="bg-indigo-600 hover:bg-indigo-700">
               <Plus className="w-4 h-4 mr-2" />
@@ -286,16 +293,28 @@ export function StoresPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="rif">RIF *</Label>
-                <Input
-                  id="rif"
-                  placeholder="J-12345678-9"
-                  value={formData.rif}
-                  onChange={(e) => setFormData({ ...formData, rif: e.target.value.toUpperCase() })}
-                  className={errors.rif ? "border-red-500" : ""}
-                />
-                {errors.rif && <p className="text-sm text-red-500">{errors.rif}</p>}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="rif">RIF *</Label>
+                  <Input
+                    id="rif"
+                    placeholder="J-12345678-9"
+                    value={formData.rif}
+                    onChange={(e) => setFormData({ ...formData, rif: e.target.value.toUpperCase() })}
+                    className={errors.rif ? "border-red-500" : ""}
+                  />
+                  {errors.rif && <p className="text-sm text-red-500">{errors.rif}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxCapacity">Tope de Exhibición (Capacidad)</Label>
+                  <Input
+                    id="maxCapacity"
+                    type="number"
+                    min="1"
+                    value={formData.maxCapacity}
+                    onChange={(e) => setFormData({ ...formData, maxCapacity: Number(e.target.value) || 25 })}
+                  />
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-2">
@@ -308,6 +327,7 @@ export function StoresPage() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Filters */}
@@ -362,6 +382,7 @@ export function StoresPage() {
                   <TableHead>Código</TableHead>
                   <TableHead>RIF</TableHead>
                   <TableHead>Teléfono</TableHead>
+                  <TableHead>Capacidad</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
@@ -374,13 +395,33 @@ export function StoresPage() {
                     <TableCell>{store.rif}</TableCell>
                     <TableCell>{store.phone}</TableCell>
                     <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-xs">{store.maxCapacity ?? 25} unid. (Piso)</span>
+                        {store.productDisplayLimits && Object.keys(store.productDisplayLimits).length > 0 && (
+                          <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                            {Object.values(store.productDisplayLimits).reduce((a, b) => a + (Number(b) || 0), 0)} pzas. en topes
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       <Badge variant={store.status === "active" ? "default" : "secondary"}>
                         {store.status === "active" ? "Activo" : "Inactivo"}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => openEditDialog(store)}>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedStoreForLimits(store)}
+                          title="Topes de Exhibición por Producto"
+                          className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 h-8 px-2"
+                        >
+                          <SlidersHorizontal className="w-4 h-4 mr-1 text-indigo-500" />
+                          <span className="text-xs hidden md:inline font-medium">Topes</span>
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => openEditDialog(store)} title="Editar Tienda" className="h-8 w-8">
                           <Edit className="w-4 h-4" />
                         </Button>
                         <AlertDialog>
@@ -441,108 +482,163 @@ export function StoresPage() {
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Editar Tienda</DialogTitle>
+            <DialogTitle>Editar Tienda: {editingStore?.name}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Nombre de la Tienda *</Label>
-                <Input
-                  id="edit-name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className={errors.name ? "border-red-500" : ""}
-                />
-                {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-code">Código Interno *</Label>
-                <Input
-                  id="edit-code"
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                  className={errors.code ? "border-red-500" : ""}
-                />
-                {errors.code && <p className="text-sm text-red-500">{errors.code}</p>}
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-address">Dirección *</Label>
-              <Input
-                id="edit-address"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                className={errors.address ? "border-red-500" : ""}
-              />
-              {errors.address && <p className="text-sm text-red-500">{errors.address}</p>}
-            </div>
+          <Tabs defaultValue="info" className="w-full">
+            <TabsList className="grid grid-cols-2 w-full mb-3">
+              <TabsTrigger value="info">Información General</TabsTrigger>
+              <TabsTrigger value="limits" className="flex items-center gap-1.5">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Topes por Producto</span>
+                {editingStore?.productDisplayLimits && Object.keys(editingStore.productDisplayLimits).length > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4">
+                    {Object.values(editingStore.productDisplayLimits).reduce((a, b) => a + (Number(b) || 0), 0)}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-phone">Teléfono *</Label>
-                <Input
-                  id="edit-phone"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className={errors.phone ? "border-red-500" : ""}
-                />
-                {errors.phone && <p className="text-sm text-red-500">{errors.phone}</p>}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-email">Correo de Contacto *</Label>
-                <Input
-                  id="edit-email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className={errors.email ? "border-red-500" : ""}
-                />
-                {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
-              </div>
-            </div>
+            <TabsContent value="info">
+              <div className="grid gap-4 py-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-name">Nombre de la Tienda *</Label>
+                    <Input
+                      id="edit-name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className={errors.name ? "border-red-500" : ""}
+                    />
+                    {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-code">Código Interno *</Label>
+                    <Input
+                      id="edit-code"
+                      value={formData.code}
+                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                      className={errors.code ? "border-red-500" : ""}
+                    />
+                    {errors.code && <p className="text-sm text-red-500">{errors.code}</p>}
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-rif">RIF *</Label>
-                <Input
-                  id="edit-rif"
-                  placeholder="J-12345678-9"
-                  value={formData.rif}
-                  onChange={(e) => setFormData({ ...formData, rif: e.target.value.toUpperCase() })}
-                  className={errors.rif ? "border-red-500" : ""}
-                />
-                {errors.rif && <p className="text-sm text-red-500">{errors.rif}</p>}
+                <div className="space-y-2">
+                  <Label htmlFor="edit-address">Dirección *</Label>
+                  <Input
+                    id="edit-address"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className={errors.address ? "border-red-500" : ""}
+                  />
+                  {errors.address && <p className="text-sm text-red-500">{errors.address}</p>}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-phone">Teléfono *</Label>
+                    <Input
+                      id="edit-phone"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className={errors.phone ? "border-red-500" : ""}
+                    />
+                    {errors.phone && <p className="text-sm text-red-500">{errors.phone}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-email">Correo de Contacto *</Label>
+                    <Input
+                      id="edit-email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className={errors.email ? "border-red-500" : ""}
+                    />
+                    {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-rif">RIF *</Label>
+                    <Input
+                      id="edit-rif"
+                      placeholder="J-12345678-9"
+                      value={formData.rif}
+                      onChange={(e) => setFormData({ ...formData, rif: e.target.value.toUpperCase() })}
+                      className={errors.rif ? "border-red-500" : ""}
+                    />
+                    {errors.rif && <p className="text-sm text-red-500">{errors.rif}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-maxCapacity">Capacidad Showroom (Muebles en Piso)</Label>
+                    <Input
+                      id="edit-maxCapacity"
+                      type="number"
+                      min="1"
+                      value={formData.maxCapacity}
+                      onChange={(e) => setFormData({ ...formData, maxCapacity: Number(e.target.value) || 25 })}
+                    />
+                    <p className="text-[11px] text-muted-foreground">Capacidad física global estimada para el piso de venta.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-status">Estado</Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(value: "active" | "inactive") => setFormData({ ...formData, status: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Activo</SelectItem>
+                      <SelectItem value="inactive">Inactivo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-status">Estado</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value: "active" | "inactive") => setFormData({ ...formData, status: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Activo</SelectItem>
-                    <SelectItem value="inactive">Inactivo</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="flex justify-end gap-2 pt-4 border-t mt-2">
+                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleEditStore} className="bg-indigo-600 hover:bg-indigo-700">
+                  Guardar Cambios
+                </Button>
               </div>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleEditStore} className="bg-indigo-600 hover:bg-indigo-700">
-              Guardar Cambios
-            </Button>
-          </div>
+            </TabsContent>
+
+            <TabsContent value="limits">
+              {editingStore && (
+                <div className="pt-2">
+                  <StoreProductLimitsEditor
+                    store={editingStore}
+                    onSaved={(updated) => {
+                      setStores(stores.map(s => s.id === updated.id ? updated : s));
+                      setEditingStore(updated);
+                    }}
+                    onClose={() => setIsEditDialogOpen(false)}
+                  />
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
+
+      {/* Standalone Store Product Limits Dialog */}
+      <StoreProductLimitsDialog
+        store={selectedStoreForLimits}
+        open={Boolean(selectedStoreForLimits)}
+        onOpenChange={(open) => !open && setSelectedStoreForLimits(null)}
+        onSaved={(updated) => {
+          setStores(stores.map(s => s.id === updated.id ? updated : s));
+        }}
+      />
     </div>
   )
 }

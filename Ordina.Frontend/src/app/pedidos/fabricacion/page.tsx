@@ -28,8 +28,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight, RotateCcw, Loader2 } from "lucide-react"
+import { Search, Filter, Hammer, CheckCircle2, AlertCircle, Clock, Package, Eye, ChevronDown, ChevronRight, RotateCcw, Loader2, Download } from "lucide-react"
 import { toast } from "sonner"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { StockOrdersTab } from "@/components/manufacturing/stock-orders-tab"
 import { getOrder, getOrdersByIds, getCategories, type Order, type OrderProduct, type Category, type AttributeValue, updateOrder, orderFromBackendDto } from "@/lib/storage"
 import { useRouter } from "next/navigation"
 import { apiClient, type OrderResponseDto } from "@/lib/api-client"
@@ -143,6 +145,22 @@ export default function FabricacionPage() {
     useState(false)
   const [individualRevertDialogOpen, setIndividualRevertDialogOpen] =
     useState(false)
+  const [activeTab, setActiveTab] = useState<"pedidos" | "stock">("pedidos")
+  const [exportingExcel, setExportingExcel] = useState(false)
+
+  const handleExportExcel = async () => {
+    try {
+      setExportingExcel(true)
+      toast.info("Generando reporte de fabricación en 2 hojas...")
+      await apiClient.downloadManufacturingReportExcel()
+      toast.success("Reporte Excel descargado con éxito")
+    } catch (err: any) {
+      console.error("Error downloading manufacturing excel:", err)
+      toast.error(err.message || "Error al exportar reporte Excel")
+    } finally {
+      setExportingExcel(false)
+    }
+  }
   const [individualRevertToDebeFabricarDialogOpen, setIndividualRevertToDebeFabricarDialogOpen] =
     useState(false)
   const [revertTarget, setRevertTarget] = useState<{
@@ -1431,10 +1449,41 @@ export default function FabricacionPage() {
                   Fabricación
                 </h1>
                 <p className="text-muted-foreground">
-                  Gestiona la fabricación de productos agrupados por pedido
+                  Gestiona la fabricación de productos por pedido y órdenes de stock
                 </p>
               </div>
             </div>
+
+            <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                <TabsList className="bg-muted p-1">
+                  <TabsTrigger value="pedidos" className="text-xs sm:text-sm font-semibold gap-1.5">
+                    <Package className="w-4 h-4" />
+                    Pedidos de Clientes
+                  </TabsTrigger>
+                  <TabsTrigger value="stock" className="text-xs sm:text-sm font-semibold gap-1.5 text-indigo-600 dark:text-indigo-400">
+                    <Hammer className="w-4 h-4" />
+                    Órdenes de Fabricación (Stock)
+                  </TabsTrigger>
+                </TabsList>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportExcel}
+                  disabled={exportingExcel}
+                  className="h-9 gap-1.5 text-xs font-semibold border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+                >
+                  {exportingExcel ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                  ) : (
+                    <Download className="w-4 h-4 text-emerald-600" />
+                  )}
+                  Exportar Excel (2 Hojas)
+                </Button>
+              </div>
+
+              <TabsContent value="pedidos">
 
             {isProcessing && (
               <div
@@ -2013,6 +2062,12 @@ export default function FabricacionPage() {
                 )}
               </Card>
             )}
+              </TabsContent>
+
+              <TabsContent value="stock">
+                <StockOrdersTab />
+              </TabsContent>
+            </Tabs>
           </div>
         </main>
       </div>

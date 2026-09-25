@@ -965,6 +965,8 @@ export interface StoreResponseDto {
   phone: string;
   email: string;
   rif: string;
+  maxCapacity?: number;
+  productDisplayLimits?: Record<string, number>;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -977,6 +979,8 @@ export interface CreateStoreDto {
   phone: string;
   email: string;
   rif: string;
+  maxCapacity?: number;
+  productDisplayLimits?: Record<string, number>;
   status?: string;
 }
 
@@ -987,7 +991,110 @@ export interface UpdateStoreDto {
   phone?: string;
   email?: string;
   rif?: string;
+  maxCapacity?: number;
+  productDisplayLimits?: Record<string, number>;
   status?: string;
+}
+
+export interface UpdateStoreDisplayLimitsDto {
+  productDisplayLimits: Record<string, number>;
+}
+
+export interface WarehouseResponseDto {
+  id: string;
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  maxCapacity: number;
+  isCentral: boolean;
+  status: string;
+}
+
+export interface CreateWarehouseDto {
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  maxCapacity: number;
+  isCentral: boolean;
+}
+
+export interface UpdateWarehouseDto {
+  name?: string;
+  code?: string;
+  address?: string;
+  phone?: string;
+  maxCapacity?: number;
+  isCentral?: boolean;
+  status?: string;
+}
+
+export interface PhysicalStockDto {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  categoryId: string;
+  categoryName: string;
+  locationType: 'store' | 'warehouse';
+  locationId: string;
+  locationName: string;
+  attributes: Record<string, string>;
+  variantKey: string;
+  quantity: number;
+  reservedQuantity: number;
+  availableQuantity: number;
+  priceUsd: number;
+  costUsd: number;
+  updatedAt: string;
+}
+
+export interface ManualStockEntryDto {
+  productId: string;
+  locationType: string;
+  locationId: string;
+  attributes: Record<string, string>;
+  quantity: number;
+  costUsd: number;
+  priceUsd: number;
+  note?: string;
+}
+
+export interface StockImportSummaryDto {
+  totalRows: number;
+  createdCount: number;
+  updatedCount: number;
+  errors: string[];
+}
+
+export interface StockReservationDto {
+  id: string;
+  stockId: string;
+  productId: string;
+  productName: string;
+  locationId: string;
+  locationName: string;
+  vendorId: string;
+  vendorName: string;
+  quantity: number;
+  reservationType: string;
+  orderNumber?: string;
+  expiresAt: string;
+  status: string;
+  remainingSeconds: number;
+}
+
+export interface CreateStockReservationDto {
+  stockId: string;
+  vendorId: string;
+  vendorName: string;
+  quantity?: number;
+  reservationType?: string;
+}
+
+export interface ExtendStockReservationDto {
+  orderNumber: string;
 }
 
 export interface BulkUpdateProductStatusItemDto {
@@ -1028,3 +1135,82 @@ export interface SupportTicketResponseDto {
   message: string;
 }
 
+export interface StockTransferDto {
+  id: string;
+  transferNumber: string;
+  stockId: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  variantKey: string;
+  attributes: Record<string, string>;
+  originLocationId: string;
+  originLocationName: string;
+  originLocationType: string;
+  destinationLocationId: string;
+  destinationLocationName: string;
+  destinationLocationType: string;
+  quantity: number;
+  status: string; // 'in_transit' | 'transferred' | 'cancelled'
+  requestedBy: string;
+  transferredBy?: string | null;
+  reason?: string | null;
+  transferredAt?: string | null;
+  createdAt: string;
+}
+
+export interface CreateStockTransferDto {
+  stockId: string;
+  destinationLocationId: string;
+  destinationLocationName: string;
+  destinationLocationType: string;
+  quantity: number;
+  requestedBy: string;
+  reason?: string;
+}
+
+export interface ManufacturingOrderDto {
+  id: string;
+  orderNumber: string;
+  orderType: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  attributes: Record<string, string>;
+  quantity: number;
+  destinationLocationId: string;
+  destinationLocationName: string;
+  destinationLocationType: string;
+  requestedBy: string;
+  providerId?: string | null;
+  providerName?: string | null;
+  costUsd: number;
+  status: string; // 'Pendiente' | 'En Produccion' | 'Fabricado' | 'Cancelado'
+  notes?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+}
+
+export interface CreateManufacturingOrderDto {
+  productId: string;
+  productName: string;
+  sku: string;
+  attributes?: Record<string, string>;
+  quantity: number;
+  destinationLocationId: string;
+  destinationLocationName: string;
+  destinationLocationType: string;
+  requestedBy: string;
+  providerId?: string;
+  providerName?: string;
+  costUsd: number;
+  notes?: string;
+}
+
+export interface UpdateManufacturingOrderStatusDto {
+  status: string;
+  providerId?: string;
+  providerName?: string;
+  notes?: string;
+}

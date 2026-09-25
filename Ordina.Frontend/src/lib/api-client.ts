@@ -18,6 +18,15 @@ import type {
   StoreResponseDto,
   CreateStoreDto,
   UpdateStoreDto,
+  WarehouseResponseDto,
+  CreateWarehouseDto,
+  UpdateWarehouseDto,
+  PhysicalStockDto,
+  ManualStockEntryDto,
+  StockImportSummaryDto,
+  StockReservationDto,
+  CreateStockReservationDto,
+  ExtendStockReservationDto,
   AccountResponseDto,
   CreateAccountDto,
   UpdateAccountDto,
@@ -57,7 +66,12 @@ import type {
   PaginatedResultDto,
   ProductListItemDto,
   CreateSupportTicketDto,
-  SupportTicketResponseDto
+  SupportTicketResponseDto,
+  StockTransferDto,
+  CreateStockTransferDto,
+  ManufacturingOrderDto,
+  CreateManufacturingOrderDto,
+  UpdateManufacturingOrderStatusDto
 } from './api-client-dtos'
 import type { ExchangeRate } from './currency-utils'
 
@@ -940,8 +954,188 @@ export class ApiClientClass {
     })
   }
 
+  async updateStoreDisplayLimits(id: string, limits: Record<string, number>): Promise<StoreResponseDto> {
+    return apiFetch<StoreResponseDto>(`/api/stores/${id}/display-limits`, {
+      method: 'PUT',
+      body: JSON.stringify({ productDisplayLimits: limits })
+    })
+  }
+
   async deleteStore(id: string): Promise<void> {
     return apiFetch<void>(`/api/stores/${id}`, { method: 'DELETE' })
+  }
+
+  // Warehouses
+  async getWarehouses(): Promise<WarehouseResponseDto[]> {
+    return apiFetch<WarehouseResponseDto[]>('/api/warehouses')
+  }
+
+  async getWarehouse(id: string): Promise<WarehouseResponseDto> {
+    return apiFetch<WarehouseResponseDto>(`/api/warehouses/${id}`)
+  }
+
+  async createWarehouse(dto: CreateWarehouseDto): Promise<WarehouseResponseDto> {
+    return apiFetch<WarehouseResponseDto>('/api/warehouses', {
+      method: 'POST',
+      body: JSON.stringify(dto)
+    })
+  }
+
+  async updateWarehouse(id: string, dto: UpdateWarehouseDto): Promise<WarehouseResponseDto> {
+    return apiFetch<WarehouseResponseDto>(`/api/warehouses/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(dto)
+    })
+  }
+
+  async deleteWarehouse(id: string): Promise<void> {
+    return apiFetch<void>(`/api/warehouses/${id}`, { method: 'DELETE' })
+  }
+
+  // Physical Stock
+  async getStockList(params?: { locationId?: string; categoryId?: string; search?: string; onlyAvailable?: boolean }): Promise<PhysicalStockDto[]> {
+    const query = new URLSearchParams()
+    if (params?.locationId) query.set('locationId', params.locationId)
+    if (params?.categoryId) query.set('categoryId', params.categoryId)
+    if (params?.search) query.set('search', params.search)
+    if (params?.onlyAvailable !== undefined) query.set('onlyAvailable', params.onlyAvailable.toString())
+    const qStr = query.toString() ? `?${query.toString()}` : ''
+    return apiFetch<PhysicalStockDto[]>(`/api/stock${qStr}`)
+  }
+
+  async getStockItem(id: string): Promise<PhysicalStockDto> {
+    return apiFetch<PhysicalStockDto>(`/api/stock/${id}`)
+  }
+
+  async addManualStock(dto: ManualStockEntryDto): Promise<PhysicalStockDto> {
+    return apiFetch<PhysicalStockDto>('/api/stock/manual-entry', {
+      method: 'POST',
+      body: JSON.stringify(dto)
+    })
+  }
+
+  async importStockExcel(file: File): Promise<StockImportSummaryDto> {
+    const formData = new FormData()
+    formData.append('file', file)
+    return apiFetch<StockImportSummaryDto>('/api/stock/import-excel', {
+      method: 'POST',
+      body: formData
+    })
+  }
+
+  async downloadStockTemplate(): Promise<Blob> {
+    const headers = new Headers()
+    headers.set('X-Requested-With', 'XMLHttpRequest')
+    const token = getAuthToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const res = await fetch('/api/stock/import-template', { headers, credentials: 'include' })
+    if (!res.ok) throw new Error('Error al descargar plantilla de stock')
+    return res.blob()
+  }
+
+  // Stock Reservations
+  async reserveStockItem(dto: CreateStockReservationDto): Promise<StockReservationDto> {
+    return apiFetch<StockReservationDto>('/api/stock/reservations', {
+      method: 'POST',
+      body: JSON.stringify(dto)
+    })
+  }
+
+  async getActiveReservations(vendorId?: string): Promise<StockReservationDto[]> {
+    const query = vendorId ? `?vendorId=${encodeURIComponent(vendorId)}` : ''
+    return apiFetch<StockReservationDto[]>(`/api/stock/reservations/active${query}`)
+  }
+
+  async getActiveReservationByStockId(stockId: string): Promise<StockReservationDto | null> {
+    try {
+      return await apiFetch<StockReservationDto>(`/api/stock/${stockId}/reservation`)
+    } catch {
+      return null
+    }
+  }
+
+  async releaseStockReservation(id: string): Promise<void> {
+    return apiFetch<void>(`/api/stock/reservations/${id}/release`, { method: 'POST' })
+  }
+
+  async extendStockReservation(id: string, orderNumber: string): Promise<StockReservationDto> {
+    return apiFetch<StockReservationDto>(`/api/stock/reservations/${id}/extend`, {
+      method: 'POST',
+      body: JSON.stringify({ orderNumber })
+    })
+  }
+
+  async confirmStockReservation(id: string, orderNumber: string): Promise<void> {
+    return apiFetch<void>(`/api/stock/reservations/${id}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ orderNumber })
+    })
+  }
+
+  // Stock Transfers
+  async getStockTransfers(status?: string, locationId?: string): Promise<StockTransferDto[]> {
+    const params = new URLSearchParams()
+    if (status) params.set('status', status)
+    if (locationId) params.set('locationId', locationId)
+    const qStr = params.toString() ? `?${params.toString()}` : ''
+    return apiFetch<StockTransferDto[]>(`/api/stock-transfers${qStr}`)
+  }
+
+  async getStockTransferById(id: string): Promise<StockTransferDto> {
+    return apiFetch<StockTransferDto>(`/api/stock-transfers/${id}`)
+  }
+
+  async createStockTransfer(dto: CreateStockTransferDto): Promise<StockTransferDto> {
+    return apiFetch<StockTransferDto>('/api/stock-transfers', {
+      method: 'POST',
+      body: JSON.stringify(dto)
+    })
+  }
+
+  async confirmStockTransfer(id: string, transferredBy?: string): Promise<StockTransferDto> {
+    return apiFetch<StockTransferDto>(`/api/stock-transfers/${id}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ transferredBy })
+    })
+  }
+
+  async cancelStockTransfer(id: string): Promise<void> {
+    return apiFetch<void>(`/api/stock-transfers/${id}/cancel`, {
+      method: 'POST'
+    })
+  }
+
+  // Manufacturing Orders (Stock)
+  async getManufacturingOrders(status?: string, destinationLocationId?: string): Promise<ManufacturingOrderDto[]> {
+    const params = new URLSearchParams()
+    if (status) params.set('status', status)
+    if (destinationLocationId) params.set('destinationLocationId', destinationLocationId)
+    const qStr = params.toString() ? `?${params.toString()}` : ''
+    return apiFetch<ManufacturingOrderDto[]>(`/api/manufacturing-orders${qStr}`)
+  }
+
+  async getManufacturingOrderById(id: string): Promise<ManufacturingOrderDto> {
+    return apiFetch<ManufacturingOrderDto>(`/api/manufacturing-orders/${id}`)
+  }
+
+  async createManufacturingOrder(dto: CreateManufacturingOrderDto): Promise<ManufacturingOrderDto> {
+    return apiFetch<ManufacturingOrderDto>('/api/manufacturing-orders', {
+      method: 'POST',
+      body: JSON.stringify(dto)
+    })
+  }
+
+  async updateManufacturingOrderStatus(id: string, dto: UpdateManufacturingOrderStatusDto): Promise<ManufacturingOrderDto> {
+    return apiFetch<ManufacturingOrderDto>(`/api/manufacturing-orders/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify(dto)
+    })
+  }
+
+  async cancelManufacturingOrder(id: string): Promise<void> {
+    return apiFetch<void>(`/api/manufacturing-orders/${id}/cancel`, {
+      method: 'POST'
+    })
   }
 
   async getAccounts(storeId?: string, isActive?: boolean): Promise<AccountResponseDto[]> {
@@ -1494,6 +1688,29 @@ export class ApiClientClass {
     const a = document.createElement('a')
     a.href = urlBlob
     a.download = `detalle_cashea_${period}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(urlBlob)
+    document.body.removeChild(a)
+  }
+
+  async downloadManufacturingReportExcel(status?: string, from?: string, to?: string): Promise<void> {
+    const q = new URLSearchParams()
+    if (status && status !== 'all') q.set('status', status)
+    if (from) q.set('from', from)
+    if (to) q.set('to', to)
+    const qStr = q.toString() ? `?${q.toString()}` : ''
+    const token = getAuthToken()
+    const response = await fetch(`/api/reports/manufacturing/excel${qStr}`, {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    })
+    if (!response.ok) throw new Error(`Error al exportar reporte de fabricación a Excel: ${response.status}`)
+    const blob = await response.blob()
+    const urlBlob = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = urlBlob
+    a.download = `Reporte_Fabricacion_Completo_${new Date().toISOString().split('T')[0]}.xlsx`
     document.body.appendChild(a)
     a.click()
     window.URL.revokeObjectURL(urlBlob)

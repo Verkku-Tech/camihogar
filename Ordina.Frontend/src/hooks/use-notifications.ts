@@ -5,6 +5,31 @@ import { apiClient, getAuthToken, type NotificationDto } from "@/lib/api-client"
 import { useAuth } from "@/contexts/auth-context"
 import { toast } from "sonner"
 
+export function playNotificationChime() {
+  try {
+    if (typeof window === "undefined") return
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioContextClass) return
+    const ctx = new AudioContextClass()
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {})
+    }
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = "sine"
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime) // D5 note
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12) // A5 note
+    gain.gain.setValueAtTime(0.12, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.35)
+  } catch {
+    // ponytail: ignore audio autoplay restrictions gracefully
+  }
+}
+
 export function useNotifications() {
   const { user } = useAuth()
   const [notifications, setNotifications] = useState<NotificationDto[]>([])
@@ -87,6 +112,9 @@ export function useNotifications() {
         })
 
         setUnreadCount((c) => c + 1)
+
+        // Native audio chime
+        playNotificationChime()
 
         // Show immediate visual toast
         if (newNotif.severity === "error") {

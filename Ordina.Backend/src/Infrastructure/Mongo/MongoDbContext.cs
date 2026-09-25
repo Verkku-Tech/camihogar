@@ -4,6 +4,7 @@ using Ordina.Domain.Catalog;
 using Ordina.Domain.Common;
 using Ordina.Domain.Dispatch;
 using Ordina.Domain.Finance;
+using Ordina.Domain.Inventory;
 using Ordina.Domain.Manufacturing;
 using Ordina.Domain.Orders;
 using Ordina.Domain.Security;
@@ -57,6 +58,8 @@ public class MongoDbContext
     public IMongoCollection<ProductCommission> ProductCommissions => _database.GetCollection<ProductCommission>("productCommissions");
     public IMongoCollection<SaleTypeCommissionRule> SaleTypeCommissionRules => _database.GetCollection<SaleTypeCommissionRule>("saleTypeCommissionRules");
     public IMongoCollection<Store> Stores => _database.GetCollection<Store>("stores");
+    public IMongoCollection<Warehouse> Warehouses => _database.GetCollection<Warehouse>("warehouses");
+    public IMongoCollection<PhysicalStock> PhysicalStocks => _database.GetCollection<PhysicalStock>("physical_stocks");
     public IMongoCollection<Account> Accounts => _database.GetCollection<Account>("accounts");
     public IMongoCollection<DispatchRoute> DispatchRoutes => _database.GetCollection<DispatchRoute>("dispatch_routes");
     public IMongoCollection<WorkOrder> WorkOrders => _database.GetCollection<WorkOrder>("work_orders");

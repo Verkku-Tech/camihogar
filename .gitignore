@@ -44,6 +44,9 @@ lerna-debug.log*
 .env.test
 .env.production
 *.local
+.certs/
+*.pem
+*.key
 
 # ---------------------------------------------------------------------
 # IDEs & Editor Configuration

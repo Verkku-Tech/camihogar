@@ -3,10 +3,12 @@ using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using Ordina.Application.Common;
 using Ordina.Application.Dashboard;
+using Ordina.Application.Inventory;
 using Ordina.Application.Security;
 using Ordina.Domain.Catalog;
 using Ordina.Domain.Dispatch;
 using Ordina.Domain.Finance;
+using Ordina.Domain.Inventory;
 using Ordina.Domain.Manufacturing;
 using Ordina.Domain.Notifications;
 using Ordina.Domain.Orders;
@@ -66,6 +68,7 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IRepository<ProductCommission>>(sp => new MongoRepository<ProductCommission>(sp.GetRequiredService<MongoDbContext>().Database, "productCommissions"));
         services.AddScoped<IRepository<SaleTypeCommissionRule>>(sp => new MongoRepository<SaleTypeCommissionRule>(sp.GetRequiredService<MongoDbContext>().Database, "saleTypeCommissionRules"));
         services.AddScoped<IRepository<Store>>(sp => new MongoRepository<Store>(sp.GetRequiredService<MongoDbContext>().Database, "stores"));
+        services.AddScoped<IRepository<Warehouse>>(sp => new MongoRepository<Warehouse>(sp.GetRequiredService<MongoDbContext>().Database, "warehouses"));
         services.AddScoped<IRepository<Account>>(sp => new MongoRepository<Account>(sp.GetRequiredService<MongoDbContext>().Database, "accounts"));
         services.AddScoped<IRepository<DispatchRoute>>(sp => new MongoRepository<DispatchRoute>(sp.GetRequiredService<MongoDbContext>().Database, "dispatch_routes"));
         services.AddScoped<IRepository<WorkOrder>>(sp => new MongoRepository<WorkOrder>(sp.GetRequiredService<MongoDbContext>().Database, "work_orders"));
@@ -74,6 +77,10 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IRepository<SupportTicket>>(sp => new MongoRepository<SupportTicket>(sp.GetRequiredService<MongoDbContext>().Database, "support_tickets"));
         services.AddScoped<IRepository<Ordina.Domain.Analytics.OperationsMetricsSettings>>(sp => new MongoRepository<Ordina.Domain.Analytics.OperationsMetricsSettings>(sp.GetRequiredService<MongoDbContext>().Database, "operations_metrics_settings"));
         services.AddScoped<IRepository<Ordina.Domain.Notifications.NotificationRuleSettings>>(sp => new MongoRepository<Ordina.Domain.Notifications.NotificationRuleSettings>(sp.GetRequiredService<MongoDbContext>().Database, "notification_settings"));
+        services.AddScoped<IPhysicalStockRepository, PhysicalStockRepository>();
+        services.AddScoped<IRepository<StockReservation>>(sp => new MongoRepository<StockReservation>(sp.GetRequiredService<MongoDbContext>().Database, "stock_reservations"));
+        services.AddScoped<IRepository<StockTransfer>>(sp => new MongoRepository<StockTransfer>(sp.GetRequiredService<MongoDbContext>().Database, "stock_transfers"));
+        services.AddScoped<IRepository<ManufacturingOrder>>(sp => new MongoRepository<ManufacturingOrder>(sp.GetRequiredService<MongoDbContext>().Database, "manufacturing_orders"));
 
         // 3. Security, Caching & Communication
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
@@ -89,6 +96,7 @@ public static class InfrastructureServiceExtensions
         // 5. Background Workers
         services.AddHostedService<Ordina.Infrastructure.BackgroundServices.DelayedOrdersNotifierWorker>();
         services.AddHostedService<Ordina.Infrastructure.BackgroundServices.OperationsMetricsAlertWorker>();
+        services.AddHostedService<Ordina.Infrastructure.BackgroundServices.StockReservationCleanupWorker>();
 
         return services;
     }

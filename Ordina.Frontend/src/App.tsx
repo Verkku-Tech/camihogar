@@ -24,11 +24,14 @@ import PresupuestosPage from './app/presupuestos/page'
 import PresupuestoDetailPage from './app/presupuestos/[budgetNumber]/page'
 import ProductosPage from './app/inventario/productos/page'
 import CategoriasPage from './app/inventario/categorias/page'
+import ExistenciasPage from './app/inventario/existencias/page'
+import TransferenciasPage from './app/inventario/transferencias/page'
 import FabricacionPage from './app/pedidos/fabricacion/page'
 import FabricacionDetailPage from './app/pedidos/fabricacion/[orderNumber]/page'
 import ClientesPage from './app/clientes/page'
 import ProveedoresPage from './app/proveedores/page'
 import TiendasPage from './app/tiendas/page'
+import AlmacenesPage from './app/inventario/almacenes/page'
 import CuentasPage from './app/cuentas/page'
 import ReportesPage from './app/reportes/page'
 import ReporteComisionesPage from './app/reportes/comisiones/page'
@@ -118,6 +121,10 @@ export function App() {
                         <Route path="/presupuestos/:budgetNumber" element={<PresupuestoDetailPage />} />
 
                         {/* Inventory / Inventario */}
+                        <Route path="/inventario" element={<Navigate to="/inventario/existencias" replace />} />
+                        <Route path="/inventario/existencias" element={<ExistenciasPage />} />
+                        <Route path="/inventario/transferencias" element={<TransferenciasPage />} />
+                        <Route path="/inventario/almacenes" element={<AlmacenesPage />} />
                         <Route path="/inventario/productos" element={<ProductosPage />} />
                         <Route path="/inventario/categorias" element={<CategoriasPage />} />
 
@@ -160,8 +167,12 @@ export function App() {
                       <Route path="/clients" element={<Navigate to="/clientes" replace />} />
                       <Route path="/providers" element={<Navigate to="/proveedores" replace />} />
                       <Route path="/stores" element={<Navigate to="/tiendas" replace />} />
+                      <Route path="/almacenes" element={<Navigate to="/inventario/almacenes" replace />} />
+                      <Route path="/warehouses" element={<Navigate to="/inventario/almacenes" replace />} />
                       <Route path="/accounts" element={<Navigate to="/cuentas" replace />} />
                       <Route path="/reports" element={<Navigate to="/reportes" replace />} />
+                      <Route path="/transferencias" element={<Navigate to="/inventario/transferencias" replace />} />
+                      <Route path="/traspasos" element={<Navigate to="/inventario/transferencias" replace />} />
 
                       {/* Fallback */}
                       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -131,6 +131,39 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
 
   const [isReservationSaving, setIsReservationSaving] = useState(false);
+  const [reservedStockBanner, setReservedStockBanner] = useState<{
+    stockId: string;
+    reservationId: string;
+    productName: string;
+    locationName: string;
+    sku: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setReservedStockBanner(null);
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const stockId = params.get("stockId");
+    const reservationId = params.get("reservationId");
+
+    if (stockId && reservationId) {
+      apiClient.getStockItem(stockId).then((item) => {
+        if (!item) return;
+        setReservedStockBanner({
+          stockId: item.id,
+          reservationId,
+          productName: item.productName,
+          locationName: item.locationName,
+          sku: item.sku,
+        });
+      }).catch(console.error);
+    }
+  }, [open]);
+
   const [isCheckingClientReservation, setIsCheckingClientReservation] =
     useState(false);
   const [pendingReservationPrompt, setPendingReservationPrompt] = useState<{
@@ -581,6 +614,13 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
       };
 
       const created = await addReservationOrder(orderData);
+
+      // Extend stock reservation to 30 minutes with the new reservation order number
+      const resId = reservedStockBanner?.reservationId || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("reservationId") : null);
+      if (resId && created?.orderNumber) {
+        apiClient.extendStockReservation(resId, created.orderNumber).catch(console.error);
+      }
+
       toast.success(
         `Se ha generado la reserva ${created.orderNumber}. Visible en el historial del cliente.`,
       );
@@ -1090,6 +1130,12 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
 
       const createdOrder = await addOrder(orderData);
 
+      // Confirm stock reservation and deduct physical inventory
+      const resId = reservedStockBanner?.reservationId || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("reservationId") : null);
+      if (resId && createdOrder?.orderNumber) {
+        apiClient.confirmStockReservation(resId, createdOrder.orderNumber).catch(console.error);
+      }
+
       setIsConfirmationOpen(false);
       onOpenChange(false);
       toast.success("Pedido creado exitosamente");
@@ -1142,6 +1188,14 @@ export function NewOrderDialog({ open, onOpenChange }: NewOrderDialogProps) {
                   "Completa los detalles finales del pedido"}
               </DialogDescription>
             </DialogHeader>
+
+            {reservedStockBanner && (
+              <div className="bg-amber-500/10 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 px-3 py-2 rounded-lg text-xs flex items-center justify-between mb-3 shrink-0">
+                <span>
+                  🔒 <strong>Artículo Reservado en Mostrador:</strong> {reservedStockBanner.productName} ({reservedStockBanner.locationName}) · SKU: {reservedStockBanner.sku}
+                </span>
+              </div>
+            )}
 
             {/* Renderizar paso actual */}
             {orderForm.currentStep === 1 && (

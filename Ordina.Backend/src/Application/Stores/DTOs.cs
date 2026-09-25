@@ -10,7 +10,9 @@ public record StoreResponseDto(
     string Rif,
     string Status,
     DateTime CreatedAt,
-    DateTime? UpdatedAt);
+    DateTime? UpdatedAt,
+    int MaxCapacity = 25,
+    Dictionary<string, int>? ProductDisplayLimits = null);
 
 public record CreateStoreDto(
     string Name,
@@ -19,7 +21,9 @@ public record CreateStoreDto(
     string Phone,
     string Email,
     string Rif,
-    string Status = "active");
+    string Status = "active",
+    int MaxCapacity = 25,
+    Dictionary<string, int>? ProductDisplayLimits = null);
 
 public record UpdateStoreDto(
     string? Name = null,
@@ -28,7 +32,12 @@ public record UpdateStoreDto(
     string? Phone = null,
     string? Email = null,
     string? Rif = null,
-    string? Status = null);
+    string? Status = null,
+    int? MaxCapacity = null,
+    Dictionary<string, int>? ProductDisplayLimits = null);
+
+public record UpdateStoreDisplayLimitsDto(
+    Dictionary<string, int> ProductDisplayLimits);
 
 public record AccountResponseDto(
     string Id,

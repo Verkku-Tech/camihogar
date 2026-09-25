@@ -12,12 +12,14 @@ import {
   X,
   Users,
   Building2,
+  Warehouse,
   UserCheck,
   ChevronDown,
   ChevronRight,
   Navigation,
   Tags,
   Box,
+  Boxes,
   DollarSign,
   Truck,
   ClipboardList,
@@ -96,6 +98,9 @@ const ordersSubmenu = [
 ]
 
 const inventorySubmenu = [
+  { id: "existencias", name: "Existencias Inmediatas", href: "/inventario/existencias", icon: Boxes },
+  { id: "transferencias", name: "Traspasos entre Sedes", href: "/inventario/transferencias", icon: Truck },
+  { id: "almacenes", name: "Almacenes", href: "/inventario/almacenes", icon: Warehouse },
   { id: "categorias", name: "Categorías", href: "/inventario/categorias", icon: Tags },
   { id: "productos", name: "Productos", href: "/inventario/productos", icon: Box },
 ]
@@ -117,12 +122,15 @@ const permissionMap: Record<string, string | string[] | { adminOnly: boolean }> 
   "proveedores": "providers.read",
   "clientes": "clients.read",
   "tiendas": "settings.company.manage", // Only admins manage stores
+  "almacenes": ["inventory.warehouses.manage", "settings.company.manage"],
   "cuentas": "finance.accounts.read",
   "reportes": ["reports.dispatch.view", "reports.commissions.view", "reports.manufacturing.view", "reports.payments.detailed.view"], // Show if any
   "pedidos-list": "orders.read",
   "reservas": "orders.read",
   "despachos": "dispatch.read",
   "abbaco": "orders.read",
+  "existencias": "products.read",
+  "transferencias": "products.read",
   "categorias": "products.read",
   "productos": "products.read",
   "fabricacion": ["inventory.movements.view", "manufacturing.manage"],
@@ -381,7 +389,7 @@ export function Sidebar({ open, onOpenChange }: SidebarProps) {
             </Button>
           </div>
 
-          <nav className="flex-1 overflow-y-auto px-3 py-4">
+          <nav className="flex-1 overflow-y-auto px-3 py-4 sidebar-scrollbar">
             <ul className="space-y-1">
               {visibleNavigation.filter((item) => item.id !== "reportes").map((item) => {
                 const isCurrent = pathname === item.href

@@ -341,9 +341,22 @@ export interface Store {
   phone: string;
   email: string;
   rif: string;
+  maxCapacity?: number;
+  productDisplayLimits?: Record<string, number>;
   status: "active" | "inactive";
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Warehouse {
+  id: string;
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  maxCapacity: number;
+  isCentral: boolean;
+  status: "active" | "inactive";
 }
 
 export interface Account {

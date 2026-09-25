@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using Ordina.Application.Common;
+using Ordina.Application.Notifications;
 using Ordina.Domain.Enums;
 using Ordina.Domain.Orders;
 
@@ -10,13 +11,16 @@ public class OrderCoreService : IOrderCoreService
 {
     private readonly IOrderRepository _orderRepository;
     private readonly ILogger<OrderCoreService> _logger;
+    private readonly INotificationService? _notificationService;
 
     public OrderCoreService(
         IOrderRepository orderRepository,
-        ILogger<OrderCoreService> logger)
+        ILogger<OrderCoreService> logger,
+        INotificationService? notificationService = null)
     {
         _orderRepository = orderRepository;
         _logger = logger;
+        _notificationService = notificationService;
     }
 
     public async Task<OrderResponseDto?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
@@ -156,6 +160,7 @@ public class OrderCoreService : IOrderCoreService
 
         var created = await _orderRepository.AddAsync(order, cancellationToken);
         _logger.LogInformation("Pedido creado: {OrderId} ({OrderNumber})", created.Id, created.OrderNumber);
+        await CheckAndPublishOperationalAlertsAsync(created, true, cancellationToken);
         return MapToDto(created);
     }
 
@@ -244,6 +249,7 @@ public class OrderCoreService : IOrderCoreService
             await _orderRepository.UpdateAsync(order, cancellationToken);
         }
 
+        await CheckAndPublishOperationalAlertsAsync(order, false, cancellationToken);
         return MapToDto(order);
     }
 
@@ -536,4 +542,99 @@ public class OrderCoreService : IOrderCoreService
         o.TypeString,
         o.CreatedAt,
         o.UpdatedAt);
+
+    public async Task<int> CheckReservationRepescaAsync(CancellationToken cancellationToken = default)
+    {
+        if (_notificationService == null) return 0;
+
+        var cutoff = DateTime.UtcNow.AddDays(-30);
+        var oldReservations = await _orderRepository.FindAsync(
+            o => o.TypeString == "Reservation" &&
+                 o.StatusString == "Pendiente" &&
+                 o.CreatedAt <= cutoff,
+            cancellationToken);
+
+        int count = 0;
+        foreach (var res in oldReservations)
+        {
+            await _notificationService.PublishAsync(new CreateNotificationDto(
+                Type: "crm.repesca",
+                Title: "Oportunidad de Repesca CRM",
+                Message: $"La reserva {res.OrderNumber} de {res.ClientName} tiene más de 30 días sin concretarse. Contacte al cliente para cerrar la venta o liberar mercancía.",
+                Severity: "info",
+                Link: $"/pedidos/{res.OrderNumber}",
+                TargetUserId: res.VendorId,
+                TargetRoles: new List<string> { "Administrator", "Vendedor" }
+            ), cancellationToken);
+            count++;
+        }
+
+        return count;
+    }
+
+    private async Task CheckAndPublishOperationalAlertsAsync(Order order, bool isNewOrder, CancellationToken ct)
+    {
+        if (_notificationService == null) return;
+
+        try
+        {
+            // 1. Despacho Express
+            if (string.Equals(order.DeliveryZone, "Express", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(order.DeliveryTypeString, "express", StringComparison.OrdinalIgnoreCase) ||
+                order.Observations?.Contains("Express", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                if (isNewOrder)
+                {
+                    await _notificationService.PublishAsync(new CreateNotificationDto(
+                        Type: "order.express",
+                        Title: "¡Despacho Express Solicitado!",
+                        Message: $"El pedido {order.OrderNumber} ({order.ClientName}) fue registrado como Despacho Express prioritario.",
+                        Severity: "warning",
+                        Link: $"/pedidos/{order.OrderNumber}",
+                        TargetRoles: new List<string> { "Administrator", "Despachador", "Warehouse Manager" }
+                    ), ct);
+                }
+            }
+
+            // 2. Retiro por Tienda
+            if (string.Equals(order.DeliveryTypeString, "retiro_tienda", StringComparison.OrdinalIgnoreCase))
+            {
+                var isReady = order.StatusString == "Listo" || order.StatusString == "Listo para entrega" ||
+                              order.Products.All(p => p.LogisticStatusString == "En Tienda" || p.LocationStatusString == "EN TIENDA");
+                if (isReady)
+                {
+                    await _notificationService.PublishAsync(new CreateNotificationDto(
+                        Type: "order.pickup_store",
+                        Title: "Pedido Listo para Retiro en Tienda",
+                        Message: $"El pedido {order.OrderNumber} ({order.ClientName}) está listo para retiro en mostrador de tienda.",
+                        Severity: "info",
+                        Link: $"/pedidos/{order.OrderNumber}",
+                        TargetRoles: new List<string> { "Administrator", "Store Manager", "Vendedor" }
+                    ), ct);
+                }
+            }
+
+            // 3. Retiro por Almacén (Terrinca)
+            if (string.Equals(order.DeliveryTypeString, "retiro_almacen", StringComparison.OrdinalIgnoreCase))
+            {
+                var isReady = order.StatusString == "Listo" || order.StatusString == "Listo para entrega" ||
+                              order.Products.All(p => p.LogisticStatusString == "En Almacén" || p.LocationStatusString == "EN ALMACEN");
+                if (isReady)
+                {
+                    await _notificationService.PublishAsync(new CreateNotificationDto(
+                        Type: "order.pickup_warehouse",
+                        Title: "Pedido Listo para Retiro en Almacén",
+                        Message: $"El pedido {order.OrderNumber} ({order.ClientName}) está disponible para retiro en almacén central Terrinca.",
+                        Severity: "info",
+                        Link: $"/pedidos/{order.OrderNumber}",
+                        TargetRoles: new List<string> { "Administrator", "Warehouse Manager", "Despachador" }
+                    ), ct);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error al publicar alerta operativa de pedido {OrderNumber}", order.OrderNumber);
+        }
+    }
 }

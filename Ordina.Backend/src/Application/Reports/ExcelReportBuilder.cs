@@ -13,6 +13,27 @@ public static class ExcelReportBuilder
         IReadOnlyList<(string Header, Func<T, object?> Selector)> columns)
     {
         using var workbook = new XLWorkbook();
+        AddWorksheet(workbook, worksheetName, data, columns);
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    public static byte[] CreateWorkbook(Action<XLWorkbook> configure)
+    {
+        using var workbook = new XLWorkbook();
+        configure(workbook);
+        using var ms = new MemoryStream();
+        workbook.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    public static void AddWorksheet<T>(
+        XLWorkbook workbook,
+        string worksheetName,
+        IReadOnlyList<T> data,
+        IReadOnlyList<(string Header, Func<T, object?> Selector)> columns)
+    {
         var worksheet = workbook.Worksheets.Add(worksheetName);
 
         // Header style with emerald green matching Verkku design system (#1CB569)
@@ -93,9 +114,5 @@ public static class ExcelReportBuilder
         }
 
         worksheet.Columns().AdjustToContents();
-
-        using var ms = new MemoryStream();
-        workbook.SaveAs(ms);
-        return ms.ToArray();
     }
 }

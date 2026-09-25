@@ -2,7 +2,23 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
-import path from 'path'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const certPath = path.resolve(import.meta.dirname, './.certs/localhost.pem')
+const keyPath = path.resolve(import.meta.dirname, './.certs/localhost.key')
+const hasCerts = fs.existsSync(certPath) && fs.existsSync(keyPath)
+const useHttps = process.env.HTTPS !== 'false' && hasCerts
+
+const httpsConfig = useHttps
+  ? {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath)
+    }
+  : undefined
+
+const defaultApiUrl = useHttps ? 'https://localhost:5001' : 'http://localhost:5000'
+const apiUrl = process.env.VITE_API_URL || defaultApiUrl
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -85,13 +101,14 @@ export default defineConfig({
     host: true,
     port: process.env.PORT ? parseInt(process.env.PORT, 10) : 5173,
     strictPort: true,
+    https: httpsConfig,
     allowedHosts: ['local.verkku.com', '.verkku.com'],
-    hmr: {
-      clientPort: 443
-    },
+    hmr: process.env.HMR_CLIENT_PORT
+      ? { clientPort: parseInt(process.env.HMR_CLIENT_PORT, 10) }
+      : undefined,
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:5000',
+        target: apiUrl,
         changeOrigin: true,
         secure: false
       }
@@ -101,10 +118,11 @@ export default defineConfig({
     host: true,
     port: process.env.PORT ? parseInt(process.env.PORT, 10) : 5173,
     strictPort: true,
+    https: httpsConfig,
     allowedHosts: ['local.verkku.com', '.verkku.com'],
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:5000',
+        target: apiUrl,
         changeOrigin: true,
         secure: false
       }

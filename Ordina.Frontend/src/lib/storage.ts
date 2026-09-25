@@ -9,6 +9,9 @@ import {
   type StoreResponseDto,
   type CreateStoreDto,
   type UpdateStoreDto,
+  type WarehouseResponseDto,
+  type CreateWarehouseDto,
+  type UpdateWarehouseDto,
   type AccountResponseDto,
   type CreateAccountDto,
   type UpdateAccountDto,
@@ -23,6 +26,7 @@ import type {
   Client,
   Provider,
   Store,
+  Warehouse,
   Account,
   Order,
   UnifiedOrder,
@@ -274,6 +278,8 @@ export const storeFromBackendDto = (dto: StoreResponseDto): Store => ({
   phone: dto.phone,
   email: dto.email,
   rif: dto.rif,
+  maxCapacity: dto.maxCapacity ?? 25,
+  productDisplayLimits: dto.productDisplayLimits || {},
   status: dto.status as 'active' | 'inactive',
   createdAt: dto.createdAt,
   updatedAt: dto.updatedAt
@@ -286,6 +292,8 @@ export const storeToBackendDto = (s: Omit<Store, 'id' | 'createdAt' | 'updatedAt
   phone: s.phone,
   email: s.email,
   rif: s.rif,
+  maxCapacity: s.maxCapacity ?? 25,
+  productDisplayLimits: s.productDisplayLimits,
   status: s.status
 })
 
@@ -317,8 +325,48 @@ export const updateStore = async (id: string, dto: UpdateStoreDto): Promise<Stor
   return storeFromBackendDto(res)
 }
 
+export const updateStoreDisplayLimits = async (id: string, limits: Record<string, number>): Promise<Store> => {
+  const res = await apiClient.updateStoreDisplayLimits(id, limits)
+  return storeFromBackendDto(res)
+}
+
 export const deleteStore = async (id: string): Promise<void> => {
   await apiClient.deleteStore(id)
+}
+
+// Warehouse mappers & functions
+export const warehouseFromBackendDto = (dto: WarehouseResponseDto): Warehouse => ({
+  id: dto.id,
+  name: dto.name,
+  code: dto.code,
+  address: dto.address,
+  phone: dto.phone,
+  maxCapacity: dto.maxCapacity,
+  isCentral: dto.isCentral,
+  status: dto.status as 'active' | 'inactive'
+})
+
+export const getWarehouses = async (): Promise<Warehouse[]> => {
+  try {
+    const res = await apiClient.getWarehouses()
+    return (res || []).map(warehouseFromBackendDto)
+  } catch {
+    return []
+  }
+}
+
+export const createWarehouse = async (dto: CreateWarehouseDto): Promise<Warehouse> => {
+  const res = await apiClient.createWarehouse(dto)
+  return warehouseFromBackendDto(res)
+}
+
+export const updateWarehouse = async (id: string, dto: UpdateWarehouseDto): Promise<Warehouse> => {
+  const res = await apiClient.updateWarehouse(id, dto)
+  return warehouseFromBackendDto(res)
+}
+
+export const deleteWarehouse = async (id: string): Promise<void> => {
+  await apiClient.deleteWarehouse(id)
 }
 
 // Accounts

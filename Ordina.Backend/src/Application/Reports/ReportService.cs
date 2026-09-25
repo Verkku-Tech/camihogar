@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Ordina.Application.Common;
 using Ordina.Domain.Catalog;
+using Ordina.Domain.Manufacturing;
 using Ordina.Domain.Orders;
 
 namespace Ordina.Application.Reports;
@@ -28,17 +29,20 @@ public class ReportService : IReportService
     private readonly IClientRepository _clientRepository;
     private readonly IProductRepository _productRepository;
     private readonly IExchangeRateRepository _exchangeRateRepository;
+    private readonly IRepository<ManufacturingOrder>? _mfgOrderRepository;
 
     public ReportService(
         IOrderRepository orderRepository,
         IClientRepository clientRepository,
         IProductRepository productRepository,
-        IExchangeRateRepository exchangeRateRepository)
+        IExchangeRateRepository exchangeRateRepository,
+        IRepository<ManufacturingOrder>? mfgOrderRepository = null)
     {
         _orderRepository = orderRepository;
         _clientRepository = clientRepository;
         _productRepository = productRepository;
         _exchangeRateRepository = exchangeRateRepository;
+        _mfgOrderRepository = mfgOrderRepository;
     }
 
 
@@ -241,7 +245,50 @@ public class ReportService : IReportService
             ("Observaciones", r => r.Observations)
         };
 
-        return ExcelReportBuilder.CreateTable("Fabricación", rows, columns);
+        // Query stock manufacturing orders for Sheet 2
+        var mfgOrders = _mfgOrderRepository != null
+            ? await _mfgOrderRepository.GetAllAsync(cancellationToken)
+            : new List<ManufacturingOrder>();
+
+        if (from.HasValue) mfgOrders = mfgOrders.Where(o => o.CreatedAt >= from.Value).ToList();
+        if (to.HasValue) mfgOrders = mfgOrders.Where(o => o.CreatedAt <= to.Value).ToList();
+        if (!string.IsNullOrWhiteSpace(status) && status != "all")
+            mfgOrders = mfgOrders.Where(o => string.Equals(o.Status, status, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        var mfgRows = mfgOrders.Select(o => new ManufacturingOrderExportRow(
+            o.OrderNumber,
+            o.CreatedAt,
+            o.RequestedBy,
+            o.ProductName,
+            o.Quantity,
+            o.DestinationLocationName,
+            o.DestinationLocationType == "warehouse" ? "Almacén" : "Tienda",
+            o.Status,
+            o.ProviderName ?? "Taller Central",
+            o.CostUsd,
+            o.Notes
+        )).ToList();
+
+        var mfgColumns = new (string Header, Func<ManufacturingOrderExportRow, object?> Selector)[]
+        {
+            ("Nº Orden", r => r.OrderNumber),
+            ("Fecha", r => r.CreatedAt),
+            ("Solicitante", r => r.RequestedBy),
+            ("Producto", r => r.ProductName),
+            ("Cantidad", r => r.Quantity),
+            ("Destino", r => r.DestinationLocationName),
+            ("Tipo Destino", r => r.DestinationType),
+            ("Estado", r => r.Status),
+            ("Proveedor / Taller", r => r.ProviderName),
+            ("Costo Est. USD", r => r.CostUsd),
+            ("Notas", r => r.Notes)
+        };
+
+        return ExcelReportBuilder.CreateWorkbook(wb =>
+        {
+            ExcelReportBuilder.AddWorksheet(wb, "Pedidos", rows, columns);
+            ExcelReportBuilder.AddWorksheet(wb, "Órdenes de Fabricación", mfgRows, mfgColumns);
+        });
     }
 
     public async Task<byte[]> GenerateExpiredLayawaysReportExcelAsync(CancellationToken cancellationToken = default)
@@ -404,6 +451,19 @@ public record ManufacturingReportExportRow(
     string ManufacturingStatus,
     string? ProviderName,
     string? Observations);
+
+public record ManufacturingOrderExportRow(
+    string OrderNumber,
+    DateTime CreatedAt,
+    string RequestedBy,
+    string ProductName,
+    int Quantity,
+    string DestinationLocationName,
+    string DestinationType,
+    string Status,
+    string? ProviderName,
+    decimal CostUsd,
+    string? Notes);
 
 public record ExpiredLayawayExportRow(
     string OrderNumber,

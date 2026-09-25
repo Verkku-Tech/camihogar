@@ -179,6 +179,15 @@ export default function PedidosPage() {
   }, [searchTerm]);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get("newOrder") === "true") {
+        setIsNewOrderOpen(true);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (!hasListFilters || isServerReachable) return;
     if (offlineFilterToastShown.current) return;
     offlineFilterToastShown.current = true;

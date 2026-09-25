@@ -41,6 +41,20 @@ public class StoresController(IStoreService storeService, IAccountService accoun
         return Ok(updated);
     }
 
+    [HttpPut("{id}/display-limits")]
+    public async Task<ActionResult<StoreResponseDto>> UpdateDisplayLimits(
+        string id,
+        [FromBody] UpdateStoreDisplayLimitsDto dto,
+        CancellationToken cancellationToken)
+    {
+        var updated = await storeService.UpdateDisplayLimitsAsync(id, dto.ProductDisplayLimits, cancellationToken);
+        if (updated == null)
+        {
+            return NotFound();
+        }
+        return Ok(updated);
+    }
+
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id, CancellationToken cancellationToken)
     {

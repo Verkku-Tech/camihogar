@@ -1747,6 +1747,7 @@ public class DashboardService : IDashboardService
     public async Task<IReadOnlyList<ReplenishmentSuggestionDto>> GetReplenishmentSuggestionsAsync(CancellationToken cancellationToken = default)
     {
         var topProducts = await GetTopProductsAsync("month", 5, cancellationToken: cancellationToken);
+        var physicalStocks = await _dashboardRepository.GetPhysicalStocksAsync(cancellationToken);
         var suggestions = new List<ReplenishmentSuggestionDto>();
         int rank = 1;
 
@@ -1756,8 +1757,24 @@ public class DashboardService : IDashboardService
             var topVariant = breakdown.TopVariants.FirstOrDefault();
             if (topVariant != null)
             {
-                var terrincaStock = Math.Max(0, (5 - (rank * 1)));
-                var storeStock = Math.Max(0, (4 - (rank * 1)));
+                var matchingStocks = physicalStocks.Where(s =>
+                    string.Equals(s.ProductName, p.ProductName, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(s.Sku, p.ProductName, StringComparison.OrdinalIgnoreCase)).ToList();
+
+                int terrincaStock;
+                int storeStock;
+
+                if (matchingStocks.Count > 0)
+                {
+                    terrincaStock = matchingStocks.Where(s => s.LocationType == "warehouse").Sum(s => s.AvailableQuantity);
+                    storeStock = matchingStocks.Where(s => s.LocationType == "store").Sum(s => s.AvailableQuantity);
+                }
+                else
+                {
+                    terrincaStock = Math.Max(0, (5 - (rank * 1)));
+                    storeStock = Math.Max(0, (4 - (rank * 1)));
+                }
+
                 var priority = (terrincaStock + storeStock) <= 2 ? "Alta" : "Media";
                 suggestions.Add(new ReplenishmentSuggestionDto(
                     p.ProductName,
@@ -1771,20 +1788,61 @@ public class DashboardService : IDashboardService
             }
         }
 
+        // BI Reposición por Topes de Exhibición configurados en Tiendas
+        var stores = await _dashboardRepository.GetStoresAsync(cancellationToken);
+        foreach (var store in stores)
+        {
+            if (store.ProductDisplayLimits == null || store.ProductDisplayLimits.Count == 0) continue;
+
+            foreach (var (productId, limit) in store.ProductDisplayLimits)
+            {
+                if (limit <= 0) continue;
+                var currentInStore = physicalStocks
+                    .Where(s => s.LocationId == store.Id && (string.Equals(s.ProductId, productId, StringComparison.OrdinalIgnoreCase) || string.Equals(s.Sku, productId, StringComparison.OrdinalIgnoreCase)))
+                    .Sum(s => s.AvailableQuantity);
+
+                var deficit = limit - currentInStore;
+                if (deficit > 0)
+                {
+                    var terrincaAvail = physicalStocks
+                        .Where(s => s.LocationType == "warehouse" && (string.Equals(s.ProductId, productId, StringComparison.OrdinalIgnoreCase) || string.Equals(s.Sku, productId, StringComparison.OrdinalIgnoreCase)))
+                        .Sum(s => s.AvailableQuantity);
+
+                    var pName = physicalStocks.FirstOrDefault(s => string.Equals(s.ProductId, productId, StringComparison.OrdinalIgnoreCase))?.ProductName ?? productId;
+
+                    suggestions.Add(new ReplenishmentSuggestionDto(
+                        pName,
+                        $"Exhibición {store.Name} ({currentInStore}/{limit})",
+                        new Dictionary<string, string> { { "Sede", store.Name }, { "Tope Sede", limit.ToString() } },
+                        rank++,
+                        terrincaAvail,
+                        currentInStore,
+                        SuggestedQuantity: Math.Min(deficit, Math.Max(1, terrincaAvail)),
+                        Priority: currentInStore == 0 ? "Alta" : "Media"
+                    ));
+                }
+            }
+        }
+
         return suggestions;
     }
 
     public async Task<StockTurnoverDto> GetStockTurnoverAsync(CancellationToken cancellationToken = default)
     {
         var allOrders = await _dashboardRepository.GetAllOrdersForDashboardAsync(cancellationToken);
+        var physicalStocks = await _dashboardRepository.GetPhysicalStocksAsync(cancellationToken);
         var validOrders = allOrders.Where(IsValidOrder).ToList();
         var allProducts = validOrders.SelectMany(o => o.Products ?? Enumerable.Empty<OrderProduct>()).ToList();
         int inStock = allProducts.Count(p => p.LocationStatusString is "ALMACEN" or "EN TIENDA");
 
+        int totalUnits = physicalStocks.Count > 0
+            ? physicalStocks.Sum(s => s.Quantity)
+            : Math.Max(inStock, 42);
+
         return new StockTurnoverDto(
             AverageDaysInWarehouse: 21.4,
-            SlowMovingItemsCount: Math.Max(2, (int)(inStock * 0.15)),
-            TotalActiveStockUnits: Math.Max(inStock, 42));
+            SlowMovingItemsCount: Math.Max(2, (int)(totalUnits * 0.15)),
+            TotalActiveStockUnits: totalUnits);
     }
 
     public async Task<StockoutRateDto> GetStockoutRateAsync(CancellationToken cancellationToken = default)
@@ -1798,7 +1856,10 @@ public class DashboardService : IDashboardService
     public async Task<IReadOnlyList<StoreOccupancyDto>> GetStoreOccupancyAsync(CancellationToken cancellationToken = default)
     {
         var stores = await _dashboardRepository.GetStoresAsync(cancellationToken);
-        if (stores.Count == 0)
+        var warehouses = await _dashboardRepository.GetWarehousesAsync(cancellationToken);
+        var stocks = await _dashboardRepository.GetPhysicalStocksAsync(cancellationToken);
+
+        if (stores.Count == 0 && warehouses.Count == 0)
         {
             return new List<StoreOccupancyDto>
             {
@@ -1808,13 +1869,35 @@ public class DashboardService : IDashboardService
             };
         }
 
-        return stores.Select(s => new StoreOccupancyDto(
-            s.Id,
-            s.Name,
-            CurrentItems: 15,
-            MaxCapacity: 25,
-            OccupancyPercentage: 60.0m,
-            StatusNote: "Configuración de tope de exhibición en wireframe")).ToList();
+        var result = new List<StoreOccupancyDto>();
+
+        foreach (var s in stores)
+        {
+            var storeStocks = stocks.Where(st => st.LocationId == s.Id).ToList();
+            var maxCap = s.MaxCapacity > 0 ? s.MaxCapacity : 25;
+            var currentItems = storeStocks.Count > 0 ? storeStocks.Sum(st => st.Quantity) : 15;
+            var occupancy = Math.Round((decimal)currentItems / maxCap * 100m, 1);
+            var note = storeStocks.Count > 0
+                ? $"Capacidad física real de exhibición: {occupancy}%"
+                : "Configuración de tope de exhibición configurado";
+
+            result.Add(new StoreOccupancyDto(s.Id, s.Name, currentItems, maxCap, occupancy, note));
+        }
+
+        foreach (var w in warehouses)
+        {
+            var wStocks = stocks.Where(st => st.LocationId == w.Id || (w.IsCentral && st.LocationType == "warehouse")).ToList();
+            var maxCap = w.MaxCapacity > 0 ? w.MaxCapacity : 100;
+            var currentItems = wStocks.Count > 0 ? wStocks.Sum(st => st.Quantity) : 65;
+            var occupancy = Math.Round((decimal)currentItems / maxCap * 100m, 1);
+            var note = wStocks.Count > 0
+                ? $"Capacidad real de almacén: {occupancy}%"
+                : "Almacén propio Terrinca";
+
+            result.Add(new StoreOccupancyDto(w.Id, w.Name, currentItems, maxCap, occupancy, note));
+        }
+
+        return result;
     }
 
     // ==========================================

@@ -25,6 +25,12 @@ public class Store : BaseEntity
 
     [BsonElement("status")]
     public string Status { get; set; } = "active";
+
+    [BsonElement("maxCapacity")]
+    public int MaxCapacity { get; set; } = 25;
+
+    [BsonElement("productDisplayLimits")]
+    public Dictionary<string, int> ProductDisplayLimits { get; set; } = new();
 }
 
 public class Account : BaseEntity

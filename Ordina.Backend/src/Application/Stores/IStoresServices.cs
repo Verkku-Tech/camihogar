@@ -8,6 +8,7 @@ public interface IStoreService
     Task<StoreResponseDto?> GetByIdAsync(string id, CancellationToken cancellationToken = default);
     Task<StoreResponseDto> CreateAsync(CreateStoreDto createDto, CancellationToken cancellationToken = default);
     Task<StoreResponseDto> UpdateAsync(string id, UpdateStoreDto updateDto, CancellationToken cancellationToken = default);
+    Task<StoreResponseDto?> UpdateDisplayLimitsAsync(string id, Dictionary<string, int> limits, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default);
 }
 

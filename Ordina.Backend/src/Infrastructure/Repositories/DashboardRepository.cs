@@ -81,4 +81,23 @@ public class DashboardRepository(MongoDbContext context, ICacheService cache) : 
         await cache.SetAsync("dashboard:saletyperules", (IReadOnlyList<Ordina.Domain.Finance.SaleTypeCommissionRule>)rules, slidingExpiration: TimeSpan.FromSeconds(60), cancellationToken: cancellationToken);
         return rules;
     }
+    public async Task<IReadOnlyList<Ordina.Domain.Stores.Warehouse>> GetWarehousesAsync(CancellationToken cancellationToken = default)
+    {
+        var cached = await cache.GetAsync<IReadOnlyList<Ordina.Domain.Stores.Warehouse>>("dashboard:warehouses", cancellationToken);
+        if (cached != null) return cached;
+
+        var warehouses = await context.Warehouses.Find(_ => true).ToListAsync(cancellationToken);
+        await cache.SetAsync("dashboard:warehouses", (IReadOnlyList<Ordina.Domain.Stores.Warehouse>)warehouses, slidingExpiration: TimeSpan.FromSeconds(60), cancellationToken: cancellationToken);
+        return warehouses;
+    }
+
+    public async Task<IReadOnlyList<Ordina.Domain.Inventory.PhysicalStock>> GetPhysicalStocksAsync(CancellationToken cancellationToken = default)
+    {
+        var cached = await cache.GetAsync<IReadOnlyList<Ordina.Domain.Inventory.PhysicalStock>>("dashboard:stocks", cancellationToken);
+        if (cached != null) return cached;
+
+        var stocks = await context.PhysicalStocks.Find(_ => true).ToListAsync(cancellationToken);
+        await cache.SetAsync("dashboard:stocks", (IReadOnlyList<Ordina.Domain.Inventory.PhysicalStock>)stocks, slidingExpiration: TimeSpan.FromSeconds(20), cancellationToken: cancellationToken);
+        return stocks;
+    }
 }

@@ -1,5 +1,6 @@
 using Ordina.Domain.Catalog;
 using Ordina.Domain.Finance;
+using Ordina.Domain.Inventory;
 using Ordina.Domain.Orders;
 using Ordina.Domain.Stores;
 using Ordina.Domain.Users;
@@ -13,6 +14,8 @@ public interface IDashboardRepository
     Task<IReadOnlyList<Category>> GetCategoriesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<User>> GetUsersAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Store>> GetStoresAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Warehouse>> GetWarehousesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<PhysicalStock>> GetPhysicalStocksAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Commission>> GetCommissionsAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<SaleTypeCommissionRule>> GetSaleTypeCommissionRulesAsync(CancellationToken cancellationToken = default);
 }

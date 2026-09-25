@@ -48,6 +48,8 @@ public class StoreService : IStoreService
             Email = createDto.Email.Trim().ToLowerInvariant(),
             Rif = createDto.Rif.Trim(),
             Status = createDto.Status,
+            MaxCapacity = Math.Max(1, createDto.MaxCapacity),
+            ProductDisplayLimits = SanitizeLimits(createDto.ProductDisplayLimits),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -70,10 +72,26 @@ public class StoreService : IStoreService
         if (!string.IsNullOrWhiteSpace(updateDto.Email)) store.Email = updateDto.Email.Trim().ToLowerInvariant();
         if (!string.IsNullOrWhiteSpace(updateDto.Rif)) store.Rif = updateDto.Rif.Trim();
         if (!string.IsNullOrWhiteSpace(updateDto.Status)) store.Status = updateDto.Status;
+        if (updateDto.MaxCapacity.HasValue) store.MaxCapacity = Math.Max(1, updateDto.MaxCapacity.Value);
+        if (updateDto.ProductDisplayLimits != null) store.ProductDisplayLimits = SanitizeLimits(updateDto.ProductDisplayLimits);
 
         store.UpdatedAt = DateTime.UtcNow;
         await _storeRepository.UpdateAsync(store, cancellationToken);
         await _cacheService.RemoveAsync(CacheKeys.Stores, cancellationToken);
+        return MapToDto(store);
+    }
+
+    public async Task<StoreResponseDto?> UpdateDisplayLimitsAsync(string id, Dictionary<string, int> limits, CancellationToken cancellationToken = default)
+    {
+        var store = await _storeRepository.GetByIdAsync(id, cancellationToken);
+        if (store == null) return null;
+
+        store.ProductDisplayLimits = SanitizeLimits(limits);
+        store.UpdatedAt = DateTime.UtcNow;
+
+        await _storeRepository.UpdateAsync(store, cancellationToken);
+        await _cacheService.RemoveAsync(CacheKeys.Stores, cancellationToken);
+        _logger.LogInformation("Topes de exhibición actualizados para tienda: {StoreId}", id);
         return MapToDto(store);
     }
 
@@ -82,6 +100,18 @@ public class StoreService : IStoreService
         var deleted = await _storeRepository.DeleteAsync(id, cancellationToken);
         if (deleted) await _cacheService.RemoveAsync(CacheKeys.Stores, cancellationToken);
         return deleted;
+    }
+
+    private static Dictionary<string, int> SanitizeLimits(Dictionary<string, int>? limits)
+    {
+        var sanitized = new Dictionary<string, int>();
+        if (limits == null) return sanitized;
+        foreach (var (k, v) in limits)
+        {
+            if (string.IsNullOrWhiteSpace(k)) continue;
+            sanitized[k.Trim()] = Math.Max(0, v);
+        }
+        return sanitized;
     }
 
     private static StoreResponseDto MapToDto(Store s) => new(
@@ -94,7 +124,9 @@ public class StoreService : IStoreService
         s.Rif,
         s.Status,
         s.CreatedAt,
-        s.UpdatedAt);
+        s.UpdatedAt,
+        s.MaxCapacity > 0 ? s.MaxCapacity : 25,
+        s.ProductDisplayLimits ?? new());
 }
 
 public class AccountService : IAccountService
