@@ -1,3 +1,4 @@
+export * as db from "./indexeddb";
 import * as db from "./indexeddb";
 import type { Currency } from "./currency-utils";
 import { normalizeExchangeRatesAtCreation } from "./currency-utils";
@@ -2297,6 +2298,10 @@ export const orderFromBackendDto = (dto: OrderResponseDto): Order => {
     ),
     baseCurrency,
     type: dto.type ?? (dto as unknown as { Type?: string }).Type ?? "Order",
+    declineReason:
+      dto.declineReason ??
+      (dto as unknown as { DeclineReason?: string }).DeclineReason ??
+      undefined,
     originalProducts: dto.originalProducts?.map((p) => ({
       ...p,
       priceCurrency: p.priceCurrency as Currency | undefined,

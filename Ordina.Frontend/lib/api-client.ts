@@ -2437,6 +2437,7 @@ export interface OrderResponseDto {
   originalProducts?: OrderProductDto[];
   sourceReservationVendorId?: string;
   sourceReservationVendorName?: string;
+  declineReason?: string;
 }
 
 /** Convertir un presupuesto (Budget) en pedido ORD. */

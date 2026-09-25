@@ -37,6 +37,7 @@ public class OrderResponseDto
     public bool? CreateSupplierOrder { get; set; }
     public string? Observations { get; set; }
     public string? DispatchObservations { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("declineReason")]
     public string? DeclineReason { get; set; }
     public string? SaleType { get; set; }
     public string? DeliveryType { get; set; }

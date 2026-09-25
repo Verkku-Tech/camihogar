@@ -41,6 +41,8 @@ import {
 } from "lucide-react";
 import {
   getOrderByOrderNumberPreferBackend,
+  orderFromBackendDto,
+  db,
   getClient,
   type Order,
   type PartialPayment,
@@ -591,6 +593,32 @@ export default function OrderDetailPage() {
   const [isDeclineDialogOpen, setIsDeclineDialogOpen] = useState(false);
   const [declineReasonInput, setDeclineReasonInput] = useState("");
 
+  const isOrderDeclined = useMemo(() => {
+    if (!order) return false;
+    return (
+      resolveDisplayOrderStatus(order) === "Declinado" ||
+      order.status === "Declinado" ||
+      Boolean(order.declineReason) ||
+      Boolean((order as any).DeclineReason)
+    );
+  }, [order]);
+
+  const displayDeclineReason = useMemo(() => {
+    if (!order) return "";
+    return (
+      order.declineReason ||
+      (order as any)?.DeclineReason ||
+      ""
+    );
+  }, [order]);
+
+  useEffect(() => {
+    if (order) {
+      const reason = order.declineReason ?? (order as any).DeclineReason ?? "";
+      setDeclineReason(reason);
+    }
+  }, [order?.declineReason, (order as any)?.DeclineReason]);
+
   /** Un solo arreglo activo: varios pagos van en mixedPayments y partialPayments queda vacío. */
   const activePayments = useMemo((): PartialPayment[] => {
     if (!order) return [];
@@ -956,11 +984,18 @@ export default function OrderDetailPage() {
     if (!order) return;
     try {
       setValidatingOrder(true);
-      await apiClient.declineOrder(order.id, declineReasonInput.trim() || undefined);
-      const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
-      if (foundOrder) {
-        setOrder(foundOrder);
-        setDeclineReason(foundOrder.declineReason ?? "");
+      const res = await apiClient.declineOrder(order.id, declineReasonInput.trim() || undefined);
+      if (res) {
+        const mapped = orderFromBackendDto(res);
+        await db.put("orders", mapped);
+        setOrder(mapped);
+        setDeclineReason(mapped.declineReason ?? "");
+      } else {
+        const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
+        if (foundOrder) {
+          setOrder(foundOrder);
+          setDeclineReason(foundOrder.declineReason ?? "");
+        }
       }
       toast.success("Pedido declinado");
       setIsDeclineDialogOpen(false);
@@ -982,9 +1017,16 @@ export default function OrderDetailPage() {
     if (!order) return;
     try {
       setValidatingOrder(true);
-      await apiClient.reactivateOrder(order.id);
-      const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
-      if (foundOrder) setOrder(foundOrder);
+      const res = await apiClient.reactivateOrder(order.id);
+      if (res) {
+        const mapped = orderFromBackendDto(res);
+        await db.put("orders", mapped);
+        setOrder(mapped);
+        setDeclineReason("");
+      } else {
+        const foundOrder = await getOrderByOrderNumberPreferBackend(orderNumber);
+        if (foundOrder) setOrder(foundOrder);
+      }
       toast.success("Pedido reactivado");
     } catch (error) {
       console.error("Error reactivando pedido:", error);
@@ -992,6 +1034,25 @@ export default function OrderDetailPage() {
     } finally {
       setValidatingOrder(false);
       setConfirmAction(null);
+    }
+  };
+
+  const handleSaveDeclineReason = async () => {
+    if (!order) return;
+    setSavingDeclineReason(true);
+    try {
+      await apiClient.updateOrder(order.id, {
+        declineReason: declineReason.trim(),
+      });
+      const updatedOrder = { ...order, declineReason: declineReason.trim() };
+      await db.put("orders", updatedOrder);
+      setOrder(updatedOrder);
+      toast.success("Razón del declinado guardada");
+    } catch (error) {
+      console.error("Error guardando razón del declinado:", error);
+      toast.error("Error al guardar la razón del declinado");
+    } finally {
+      setSavingDeclineReason(false);
     }
   };
 
@@ -1774,7 +1835,7 @@ export default function OrderDetailPage() {
                           Validar
                         </Button>
                       )}
-                    {resolveDisplayOrderStatus(order) !== "Declinado" &&
+                    {!isOrderDeclined &&
                       canValidateOrders && (
                         <Button
                           size="sm"
@@ -1788,7 +1849,7 @@ export default function OrderDetailPage() {
                           Declinar
                         </Button>
                       )}
-                    {resolveDisplayOrderStatus(order) === "Declinado" &&
+                    {isOrderDeclined &&
                       canValidateOrders && (
                         <Button
                           size="sm"
@@ -1799,7 +1860,14 @@ export default function OrderDetailPage() {
                           Reactivar
                         </Button>
                       )}
-                    <Badge className={getStatusColor(resolveDisplayOrderStatus(order))}>
+                    <Badge
+                      className={getStatusColor(resolveDisplayOrderStatus(order))}
+                      title={
+                        isOrderDeclined && displayDeclineReason
+                          ? `Motivo: ${displayDeclineReason}`
+                          : undefined
+                      }
+                    >
                       {resolveDisplayOrderStatus(order)}
                     </Badge>
                   </div>
@@ -1939,6 +2007,12 @@ export default function OrderDetailPage() {
                             {order.observations.length > 80 ? "…" : ""}
                           </p>
                         )}
+                        {isOrderDeclined && (
+                          <p className="text-sm text-red-600 dark:text-red-400">
+                            <span className="font-semibold">Declinado:</span>{" "}
+                            {displayDeclineReason || "Sin razón especificada"}
+                          </p>
+                        )}
                       </div>
                     </HoverCardContent>
                   </HoverCard>
@@ -1958,7 +2032,7 @@ export default function OrderDetailPage() {
                         Validar Pedido
                       </Button>
                     )}
-                  {resolveDisplayOrderStatus(order) !== "Declinado" &&
+                  {!isOrderDeclined &&
                     canValidateOrders && (
                       <Button
                         variant="destructive"
@@ -1971,7 +2045,7 @@ export default function OrderDetailPage() {
                         Declinar Pedido
                       </Button>
                     )}
-                  {resolveDisplayOrderStatus(order) === "Declinado" &&
+                  {isOrderDeclined &&
                     canValidateOrders && (
                       <Button
                         variant="outline"
@@ -1981,11 +2055,67 @@ export default function OrderDetailPage() {
                         Reactivar Pedido
                       </Button>
                     )}
-                  <Badge className={getStatusColor(resolveDisplayOrderStatus(order))}>
+                  <Badge
+                    className={getStatusColor(resolveDisplayOrderStatus(order))}
+                    title={
+                      isOrderDeclined && displayDeclineReason
+                        ? `Motivo: ${displayDeclineReason}`
+                        : undefined
+                    }
+                  >
                     {resolveDisplayOrderStatus(order)}
                   </Badge>
                 </div>
               </div>
+
+              {/* Razón del Declinado */}
+              {isOrderDeclined && (
+                <Card className="border-red-300 dark:border-red-800 bg-red-50/70 dark:bg-red-950/50 shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300 text-base font-semibold">
+                      <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                      Pedido Declinado
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground font-medium mb-1">
+                        Motivo de la declinación:
+                      </p>
+                      <p className="text-sm font-medium text-red-950 dark:text-red-100 bg-white dark:bg-red-950/80 border border-red-200 dark:border-red-800/60 p-3 rounded-md whitespace-pre-wrap">
+                        {displayDeclineReason || "Sin razón especificada"}
+                      </p>
+                    </div>
+                    {canValidateOrders && (
+                      <details className="text-xs">
+                        <summary className="text-red-600 dark:text-red-400 cursor-pointer hover:underline font-medium">
+                          Editar motivo del declinado
+                        </summary>
+                        <div className="mt-2 space-y-2">
+                          <Textarea
+                            value={declineReason}
+                            onChange={(e) => setDeclineReason(e.target.value)}
+                            placeholder="Motivo del declinado..."
+                            rows={2}
+                            className="bg-white dark:bg-zinc-900 border-red-200 dark:border-red-800 text-sm"
+                          />
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={handleSaveDeclineReason}
+                            disabled={
+                              savingDeclineReason ||
+                              declineReason.trim() === (displayDeclineReason ?? "").trim()
+                            }
+                          >
+                            {savingDeclineReason ? "Guardando..." : "Guardar motivo"}
+                          </Button>
+                        </div>
+                      </details>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Información General */}
               <Card>
@@ -2090,6 +2220,16 @@ export default function OrderDetailPage() {
                           {new Date(order.createdAt).toLocaleDateString()}
                         </p>
                       </div>
+                      {isOrderDeclined && (
+                        <div>
+                          <p className="text-sm text-red-600 font-medium">
+                            Razón del Declinado
+                          </p>
+                          <p className="font-medium text-red-700 dark:text-red-300">
+                            {displayDeclineReason || "Sin razón especificada"}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>
