@@ -686,7 +686,7 @@ public class OrdersController : ControllerBase
                 return Forbid();
 
             var (userId, userName) = GetActor(User);
-            var order = await _orderService.DeclineOrderAsync(id, userId, userName, request?.DeclineReason);
+            var order = await _orderService.DeclineOrderAsync(id, userId, userName, request?.GetReason());
             return Ok(order);
         }
         catch (ArgumentException ex)
