@@ -9,7 +9,10 @@ public interface IDashboardService
     Task<IReadOnlyList<TopProductDto>> GetTopProductsAsync(string period = "month", int limit = 10, string? storeIds = null, CancellationToken cancellationToken = default);
     Task<PipelineSnapshotDto> GetPipelineSnapshotAsync(string? storeIds = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ExpiredLayawayAgeRangeDto>> GetExpiredLayawaysByAgeAsync(CancellationToken cancellationToken = default);
-    Task<SalesForecastResponseDto> GetSalesForecastAsync(string period = "month", CancellationToken cancellationToken = default);
+    Task<SalesForecastResponseDto> GetSalesForecastAsync(string period = "month", int weekOffset = 0, CancellationToken cancellationToken = default);
+    Task<SalesForecastResponseDto> GetSalesForecastAsync(string period, CancellationToken cancellationToken);
+    Task<IReadOnlyList<SalesForecastHistoryItemDto>> GetForecastHistoryAsync(string? period = null, CancellationToken cancellationToken = default);
+    Task<SalesForecastRecordDto?> GetForecastByIdAsync(string id, CancellationToken cancellationToken = default);
     Task<ProductAttributeBreakdownResponseDto> GetProductAttributeBreakdownAsync(string productName, string period = "month", string? attributeIds = null, CancellationToken cancellationToken = default);
     
     // BI Fase 1: Finanzas y Consolidación

@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
+using Ordina.Application.Common;
 using Ordina.Application.Reports;
+using Ordina.Domain.Dashboard;
 using Ordina.Domain.Enums;
 using Ordina.Domain.Finance;
 using Ordina.Domain.Orders;
@@ -10,13 +13,16 @@ public class DashboardService : IDashboardService
 {
     private readonly IDashboardRepository _dashboardRepository;
     private readonly ITimeSeriesForecastingService _forecaster;
+    private readonly ISalesForecastRepository? _forecastRepository;
 
     public DashboardService(
         IDashboardRepository dashboardRepository,
-        ITimeSeriesForecastingService? forecaster = null)
+        ITimeSeriesForecastingService? forecaster = null,
+        ISalesForecastRepository? forecastRepository = null)
     {
         _dashboardRepository = dashboardRepository;
         _forecaster = forecaster ?? new HoltWintersForecastingService();
+        _forecastRepository = forecastRepository;
     }
 
     private static bool IsValidOrder(Order o)
@@ -678,7 +684,10 @@ public class DashboardService : IDashboardService
         return result;
     }
 
-    public async Task<SalesForecastResponseDto> GetSalesForecastAsync(string period = "month", CancellationToken cancellationToken = default)
+    public Task<SalesForecastResponseDto> GetSalesForecastAsync(string period, CancellationToken cancellationToken) =>
+        GetSalesForecastAsync(period, 0, cancellationToken);
+
+    public async Task<SalesForecastResponseDto> GetSalesForecastAsync(string period = "month", int weekOffset = 0, CancellationToken cancellationToken = default)
     {
         var caracasOffset = TimeSpan.FromHours(-4);
         var localNow = DateTime.UtcNow.Add(caracasOffset);
@@ -688,7 +697,8 @@ public class DashboardService : IDashboardService
         if (liveUsdRate <= 0) liveUsdRate = 1.0m;
         var liveEurRate = allRates.FirstOrDefault(r => (r.ToCurrency == "EUR" || r.FromCurrency == "EUR") && r.IsActive)?.Rate ?? (liveUsdRate * 1.15m);
 
-        var isYear = string.Equals(period, "year", StringComparison.OrdinalIgnoreCase);
+        var normalizedPeriod = string.IsNullOrWhiteSpace(period) ? "month" : period.Trim().ToLowerInvariant();
+        var isYear = normalizedPeriod == "year";
         int historyDays = isYear ? 1095 : 180;
         var historyStartUtc = DateTime.UtcNow.AddDays(-historyDays);
 
@@ -710,12 +720,54 @@ public class DashboardService : IDashboardService
         decimal rawCollectionRate = sixMoInvoiced > 0 ? (sixMoCollected / sixMoInvoiced) : 0.45m;
         decimal collectionRate = Math.Clamp(rawCollectionRate, 0.35m, 0.85m);
 
-        if (isYear)
+        SalesForecastResponseDto response;
+        DateTime startDate;
+        DateTime endDate;
+
+        if (normalizedPeriod == "year")
         {
-            return CalculateYearlyForecast(orders, localNow, liveUsdRate, liveEurRate, collectionRate);
+            startDate = new DateTime(localNow.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            endDate = new DateTime(localNow.Year, 12, 31, 23, 59, 59, DateTimeKind.Utc);
+            response = CalculateYearlyForecast(orders, localNow, liveUsdRate, liveEurRate, collectionRate);
+        }
+        else if (normalizedPeriod == "week")
+        {
+            int clampedOffset = Math.Clamp(weekOffset, 0, 3);
+            int diff = (7 + (int)localNow.DayOfWeek - (int)DayOfWeek.Monday) % 7;
+            var currentMonday = localNow.Date.AddDays(-diff);
+            var targetMonday = currentMonday.AddDays(clampedOffset * 7);
+            var targetSunday = targetMonday.AddDays(6);
+            startDate = DateTime.SpecifyKind(targetMonday, DateTimeKind.Utc);
+            endDate = DateTime.SpecifyKind(targetSunday.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+            response = CalculateWeeklyForecast(orders, localNow, clampedOffset, liveUsdRate, liveEurRate, collectionRate);
+        }
+        else if (normalizedPeriod == "day")
+        {
+            startDate = DateTime.SpecifyKind(localNow.Date, DateTimeKind.Utc);
+            endDate = DateTime.SpecifyKind(localNow.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+            response = CalculateDailyHourlyForecast(orders, localNow, liveUsdRate, liveEurRate, collectionRate);
+        }
+        else
+        {
+            // default: "month"
+            startDate = new DateTime(localNow.Year, localNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            int daysInMonth = DateTime.DaysInMonth(localNow.Year, localNow.Month);
+            endDate = new DateTime(localNow.Year, localNow.Month, daysInMonth, 23, 59, 59, DateTimeKind.Utc);
+            response = CalculateMonthlyDailyForecast(orders, localNow, liveUsdRate, liveEurRate, collectionRate);
         }
 
-        return CalculateMonthlyDailyForecast(orders, localNow, liveUsdRate, liveEurRate, collectionRate);
+        if (_forecastRepository != null)
+        {
+            await PersistForecastWithIdempotencyAsync(
+                normalizedPeriod,
+                weekOffset,
+                startDate,
+                endDate,
+                response,
+                cancellationToken);
+        }
+
+        return response;
     }
 
     private SalesForecastResponseDto CalculateYearlyForecast(
@@ -943,7 +995,9 @@ public class DashboardService : IDashboardService
             monthRealInvoiced += actual.Invoiced;
             monthRealCollected += actual.Collected;
 
-            decimal projInv = Math.Round(forecastResult.ProjectedValues[day - 1], 2);
+            decimal projInv = (forecastResult.ProjectedValues != null && day - 1 < forecastResult.ProjectedValues.Count)
+                ? Math.Round(forecastResult.ProjectedValues[day - 1], 2)
+                : 0m;
             decimal projCol = Math.Round(projInv * collectionRate, 2);
 
             points.Add(new ForecastDataPointDto(
@@ -961,7 +1015,9 @@ public class DashboardService : IDashboardService
             var date = new DateTime(localNow.Year, localNow.Month, day);
             string dateStr = date.ToString("yyyy-MM-dd");
 
-            decimal projInv = Math.Round(forecastResult.ProjectedValues[day - 1], 2);
+            decimal projInv = (forecastResult.ProjectedValues != null && day - 1 < forecastResult.ProjectedValues.Count)
+                ? Math.Round(forecastResult.ProjectedValues[day - 1], 2)
+                : 0m;
             decimal projCol = Math.Round(projInv * collectionRate, 2);
 
             projectedFutureInvoiced += projInv;
@@ -984,6 +1040,356 @@ public class DashboardService : IDashboardService
             forecastResult.MapeScore);
 
         return new SalesForecastResponseDto(points, summary);
+    }
+
+    private SalesForecastResponseDto CalculateWeeklyForecast(
+        List<Order> orders,
+        DateTime localNow,
+        int weekOffset,
+        decimal liveUsdRate,
+        decimal liveEurRate,
+        decimal collectionRate)
+    {
+        var venezuelaOffset = TimeSpan.FromHours(-4);
+        int diff = (7 + (int)localNow.DayOfWeek - (int)DayOfWeek.Monday) % 7;
+        var currentMonday = localNow.Date.AddDays(-diff);
+        var targetMonday = currentMonday.AddDays(weekOffset * 7);
+
+        var dailyActuals = orders
+            .GroupBy(o => (o.CreatedAt + venezuelaOffset).Date)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    decimal inv = g.Sum(o => ConvertOrderTotalToUsd(o, liveUsdRate));
+                    decimal col = g.Sum(o =>
+                    {
+                        var payments = (o.PartialPayments ?? Enumerable.Empty<PartialPayment>())
+                            .Concat(o.MixedPayments ?? Enumerable.Empty<PartialPayment>());
+                        return payments.Where(p => !IsCasheaFinancedPayment(p))
+                            .Sum(p => ConvertPaymentToUsd(p, o, liveUsdRate, liveEurRate));
+                    });
+                    return (Invoiced: Math.Round(inv, 2), Collected: Math.Round(col, 2));
+                });
+
+        var historyPoints = new List<TimeSeriesPoint>();
+        var lastDayBeforeWeek = currentMonday.AddDays(-1);
+        for (int i = 180; i >= 0; i--)
+        {
+            var d = lastDayBeforeWeek.AddDays(-i);
+            decimal val = dailyActuals.TryGetValue(d, out var actual) ? actual.Invoiced : 0m;
+            historyPoints.Add(new TimeSeriesPoint(d, val));
+        }
+
+        int stepsNeeded = Math.Max(7 * (weekOffset + 1), 7);
+        var forecastResult = _forecaster.Forecast(
+            historyPoints,
+            horizonSteps: stepsNeeded,
+            seasonalPeriod: 7,
+            damping: 0.92);
+
+        var points = new List<ForecastDataPointDto>(7);
+        var dayNames = new[] { "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom" };
+
+        decimal totalProjInvoiced = 0m;
+        decimal totalProjCollected = 0m;
+
+        for (int i = 0; i < 7; i++)
+        {
+            var date = targetMonday.AddDays(i);
+            string dateStr = date.ToString("yyyy-MM-dd");
+            string label = $"{dayNames[i]} {date:dd/MM}";
+            int stepIndex = (weekOffset * 7) + i;
+
+            decimal projInv = (forecastResult.ProjectedValues != null && stepIndex < forecastResult.ProjectedValues.Count)
+                ? Math.Round(forecastResult.ProjectedValues[stepIndex], 2)
+                : 0m;
+            decimal projCol = Math.Round(projInv * collectionRate, 2);
+
+            totalProjInvoiced += projInv;
+            totalProjCollected += projCol;
+
+            decimal? actualInv = null;
+            decimal? actualCol = null;
+
+            if (weekOffset == 0 && date.Date <= localNow.Date)
+            {
+                if (dailyActuals.TryGetValue(date.Date, out var actual))
+                {
+                    actualInv = actual.Invoiced;
+                    actualCol = actual.Collected;
+                }
+                else
+                {
+                    actualInv = 0m;
+                    actualCol = 0m;
+                }
+            }
+
+            points.Add(new ForecastDataPointDto(
+                dateStr,
+                label,
+                actualInv,
+                actualCol,
+                projInv,
+                projCol,
+                null));
+        }
+
+        var summary = new ForecastSummaryDto(
+            Math.Round(totalProjInvoiced, 2),
+            Math.Round(totalProjCollected, 2),
+            null,
+            forecastResult.MapeScore);
+
+        return new SalesForecastResponseDto(points, summary);
+    }
+
+    private SalesForecastResponseDto CalculateDailyHourlyForecast(
+        List<Order> orders,
+        DateTime localNow,
+        decimal liveUsdRate,
+        decimal liveEurRate,
+        decimal collectionRate)
+    {
+        var venezuelaOffset = TimeSpan.FromHours(-4);
+        var today = localNow.Date;
+        var ninetyDaysAgo = today.AddDays(-90);
+
+        var todayActualInvoicedByHour = new decimal[24];
+        var todayActualCollectedByHour = new decimal[24];
+
+        var historicalHourlySum = new decimal[24];
+        decimal historicalTotal = 0m;
+
+        foreach (var o in orders)
+        {
+            var localDt = o.CreatedAt + venezuelaOffset;
+            if (localDt.Date == today)
+            {
+                int h = Math.Clamp(localDt.Hour, 0, 23);
+                todayActualInvoicedByHour[h] += ConvertOrderTotalToUsd(o, liveUsdRate);
+
+                var payments = (o.PartialPayments ?? Enumerable.Empty<PartialPayment>())
+                    .Concat(o.MixedPayments ?? Enumerable.Empty<PartialPayment>());
+                todayActualCollectedByHour[h] += payments.Where(p => !IsCasheaFinancedPayment(p))
+                    .Sum(p => ConvertPaymentToUsd(p, o, liveUsdRate, liveEurRate));
+            }
+            else if (localDt.Date >= ninetyDaysAgo && localDt.Date < today && localDt.DayOfWeek == localNow.DayOfWeek)
+            {
+                int h = Math.Clamp(localDt.Hour, 0, 23);
+                decimal inv = ConvertOrderTotalToUsd(o, liveUsdRate);
+                historicalHourlySum[h] += inv;
+                historicalTotal += inv;
+            }
+        }
+
+        var pastSameDayTotals = orders
+            .Where(o =>
+            {
+                var dt = o.CreatedAt + venezuelaOffset;
+                return dt.Date >= ninetyDaysAgo && dt.Date < today && dt.DayOfWeek == localNow.DayOfWeek;
+            })
+            .GroupBy(o => (o.CreatedAt + venezuelaOffset).Date)
+            .Select(g => g.Sum(o => ConvertOrderTotalToUsd(o, liveUsdRate)))
+            .ToList();
+
+        decimal expectedDayTotal = pastSameDayTotals.Count > 0 ? pastSameDayTotals.Average() : 5000m;
+        if (expectedDayTotal <= 0) expectedDayTotal = 5000m;
+
+        var points = new List<ForecastDataPointDto>(24);
+        decimal totalProjInvoiced = 0m;
+        decimal totalProjCollected = 0m;
+
+        for (int h = 0; h < 24; h++)
+        {
+            string hourStr = $"{h:D2}:00";
+            decimal weight = historicalTotal > 0
+                ? (historicalHourlySum[h] / historicalTotal)
+                : (h >= 8 && h <= 20 ? (1m / 13m) : 0.005m);
+            decimal projInv = Math.Round(expectedDayTotal * weight, 2);
+            decimal projCol = Math.Round(projInv * collectionRate, 2);
+
+            totalProjInvoiced += projInv;
+            totalProjCollected += projCol;
+
+            decimal? actualInv = null;
+            decimal? actualCol = null;
+
+            if (h <= localNow.Hour)
+            {
+                actualInv = Math.Round(todayActualInvoicedByHour[h], 2);
+                actualCol = Math.Round(todayActualCollectedByHour[h], 2);
+            }
+
+            points.Add(new ForecastDataPointDto(
+                hourStr,
+                hourStr,
+                actualInv,
+                actualCol,
+                projInv,
+                projCol,
+                null));
+        }
+
+        var summary = new ForecastSummaryDto(
+            Math.Round(totalProjInvoiced, 2),
+            Math.Round(totalProjCollected, 2),
+            null,
+            5.0);
+
+        return new SalesForecastResponseDto(points, summary);
+    }
+
+    private async Task PersistForecastWithIdempotencyAsync(
+        string period,
+        int weekOffset,
+        DateTime startDate,
+        DateTime endDate,
+        SalesForecastResponseDto response,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var newHash = ComputeProjectionsHash(response.Points);
+            var existing = await _forecastRepository!.GetLatestAsync(period, weekOffset, startDate, endDate, cancellationToken);
+
+            if (existing != null && string.Equals(existing.ProjectionsHash, newHash, StringComparison.OrdinalIgnoreCase))
+            {
+                existing.Points = response.Points.Select(MapDtoToRecordPoint).ToList();
+                existing.Summary.ProjectedInvoicedTotal = response.Summary.ProjectedInvoicedTotal;
+                existing.Summary.ProjectedCollectedTotal = response.Summary.ProjectedCollectedTotal;
+                existing.Summary.RealInvoicedTotal = response.Points.Where(p => p.InvoicedUsd.HasValue).Sum(p => p.InvoicedUsd!.Value);
+                existing.Summary.RealCollectedTotal = response.Points.Where(p => p.CollectedUsd.HasValue).Sum(p => p.CollectedUsd!.Value);
+                existing.Summary.MapeScore = response.Summary.MapeScore;
+                await _forecastRepository.UpdateAsync(existing, cancellationToken);
+            }
+            else
+            {
+                var maxVersion = await _forecastRepository.GetMaxVersionNumberAsync(cancellationToken);
+                int newVersion = maxVersion + 1;
+                string title = GenerateForecastTitle(period, weekOffset, startDate, endDate, newVersion);
+
+                var record = new SalesForecastRecord
+                {
+                    VersionNumber = newVersion,
+                    Title = title,
+                    Period = period,
+                    WeekOffset = weekOffset,
+                    StartDate = startDate,
+                    EndDate = endDate,
+                    ProjectionsHash = newHash,
+                    Points = response.Points.Select(MapDtoToRecordPoint).ToList(),
+                    Summary = new ForecastRecordSummary
+                    {
+                        ProjectedInvoicedTotal = response.Summary.ProjectedInvoicedTotal,
+                        ProjectedCollectedTotal = response.Summary.ProjectedCollectedTotal,
+                        RealInvoicedTotal = response.Points.Where(p => p.InvoicedUsd.HasValue).Sum(p => p.InvoicedUsd!.Value),
+                        RealCollectedTotal = response.Points.Where(p => p.CollectedUsd.HasValue).Sum(p => p.CollectedUsd!.Value),
+                        BenchmarkTotal = response.Summary.BenchmarkTotal,
+                        MapeScore = response.Summary.MapeScore
+                    }
+                };
+
+                await _forecastRepository.InsertAsync(record, cancellationToken);
+            }
+        }
+        catch
+        {
+            // ponytail: logging/swallowing persist exceptions so forecast endpoint always succeeds even if history DB is slow
+        }
+    }
+
+    public string ComputeProjectionsHash(IReadOnlyList<ForecastDataPointDto> points)
+    {
+        var raw = string.Join("|", points.Select(p => $"{p.ProjectedInvoiced ?? 0m:F2}:{p.ProjectedCollected ?? 0m:F2}"));
+        using var sha = SHA256.Create();
+        var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(raw));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private static string GenerateForecastTitle(string period, int weekOffset, DateTime startDate, DateTime endDate, int version)
+    {
+        return period switch
+        {
+            "week" => weekOffset == 0
+                ? $"Proyección {version} - Sem {startDate:dd/MM} al {endDate:dd/MM}"
+                : $"Proyección {version} - Sem +{weekOffset} ({startDate:dd/MM} al {endDate:dd/MM})",
+            "year" => $"Proyección {version} - {startDate:yyyy} a {endDate:yyyy}",
+            "day" => $"Proyección {version} - {startDate:dd/MM/yyyy}",
+            _ => $"Proyección {version} - {startDate:dd/MM} al {endDate:dd/MM}"
+        };
+    }
+
+    private static ForecastRecordPoint MapDtoToRecordPoint(ForecastDataPointDto dto) =>
+        new()
+        {
+            Date = dto.Date,
+            Label = dto.Label,
+            ActualInvoiced = dto.InvoicedUsd,
+            ActualCollected = dto.CollectedUsd,
+            ProjectedInvoiced = dto.ProjectedInvoiced ?? 0m,
+            ProjectedCollected = dto.ProjectedCollected ?? 0m,
+            Benchmark = dto.Benchmark3Yr
+        };
+
+    private static ForecastDataPointDto MapRecordPointToDto(ForecastRecordPoint p) =>
+        new(
+            p.Date,
+            p.Label,
+            p.ActualInvoiced,
+            p.ActualCollected,
+            p.ProjectedInvoiced,
+            p.ProjectedCollected,
+            p.Benchmark
+        );
+
+    public async Task<IReadOnlyList<SalesForecastHistoryItemDto>> GetForecastHistoryAsync(string? period = null, CancellationToken cancellationToken = default)
+    {
+        if (_forecastRepository == null) return Array.Empty<SalesForecastHistoryItemDto>();
+
+        var list = await _forecastRepository.GetHistoryAsync(period, cancellationToken);
+        return list.Select(r => new SalesForecastHistoryItemDto(
+            r.Id,
+            r.VersionNumber,
+            r.Title,
+            r.Period,
+            r.WeekOffset,
+            r.StartDate,
+            r.EndDate,
+            r.CreatedAt,
+            r.Summary?.ProjectedInvoicedTotal ?? 0m,
+            r.Summary?.ProjectedCollectedTotal ?? 0m,
+            r.Summary?.RealInvoicedTotal ?? 0m,
+            r.Summary?.RealCollectedTotal ?? 0m,
+            r.Summary?.MapeScore ?? 0.0
+        )).ToList();
+    }
+
+    public async Task<SalesForecastRecordDto?> GetForecastByIdAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (_forecastRepository == null) return null;
+
+        var r = await _forecastRepository.GetByIdAsync(id, cancellationToken);
+        if (r == null) return null;
+
+        return new SalesForecastRecordDto(
+            r.Id,
+            r.VersionNumber,
+            r.Title,
+            r.Period,
+            r.WeekOffset,
+            r.StartDate,
+            r.EndDate,
+            r.CreatedAt,
+            (r.Points ?? new List<ForecastRecordPoint>()).Select(MapRecordPointToDto).ToList(),
+            new ForecastSummaryDto(
+                r.Summary?.ProjectedInvoicedTotal ?? 0m,
+                r.Summary?.ProjectedCollectedTotal ?? 0m,
+                r.Summary?.BenchmarkTotal,
+                r.Summary?.MapeScore ?? 0.0
+            )
+        );
     }
 
     public async Task<ProductAttributeBreakdownResponseDto> GetProductAttributeBreakdownAsync(

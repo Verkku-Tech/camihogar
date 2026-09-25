@@ -40,9 +40,29 @@ public class DashboardController : ControllerBase
     [HttpGet("forecast")]
     public async Task<ActionResult<SalesForecastResponseDto>> GetForecast(
         [FromQuery] string period = "month",
+        [FromQuery] int weekOffset = 0,
         CancellationToken ct = default)
     {
-        var data = await _dashboardService.GetSalesForecastAsync(period, ct);
+        var data = await _dashboardService.GetSalesForecastAsync(period, weekOffset, ct);
+        return Ok(data);
+    }
+
+    [HttpGet("forecast/history")]
+    public async Task<ActionResult<IReadOnlyList<SalesForecastHistoryItemDto>>> GetForecastHistory(
+        [FromQuery] string? period = null,
+        CancellationToken ct = default)
+    {
+        var data = await _dashboardService.GetForecastHistoryAsync(period, ct);
+        return Ok(data);
+    }
+
+    [HttpGet("forecast/history/{id}")]
+    public async Task<ActionResult<SalesForecastRecordDto>> GetForecastById(
+        string id,
+        CancellationToken ct = default)
+    {
+        var data = await _dashboardService.GetForecastByIdAsync(id, ct);
+        if (data == null) return NotFound();
         return Ok(data);
     }
 

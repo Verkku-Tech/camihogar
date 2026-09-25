@@ -56,6 +56,7 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
         services.AddScoped<IDashboardRepository, DashboardRepository>();
+        services.AddScoped<ISalesForecastRepository, SalesForecastRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<IOrderAuditLogRepository, OrderAuditLogRepository>();
 

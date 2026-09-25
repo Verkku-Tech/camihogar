@@ -2,8 +2,9 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
-import { TrendingUp, Sparkles, History } from "lucide-react"
+import { TrendingUp, Sparkles, History, ChevronLeft, ChevronRight } from "lucide-react"
 import type { TrendDataPoint, SalesForecastResponse } from "@/lib/api-client"
 import { CHART_THEME } from "./chart-theme"
 import { useMemo } from "react"
@@ -240,9 +241,24 @@ interface Props {
   forecast?: SalesForecastResponse | null
   period?: "day" | "week" | "month" | "year"
   isLoading?: boolean
+  weekOffset?: number
+  onWeekOffsetChange?: (offset: number) => void
+  isForecastLoading?: boolean
+  onOpenHistory?: () => void
+  isSnapshot?: boolean
 }
 
-export function TrendChart({ data = [], forecast, period = "month", isLoading }: Props) {
+export function TrendChart({
+  data = [],
+  forecast,
+  period = "month",
+  isLoading,
+  weekOffset = 0,
+  onWeekOffsetChange,
+  isForecastLoading,
+  onOpenHistory,
+  isSnapshot = false,
+}: Props) {
   const { points, summary, mapeScore } = useMemo(() => {
     if (forecast && forecast.points && forecast.points.length > 0) {
       return {
@@ -262,7 +278,7 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
   return (
     <Card className="h-full flex-1 flex flex-col justify-between border-border/70 shadow-sm hover:shadow-md transition-shadow duration-300">
       <CardHeader className="p-4 sm:p-5 border-b border-border/40 bg-muted/20">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 flex-shrink-0">
               <TrendingUp className="w-4 h-4" />
@@ -274,17 +290,52 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
               <p className="text-xs text-muted-foreground truncate">
                 {period === "year"
                   ? "Histórico anual y comparativa 3 años con proyección prudente de 6 meses"
+                  : period === "week"
+                  ? (weekOffset === 0
+                      ? "Semana en curso con ventas reales y proyección de días restantes"
+                      : `Proyección estimada para semana futura (+${weekOffset})`)
+                  : period === "day"
+                  ? "Curva horaria de 24 horas con ventas reales transcurridas y estimación horaria"
                   : "Cifras reales continuas y proyección conservadora a fin de mes (base 6 meses)"}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {/* {mapeScore !== undefined && (
-              <Badge variant="outline" className="bg-muted/60 text-muted-foreground border-border/60 text-[11px] py-0.5 px-2">
-                Holt-Winters (MAPE: {mapeScore}%)
-              </Badge>
-            )} */}
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap flex-shrink-0">
+            {/* Carrusel Semanal */}
+            {period === "week" && !isSnapshot && onWeekOffsetChange && (
+              <div className="flex items-center gap-1 bg-background/90 rounded-lg p-0.5 border border-border/60 shadow-xs">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 rounded-md disabled:opacity-30"
+                  disabled={weekOffset <= 0 || isForecastLoading}
+                  onClick={() => onWeekOffsetChange(Math.max(0, weekOffset - 1))}
+                  title="Semana anterior"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </Button>
+                <div className="text-xs font-semibold px-2 min-w-[110px] text-center text-foreground font-mono">
+                  <span>{weekOffset === 0 ? "Semana Actual" : `Semana +${weekOffset}`}</span>
+                  {points.length > 0 && points[0].date && (
+                    <span className="text-[10px] text-muted-foreground block font-normal font-sans">
+                      {points[0].date.length >= 10 ? points[0].date.slice(5) : points[0].date} al {points[points.length - 1].date.length >= 10 ? points[points.length - 1].date.slice(5) : points[points.length - 1].date}
+                    </span>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 rounded-md disabled:opacity-30"
+                  disabled={weekOffset >= 3 || isForecastLoading}
+                  onClick={() => onWeekOffsetChange(Math.min(3, weekOffset + 1))}
+                  title="Siguiente semana (hasta +3)"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            )}
+
             {summary.projectedInvoicedTotal > 0 && (
               <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1.5 py-1 px-2.5 text-xs font-medium">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -301,6 +352,19 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
                 <History className="w-3.5 h-3.5" />
                 Benchmark 3 Años: <strong className="font-bold font-mono">${Math.round(summary.benchmarkTotal).toLocaleString("es-VE")}</strong>
               </Badge>
+            )}
+
+            {/* Botón Historial */}
+            {!isSnapshot && onOpenHistory && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenHistory}
+                className="h-7 px-2.5 text-xs gap-1.5 border-border/60 hover:bg-muted/70 shadow-xs"
+              >
+                <History className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Historial</span>
+              </Button>
             )}
           </div>
         </div>
@@ -332,12 +396,14 @@ export function TrendChart({ data = [], forecast, period = "month", isLoading }:
                 tick={{ fontSize: 11, fill: CHART_THEME.axisTick }}
                 tickFormatter={d => {
                   if (period === "year") return d
+                  if (period === "day") return d
                   if (d.length >= 10) {
                     const parts = d.split('-')
                     if (parts.length === 3) return `${parts[2]}-${parts[1]}`
                   }
                   return d
                 }}
+                interval={period === "day" ? 2 : "preserveStartEnd"}
                 stroke={CHART_THEME.gridStroke}
               />
               <YAxis

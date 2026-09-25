@@ -67,4 +67,5 @@ public class MongoDbContext
     public IMongoCollection<IdempotencyRecord> IdempotencyRecords => _database.GetCollection<IdempotencyRecord>("idempotency_keys");
     public IMongoCollection<AccessPin> AccessPins => _database.GetCollection<AccessPin>("accessPins");
     public IMongoCollection<OrderAuditLog> OrderAuditLogs => _database.GetCollection<OrderAuditLog>("orderAuditLogs");
+    public IMongoCollection<Ordina.Domain.Dashboard.SalesForecastRecord> SalesProjections => _database.GetCollection<Ordina.Domain.Dashboard.SalesForecastRecord>("sales_projections");
 }

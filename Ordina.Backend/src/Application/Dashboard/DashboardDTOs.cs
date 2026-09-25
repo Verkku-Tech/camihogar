@@ -161,6 +161,33 @@ public record SalesForecastResponseDto(
     IReadOnlyList<ForecastDataPointDto> Points,
     ForecastSummaryDto Summary);
 
+public record SalesForecastHistoryItemDto(
+    string Id,
+    int VersionNumber,
+    string Title,
+    string Period,
+    int WeekOffset,
+    DateTime StartDate,
+    DateTime EndDate,
+    DateTime GeneratedAtUtc,
+    decimal ProjectedInvoicedTotal,
+    decimal ProjectedCollectedTotal,
+    decimal RealInvoicedTotal,
+    decimal RealCollectedTotal,
+    double MapeScore);
+
+public record SalesForecastRecordDto(
+    string Id,
+    int VersionNumber,
+    string Title,
+    string Period,
+    int WeekOffset,
+    DateTime StartDate,
+    DateTime EndDate,
+    DateTime GeneratedAtUtc,
+    IReadOnlyList<ForecastDataPointDto> Points,
+    ForecastSummaryDto Summary);
+
 public record AgingReportDto(
     string Range,
     string Label,

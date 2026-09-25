@@ -312,6 +312,41 @@ export interface SalesForecastResponse {
   summary: ForecastSummary
 }
 
+export interface SalesForecastHistoryItem {
+  id: string
+  versionNumber: number
+  title: string
+  period: string
+  weekOffset: number
+  startDate: string
+  endDate: string
+  generatedAtUtc?: string
+  createdAt?: string
+  updatedAt?: string
+  projectedInvoicedTotal: number
+  projectedCollectedTotal: number
+  actualInvoicedTotal?: number
+  realInvoicedTotal?: number
+  actualCollectedTotal?: number
+  realCollectedTotal?: number
+  mapeScore?: number
+}
+
+export interface SalesForecastRecordDto {
+  id: string
+  versionNumber: number
+  title: string
+  period: string
+  weekOffset: number
+  startDate: string
+  endDate: string
+  generatedAtUtc?: string
+  createdAt?: string
+  updatedAt?: string
+  points: ForecastDataPoint[]
+  summary: ForecastSummary
+}
+
 export interface SaleTypeData {
   saleType: string
   label: string
@@ -1439,9 +1474,21 @@ export class ApiClientClass {
     return apiFetch<TrendDataPoint[]>(`/api/dashboard/trend?${params.toString()}`, { signal: sig }).then(r => r ?? [])
   }
 
-  async getSalesForecast(period = 'month', signal?: AbortSignal): Promise<SalesForecastResponse> {
-    return apiFetch<SalesForecastResponse>(`/api/dashboard/forecast?period=${period}`, { signal })
+  async getSalesForecast(period = 'month', weekOffset = 0, signal?: AbortSignal): Promise<SalesForecastResponse> {
+    const params = new URLSearchParams({ period, weekOffset: String(weekOffset) })
+    return apiFetch<SalesForecastResponse>(`/api/dashboard/forecast?${params.toString()}`, { signal })
       .then(r => r ?? { points: [], summary: { projectedInvoicedTotal: 0, projectedCollectedTotal: 0, mapeScore: 0 } })
+  }
+
+  async getSalesForecastHistory(period?: string, signal?: AbortSignal): Promise<SalesForecastHistoryItem[]> {
+    const params = new URLSearchParams()
+    if (period) params.set('period', period)
+    const qs = params.toString() ? `?${params.toString()}` : ''
+    return apiFetch<SalesForecastHistoryItem[]>(`/api/dashboard/forecast/history${qs}`, { signal }).then(r => r ?? [])
+  }
+
+  async getSalesForecastHistoryById(id: string, signal?: AbortSignal): Promise<SalesForecastRecordDto | null> {
+    return apiFetch<SalesForecastRecordDto>(`/api/dashboard/forecast/history/${id}`, { signal }).then(r => r ?? null)
   }
 
   async getBySaleType(

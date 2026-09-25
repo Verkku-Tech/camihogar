@@ -51,6 +51,7 @@ import {
 } from "@/lib/api-client"
 import { Skeleton as BoneyardSkeleton } from "boneyard-js/react"
 import { TrendChart } from "./trend-chart"
+import { ForecastHistoryModal } from "./forecast-history-modal"
 import { InvoicedVsCollectedChart } from "./invoiced-vs-collected-chart"
 import { SaleTypeDonut } from "./sale-type-donut"
 import { PipelineChart } from "./pipeline-chart"
@@ -115,6 +116,9 @@ export function AnalyticsDashboard() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [period, setPeriod] = useState<Period>("month")
+  const [weekOffset, setWeekOffset] = useState<number>(0)
+  const [isForecastLoading, setIsForecastLoading] = useState<boolean>(false)
+  const [forecastHistoryOpen, setForecastHistoryOpen] = useState<boolean>(false)
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([])
   const [availableStores, setAvailableStores] = useState<{ id: string; name: string }[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -176,6 +180,19 @@ export function AnalyticsDashboard() {
   const [kpiModalOpen, setKpiModalOpen] = useState(false)
   const [kpiModalType, setKpiModalType] = useState<KpiDrillDownType>("orders")
 
+  const handleWeekOffsetChange = async (newOffset: number) => {
+    setWeekOffset(newOffset)
+    setIsForecastLoading(true)
+    try {
+      const res = await apiClient.getSalesForecast("week", newOffset)
+      setForecastData(res)
+    } catch (err) {
+      console.error("Error changing week offset:", err)
+    } finally {
+      setIsForecastLoading(false)
+    }
+  }
+
   const handleOpenKpiModal = (kpiType: KpiDrillDownType) => {
     setKpiModalType(kpiType)
     setKpiModalOpen(true)
@@ -211,7 +228,7 @@ export function AnalyticsDashboard() {
       ] = await Promise.allSettled([
         apiClient.getDashboardMetrics(period, storeFilter, signal),
         apiClient.getSalesTrend(trendDays, storeFilter, signal),
-        apiClient.getSalesForecast(period, signal),
+        apiClient.getSalesForecast(period, period === "week" ? weekOffset : 0, signal),
         apiClient.getBySaleType(period, storeFilter, signal),
         apiClient.getTopSellers(period, 20, storeFilter, signal),
         apiClient.getTopProducts(period, 10, storeFilter, signal),
@@ -440,7 +457,10 @@ export function AnalyticsDashboard() {
                 ).map(({ key, label }) => (
                   <button
                     key={key}
-                    onClick={() => setPeriod(key)}
+                    onClick={() => {
+                      setPeriod(key)
+                      setWeekOffset(0)
+                    }}
                     className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${period === key
                       ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground hover:bg-background/60"
@@ -777,6 +797,10 @@ export function AnalyticsDashboard() {
                   forecast={forecastData}
                   period={period}
                   isLoading={isLoading}
+                  weekOffset={weekOffset}
+                  onWeekOffsetChange={handleWeekOffsetChange}
+                  isForecastLoading={isForecastLoading}
+                  onOpenHistory={() => setForecastHistoryOpen(true)}
                 />
               )}
             </div>
@@ -921,6 +945,13 @@ export function AnalyticsDashboard() {
         onOpenChange={setKpiModalOpen}
         type={kpiModalType}
         period={period}
+      />
+
+      {/* Forecast History Modal */}
+      <ForecastHistoryModal
+        open={forecastHistoryOpen}
+        onOpenChange={setForecastHistoryOpen}
+        currentPeriod={period}
       />
     </div>
   )
