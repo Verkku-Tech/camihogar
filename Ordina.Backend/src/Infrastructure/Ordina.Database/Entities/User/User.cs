@@ -3,6 +3,7 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Ordina.Database.Entities.User;
 
+[BsonIgnoreExtraElements]
 public class User
 {
     [BsonId]
@@ -27,6 +28,9 @@ public class User
 
     [BsonElement("createdAt")]
     public DateTime? CreatedAt { get; set; }
+
+    [BsonElement("updatedAt")]
+    public DateTime? UpdatedAt { get; set; }
 
     [BsonElement("passwordHash")]
     public string? PasswordHash { get; set; } // Para autenticación

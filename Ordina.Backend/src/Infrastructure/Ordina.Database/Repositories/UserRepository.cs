@@ -51,12 +51,14 @@ public class UserRepository : IUserRepository
     public async Task<User> CreateAsync(User user)
     {
         user.CreatedAt = DateTime.UtcNow;
+        user.UpdatedAt = DateTime.UtcNow;
         await _collection.InsertOneAsync(user);
         return user;
     }
 
     public async Task<User> UpdateAsync(User user)
     {
+        user.UpdatedAt = DateTime.UtcNow;
         await _collection.ReplaceOneAsync(u => u.Id == user.Id, user);
         return user;
     }

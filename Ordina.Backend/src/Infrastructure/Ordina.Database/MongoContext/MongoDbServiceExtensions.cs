@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson.Serialization.Conventions;
 using MongoDB.Driver;
 using Ordina.Database.Repositories;
 
@@ -7,11 +8,30 @@ namespace Ordina.Database.MongoContext;
 
 public static class MongoDbServiceExtensions
 {
+    private static bool _conventionsRegistered;
+    private static readonly object _lock = new();
+
+    public static void RegisterConventions()
+    {
+        if (_conventionsRegistered) return;
+        lock (_lock)
+        {
+            if (_conventionsRegistered) return;
+            var pack = new ConventionPack
+            {
+                new IgnoreExtraElementsConvention(true)
+            };
+            ConventionRegistry.Register("GlobalConventionPack", pack, _ => true);
+            _conventionsRegistered = true;
+        }
+    }
+
     /// <summary>
     /// Configura MongoDB y registra todos los servicios necesarios
     /// </summary>
     public static IServiceCollection AddMongoDb(this IServiceCollection services, IConfiguration configuration)
     {
+        RegisterConventions();
         // Configurar MongoDbSettings
         var mongoSettings = configuration.GetSection("MongoDb").Get<MongoDbSettings>()
             ?? throw new InvalidOperationException("MongoDb configuration section is missing. Please add 'MongoDb' section to appsettings.json");
