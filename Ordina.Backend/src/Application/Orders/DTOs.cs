@@ -243,3 +243,23 @@ public class DeclineOrderRequestDto
     public string? GetReason() => !string.IsNullOrWhiteSpace(Reason) ? Reason : DeclineReason;
 }
 
+public record BulkUpdateProductStatusItemDto(
+    string OrderId,
+    string ProductId,
+    string? DispatchOrigin = null);
+
+public record BulkUpdateProductStatusRequestDto(
+    List<BulkUpdateProductStatusItemDto> Items,
+    string Action,
+    string? ProviderId = null,
+    string? ProviderName = null,
+    string? Notes = null,
+    string? RefabricationReason = null);
+
+public class BulkUpdateProductStatusResponseDto
+{
+    public int SuccessCount { get; set; }
+    public int ErrorCount { get; set; }
+    public List<string> Errors { get; set; } = new();
+}
+

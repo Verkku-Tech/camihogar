@@ -134,4 +134,35 @@ public class OrdersControllerTests
         var value = Assert.IsType<OrderResponseDto>(okResult.Value);
         Assert.Equal(validId, value.Id);
     }
+
+    [Fact]
+    public async Task BulkUpdateProductStatus_ReturnsOkWithResponseDto()
+    {
+        // Arrange
+        var request = new BulkUpdateProductStatusRequestDto(
+            Items: [new("order-1", "prod-1")],
+            Action: "queue");
+
+        var responseDto = new BulkUpdateProductStatusResponseDto
+        {
+            SuccessCount = 1,
+            ErrorCount = 0
+        };
+
+        _orderServiceMock
+            .Setup(s => s.BulkUpdateProductStatusAsync(
+                request, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(responseDto);
+
+        var controller = CreateController();
+
+        // Act
+        var result = await controller.BulkUpdateProductStatus(request, CancellationToken.None);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var value = Assert.IsType<BulkUpdateProductStatusResponseDto>(okResult.Value);
+        Assert.Equal(1, value.SuccessCount);
+        Assert.Equal(0, value.ErrorCount);
+    }
 }

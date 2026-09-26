@@ -1219,7 +1219,7 @@ export default function OrderDetailPage() {
     if (orderNumber) {
       loadOrder();
     }
-  }, [orderNumber, router]);
+  }, [orderNumber]);
 
   // Función para formatear con la moneda seleccionada localmente
   // IMPORTANTE: Siempre usa las tasas del día del pedido, no tasas actuales

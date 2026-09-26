@@ -147,11 +147,13 @@ export async function requestTokenRefresh(): Promise<string | null> {
 
       if (refreshRes.status === 401 || refreshRes.status === 403) {
         explicitRejection = true
-      } else {
+      } else if (refreshRes.status === 502 || refreshRes.status === 503 || refreshRes.status === 504) {
         connectivityManager.reportFailure({ statusCode: refreshRes.status })
       }
     } catch (err: any) {
-      connectivityManager.reportFailure(err)
+      if (err?.name !== 'AbortError' && !err?.message?.includes('aborted')) {
+        connectivityManager.reportFailure(err)
+      }
     } finally {
       refreshTokenPromise = null
     }
@@ -248,7 +250,9 @@ export async function apiFetch<T>(endpoint: string, options: RequestOptions = {}
       const errorMessage = errorBody?.message || errorBody?.error || `HTTP ${res.status}: ${res.statusText}`
       const error = new ApiError(errorMessage, res.status, errorBody)
 
-      connectivityManager.reportFailure(error)
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        connectivityManager.reportFailure(error)
+      }
 
       if (res.status >= 500) {
         telemetry.log('error', `API Failure: ${method} ${url}`, error.stack, { status: res.status, body: errorBody }, mutationId)
@@ -268,8 +272,12 @@ export async function apiFetch<T>(endpoint: string, options: RequestOptions = {}
 
     return await res.json()
   } catch (err: any) {
-    const isCallerAborted = options.signal?.aborted === true
-    if (isCallerAborted) {
+    const isAborted =
+      options.signal?.aborted === true ||
+      err?.name === 'AbortError' ||
+      err?.name === 'CanceledError' ||
+      err?.message?.includes('aborted')
+    if (isAborted) {
       throw err
     }
     if (err instanceof ApiError) {
@@ -2033,12 +2041,12 @@ export class ApiClientClass {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') query.set(k, String(v))
     })
-    const res = await fetch(`/api/reports/commissions/excel?${query.toString()}`)
+    const res = await fetch(resolveApiUrl(`/api/reports/commissions/excel?${query.toString()}`))
     return res.blob()
   }
 
   async downloadExpiredLayawaysReportExcel(): Promise<Blob> {
-    const res = await fetch('/api/reports/expired-layaways/excel')
+    const res = await fetch(resolveApiUrl('/api/reports/expired-layaways/excel'))
     return res.blob()
   }
 

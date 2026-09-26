@@ -50,6 +50,35 @@ describe('ConnectivityManager', () => {
     expect(connectivityManager.isServerUnreachable()).toBe(true)
   })
 
+  test('AbortError or cancelled request DOES NOT trigger unreachable status', () => {
+    const abortError = new DOMException('The user aborted a request.', 'AbortError')
+    connectivityManager.reportFailure(abortError)
+
+    expect(connectivityManager.getStatus()).toBe('connected')
+    expect(connectivityManager.isServerUnreachable()).toBe(false)
+  })
+
+  test('HTTP 404 / 400 client errors DO NOT trigger unreachable status', () => {
+    const error404 = new ApiError('Not Found', 404)
+    connectivityManager.reportFailure(error404)
+
+    expect(connectivityManager.getStatus()).toBe('connected')
+    expect(connectivityManager.isServerUnreachable()).toBe(false)
+  })
+
+  test('Anti-flap guard prevents unreachable flip if success occurred within 2000ms', () => {
+    connectivityManager.reportSuccess()
+    expect(connectivityManager.getStatus()).toBe('connected')
+
+    // Transient failure arrives right after successful request
+    const transportError = new TypeError('Failed to fetch')
+    connectivityManager.reportFailure(transportError)
+
+    // Should remain connected due to anti-flap guard
+    expect(connectivityManager.getStatus()).toBe('connected')
+    expect(connectivityManager.isServerUnreachable()).toBe(false)
+  })
+
   test('Transport error (Failed to fetch) triggers unreachable status', () => {
     const transportError = new TypeError('Failed to fetch')
     connectivityManager.reportFailure(transportError)

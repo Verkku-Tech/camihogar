@@ -123,6 +123,13 @@ public class NotificationsController : ControllerBase
         {
             await foreach (var notification in _notificationService.SubscribeAsync(userId, roles, ct))
             {
+                if (notification.Id == "__keepalive__")
+                {
+                    await Response.WriteAsync(": keepalive\n\n", ct);
+                    await Response.Body.FlushAsync(ct);
+                    continue;
+                }
+
                 var payload = JsonSerializer.Serialize(notification, jsonOptions);
                 await Response.WriteAsync($"event: notification\ndata: {payload}\n\n", ct);
                 await Response.Body.FlushAsync(ct);

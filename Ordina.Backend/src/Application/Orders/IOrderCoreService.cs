@@ -16,6 +16,13 @@ public interface IOrderCoreService
     Task<bool> CancelOrderAsync(string id, string reason, CancellationToken cancellationToken = default);
     Task<OrderResponseDto> DeclineOrderAsync(string id, string userId, string userName, string? declineReason, CancellationToken cancellationToken = default);
     Task<OrderResponseDto> ReactivateOrderAsync(string id, string userId, string userName, CancellationToken cancellationToken = default);
+    Task<OrderResponseDto> ValidateOrderItemAsync(string id, string itemId, string userId, string userName, CancellationToken cancellationToken = default);
     Task<bool> ConciliatePaymentsAsync(List<ConciliatePaymentRequestDto> requests, CancellationToken cancellationToken = default);
     Task<int> CheckReservationRepescaAsync(CancellationToken cancellationToken = default);
+    Task<BulkUpdateProductStatusResponseDto> BulkUpdateProductStatusAsync(
+        BulkUpdateProductStatusRequestDto dto,
+        string userId,
+        string userName,
+        string? callerRole = null,
+        CancellationToken cancellationToken = default);
 }

@@ -5,8 +5,10 @@ export class ConnectivityManager {
   private status: ConnectionStatus = 'connected'
   private listeners: Array<() => void> = []
   private heartbeatTimer: any = null
+  private unreachableTimer: any = null
   private isProbing: boolean = false
-  private lastSuccessfulPing: number = Date.now()
+  private lastSuccessfulPing: number = 0
+  private debounceMs: number = 1000
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -57,29 +59,62 @@ export class ConnectivityManager {
 
   reportSuccess() {
     this.lastSuccessfulPing = Date.now()
+    if (this.unreachableTimer) {
+      clearTimeout(this.unreachableTimer)
+      this.unreachableTimer = null
+    }
     if (this.status !== 'connected') {
       this.status = 'connected'
       this.notify()
     }
   }
 
-  private markUnreachable() {
-    if (this.status !== 'unreachable') {
-      this.status = 'unreachable'
-      this.notify()
+  private markUnreachable(immediate = false) {
+    if (this.status === 'unreachable') return
+
+    const applyUnreachable = () => {
+      this.unreachableTimer = null
+      if (this.status !== 'unreachable') {
+        this.status = 'unreachable'
+        this.notify()
+      }
+    }
+
+    if (immediate || this.debounceMs === 0) {
+      if (this.unreachableTimer) {
+        clearTimeout(this.unreachableTimer)
+        this.unreachableTimer = null
+      }
+      applyUnreachable()
+      return
+    }
+
+    if (!this.unreachableTimer) {
+      this.unreachableTimer = setTimeout(applyUnreachable, this.debounceMs)
     }
   }
 
   reportFailure(error: any) {
-    // 500 is an application unhandled bug, NOT server reachability failure
+    // Aborted or canceled requests are deliberate client cancellations, NOT reachability failures
+    if (
+      error?.name === 'AbortError' ||
+      error?.name === 'CanceledError' ||
+      error?.message?.includes('aborted') ||
+      error?.message?.includes('canceled')
+    ) {
+      return
+    }
+
     const statusCode = error?.statusCode ?? error?.status
-    if (statusCode === 500) {
+
+    // 500 is an application unhandled bug, NOT server reachability failure
+    // 4xx are valid application responses from an active, responding server
+    if (statusCode === 500 || (statusCode && statusCode >= 400 && statusCode < 500)) {
       return
     }
 
     const isTransportError =
       error instanceof TypeError ||
-      error?.name === 'AbortError' ||
       error?.message?.includes('Failed to fetch') ||
       error?.message?.includes('NetworkError') ||
       (!statusCode && error instanceof Error)
@@ -87,6 +122,11 @@ export class ConnectivityManager {
     const isGatewayOrDown = statusCode === 502 || statusCode === 503 || statusCode === 504
 
     if (isTransportError || isGatewayOrDown) {
+      // Anti-flap guard: if a successful request happened within 2000ms, don't flap; verify in background
+      if (this.status === 'connected' && this.lastSuccessfulPing > 0 && Date.now() - this.lastSuccessfulPing < 2000) {
+        void this.probeHealth()
+        return
+      }
       this.markUnreachable()
     }
   }
@@ -100,7 +140,15 @@ export class ConnectivityManager {
   }
 
   private handleOfflineEvent() {
-    this.markUnreachable()
+    this.markUnreachable(true)
+  }
+
+  private getHealthUrl(): string {
+    if (typeof window !== 'undefined' && window.location?.hostname?.endsWith('pages.dev')) {
+      return 'https://ch-api-v2.verkku.com/api/health'
+    }
+    const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+    return apiBase ? `${apiBase}/api/health` : '/api/health'
   }
 
   async probeHealth(): Promise<boolean> {
@@ -108,12 +156,11 @@ export class ConnectivityManager {
     this.isProbing = true
 
     try {
-      const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
-      const healthUrl = apiBase ? `${apiBase}/api/health` : '/api/health'
+      const healthUrl = this.getHealthUrl()
       const res = await fetch(healthUrl, {
         method: 'GET',
         cache: 'no-store',
-        signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(2500) : undefined
+        signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(6000) : undefined
       })
 
       if (res.ok) {
@@ -126,18 +173,17 @@ export class ConnectivityManager {
           }
           return true
         }
-
       }
 
       // If status is 502, 503, 504 or unhandled non-500 failure, mark unreachable
       const status = res.status
       if (status !== 500) {
-        this.markUnreachable()
+        this.markUnreachable(true)
         return false
       }
     } catch {
       // Network failure, connection refused, or timeout
-      this.markUnreachable()
+      this.markUnreachable(true)
       return false
     } finally {
       this.isProbing = false
@@ -148,10 +194,10 @@ export class ConnectivityManager {
 
   private startHeartbeat() {
     if (this.heartbeatTimer || typeof window === 'undefined') return
-    // ponytail: 5s continuous heartbeat for fast ~3-5s failure detection
+    // ponytail: 10s steady heartbeat for responsive failure and recovery detection
     this.heartbeatTimer = setInterval(() => {
       void this.probeHealth()
-    }, 5000)
+    }, 10000)
   }
 
   private stopHeartbeat() {
@@ -176,10 +222,17 @@ export class ConnectivityManager {
   resetForTesting() {
     this.status = 'connected'
     this.stopHeartbeat()
+    if (this.unreachableTimer) {
+      clearTimeout(this.unreachableTimer)
+      this.unreachableTimer = null
+    }
     this.listeners = []
     this.isProbing = false
+    this.lastSuccessfulPing = 0
+    this.debounceMs = 0
   }
 }
 
 export const connectivityManager = new ConnectivityManager()
+
 

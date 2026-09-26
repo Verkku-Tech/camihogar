@@ -27,6 +27,7 @@ public class ReportsController : ControllerBase
 
 
     [HttpGet("commissions")]
+    [HttpGet("commissions/preview")]
     public async Task<ActionResult<IReadOnlyList<CommissionReportRowDto>>> GetCommissionsReport(
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
@@ -69,22 +70,35 @@ public class ReportsController : ControllerBase
     }
 
     [HttpGet("payments")]
-    public async Task<ActionResult<IReadOnlyList<PaymentsDetailedReportRowDto>>> GetPaymentsReport(
+    [HttpGet("payments/preview")]
+    public async Task<ActionResult<IReadOnlyList<PaymentReportRowDto>>> GetPaymentsReport(
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
+        [FromQuery] string? paymentMethod = null,
+        [FromQuery] string? accountId = null,
         CancellationToken cancellationToken = default)
     {
-        var report = await _reportService.GetPaymentsDetailedReportAsync(from, to, cancellationToken);
+        var start = startDate ?? from;
+        var end = endDate ?? to;
+        var report = await _reportService.GetPaymentsReportDataAsync(start, end, paymentMethod, accountId, cancellationToken);
         return Ok(report);
     }
 
     [HttpGet("payments/excel")]
     public async Task<IActionResult> DownloadPaymentsReportExcel(
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
+        [FromQuery] string? paymentMethod = null,
+        [FromQuery] string? accountId = null,
         CancellationToken cancellationToken = default)
     {
-        var bytes = await _reportService.GeneratePaymentsReportExcelAsync(from, to, cancellationToken);
+        var start = startDate ?? from;
+        var end = endDate ?? to;
+        var bytes = await _reportService.GeneratePaymentsReportExcelAsync(start, end, paymentMethod, accountId, cancellationToken);
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"Reporte_Pagos_{DateTime.UtcNow:yyyyMMdd}.xlsx");
     }
 

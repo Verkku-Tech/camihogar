@@ -121,11 +121,44 @@ public class NotificationService : INotificationService
 
         try
         {
-            while (!ct.IsCancellationRequested && await channel.Reader.WaitToReadAsync(ct))
+            while (!ct.IsCancellationRequested)
             {
-                while (channel.Reader.TryRead(out var item))
+                bool hasItems = false;
+                using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+                using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token))
                 {
-                    yield return item;
+                    try
+                    {
+                        hasItems = await channel.Reader.WaitToReadAsync(linkedCts.Token);
+                        if (!hasItems) break;
+                    }
+                    catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+                    {
+                        // Keepalive timer elapsed
+                    }
+                }
+
+                if (hasItems)
+                {
+                    while (channel.Reader.TryRead(out var item))
+                    {
+                        yield return item;
+                    }
+                }
+                else if (!ct.IsCancellationRequested)
+                {
+                    yield return new NotificationDto(
+                        "__keepalive__",
+                        "system",
+                        "keepalive",
+                        "",
+                        "info",
+                        null,
+                        null,
+                        [],
+                        true,
+                        DateTime.UtcNow,
+                        null);
                 }
             }
         }

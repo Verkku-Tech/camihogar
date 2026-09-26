@@ -386,6 +386,55 @@ public class OrderCoreService : IOrderCoreService
         return MapToDto(order);
     }
 
+    public async Task<OrderResponseDto> ValidateOrderItemAsync(
+        string id,
+        string itemId,
+        string userId,
+        string userName,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(itemId))
+        {
+            throw new ArgumentException("El ID del pedido y del ítem son requeridos");
+        }
+
+        var order = await _orderRepository.GetByIdAsync(id, cancellationToken)
+            ?? await _orderRepository.GetByOrderNumberAsync(id, cancellationToken)
+            ?? throw new KeyNotFoundException($"Pedido con ID {id} no encontrado");
+
+        var product = order.Products?.FirstOrDefault(p => p.Id == itemId)
+            ?? throw new KeyNotFoundException($"Producto con ID {itemId} no encontrado en el pedido");
+
+        var previousLogisticStatus = product.LogisticStatusString ?? "Generado";
+        product.LogisticStatusString = "Validado";
+
+        if (order.Products != null && order.Products.All(p => p.LogisticStatusString == "Validado"))
+        {
+            if (order.StatusString == "Generado" || order.StatusString == "Generada" || order.StatusString == "Pendiente")
+            {
+                order.StatusString = "Validado";
+            }
+        }
+
+        order.UpdatedAt = DateTime.UtcNow;
+
+        await _orderRepository.UpdateAsync(order, cancellationToken);
+
+        if (_auditLogService != null)
+        {
+            await _auditLogService.LogItemValidatedAsync(
+                order,
+                itemId,
+                userId,
+                userName,
+                previousLogisticStatus,
+                cancellationToken);
+        }
+
+        _logger.LogInformation("Ítem {ItemId} del pedido {OrderNumber} validado por {UserName}", itemId, order.OrderNumber, userName);
+        return MapToDto(order);
+    }
+
     public async Task<bool> ConciliatePaymentsAsync(List<ConciliatePaymentRequestDto> requests, CancellationToken cancellationToken = default)
     {
         if (requests == null || requests.Count == 0)
@@ -724,5 +773,212 @@ public class OrderCoreService : IOrderCoreService
         {
             _logger.LogWarning(ex, "Error al publicar alerta operativa de pedido {OrderNumber}", order.OrderNumber);
         }
+    }
+
+    public async Task<BulkUpdateProductStatusResponseDto> BulkUpdateProductStatusAsync(
+        BulkUpdateProductStatusRequestDto dto,
+        string userId,
+        string userName,
+        string? callerRole = null,
+        CancellationToken cancellationToken = default)
+    {
+        var response = new BulkUpdateProductStatusResponseDto();
+        if (dto?.Items == null || dto.Items.Count == 0)
+        {
+            return response;
+        }
+
+        var itemsByOrder = dto.Items
+            .Where(i => !string.IsNullOrWhiteSpace(i.OrderId) && !string.IsNullOrWhiteSpace(i.ProductId))
+            .GroupBy(i => i.OrderId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToDictionary(x => x.ProductId, x => x.DispatchOrigin));
+
+        var action = (dto.Action ?? "").Trim().ToLowerInvariant();
+
+        foreach (var (orderId, productMap) in itemsByOrder)
+        {
+            try
+            {
+                var order = await _orderRepository.GetByIdAsync(orderId, cancellationToken)
+                    ?? await _orderRepository.GetByOrderNumberAsync(orderId, cancellationToken);
+                if (order == null)
+                {
+                    response.ErrorCount += productMap.Count;
+                    response.Errors.Add($"Pedido con ID {orderId} no encontrado.");
+                    continue;
+                }
+
+                Order? oldOrder = null;
+                try
+                {
+                    oldOrder = MongoDB.Bson.Serialization.BsonSerializer.Deserialize<Order>(order.ToBson());
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "No se pudo clonar pedido {OrderId} para auditoría previa", orderId);
+                }
+
+                bool orderMutated = false;
+                int mutatedProductCount = 0;
+
+                foreach (var product in order.Products)
+                {
+                    if (!productMap.ContainsKey(product.Id)) continue;
+
+                    switch (action)
+                    {
+                        case "queue":
+                            if (OrderStatusAggregation.NormalizeManufacturingStatus(product.ManufacturingStatusString) == "debe_fabricar")
+                            {
+                                product.LocationStatusString = "FABRICACION";
+                                product.ManufacturingStatusString = "por_fabricar";
+                                product.ManufacturingProviderId = dto.ProviderId;
+                                product.ManufacturingProviderName = dto.ProviderName;
+                                product.ManufacturingNotes = dto.Notes;
+                                product.AvailabilityStatusString = "no_disponible";
+                                orderMutated = true;
+                                mutatedProductCount++;
+                            }
+                            break;
+
+                        case "start":
+                            if (OrderStatusAggregation.NormalizeManufacturingStatus(product.ManufacturingStatusString) == "por_fabricar")
+                            {
+                                product.LocationStatusString = "FABRICACION";
+                                product.ManufacturingStatusString = "fabricando";
+                                if (!string.IsNullOrWhiteSpace(dto.ProviderId))
+                                    product.ManufacturingProviderId = dto.ProviderId;
+                                if (!string.IsNullOrWhiteSpace(dto.ProviderName))
+                                    product.ManufacturingProviderName = dto.ProviderName;
+                                if (!string.IsNullOrWhiteSpace(dto.Notes))
+                                    product.ManufacturingNotes = dto.Notes;
+                                product.ManufacturingStartedAt = DateTime.UtcNow;
+                                product.AvailabilityStatusString = "no_disponible";
+                                product.LogisticStatusString = "Fabricándose";
+                                orderMutated = true;
+                                mutatedProductCount++;
+                            }
+                            break;
+
+                        case "mark_fabricated":
+                            if (OrderStatusAggregation.NormalizeManufacturingStatus(product.ManufacturingStatusString) == "fabricando")
+                            {
+                                product.LocationStatusString = "FABRICACION";
+                                product.ManufacturingStatusString = "almacen_no_fabricado";
+                                product.LogisticStatusString = "En Almacén";
+                                product.ManufacturingCompletedAt = DateTime.UtcNow;
+                                orderMutated = true;
+                                mutatedProductCount++;
+                            }
+                            break;
+
+                        case "refabrication":
+                            if (OrderStatusAggregation.NormalizeManufacturingStatus(product.ManufacturingStatusString) == "almacen_no_fabricado")
+                            {
+                                var historyRecord = new RefabricationRecord
+                                {
+                                    Reason = dto.RefabricationReason ?? "",
+                                    Date = DateTime.UtcNow,
+                                    PreviousProviderId = product.ManufacturingProviderId,
+                                    PreviousProviderName = product.ManufacturingProviderName,
+                                    NewProviderId = dto.ProviderId,
+                                    NewProviderName = dto.ProviderName
+                                };
+                                product.LocationStatusString = "FABRICACION";
+                                product.AvailabilityStatusString = "no_disponible";
+                                product.ManufacturingStatusString = "fabricando";
+                                product.ManufacturingProviderId = dto.ProviderId;
+                                product.ManufacturingProviderName = dto.ProviderName;
+                                product.ManufacturingStartedAt = DateTime.UtcNow;
+                                product.ManufacturingNotes = dto.Notes;
+                                product.LogisticStatusString = "Fabricándose";
+                                product.ManufacturingCompletedAt = null;
+                                product.RefabricationReason = dto.RefabricationReason;
+                                product.RefabricatedAt = DateTime.UtcNow;
+                                product.RefabricationHistory ??= new List<RefabricationRecord>();
+                                product.RefabricationHistory.Add(historyRecord);
+                                orderMutated = true;
+                                mutatedProductCount++;
+                            }
+                            break;
+
+                        case "to_dispatch":
+                            product.LocationStatusString = "EN DESPACHO";
+                            product.LogisticStatusString = "En Ruta";
+                            product.DispatchOrigin = productMap[product.Id];
+                            orderMutated = true;
+                            mutatedProductCount++;
+                            break;
+
+                        case "to_delivered":
+                            product.LocationStatusString = "DESPACHADO";
+                            product.LogisticStatusString = "Completado";
+                            product.DeliveredAt = DateTime.UtcNow;
+                            orderMutated = true;
+                            mutatedProductCount++;
+                            break;
+
+                        case "to_store":
+                            product.LocationStatusString = "EN TIENDA";
+                            product.LogisticStatusString = "En Almacén";
+                            orderMutated = true;
+                            mutatedProductCount++;
+                            break;
+
+                        case "to_manufacturing":
+                            product.LocationStatusString = "FABRICACION";
+                            product.ManufacturingStatusString = "debe_fabricar";
+                            product.LogisticStatusString = "Validado";
+                            product.ManufacturingProviderId = null;
+                            product.ManufacturingProviderName = null;
+                            product.ManufacturingStartedAt = null;
+                            product.ManufacturingCompletedAt = null;
+                            orderMutated = true;
+                            mutatedProductCount++;
+                            break;
+                    }
+                }
+
+                if (orderMutated)
+                {
+                    RecalculateOrderStatus(order);
+                    order.UpdatedAt = DateTime.UtcNow;
+                    await _orderRepository.UpdateAsync(order, cancellationToken);
+
+                    if (_auditLogService != null && oldOrder != null)
+                    {
+                        await _auditLogService.LogOrderUpdatedAsync(oldOrder, order, userId, userName, cancellationToken);
+                    }
+
+                    response.SuccessCount += mutatedProductCount;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al procesar actualización masiva para pedido {OrderId}", orderId);
+                response.ErrorCount += productMap.Count;
+                response.Errors.Add($"Error en pedido {orderId}: {ex.Message}");
+            }
+        }
+
+        return response;
+    }
+
+    private static void RecalculateOrderStatus(Order order)
+    {
+        if (string.Equals(order.TypeString, "Budget", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(order.TypeString, "Reservation", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(order.TypeString, "PendingConfirmation", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (OrderStatusAggregation.IsDeclinedStatus(order.StatusString))
+            return;
+
+        if (order.Products == null || order.Products.Count == 0)
+            return;
+
+        order.StatusString = OrderStatusAggregation.CalculateFromProducts(order.Products);
     }
 }

@@ -242,4 +242,45 @@ public class OrdersController(
             return BadRequest(new { message = ex.Message });
         }
     }
+
+    [HttpPost("{id}/items/{itemId}/validate")]
+    [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderResponseDto>> ValidateOrderItem(
+        string id,
+        string itemId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "system";
+            var userName = User.FindFirst(ClaimTypes.Name)?.Value ?? User.FindFirst("name")?.Value ?? "Usuario";
+            var order = await orderService.ValidateOrderItemAsync(id, itemId, userId, userName, cancellationToken);
+            return Ok(order);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("bulk-update-status")]
+    [HttpPost("bulk-product-status")]
+    [ProducesResponseType(typeof(BulkUpdateProductStatusResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<BulkUpdateProductStatusResponseDto>> BulkUpdateProductStatus(
+        [FromBody] BulkUpdateProductStatusRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var userId = User?.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "system";
+        var userName = User?.FindFirst(ClaimTypes.Name)?.Value ?? User?.FindFirst("name")?.Value ?? "Usuario";
+        var userRole = User?.FindFirst(ClaimTypes.Role)?.Value;
+
+        var result = await orderService.BulkUpdateProductStatusAsync(request, userId, userName, userRole, cancellationToken);
+        return Ok(result);
+    }
 }
