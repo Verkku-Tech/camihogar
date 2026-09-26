@@ -22,6 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { useConnectivity } from "@/hooks/use-connectivity"
+import { formatReportDateSuffix, triggerFileDownload } from "@/lib/download-utils"
 
 type ManufacturingStatus =
   | "debe_fabricar"
@@ -306,29 +307,11 @@ export function ManufacturingReport() {
         throw new Error(errorMessage)
       }
 
-      // Obtener el blob del Excel
+      // Obtener el blob del Excel y descargar
       const blob = await response.blob()
-      
-      // Crear URL temporal y descargar
-      const downloadUrl = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = downloadUrl
-      
-      // Obtener nombre del archivo desde headers o usar uno por defecto
       const contentDisposition = response.headers.get("content-disposition")
-      let fileName = `Reporte_Fabricacion_${activeTab}_${new Date().toISOString().split("T")[0]}.xlsx`
-      if (contentDisposition) {
-        const fileNameMatch = contentDisposition.match(/filename="?(.+)"?/i)
-        if (fileNameMatch) {
-          fileName = fileNameMatch[1]
-        }
-      }
-      
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(downloadUrl)
+      const fallback = `ReporteFabricacion_${activeTab}_${formatReportDateSuffix()}.xlsx`
+      triggerFileDownload(blob, fallback, contentDisposition)
 
       toast.success("Reporte descargado correctamente")
     } catch (error: any) {

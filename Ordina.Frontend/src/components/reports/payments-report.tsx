@@ -25,6 +25,7 @@ import {
   formatPaymentDateForDisplay,
   paymentDateToYyyyMmDd,
 } from "@/lib/exchange-rate-for-date"
+import { triggerFileDownload, formatReportDateSuffix } from "@/lib/download-utils"
 
 interface PaymentReportRow {
   id: string
@@ -960,14 +961,8 @@ export function PaymentsReport() {
       }
 
       const blob = await response.blob()
-      const downloadUrl = window.URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = downloadUrl
-      a.download = `reporte_pagos_${new Date().toISOString().split("T")[0]}.xlsx`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(downloadUrl)
-      document.body.removeChild(a)
+      const fallback = `ReportePagos_${formatReportDateSuffix()}.xlsx`
+      triggerFileDownload(blob, fallback, response.headers.get("content-disposition"))
 
       toast.success("Reporte descargado correctamente")
     } catch (error) {

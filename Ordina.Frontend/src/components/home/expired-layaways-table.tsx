@@ -23,6 +23,7 @@ import { Eye, Download, AlertTriangle, Loader2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { usePagination } from "@/hooks/use-pagination"
 import { TablePagination } from "@/components/ui/table-pagination"
+import { formatReportDateSuffix } from "@/lib/download-utils"
 import { apiClient } from "@/lib/api-client"
 import { toast } from "sonner"
 
@@ -155,7 +156,7 @@ export function ExpiredLayawaysTable({ prefetchedOrders }: ExpiredLayawaysTableP
       const downloadUrl = window.URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = downloadUrl
-      link.download = `SA_Vencidos_${new Date().toISOString().split("T")[0]}.xlsx`
+      link.download = `ReporteSAVencidos_${formatReportDateSuffix()}.xlsx`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)

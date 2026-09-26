@@ -74,6 +74,7 @@ import type {
   UpdateManufacturingOrderStatusDto
 } from './api-client-dtos'
 import type { ExchangeRate } from './currency-utils'
+import { triggerFileDownload, formatReportDateSuffix } from './download-utils'
 
 export interface NavigationSettingItemDto {
   id: string
@@ -1657,16 +1658,10 @@ export class ApiClientClass {
       throw new Error(`Error al exportar reporte Excel: ${response.status}`)
     }
     const blob = await response.blob()
-    const urlBlob = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = urlBlob
-    const typeLabel = type === 'expired_layaways' ? 'apartados_vencidos' : 'saldos_pendientes'
+    const typeLabel = type === 'expired_layaways' ? 'ApartadosVencidos' : 'SaldosPendientes'
     const rangeLabel = range ? `_${range}` : ''
-    a.download = `reporte_${typeLabel}${rangeLabel}.xlsx`
-    document.body.appendChild(a)
-    a.click()
-    window.URL.revokeObjectURL(urlBlob)
-    document.body.removeChild(a)
+    const fallback = `Reporte_${typeLabel}${rangeLabel}_${formatReportDateSuffix()}.xlsx`
+    triggerFileDownload(blob, fallback, response.headers.get('content-disposition'))
   }
 
   // Top KPI Drill-downs & Excel Exports
@@ -1684,14 +1679,8 @@ export class ApiClientClass {
     })
     if (!response.ok) throw new Error(`Error al exportar pedidos a Excel: ${response.status}`)
     const blob = await response.blob()
-    const urlBlob = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = urlBlob
-    a.download = `detalle_pedidos_${type}_${period}.xlsx`
-    document.body.appendChild(a)
-    a.click()
-    window.URL.revokeObjectURL(urlBlob)
-    document.body.removeChild(a)
+    const fallback = `DetallePedidos_${type}_${period}_${formatReportDateSuffix()}.xlsx`
+    triggerFileDownload(blob, fallback, response.headers.get('content-disposition'))
   }
 
   async getCollectedDrilldown(period = 'month', signal?: AbortSignal): Promise<CollectedDrillDownResponse> {
@@ -1717,14 +1706,8 @@ export class ApiClientClass {
     })
     if (!response.ok) throw new Error(`Error al exportar cobranza a Excel: ${response.status}`)
     const blob = await response.blob()
-    const urlBlob = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = urlBlob
-    a.download = `detalle_cobranza_${period}_${tab || 'completo'}.xlsx`
-    document.body.appendChild(a)
-    a.click()
-    window.URL.revokeObjectURL(urlBlob)
-    document.body.removeChild(a)
+    const fallback = `DetalleCobranza_${period}_${tab || 'completo'}_${formatReportDateSuffix()}.xlsx`
+    triggerFileDownload(blob, fallback, response.headers.get('content-disposition'))
   }
 
   async getCasheaDrilldown(period = 'month', signal?: AbortSignal): Promise<CasheaDrillDownResponse> {
@@ -1749,14 +1732,8 @@ export class ApiClientClass {
     })
     if (!response.ok) throw new Error(`Error al exportar Cashea a Excel: ${response.status}`)
     const blob = await response.blob()
-    const urlBlob = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = urlBlob
-    a.download = `detalle_cashea_${period}.xlsx`
-    document.body.appendChild(a)
-    a.click()
-    window.URL.revokeObjectURL(urlBlob)
-    document.body.removeChild(a)
+    const fallback = `DetalleCashea_${period}_${formatReportDateSuffix()}.xlsx`
+    triggerFileDownload(blob, fallback, response.headers.get('content-disposition'))
   }
 
   async downloadManufacturingReportExcel(status?: string, from?: string, to?: string): Promise<void> {
@@ -1772,14 +1749,8 @@ export class ApiClientClass {
     })
     if (!response.ok) throw new Error(`Error al exportar reporte de fabricación a Excel: ${response.status}`)
     const blob = await response.blob()
-    const urlBlob = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = urlBlob
-    a.download = `Reporte_Fabricacion_Completo_${new Date().toISOString().split('T')[0]}.xlsx`
-    document.body.appendChild(a)
-    a.click()
-    window.URL.revokeObjectURL(urlBlob)
-    document.body.removeChild(a)
+    const fallback = `ReporteFabricacion_${formatReportDateSuffix()}.xlsx`
+    triggerFileDownload(blob, fallback, response.headers.get('content-disposition'))
   }
 
   // Reports

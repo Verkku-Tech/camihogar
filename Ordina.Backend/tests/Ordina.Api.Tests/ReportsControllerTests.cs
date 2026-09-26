@@ -68,4 +68,30 @@ public class ReportsControllerTests
         Assert.Equal("ORD-2178", rows[0].Pedido);
         Assert.Equal("Zelle", rows[0].MetodoPago);
     }
+
+    [Fact]
+    public async Task DownloadManufacturingReportExcel_ReturnsFileResultWithNombreReporteDateFormat()
+    {
+        // Arrange
+        var fakeBytes = new byte[] { 1, 2, 3, 4 };
+        _reportServiceMock
+            .Setup(s => s.GenerateManufacturingReportExcelAsync(
+                It.IsAny<DateTime?>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fakeBytes);
+
+        var controller = CreateController();
+
+        // Act
+        var result = await controller.DownloadManufacturingReportExcel(
+            cancellationToken: CancellationToken.None);
+
+        // Assert
+        var fileResult = Assert.IsType<FileContentResult>(result);
+        Assert.Equal("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileResult.ContentType);
+        var expectedDate = DateTime.UtcNow.ToString("dd-MM-yyyy");
+        Assert.Equal($"ReporteFabricacion_{expectedDate}.xlsx", fileResult.FileDownloadName);
+    }
 }

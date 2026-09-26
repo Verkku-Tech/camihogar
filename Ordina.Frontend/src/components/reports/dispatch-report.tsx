@@ -31,6 +31,7 @@ import {
 import { DELIVERY_ZONES } from "@/components/orders/new-order-dialog";
 import { usePagination } from "@/hooks/use-pagination";
 import { TablePagination } from "@/components/ui/table-pagination";
+import { triggerFileDownload, formatReportDateSuffix } from "@/lib/download-utils";
 
 /** Fila del reporte (API en camelCase). */
 interface DispatchReportRow {
@@ -283,14 +284,8 @@ export function DispatchReport() {
       }
 
       const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = `Reporte_Despacho_${new Date().toISOString().split("T")[0]}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
+      const fallback = `ReporteDespachos_${formatReportDateSuffix()}.xlsx`;
+      triggerFileDownload(blob, fallback, response.headers.get("content-disposition"));
 
       toast.success("Reporte descargado exitosamente");
     } catch (error) {

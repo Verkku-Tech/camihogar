@@ -255,7 +255,7 @@ public class DashboardController : ControllerBase
         CancellationToken ct = default)
     {
         var fileBytes = await _dashboardService.GenerateAgingOrdersExcelAsync(type, range, ct);
-        var filename = $"reporte_{(type == "expired_layaways" ? "apartados_vencidos" : "saldos_pendientes")}_{(string.IsNullOrEmpty(range) ? "todos" : range)}_{DateTime.UtcNow:yyyyMMdd_HHmm}.xlsx";
+        var filename = $"Reporte_{(type == "expired_layaways" ? "ApartadosVencidos" : "SaldosPendientes")}_{(string.IsNullOrEmpty(range) ? "todos" : range)}_{DateTime.UtcNow:dd-MM-yyyy}.xlsx";
         return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
     }
 
@@ -277,7 +277,7 @@ public class DashboardController : ControllerBase
         CancellationToken ct = default)
     {
         var fileBytes = await _dashboardService.GenerateOrdersDrilldownExcelAsync(type, period, ct);
-        var filename = $"detalle_pedidos_{type}_{period}_{DateTime.UtcNow:yyyyMMdd_HHmm}.xlsx";
+        var filename = $"DetallePedidos_{type}_{period}_{DateTime.UtcNow:dd-MM-yyyy}.xlsx";
         return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
     }
 
@@ -297,7 +297,7 @@ public class DashboardController : ControllerBase
         CancellationToken ct = default)
     {
         var fileBytes = await _dashboardService.GenerateCollectedDrilldownExcelAsync(period, tab, ct);
-        var filename = $"detalle_cobranza_{period}_{(string.IsNullOrEmpty(tab) ? "completo" : tab)}_{DateTime.UtcNow:yyyyMMdd_HHmm}.xlsx";
+        var filename = $"DetalleCobranza_{period}_{(string.IsNullOrEmpty(tab) ? "completo" : tab)}_{DateTime.UtcNow:dd-MM-yyyy}.xlsx";
         return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
     }
 
@@ -316,7 +316,7 @@ public class DashboardController : ControllerBase
         CancellationToken ct = default)
     {
         var fileBytes = await _dashboardService.GenerateCasheaDrilldownExcelAsync(period, ct);
-        var filename = $"detalle_cashea_{period}_{DateTime.UtcNow:yyyyMMdd_HHmm}.xlsx";
+        var filename = $"DetalleCashea_{period}_{DateTime.UtcNow:dd-MM-yyyy}.xlsx";
         return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
     }
 }
