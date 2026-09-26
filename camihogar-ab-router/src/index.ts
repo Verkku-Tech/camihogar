@@ -1,3 +1,14 @@
+function sanitizeHeaders(headers: Headers): Headers {
+  const newHeaders = new Headers(headers)
+  const cd = newHeaders.get('content-disposition')
+  if (cd) {
+    const cleanCd = cd.replace(/;\s*filename\*=[^;]+/gi, '').trim()
+    newHeaders.set('content-disposition', cleanCd)
+    newHeaders.set('Access-Control-Expose-Headers', 'Content-Disposition')
+  }
+  return newHeaders
+}
+
 export default {
   async fetch(request: Request, env: any, ctx: any): Promise<Response> {
     const url = new URL(request.url)
@@ -25,16 +36,15 @@ export default {
     if (!isV2) {
       // Pass-through to legacy origin (RPi tunnel port 3000)
       const originResponse = await fetch(request)
+      const newHeaders = sanitizeHeaders(originResponse.headers)
       if (setCookieHeader) {
-        const newHeaders = new Headers(originResponse.headers)
         newHeaders.set('Set-Cookie', setCookieHeader)
-        return new Response(originResponse.body, {
-          status: originResponse.status,
-          statusText: originResponse.statusText,
-          headers: newHeaders
-        })
       }
-      return originResponse
+      return new Response(originResponse.body, {
+        status: originResponse.status,
+        statusText: originResponse.statusText,
+        headers: newHeaders
+      })
     }
 
     // User is on V2!
@@ -57,16 +67,15 @@ export default {
       })
 
       const apiResponse = await fetch(apiRequest)
+      const resHeaders = sanitizeHeaders(apiResponse.headers)
       if (setCookieHeader) {
-        const resHeaders = new Headers(apiResponse.headers)
         resHeaders.set('Set-Cookie', setCookieHeader)
-        return new Response(apiResponse.body, {
-          status: apiResponse.status,
-          statusText: apiResponse.statusText,
-          headers: resHeaders
-        })
       }
-      return apiResponse
+      return new Response(apiResponse.body, {
+        status: apiResponse.status,
+        statusText: apiResponse.statusText,
+        headers: resHeaders
+      })
     }
 
     // 2. SPA assets proxy to Cloudflare Pages: camihogar-v2.pages.dev

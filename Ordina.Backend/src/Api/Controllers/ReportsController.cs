@@ -66,7 +66,7 @@ public class ReportsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var bytes = await _reportService.GenerateCommissionsReportExcelAsync(from, to, vendorId, cancellationToken);
-        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"ReporteComisiones_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
+        return ExcelFile(bytes, $"ReporteComisiones_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
     }
 
     [HttpGet("payments")]
@@ -99,7 +99,7 @@ public class ReportsController : ControllerBase
         var start = startDate ?? from;
         var end = endDate ?? to;
         var bytes = await _reportService.GeneratePaymentsReportExcelAsync(start, end, paymentMethod, accountId, cancellationToken);
-        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"ReportePagos_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
+        return ExcelFile(bytes, $"ReportePagos_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
     }
 
     [HttpGet("dispatch/excel")]
@@ -109,7 +109,7 @@ public class ReportsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var bytes = await _reportService.GenerateDispatchReportExcelAsync(from, to, cancellationToken);
-        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"ReporteDespachos_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
+        return ExcelFile(bytes, $"ReporteDespachos_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
     }
 
     [HttpGet("manufacturing/excel")]
@@ -121,14 +121,24 @@ public class ReportsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var bytes = await _reportService.GenerateManufacturingReportExcelAsync(from, to, status, cancellationToken);
-        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"ReporteFabricacion_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
+        return ExcelFile(bytes, $"ReporteFabricacion_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
     }
 
     [HttpGet("expired-layaways/excel")]
     public async Task<IActionResult> DownloadExpiredLayawaysReportExcel(CancellationToken cancellationToken = default)
     {
         var bytes = await _reportService.GenerateExpiredLayawaysReportExcelAsync(cancellationToken);
-        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"ReporteSAVencidos_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
+        return ExcelFile(bytes, $"ReporteSAVencidos_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
+    }
+
+    private IActionResult ExcelFile(byte[] bytes, string filename)
+    {
+        if (HttpContext != null)
+        {
+            Response.Headers["Content-Disposition"] = $"attachment; filename=\"{filename}\"";
+            Response.Headers.Append("Access-Control-Expose-Headers", "Content-Disposition");
+        }
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 
     [HttpGet("manufacturing/preview")]

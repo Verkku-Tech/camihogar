@@ -17,7 +17,15 @@ public class ReportsControllerTests
     private readonly Mock<IReportService> _reportServiceMock = new();
     private readonly Mock<IOrderRepository> _orderRepositoryMock = new();
 
-    private ReportsController CreateController() => new(_reportServiceMock.Object, _orderRepositoryMock.Object);
+    private ReportsController CreateController()
+    {
+        var controller = new ReportsController(_reportServiceMock.Object, _orderRepositoryMock.Object);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+        };
+        return controller;
+    }
 
     [Fact]
     public async Task GetPaymentsReport_ReturnsOkWithRows()
@@ -92,6 +100,6 @@ public class ReportsControllerTests
         var fileResult = Assert.IsType<FileContentResult>(result);
         Assert.Equal("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileResult.ContentType);
         var expectedDate = DateTime.UtcNow.ToString("dd-MM-yyyy");
-        Assert.Equal($"ReporteFabricacion_{expectedDate}.xlsx", fileResult.FileDownloadName);
+        Assert.Equal($"attachment; filename=\"ReporteFabricacion_{expectedDate}.xlsx\"", controller.Response.Headers.ContentDisposition.ToString());
     }
 }

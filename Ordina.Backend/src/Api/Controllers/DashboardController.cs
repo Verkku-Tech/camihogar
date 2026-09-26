@@ -256,7 +256,7 @@ public class DashboardController : ControllerBase
     {
         var fileBytes = await _dashboardService.GenerateAgingOrdersExcelAsync(type, range, ct);
         var filename = $"Reporte_{(type == "expired_layaways" ? "ApartadosVencidos" : "SaldosPendientes")}_{(string.IsNullOrEmpty(range) ? "todos" : range)}_{DateTime.UtcNow:dd-MM-yyyy}.xlsx";
-        return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
+        return ExcelFile(fileBytes, filename);
     }
 
     // Top KPIs Drill-down y Exportaciones Excel
@@ -278,7 +278,7 @@ public class DashboardController : ControllerBase
     {
         var fileBytes = await _dashboardService.GenerateOrdersDrilldownExcelAsync(type, period, ct);
         var filename = $"DetallePedidos_{type}_{period}_{DateTime.UtcNow:dd-MM-yyyy}.xlsx";
-        return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
+        return ExcelFile(fileBytes, filename);
     }
 
     [HttpGet("drilldown/collected")]
@@ -298,7 +298,7 @@ public class DashboardController : ControllerBase
     {
         var fileBytes = await _dashboardService.GenerateCollectedDrilldownExcelAsync(period, tab, ct);
         var filename = $"DetalleCobranza_{period}_{(string.IsNullOrEmpty(tab) ? "completo" : tab)}_{DateTime.UtcNow:dd-MM-yyyy}.xlsx";
-        return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
+        return ExcelFile(fileBytes, filename);
     }
 
     [HttpGet("drilldown/cashea")]
@@ -317,6 +317,16 @@ public class DashboardController : ControllerBase
     {
         var fileBytes = await _dashboardService.GenerateCasheaDrilldownExcelAsync(period, ct);
         var filename = $"DetalleCashea_{period}_{DateTime.UtcNow:dd-MM-yyyy}.xlsx";
-        return File(fileBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename);
+        return ExcelFile(fileBytes, filename);
+    }
+
+    private IActionResult ExcelFile(byte[] bytes, string filename)
+    {
+        if (HttpContext != null)
+        {
+            Response.Headers["Content-Disposition"] = $"attachment; filename=\"{filename}\"";
+            Response.Headers.Append("Access-Control-Expose-Headers", "Content-Disposition");
+        }
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 }

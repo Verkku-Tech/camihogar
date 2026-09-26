@@ -54,7 +54,12 @@ public class StockController(
     public async Task<IActionResult> DownloadTemplate(CancellationToken ct)
     {
         var bytes = await stockService.GenerateExcelTemplateAsync(ct);
-        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "plantilla_inventario_camihogar.xlsx");
+        if (HttpContext != null)
+        {
+            Response.Headers["Content-Disposition"] = "attachment; filename=\"plantilla_inventario_camihogar.xlsx\"";
+            Response.Headers.Append("Access-Control-Expose-Headers", "Content-Disposition");
+        }
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 
     [HttpPost("reservations")]
