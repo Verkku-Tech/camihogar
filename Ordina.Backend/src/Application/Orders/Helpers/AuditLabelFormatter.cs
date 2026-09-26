@@ -75,11 +75,18 @@ public static partial class AuditLabelFormatter
         return (payment.Amount, "Bs");
     }
 
+    private static readonly NumberFormatInfo EsVeNumberFormat = new()
+    {
+        NumberDecimalSeparator = ",",
+        NumberGroupSeparator = ".",
+        NumberDecimalDigits = 2
+    };
+
     public static string FormatPaymentShort(string method, decimal amount, string currency)
     {
         var cur = (currency ?? "Bs").Trim();
         var rounded = Math.Round(amount, 2, MidpointRounding.AwayFromZero);
-        var formatted = rounded.ToString("N2", CultureInfo.GetCultureInfo("es-VE"));
+        var formatted = rounded.ToString("N2", EsVeNumberFormat);
 
         return cur.ToUpperInvariant() switch
         {

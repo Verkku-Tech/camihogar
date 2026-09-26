@@ -285,4 +285,79 @@ public class OrderCoreServiceTests
         Assert.NotNull(dto2);
         Assert.Equal("Motivo 2", dto2.GetReason());
     }
+
+    [Fact]
+    public async Task UpdateOrderAsync_WithJsonElementAttributes_ConvertsToNativeTypesAndSerializesToBson()
+    {
+        // Arrange
+        var orderId = "507f1f77bcf86cd799439011";
+        var productId = "507f1f77bcf86cd799439012";
+        var existingOrder = new Order
+        {
+            Id = orderId,
+            OrderNumber = "ORD-1862",
+            TypeString = "Order",
+            StatusString = "Fabricando",
+            Products = new List<OrderProduct>
+            {
+                new()
+                {
+                    Id = productId,
+                    Name = "COMBOHOGAR",
+                    Category = "ComboHogar",
+                    LocationStatusString = "FABRICACION",
+                    ManufacturingStatusString = "fabricando",
+                    LogisticStatusString = "Fabricándose"
+                }
+            }
+        };
+
+        _orderRepoMock.Setup(r => r.GetByIdAsync(orderId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingOrder);
+        _orderRepoMock.Setup(r => r.UpdateAsync(It.IsAny<Order>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        using var jsonDoc = System.Text.Json.JsonDocument.Parse("{\"color\": \"Gris\", \"garantia\": 12, \"disponible\": true}");
+        var attributesWithJsonElements = new Dictionary<string, object>
+        {
+            ["color"] = jsonDoc.RootElement.GetProperty("color"),
+            ["garantia"] = jsonDoc.RootElement.GetProperty("garantia"),
+            ["disponible"] = jsonDoc.RootElement.GetProperty("disponible")
+        };
+
+        var updatedProductsDto = new List<OrderProductDto>
+        {
+            new(
+                Id: productId,
+                Name: "COMBOHOGAR",
+                Price: 500,
+                Quantity: 1,
+                Total: 500,
+                Category: "ComboHogar",
+                Stock: 1,
+                Attributes: attributesWithJsonElements,
+                LocationStatus: "FABRICACION",
+                ManufacturingStatus: "por_fabricar",
+                LogisticStatus: "Validado"
+            )
+        };
+
+        var updateDto = new UpdateOrderDto(Products: updatedProductsDto);
+
+        // Act
+        var result = await _service.UpdateOrderAsync(orderId, updateDto, cancellationToken: CancellationToken.None);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("Reporte de fabricación", result.Status);
+        var product = existingOrder.Products[0];
+        Assert.Equal("Gris", product.Attributes?["color"]?.ToString());
+        Assert.Equal(12, Convert.ToInt32(product.Attributes?["garantia"]));
+        Assert.Equal(true, product.Attributes?["disponible"]);
+
+        // Validate that BsonSerializer can serialize the Order without throwing ObjectSerializer exception
+        var bson = MongoDB.Bson.BsonExtensionMethods.ToBson(existingOrder);
+        Assert.NotNull(bson);
+        Assert.NotEmpty(bson);
+    }
 }

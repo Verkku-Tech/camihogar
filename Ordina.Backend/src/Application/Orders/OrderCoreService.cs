@@ -101,7 +101,7 @@ public class OrderCoreService : IOrderCoreService
             Category = p.Category,
             Stock = p.Stock,
             PriceCurrency = p.PriceCurrency ?? "USD",
-            Attributes = p.Attributes,
+            Attributes = ConvertAttributesFromJsonElement(p.Attributes),
             Discount = p.Discount,
             Observations = p.Observations,
             AvailabilityStatusString = p.AvailabilityStatus ?? "disponible",
@@ -209,7 +209,7 @@ public class OrderCoreService : IOrderCoreService
                 Total = p.Price * p.Quantity - (p.Discount ?? 0),
                 Category = p.Category,
                 Stock = p.Stock,
-                Attributes = p.Attributes,
+                Attributes = ConvertAttributesFromJsonElement(p.Attributes),
                 Discount = p.Discount,
                 Observations = p.Observations,
                 AvailabilityStatusString = p.AvailabilityStatus,
@@ -235,6 +235,11 @@ public class OrderCoreService : IOrderCoreService
 
             order.Subtotal = order.Products.Sum(p => p.Total);
             order.Total = Math.Max(0, order.Subtotal + order.DeliveryCost - (order.GeneralDiscountAmount ?? 0) - order.AppliedStoreCreditUsd);
+
+            if (updateDto.Status == null)
+            {
+                RecalculateOrderStatus(order);
+            }
         }
 
         if (updateDto.PaymentDetails != null)
@@ -980,5 +985,67 @@ public class OrderCoreService : IOrderCoreService
             return;
 
         order.StatusString = OrderStatusAggregation.CalculateFromProducts(order.Products);
+    }
+
+    private static Dictionary<string, object>? ConvertAttributesFromJsonElement(Dictionary<string, object>? attributes)
+    {
+        if (attributes == null)
+            return null;
+
+        var converted = new Dictionary<string, object>();
+
+        foreach (var kvp in attributes)
+        {
+            converted[kvp.Key] = ConvertJsonElementToNativeType(kvp.Value);
+        }
+
+        return converted;
+    }
+
+    private static object ConvertJsonElementToNativeType(object value)
+    {
+        if (value == null)
+            return null!;
+
+        if (value is System.Text.Json.JsonElement jsonElement)
+        {
+            return jsonElement.ValueKind switch
+            {
+                System.Text.Json.JsonValueKind.String => jsonElement.GetString() ?? string.Empty,
+                System.Text.Json.JsonValueKind.Number => jsonElement.TryGetInt32(out var intVal) ? intVal : jsonElement.TryGetInt64(out var longVal) ? longVal : jsonElement.GetDouble(),
+                System.Text.Json.JsonValueKind.True => true,
+                System.Text.Json.JsonValueKind.False => false,
+                System.Text.Json.JsonValueKind.Null => null!,
+                System.Text.Json.JsonValueKind.Array => jsonElement.EnumerateArray()
+                    .Select(item => ConvertJsonElementToNativeType(item))
+                    .ToArray(),
+                System.Text.Json.JsonValueKind.Object => jsonElement.EnumerateObject()
+                    .ToDictionary(
+                        prop => prop.Name,
+                        prop => ConvertJsonElementToNativeType(prop.Value)
+                    ),
+                _ => jsonElement.GetRawText()
+            };
+        }
+
+        if (value is System.Collections.IEnumerable enumerable && !(value is string))
+        {
+            var list = new List<object>();
+            foreach (var item in enumerable)
+            {
+                list.Add(ConvertJsonElementToNativeType(item!));
+            }
+            return list.ToArray();
+        }
+
+        if (value is Dictionary<string, object> dict)
+        {
+            return dict.ToDictionary(
+                kvp => kvp.Key,
+                kvp => ConvertJsonElementToNativeType(kvp.Value)
+            );
+        }
+
+        return value;
     }
 }

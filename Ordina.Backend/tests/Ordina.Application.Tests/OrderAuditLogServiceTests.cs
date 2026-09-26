@@ -124,4 +124,47 @@ public class OrderAuditLogServiceTests
         Assert.Equal("Pendiente", savedLog.Changes[0].OldValue);
         Assert.Equal("Completado", savedLog.Changes[0].NewValue);
     }
+
+    [Fact]
+    public async Task GetPagedLogsAsync_WithPaymentChange_FormatsWithoutCultureException()
+    {
+        // Arrange
+        var fakeLogs = new List<OrderAuditLog>
+        {
+            new()
+            {
+                Id = "66f1a2b3c4d5e6f7a8b9c0d1",
+                OrderId = "66f1a2b3c4d5e6f7a8b9c0d2",
+                OrderNumber = "ORD-001",
+                Action = "updated",
+                UserId = "user-1",
+                UserName = "Admin",
+                Summary = "Actualizó el pedido ORD-001",
+                Changes =
+                [
+                    new AuditChange
+                    {
+                        Field = "partialPayments[+]",
+                        OldValue = null,
+                        NewValue = "Método=Pago móvil; Monto=1500.50; Moneda=Bs; Fecha=2026-09-23T15:00:00Z"
+                    }
+                ],
+                Timestamp = _timeProvider.GetUtcNow().UtcDateTime
+            }
+        };
+
+        _repoMock.Setup(r => r.GetPagedLogsAsync(
+            1, 10, null, null, null, null, null, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResult<OrderAuditLog>(fakeLogs, 1, 1, 10));
+
+        // Act
+        var result = await _service.GetPagedLogsAsync(
+            1, 10, null, null, null, null, null, false, CancellationToken.None);
+
+        // Assert
+        Assert.NotNull(result);
+        var change = Assert.Single(result.Items.First().Changes);
+        Assert.Equal("Pago agregado", change.DisplayField);
+        Assert.Contains("1.500,50", change.DisplayNewValue);
+    }
 }
