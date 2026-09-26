@@ -58,7 +58,7 @@ import {
 } from "@/lib/product-discount-ui";
 import { resolveGeneralDiscountAmountForSave } from "@/lib/general-discount-meta";
 import { resolveOptionalAmountForSave } from "@/lib/order-commercial-persist";
-import { normalizeExchangeRatesAtCreation } from "@/lib/currency-utils";
+import { getActiveExchangeRates, normalizeExchangeRatesAtCreation } from "@/lib/currency-utils";
 import {
   applyOrderCurrencyMetadata,
 } from "@/lib/order-currency-display";
@@ -182,7 +182,10 @@ export function ConfirmOrderDialog({
     const load = async () => {
       setLoading(true);
       try {
-        const dto = await apiClient.getOrderById(pendingOrderId);
+        const [dto, liveRates] = await Promise.all([
+          apiClient.getOrderById(pendingOrderId),
+          getActiveExchangeRates(),
+        ]);
         if (cancelled) return;
         setPcfType(dto.type ?? "");
         setPcfStatus(dto.status ?? "");
@@ -202,7 +205,15 @@ export function ConfirmOrderDialog({
         setObservations(dto.observations ?? "");
         setHasDelivery(dto.hasDelivery);
         setDeliveryAddress(dto.deliveryAddress ?? "");
-        setExchangeRatesAtCreation(dto.exchangeRatesAtCreation);
+        const normalized = normalizeExchangeRatesAtCreation(dto.exchangeRatesAtCreation);
+        if (!normalized?.USD?.rate && liveRates.USD?.rate) {
+          setExchangeRatesAtCreation({
+            USD: { rate: liveRates.USD.rate, effectiveDate: liveRates.USD.effectiveDate ?? new Date().toISOString() },
+            EUR: liveRates.EUR ? { rate: liveRates.EUR.rate, effectiveDate: liveRates.EUR.effectiveDate ?? new Date().toISOString() } : undefined,
+          });
+        } else {
+          setExchangeRatesAtCreation(dto.exchangeRatesAtCreation);
+        }
         setProductMarkups(dto.productMarkups);
         setCreateSupplierOrder(dto.createSupplierOrder ?? false);
         setPostventaId(dto.postventaId);
@@ -531,7 +542,8 @@ export function ConfirmOrderDialog({
       resetState();
     } catch (e) {
       console.error(e);
-      toast.error("No se pudo confirmar el pedido.");
+      const msg = e instanceof Error ? e.message : "No se pudo confirmar el pedido.";
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }

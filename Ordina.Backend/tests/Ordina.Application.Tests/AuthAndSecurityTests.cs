@@ -58,6 +58,32 @@ public class AuthAndSecurityTests
         Assert.True(_hasher.VerifyPassword(password, legacyHex));
         Assert.False(_hasher.VerifyPassword("WrongPassword", legacyHex));
     }
+    public void PasswordHasher_PlaintextPassword_VerifiesSuccessfully()
+    {
+        var password = "PlaintextPassword123!";
+        Assert.True(_hasher.VerifyPassword(password, password));
+        Assert.False(_hasher.VerifyPassword("WrongPassword", password));
+    }
+
+    [Fact]
+    public void PasswordHasher_HyphenatedSha256_VerifiesSuccessfully()
+    {
+        var password = "LegacyPassword123!";
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(password));
+        var hyphenatedHex = BitConverter.ToString(bytes); // e.g. "EF-92-B7-..."
+
+        Assert.True(_hasher.VerifyPassword(password, hyphenatedHex));
+    }
+
+    [Fact]
+    public void User_EffectivePasswordHash_FallsBackToPassword()
+    {
+        var userWithBoth = new User { PasswordHash = "hash1", Password = "pwd1" };
+        Assert.Equal("hash1", userWithBoth.EffectivePasswordHash);
+
+        var userWithLegacyOnly = new User { PasswordHash = null, Password = "legacy_pwd" };
+        Assert.Equal("legacy_pwd", userWithLegacyOnly.EffectivePasswordHash);
+    }
 
     [Fact]
     public async Task AuthService_LoginAsync_ThrowsUnauthorized_WhenUserIsInactive()

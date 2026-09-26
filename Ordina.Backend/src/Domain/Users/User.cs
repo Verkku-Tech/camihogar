@@ -39,6 +39,12 @@ public class User : BaseEntity
     [BsonElement("passwordHash")]
     public string? PasswordHash { get; set; }
 
+    [BsonElement("password")]
+    public string? Password { get; set; }
+
+    [BsonIgnore]
+    public string? EffectivePasswordHash => !string.IsNullOrEmpty(PasswordHash) ? PasswordHash : Password;
+
     [BsonElement("commissionExclusivityMode")]
     public string? CommissionExclusivityModeStored { get; set; }
 

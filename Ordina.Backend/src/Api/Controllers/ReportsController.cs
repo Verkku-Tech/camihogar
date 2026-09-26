@@ -34,27 +34,37 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null,
         [FromQuery] string? vendorId = null,
+        [FromQuery] string? storeId = null,
+        [FromQuery] string? sellerType = null,
+        [FromQuery] string? referrerId = null,
         CancellationToken cancellationToken = default)
     {
         var fromDate = startDate ?? from;
         var toDate = endDate ?? to;
-        var report = await _reportService.GetCommissionReportAsync(fromDate, toDate, vendorId, cancellationToken);
+        var report = await _reportService.GetCommissionReportAsync(
+            fromDate,
+            toDate,
+            vendorId,
+            storeId,
+            sellerType,
+            referrerId,
+            cancellationToken);
         return Ok(report);
     }
 
     [HttpGet("commission-referrers")]
     [HttpGet("commissionreferrers")]
-    public async Task<ActionResult<IEnumerable<object>>> GetCommissionReferrers(
-        [FromQuery] string? startDate = null,
-        [FromQuery] string? endDate = null,
+    [HttpGet("commissions/referrers")]
+    public async Task<ActionResult<IReadOnlyList<CommissionReferrerOptionDto>>> GetCommissionReferrers(
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
         CancellationToken cancellationToken = default)
     {
-        var orders = await _orderRepository.GetAllAsync(cancellationToken);
-        var referrers = orders
-            .Where(o => !string.IsNullOrWhiteSpace(o.ReferrerId) || !string.IsNullOrWhiteSpace(o.ReferrerName))
-            .Select(o => new { id = o.ReferrerId ?? o.ReferrerName, name = o.ReferrerName ?? o.ReferrerId })
-            .DistinctBy(r => r.id)
-            .ToList();
+        var start = startDate ?? from;
+        var end = endDate ?? to;
+        var referrers = await _reportService.GetCommissionReferrersInRangeAsync(start, end, cancellationToken);
         return Ok(referrers);
     }
 
@@ -65,11 +75,21 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null,
         [FromQuery] string? vendorId = null,
+        [FromQuery] string? storeId = null,
+        [FromQuery] string? sellerType = null,
+        [FromQuery] string? referrerId = null,
         CancellationToken cancellationToken = default)
     {
         var fromDate = startDate ?? from;
         var toDate = endDate ?? to;
-        var bytes = await _reportService.GenerateCommissionsReportExcelAsync(fromDate, toDate, vendorId, cancellationToken);
+        var bytes = await _reportService.GenerateCommissionsReportExcelAsync(
+            fromDate,
+            toDate,
+            vendorId,
+            storeId,
+            sellerType,
+            referrerId,
+            cancellationToken);
         return ExcelFile(bytes, $"ReporteComisiones_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
     }
 

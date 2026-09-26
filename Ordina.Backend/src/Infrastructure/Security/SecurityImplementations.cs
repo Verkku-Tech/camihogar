@@ -21,25 +21,41 @@ public class PasswordHasher : IPasswordHasher
         if (string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(passwordHash))
             return false;
 
-        // Si comienza con $2a$, $2b$ o $2y$, es un hash de BCrypt
-        if (passwordHash.StartsWith("$2"))
+        var trimmedHash = passwordHash.Trim();
+
+        // 1. Coincidencia directa en texto plano (por si la BD tiene contraseñas sin hashear)
+        if (password.Equals(trimmedHash, StringComparison.Ordinal))
+            return true;
+
+        // 2. Hash BCrypt ($2a$, $2b$, $2y$, etc.)
+        if (trimmedHash.StartsWith("$2"))
         {
             try
             {
-                return BCrypt.Net.BCrypt.Verify(password, passwordHash);
+                if (BCrypt.Net.BCrypt.Verify(password, trimmedHash))
+                    return true;
             }
             catch
             {
-                return false;
+                // Si el formato no es BCrypt válido, continuar evaluando otros formatos
             }
         }
 
-        // Compatibilidad retroactiva: verificar SHA256 hex para contraseñas preexistentes en la base de datos
+        // 3. Compatibilidad SHA256 (hex sin guiones, con o sin mayúsculas)
         using var sha256 = SHA256.Create();
         var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
         var hexHash = BitConverter.ToString(hashedBytes).Replace("-", "").ToLowerInvariant();
 
-        return hexHash.Equals(passwordHash, StringComparison.OrdinalIgnoreCase);
+        var normalizedTargetHash = trimmedHash.Replace("-", "").ToLowerInvariant();
+        if (hexHash.Equals(normalizedTargetHash, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // 4. Compatibilidad SHA256 Base64
+        var base64Hash = Convert.ToBase64String(hashedBytes);
+        if (base64Hash.Equals(trimmedHash, StringComparison.Ordinal))
+            return true;
+
+        return false;
     }
 }
 

@@ -45,18 +45,28 @@ export function normalizeExchangeRatesAtCreation(
   if (
     usd &&
     typeof usd.rate === "number" &&
-    usd.rate > 0 &&
-    typeof usd.effectiveDate === "string"
+    usd.rate > 0
   ) {
-    out.USD = { rate: usd.rate, effectiveDate: usd.effectiveDate };
+    out.USD = {
+      rate: usd.rate,
+      effectiveDate:
+        typeof usd.effectiveDate === "string" && usd.effectiveDate.trim().length > 0
+          ? usd.effectiveDate
+          : new Date().toISOString(),
+    };
   }
   if (
     eur &&
     typeof eur.rate === "number" &&
-    eur.rate > 0 &&
-    typeof eur.effectiveDate === "string"
+    eur.rate > 0
   ) {
-    out.EUR = { rate: eur.rate, effectiveDate: eur.effectiveDate };
+    out.EUR = {
+      rate: eur.rate,
+      effectiveDate:
+        typeof eur.effectiveDate === "string" && eur.effectiveDate.trim().length > 0
+          ? eur.effectiveDate
+          : new Date().toISOString(),
+    };
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }

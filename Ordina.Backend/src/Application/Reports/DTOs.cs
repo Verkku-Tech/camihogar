@@ -1,30 +1,36 @@
 namespace Ordina.Application.Reports;
 
 
-public record CommissionReportRowDto(
-    string OrderNumber,
-    DateTime Date,
-    string SellerName,
-    string ClientName,
-    decimal OrderTotal,
-    decimal CommissionAmount,
-    string CommissionMode,
-    string? Description = null,
-    int? ItemsCount = null,
-    string? SaleType = null,
-    decimal? ComisionFamiliaUsdPorUnidad = null,
-    decimal? Comision = null,
-    decimal? ComisionPostventa = null,
-    decimal? ComisionSecundaria = null,
-    string? VendedorPostventa = null,
-    string? VendedorSecundario = null,
-    string? Fecha = null,
-    string? Cliente = null,
-    string? Pedido = null,
-    string? Vendedor = null,
-    string? Descripcion = null,
-    int? CantidadArticulos = null,
-    string? TipoVenta = null);
+public class CommissionReportRowDto
+{
+    public string Fecha { get; set; } = string.Empty;
+    public string Cliente { get; set; } = string.Empty;
+    public string Vendedor { get; set; } = string.Empty;
+    public string Pedido { get; set; } = string.Empty;
+    public string Descripcion { get; set; } = string.Empty;
+    public int CantidadArticulos { get; set; }
+    public string TipoVenta { get; set; } = string.Empty;
+    public decimal ComisionFamiliaUsdPorUnidad { get; set; }
+    public decimal Comision { get; set; }
+    public string? VendedorSecundario { get; set; }
+    public decimal? ComisionSecundaria { get; set; }
+    public string? VendedorPostventa { get; set; }
+    public decimal? ComisionPostventa { get; set; }
+    public decimal SueldoBase { get; set; }
+    public decimal TotalComisionMasSueldo => Comision + SueldoBase;
+    public decimal TasaComisionBase { get; set; }
+    public decimal TasaAplicadaVendedor { get; set; }
+    public decimal? TasaAplicadaReferido { get; set; }
+    public decimal? TasaAplicadaPostventa { get; set; }
+    public bool EsVentaCompartida { get; set; }
+    public bool EsVendedorExclusivo { get; set; }
+}
+
+public class CommissionReferrerOptionDto
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+}
 
 public record PaymentsDetailedReportRowDto(
     string OrderNumber,

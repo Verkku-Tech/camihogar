@@ -72,7 +72,8 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("Tu cuenta está desactivada. Contacta al administrador.");
         }
 
-        if (string.IsNullOrEmpty(user.PasswordHash) || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
+        var passwordHash = user.EffectivePasswordHash;
+        if (string.IsNullOrEmpty(passwordHash) || !_passwordHasher.VerifyPassword(request.Password, passwordHash))
         {
             _logger.LogWarning("Contraseña incorrecta para usuario: {UserId}", user.Id);
             throw new UnauthorizedAccessException("Usuario o contraseña incorrectos");
@@ -186,7 +187,8 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("Tu cuenta está desactivada.");
         }
 
-        if (string.IsNullOrEmpty(user.PasswordHash) || !_passwordHasher.VerifyPassword(request.CurrentPassword, user.PasswordHash))
+        var passwordHash = user.EffectivePasswordHash;
+        if (string.IsNullOrEmpty(passwordHash) || !_passwordHasher.VerifyPassword(request.CurrentPassword, passwordHash))
         {
             throw new InvalidOperationException("La contraseña actual es incorrecta");
         }

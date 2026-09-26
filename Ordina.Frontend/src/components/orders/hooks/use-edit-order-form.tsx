@@ -545,8 +545,10 @@ export function useEditOrderForm(
         setAllProducts(loadedProducts);
         setAccounts(loadedAccounts);
         setLiveExchangeRates(rates);
-
-        // Actualizar monedas seleccionadas según tasas disponibles
+        setCommercialExchangeRates((prev) => {
+          if (prev.USD?.rate && prev.USD.rate > 0) return prev;
+          return { ...rates, ...prev };
+        });
         setSelectedCurrencies((prev) => {
           const currencies: Currency[] = ["Bs"];
           if (preferredCurrency !== "Bs") {
@@ -754,10 +756,15 @@ export function useEditOrderForm(
       setProductDiscountTypes(newTypes);
       setProductDiscountCurrencies(newCurrencies);
 
-      setCommercialExchangeRates(getCommercialRatesFromOrder(initialOrder));
+      const orderCommercial = getCommercialRatesFromOrder(initialOrder);
+      setCommercialExchangeRates(
+        orderCommercial.USD?.rate && orderCommercial.USD.rate > 0
+          ? orderCommercial
+          : { ...liveExchangeRates, ...orderCommercial }
+      );
       setIsFormHydrated(true);
     }
-  }, [initialOrder, open, preferredCurrency]);
+  }, [initialOrder, open, preferredCurrency, liveExchangeRates]);
 
   // Funciones helper
   const getCurrencyOrder = useCallback((): Currency[] => {

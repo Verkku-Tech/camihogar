@@ -3,21 +3,42 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Ordina.Application.Common;
+using Ordina.Application.Commissions;
 using Ordina.Domain.Catalog;
+using Ordina.Domain.Finance;
 using Ordina.Domain.Manufacturing;
 using Ordina.Domain.Orders;
-
 using Ordina.Domain.Stores;
+using Ordina.Domain.Users;
 
 namespace Ordina.Application.Reports;
 
 public interface IReportService
 {
-    Task<IReadOnlyList<CommissionReportRowDto>> GetCommissionReportAsync(DateTime? from = null, DateTime? to = null, string? vendorId = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CommissionReportRowDto>> GetCommissionReportAsync(
+        DateTime? from = null,
+        DateTime? to = null,
+        string? vendorId = null,
+        string? storeId = null,
+        string? sellerType = null,
+        string? referrerId = null,
+        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PaymentsDetailedReportRowDto>> GetPaymentsDetailedReportAsync(DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PaymentReportRowDto>> GetPaymentsReportDataAsync(DateTime? startDate = null, DateTime? endDate = null, string? paymentMethod = null, string? accountId = null, CancellationToken cancellationToken = default);
-    Task<byte[]> GenerateCommissionsReportExcelAsync(DateTime? from = null, DateTime? to = null, string? vendorId = null, CancellationToken cancellationToken = default);
+    Task<byte[]> GenerateCommissionsReportExcelAsync(
+        DateTime? from = null,
+        DateTime? to = null,
+        string? vendorId = null,
+        string? storeId = null,
+        string? sellerType = null,
+        string? referrerId = null,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CommissionReferrerOptionDto>> GetCommissionReferrersInRangeAsync(
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        CancellationToken cancellationToken = default);
     Task<byte[]> GeneratePaymentsReportExcelAsync(DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default);
     Task<byte[]> GeneratePaymentsReportExcelAsync(DateTime? startDate = null, DateTime? endDate = null, string? paymentMethod = null, string? accountId = null, CancellationToken cancellationToken = default);
     Task<byte[]> GenerateDispatchReportExcelAsync(DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default);
@@ -35,6 +56,11 @@ public class ReportService : IReportService
     private readonly IExchangeRateRepository _exchangeRateRepository;
     private readonly IRepository<ManufacturingOrder>? _mfgOrderRepository;
     private readonly IRepository<Account>? _accountRepository;
+    private readonly IRepository<ProductCommission>? _productCommissionRepository;
+    private readonly IRepository<SaleTypeCommissionRule>? _saleTypeCommissionRuleRepository;
+    private readonly IUserRepository? _userRepository;
+    private readonly IRepository<Category>? _categoryRepository;
+    private readonly ILogger<ReportService>? _logger;
 
     public ReportService(
         IOrderRepository orderRepository,
@@ -42,7 +68,12 @@ public class ReportService : IReportService
         IProductRepository productRepository,
         IExchangeRateRepository exchangeRateRepository,
         IRepository<ManufacturingOrder>? mfgOrderRepository = null,
-        IRepository<Account>? accountRepository = null)
+        IRepository<Account>? accountRepository = null,
+        IRepository<ProductCommission>? productCommissionRepository = null,
+        IRepository<SaleTypeCommissionRule>? saleTypeCommissionRuleRepository = null,
+        IUserRepository? userRepository = null,
+        IRepository<Category>? categoryRepository = null,
+        ILogger<ReportService>? logger = null)
     {
         _orderRepository = orderRepository;
         _clientRepository = clientRepository;
@@ -50,6 +81,11 @@ public class ReportService : IReportService
         _exchangeRateRepository = exchangeRateRepository;
         _mfgOrderRepository = mfgOrderRepository;
         _accountRepository = accountRepository;
+        _productCommissionRepository = productCommissionRepository;
+        _saleTypeCommissionRuleRepository = saleTypeCommissionRuleRepository;
+        _userRepository = userRepository;
+        _categoryRepository = categoryRepository;
+        _logger = logger;
     }
 
 
@@ -57,58 +93,48 @@ public class ReportService : IReportService
         DateTime? from = null,
         DateTime? to = null,
         string? vendorId = null,
+        string? storeId = null,
+        string? sellerType = null,
+        string? referrerId = null,
         CancellationToken cancellationToken = default)
     {
+        var data = await GetFilteredCommissionsDataAsync(from, to, vendorId, storeId, sellerType, referrerId, cancellationToken);
+        return data.OrderByDescending(r => r.Fecha).ThenBy(r => r.Cliente).ToList();
+    }
+
+    public async Task<IReadOnlyList<CommissionReferrerOptionDto>> GetCommissionReferrersInRangeAsync(
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        var rangeStart = startDate.HasValue ? DateTime.SpecifyKind(startDate.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
+        var rangeEnd = endDate.HasValue ? DateTime.SpecifyKind(endDate.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
+
         var orders = await _orderRepository.FindAsync(
-            o => o.TypeString == "Order" && o.StatusString != "Cancelado",
+            o => o.CreatedAt >= rangeStart && o.CreatedAt <= rangeEnd,
             cancellationToken);
 
-        if (from.HasValue)
-        {
-            var start = DateTime.SpecifyKind(from.Value.Date, DateTimeKind.Utc);
-            orders = orders.Where(o => o.CreatedAt >= start).ToList();
-        }
-        if (to.HasValue)
-        {
-            var end = DateTime.SpecifyKind(to.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
-            orders = orders.Where(o => o.CreatedAt <= end).ToList();
-        }
-        if (!string.IsNullOrWhiteSpace(vendorId)) orders = orders.Where(o => o.VendorId == vendorId).ToList();
-
-        var rows = new List<CommissionReportRowDto>();
-        foreach (var order in orders)
-        {
-            var firstProdDesc = order.Products.FirstOrDefault()?.Name ?? "Venta de productos";
-            var itemCount = order.Products.Sum(p => p.Quantity);
-            var commission = Math.Round(order.Total * 0.03m, 2);
-
-            rows.Add(new CommissionReportRowDto(
-                OrderNumber: order.OrderNumber,
-                Date: order.CreatedAt,
-                SellerName: string.IsNullOrWhiteSpace(order.VendorName) ? "Sin Asignar" : order.VendorName,
-                ClientName: string.IsNullOrWhiteSpace(order.ClientName) ? "Cliente" : order.ClientName,
-                OrderTotal: order.Total,
-                CommissionAmount: commission,
-                CommissionMode: "Standard",
-                Description: firstProdDesc,
-                ItemsCount: itemCount,
-                SaleType: order.SaleTypeString,
-                ComisionFamiliaUsdPorUnidad: 0,
-                Comision: commission,
-                ComisionPostventa: 0,
-                ComisionSecundaria: 0,
-                VendedorPostventa: order.PostventaName,
-                VendedorSecundario: order.ReferrerName,
-                Fecha: order.CreatedAt.ToString("o"),
-                Cliente: string.IsNullOrWhiteSpace(order.ClientName) ? "Cliente" : order.ClientName,
-                Pedido: order.OrderNumber,
-                Vendedor: string.IsNullOrWhiteSpace(order.VendorName) ? "Sin Asignar" : order.VendorName,
-                Descripcion: firstProdDesc,
-                CantidadArticulos: itemCount,
-                TipoVenta: order.SaleTypeString));
-        }
-
-        return rows;
+        return orders
+            .Where(order =>
+                !IsReservation(order)
+                && !IsDeclinedOrCancelled(order)
+                && !(IsPagoAEntregaCondition(order) && !HasRecordedPaymentsForCommission(order))
+                && !string.IsNullOrWhiteSpace(order.ReferrerId))
+            .GroupBy(order => order.ReferrerId!.Trim(), StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var first = group.First();
+                var name = string.IsNullOrWhiteSpace(first.ReferrerName)
+                    ? group.Key
+                    : first.ReferrerName.Trim();
+                return new CommissionReferrerOptionDto
+                {
+                    Id = group.Key,
+                    Name = name
+                };
+            })
+            .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static readonly HashSet<string> ForeignCurrencyOnlyPaymentMethods = new(new[]
@@ -249,18 +275,26 @@ public class ReportService : IReportService
         DateTime? from = null,
         DateTime? to = null,
         string? vendorId = null,
+        string? storeId = null,
+        string? sellerType = null,
+        string? referrerId = null,
         CancellationToken cancellationToken = default)
     {
-        var data = await GetCommissionReportAsync(from, to, vendorId, cancellationToken);
+        var data = await GetCommissionReportAsync(from, to, vendorId, storeId, sellerType, referrerId, cancellationToken);
         var columns = new (string Header, Func<CommissionReportRowDto, object?> Selector)[]
         {
-            ("Pedido", r => r.OrderNumber),
-            ("Fecha", r => r.Date),
-            ("Vendedor", r => r.SellerName),
-            ("Cliente", r => r.ClientName),
-            ("Total Venta ($)", r => r.OrderTotal),
-            ("Comisión ($)", r => r.CommissionAmount),
-            ("Tipo Comisión", r => r.CommissionMode)
+            ("Fecha", r => r.Fecha),
+            ("Cliente", r => r.Cliente),
+            ("Pedido", r => r.Pedido),
+            ("Vendedor", r => r.Vendedor),
+            ("Descripción", r => r.Descripcion),
+            ("Cant. Artículos", r => r.CantidadArticulos),
+            ("Tipo de venta", r => r.TipoVenta),
+            ("Comisión familia USD/u", r => (double)(r.ComisionFamiliaUsdPorUnidad != 0m ? r.ComisionFamiliaUsdPorUnidad : r.TasaComisionBase)),
+            ("Comisión Vendedor", r => (double)r.Comision),
+            ("Total Comisión + Sueldo", r => (double)r.TotalComisionMasSueldo),
+            ("Comisión Post venta", r => r.ComisionPostventa.HasValue ? (double)r.ComisionPostventa.Value : 0.0),
+            ("Comisión Referido", r => r.ComisionSecundaria.HasValue ? (double)r.ComisionSecundaria.Value : 0.0)
         };
 
         return ExcelReportBuilder.CreateTable("Comisiones", data, columns);
@@ -885,7 +919,508 @@ public class ReportService : IReportService
         return rows;
     }
 
+    private async Task<List<CommissionReportRowDto>> GetFilteredCommissionsDataAsync(
+        DateTime? from = null,
+        DateTime? to = null,
+        string? vendorId = null,
+        string? storeId = null,
+        string? sellerType = null,
+        string? referrerId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var rangeStart = from.HasValue ? DateTime.SpecifyKind(from.Value.Date, DateTimeKind.Utc) : DateTime.MinValue;
+        var rangeEnd = to.HasValue ? DateTime.SpecifyKind(to.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc) : DateTime.MaxValue;
 
+        var orders = await _orderRepository.FindAsync(
+            o => o.CreatedAt >= rangeStart && o.CreatedAt <= rangeEnd,
+            cancellationToken);
+
+        var productCommissions = _productCommissionRepository != null
+            ? await _productCommissionRepository.GetAllAsync(cancellationToken)
+            : new List<ProductCommission>();
+
+        var saleTypeRules = _saleTypeCommissionRuleRepository != null
+            ? await _saleTypeCommissionRuleRepository.GetAllAsync(cancellationToken)
+            : new List<SaleTypeCommissionRule>();
+
+        var users = _userRepository != null
+            ? (await _userRepository.GetAllAsync(cancellationToken)).ToList()
+            : new List<User>();
+
+        var categories = _categoryRepository != null
+            ? (await _categoryRepository.GetAllAsync(cancellationToken)).ToList()
+            : new List<Category>();
+
+        var reportData = new List<CommissionReportRowDto>();
+
+        foreach (var order in orders)
+        {
+            if (IsReservation(order))
+                continue;
+
+            if (IsDeclinedOrCancelled(order))
+                continue;
+
+            if (IsPagoAEntregaCondition(order) && !HasRecordedPaymentsForCommission(order))
+                continue;
+
+            var tipoVentaLabel = GetCommissionSaleTypeLabel(order, saleTypeRules);
+
+            foreach (var product in order.Products)
+            {
+                var lineCtx = ResolveLineCommissionContext(product, order);
+                var postventaId = order.PostventaId?.Trim();
+
+                if (!RowMatchesVendorFilter(vendorId, lineCtx.EffectiveVendorId, lineCtx.EffectiveReferrerId, postventaId))
+                    continue;
+
+                if (!RowMatchesStoreFilter(storeId, users, lineCtx.EffectiveVendorId, lineCtx.EffectiveReferrerId, postventaId))
+                    continue;
+
+                if (!RowMatchesSellerTypeFilter(sellerType, users, lineCtx.EffectiveVendorId))
+                    continue;
+
+                if (!RowMatchesReferrerFilter(referrerId, order, lineCtx.EffectiveReferrerId))
+                    continue;
+
+                var mainVendor = users.FirstOrDefault(u => u.Id == lineCtx.EffectiveVendorId);
+                mainVendor?.NormalizeCommissionExclusivity();
+                var exclusivityMode = mainVendor?.CommissionExclusivityMode ?? CommissionExclusivityModes.Shared;
+                var isExclusiveVendor = CommissionExclusivityModes.IsExclusive(exclusivityMode);
+                var vendorBaseSalary = mainVendor?.BaseSalary ?? 0m;
+                var hasReferrer = !string.IsNullOrWhiteSpace(lineCtx.EffectiveReferrerId);
+                var isSharedSale = exclusivityMode == CommissionExclusivityModes.Shared || lineCtx.IsSharedSale;
+
+                var (vendorCommission, referrerCommission, postventaCommission, baseRate, appliedVendorRate, appliedReferrerRate, appliedPostventaRate) =
+                    CalculateProductCommission(product, order, productCommissions, saleTypeRules, exclusivityMode, isSharedSale, hasReferrer);
+
+                if (vendorCommission == 0m && referrerCommission == 0m && postventaCommission == 0m)
+                    continue;
+
+                var isDistributedSale = referrerCommission > 0m || postventaCommission > 0m;
+                var description = FormatProductDescription(product, categories);
+
+                if (isDistributedSale)
+                {
+                    var postventaLabel = string.IsNullOrWhiteSpace(order.PostventaName)
+                        ? "Post venta"
+                        : order.PostventaName.Trim();
+
+                    reportData.Add(new CommissionReportRowDto
+                    {
+                        Fecha = order.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                        Cliente = order.ClientName ?? "",
+                        Vendedor = lineCtx.EffectiveVendorName,
+                        Pedido = order.OrderNumber ?? "",
+                        Descripcion = description,
+                        CantidadArticulos = product.Quantity,
+                        TipoVenta = tipoVentaLabel,
+                        ComisionFamiliaUsdPorUnidad = baseRate,
+                        Comision = vendorCommission,
+                        VendedorSecundario = lineCtx.EffectiveReferrerName,
+                        ComisionSecundaria = referrerCommission,
+                        VendedorPostventa = postventaCommission > 0m ? postventaLabel : null,
+                        ComisionPostventa = postventaCommission > 0m ? postventaCommission : null,
+                        SueldoBase = vendorBaseSalary,
+                        TasaComisionBase = baseRate,
+                        TasaAplicadaVendedor = appliedVendorRate,
+                        TasaAplicadaReferido = appliedReferrerRate,
+                        TasaAplicadaPostventa = appliedPostventaRate,
+                        EsVentaCompartida = true,
+                        EsVendedorExclusivo = isExclusiveVendor
+                    });
+                }
+                else
+                {
+                    reportData.Add(new CommissionReportRowDto
+                    {
+                        Fecha = order.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                        Cliente = order.ClientName ?? "",
+                        Vendedor = lineCtx.EffectiveVendorName,
+                        Pedido = order.OrderNumber ?? "",
+                        Descripcion = description,
+                        CantidadArticulos = product.Quantity,
+                        TipoVenta = tipoVentaLabel,
+                        ComisionFamiliaUsdPorUnidad = baseRate,
+                        Comision = vendorCommission,
+                        SueldoBase = vendorBaseSalary,
+                        TasaComisionBase = baseRate,
+                        TasaAplicadaVendedor = appliedVendorRate,
+                        EsVentaCompartida = false,
+                        EsVendedorExclusivo = isExclusiveVendor
+                    });
+                }
+            }
+        }
+
+        return reportData;
+    }
+
+    private (decimal vendorCommission, decimal referrerCommission, decimal postventaCommission, decimal baseRate, decimal appliedVendorRate, decimal appliedReferrerRate, decimal appliedPostventaRate)
+        CalculateProductCommission(
+            OrderProduct product,
+            Order order,
+            IEnumerable<ProductCommission> productCommissions,
+            IEnumerable<SaleTypeCommissionRule> saleTypeRules,
+            string exclusivityMode,
+            bool isSharedSale,
+            bool hasReferrer)
+    {
+        var categoryCommission = productCommissions.FirstOrDefault(c =>
+            (!string.IsNullOrWhiteSpace(product.Category) && (c.CategoryName.Equals(product.Category, StringComparison.OrdinalIgnoreCase) || c.CategoryId == product.Category)));
+
+        var baseCommissionRate = categoryCommission?.CommissionValue ?? 0m;
+        if (baseCommissionRate == 0m)
+        {
+            return (0m, 0m, 0m, 0m, 0m, 0m, 0m);
+        }
+
+        var qty = Math.Max(product.Quantity, 1);
+        var familyCommission = baseCommissionRate * qty;
+        var saleType = DetermineSaleType(order);
+        var rule = SaleTypeCommissionTierResolver.PickRule(saleTypeRules, saleType, baseCommissionRate, _logger);
+
+        var split = CommissionExclusivityCalculator.Calculate(
+            exclusivityMode,
+            isSharedSale,
+            hasReferrer,
+            baseCommissionRate,
+            qty,
+            familyCommission,
+            rule);
+
+        return (
+            split.VendorCommission,
+            split.ReferrerCommission,
+            split.PostventaCommission,
+            baseCommissionRate,
+            split.AppliedVendorRate,
+            split.AppliedReferrerRate,
+            split.AppliedPostventaRate);
+    }
+
+    private static string DetermineSaleType(Order order)
+    {
+        var saleTypeStr = order.SaleTypeString ?? (order.SaleType.HasValue ? order.SaleType.Value.ToString() : null);
+        if (!string.IsNullOrWhiteSpace(saleTypeStr))
+            return saleTypeStr.ToLowerInvariant();
+
+        var delTypeStr = order.DeliveryTypeString ?? (order.DeliveryType.HasValue ? order.DeliveryType.Value.ToString() : null);
+        if (!string.IsNullOrWhiteSpace(delTypeStr))
+            return delTypeStr.ToLowerInvariant();
+
+        return "entrega";
+    }
+
+    private static string GetCommissionSaleTypeLabel(Order order, IEnumerable<SaleTypeCommissionRule> rules)
+    {
+        var code = DetermineSaleType(order);
+        var rule = rules
+            .Where(r => r.SaleType.Equals(code, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(r => r.FamilyCommissionUsdPerUnit)
+            .FirstOrDefault();
+        if (rule != null && !string.IsNullOrWhiteSpace(rule.SaleTypeLabel))
+            return rule.SaleTypeLabel.Trim();
+
+        return code switch
+        {
+            "delivery_express" => "Delivery express",
+            "encargo" => "Encargo",
+            "encargo_entrega" => "Encargo con entrega",
+            "entrega" => "Entrega",
+            "retiro_almacen" => "Retiro por almacén",
+            "retiro_tienda" => "Retiro por tienda",
+            "sistema_apartado" => "Sistema apartado",
+            "entrega_programada" => "Entrega programada",
+            _ => code
+        };
+    }
+
+    private static bool RowMatchesVendorFilter(
+        string? vendorId,
+        string effectiveVendorId,
+        string? effectiveReferrerId,
+        string? postventaId)
+    {
+        if (string.IsNullOrWhiteSpace(vendorId))
+            return true;
+
+        var filter = vendorId.Trim();
+        return string.Equals(effectiveVendorId, filter, StringComparison.Ordinal)
+            || (!string.IsNullOrWhiteSpace(effectiveReferrerId)
+                && string.Equals(effectiveReferrerId.Trim(), filter, StringComparison.Ordinal))
+            || (!string.IsNullOrWhiteSpace(postventaId)
+                && string.Equals(postventaId, filter, StringComparison.Ordinal));
+    }
+
+    private static bool RowMatchesSellerTypeFilter(
+        string? sellerType,
+        IReadOnlyList<User> users,
+        string effectiveVendorId)
+    {
+        if (string.IsNullOrWhiteSpace(sellerType) || sellerType == "all")
+            return true;
+
+        var vendor = users.FirstOrDefault(u => u.Id == effectiveVendorId);
+        if (vendor == null)
+            return false;
+
+        var roleStr = vendor.RoleString ?? vendor.Role.ToString();
+        return sellerType switch
+        {
+            "online" => string.Equals(roleStr, "Online Seller", StringComparison.OrdinalIgnoreCase),
+            "store" => string.Equals(roleStr, "Store Seller", StringComparison.OrdinalIgnoreCase),
+            _ => true
+        };
+    }
+
+    private static bool RowMatchesReferrerFilter(
+        string? referrerId,
+        Order order,
+        string? effectiveReferrerId)
+    {
+        if (string.IsNullOrWhiteSpace(referrerId))
+            return true;
+
+        var filter = referrerId.Trim();
+        return string.Equals(order.ReferrerId?.Trim(), filter, StringComparison.Ordinal)
+            || string.Equals(effectiveReferrerId?.Trim(), filter, StringComparison.Ordinal);
+    }
+
+    private static bool RowMatchesStoreFilter(
+        string? storeFilter,
+        IReadOnlyList<User> users,
+        string effectiveVendorId,
+        string? effectiveReferrerId,
+        string? postventaId)
+    {
+        if (string.IsNullOrWhiteSpace(storeFilter))
+            return true;
+
+        var participantIds = new[]
+        {
+            effectiveVendorId,
+            effectiveReferrerId?.Trim(),
+            postventaId,
+        }
+        .Where(id => !string.IsNullOrWhiteSpace(id))
+        .Select(id => id!)
+        .Distinct(StringComparer.Ordinal)
+        .ToList();
+
+        if (participantIds.Count == 0)
+            return false;
+
+        if (storeFilter.Equals("unassigned", StringComparison.OrdinalIgnoreCase))
+        {
+            return participantIds.Any(pid =>
+            {
+                var user = users.FirstOrDefault(u => u.Id == pid);
+                var roleStr = user?.RoleString ?? user?.Role.ToString();
+                return user != null
+                    && string.Equals(roleStr, "Store Seller", StringComparison.OrdinalIgnoreCase)
+                    && string.IsNullOrWhiteSpace(user.StoreId);
+            });
+        }
+
+        return participantIds.Any(pid =>
+        {
+            var user = users.FirstOrDefault(u => u.Id == pid);
+            return user != null
+                && string.Equals(user.StoreId, storeFilter.Trim(), StringComparison.Ordinal);
+        });
+    }
+
+    private sealed record LineCommissionContext(
+        bool IsSharedSale,
+        string EffectiveVendorId,
+        string EffectiveVendorName,
+        string? EffectiveReferrerId,
+        string? EffectiveReferrerName);
+
+    private static LineCommissionContext ResolveLineCommissionContext(OrderProduct product, Order order)
+    {
+        var source = product.CommissionLineSource;
+
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            var legacyShared = !string.IsNullOrWhiteSpace(order.ReferrerId);
+            return new LineCommissionContext(
+                legacyShared,
+                order.VendorId ?? "",
+                order.VendorName ?? "",
+                order.ReferrerId,
+                order.ReferrerName);
+        }
+
+        switch (source)
+        {
+            case CommissionLineSources.ReservationUnchanged:
+                return new LineCommissionContext(
+                    false,
+                    order.SourceReservationVendorId ?? order.VendorId ?? "",
+                    order.SourceReservationVendorName ?? order.VendorName ?? "",
+                    null,
+                    null);
+
+            case CommissionLineSources.StoreAdded:
+                return new LineCommissionContext(
+                    false,
+                    order.VendorId ?? "",
+                    order.VendorName ?? "",
+                    null,
+                    null);
+
+            case CommissionLineSources.StoreModified:
+            case CommissionLineSources.StoreSubstitution:
+                return new LineCommissionContext(
+                    true,
+                    order.VendorId ?? "",
+                    order.VendorName ?? "",
+                    order.ReferrerId ?? order.SourceReservationVendorId,
+                    order.ReferrerName ?? order.SourceReservationVendorName);
+
+            default:
+                var fallbackShared = !string.IsNullOrWhiteSpace(order.ReferrerId);
+                return new LineCommissionContext(
+                    fallbackShared,
+                    order.VendorId ?? "",
+                    order.VendorName ?? "",
+                    order.ReferrerId,
+                    order.ReferrerName);
+        }
+    }
+
+    private static bool IsReservation(Order order)
+    {
+        var typeStr = order.TypeString ?? order.Type.ToString();
+        if (string.Equals(typeStr, "Reservation", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(typeStr, "PendingConfirmation", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(order.OrderNumber))
+        {
+            var num = order.OrderNumber.Trim().ToUpperInvariant();
+            if (num.StartsWith("RES-", StringComparison.Ordinal) || num.StartsWith("PCF-", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsDeclinedOrCancelled(Order order)
+    {
+        var statusStr = order.StatusString ?? order.Status.ToString();
+        return string.Equals(statusStr, "Declinado", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(statusStr, "Cancelado", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPagoAEntregaCondition(Order order) =>
+        string.Equals(order.PaymentCondition?.Trim(), "pago_a_entrega", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasRecordedPaymentsForCommission(Order order)
+    {
+        var (payments, _) = GetActivePaymentsForReport(order);
+        if (payments.Count > 0)
+            return true;
+
+        return !string.IsNullOrWhiteSpace(order.PaymentMethod);
+    }
+
+    private static bool IsInternalProductAttributeKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return true;
+        var lower = key.Trim().ToLowerInvariant();
+        return lower is "name" or "price" or "quantity" or "category" or "id" or "_id" or "productid";
+    }
+
+    private static string FormatAttributeValue(object? value)
+    {
+        if (value == null) return "";
+
+        if (value is System.Text.Json.JsonElement jsonElement)
+        {
+            switch (jsonElement.ValueKind)
+            {
+                case System.Text.Json.JsonValueKind.String:
+                    return jsonElement.GetString() ?? "";
+                case System.Text.Json.JsonValueKind.Number:
+                    return jsonElement.GetRawText();
+                case System.Text.Json.JsonValueKind.Array:
+                    return string.Join(", ",
+                        jsonElement.EnumerateArray()
+                            .Select(e => e.ValueKind == System.Text.Json.JsonValueKind.String
+                                ? e.GetString()
+                                : e.GetRawText())
+                            .Where(s => !string.IsNullOrEmpty(s)));
+                default:
+                    return jsonElement.GetRawText();
+            }
+        }
+
+        if (value is System.Collections.IEnumerable enumerable && value is not string)
+        {
+            return string.Join(", ",
+                enumerable.Cast<object>()
+                    .Select(v => v?.ToString() ?? "")
+                    .Where(s => !string.IsNullOrEmpty(s)));
+        }
+
+        return value.ToString() ?? "";
+    }
+
+    private static string FormatProductDescription(OrderProduct product, IReadOnlyList<Category> categories)
+    {
+        var parts = new List<string> { product.Name ?? "Producto sin nombre" };
+
+        if (product.Attributes == null || product.Attributes.Count == 0)
+        {
+            return string.Join(" | ", parts);
+        }
+
+        var category = categories.FirstOrDefault(c =>
+            (!string.IsNullOrWhiteSpace(product.Category) && (c.Name.Equals(product.Category, StringComparison.OrdinalIgnoreCase) || c.Id == product.Category)));
+
+        var attributeStrings = new List<string>();
+
+        foreach (var kvp in product.Attributes)
+        {
+            var attributeKey = kvp.Key;
+            var attributeValue = kvp.Value;
+
+            if (IsInternalProductAttributeKey(attributeKey))
+                continue;
+
+            if (attributeKey.Contains('_') && attributeKey.Split('_').Length == 2)
+                continue;
+
+            string attributeTitle = attributeKey;
+            if (category != null)
+            {
+                var categoryAttribute = category.Attributes?.FirstOrDefault(attr =>
+                    (!string.IsNullOrEmpty(attr.Title) && attr.Title.Equals(attributeKey, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(attr.Id) && attr.Id == attributeKey));
+
+                if (categoryAttribute != null && !string.IsNullOrEmpty(categoryAttribute.Title))
+                {
+                    attributeTitle = categoryAttribute.Title;
+                }
+            }
+
+            var valueLabel = FormatAttributeValue(attributeValue);
+            if (!string.IsNullOrWhiteSpace(valueLabel))
+            {
+                attributeStrings.Add($"{attributeTitle}: {valueLabel}");
+            }
+        }
+
+        if (attributeStrings.Count > 0)
+        {
+            parts.Add(string.Join(", ", attributeStrings));
+        }
+
+        return string.Join(" | ", parts);
+    }
 }
 
 public record ManufacturingReportExportRow(

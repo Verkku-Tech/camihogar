@@ -572,6 +572,9 @@ export function EditOrderDialog({
         const useUsdTotals = isUsdBaseOrder({
           baseCurrency: orderForm.formBaseCurrency,
         });
+        const effectiveUsdRate =
+          orderForm.commercialExchangeRates.USD?.rate ??
+          orderForm.exchangeRates?.USD?.rate;
         if (
           casheaInStorePaymentsExceedTotal(orderForm.payments, {
             totalDueUsd: Math.max(
@@ -589,7 +592,7 @@ export function EditOrderDialog({
                 orderForm.commercialExchangeRates,
               ),
             },
-            usdRate: orderForm.commercialExchangeRates.USD?.rate,
+            usdRate: effectiveUsdRate,
           })
         ) {
           toast.error(
@@ -615,7 +618,7 @@ export function EditOrderDialog({
                 orderForm.commercialExchangeRates,
               ),
             },
-            usdRate: orderForm.commercialExchangeRates.USD?.rate,
+            usdRate: effectiveUsdRate,
           },
         );
         if (casheaFullMsg) {
@@ -633,6 +636,9 @@ export function EditOrderDialog({
         const useUsdTotals = isUsdBaseOrder({
           baseCurrency: orderForm.formBaseCurrency,
         });
+        const effectiveUsdRate =
+          orderForm.commercialExchangeRates.USD?.rate ??
+          orderForm.exchangeRates?.USD?.rate;
         paymentsNorm = buildCasheaPaymentsForSave(paymentsNorm, {
           orderTotalBs: getCasheaTotalDueBs({
             totalDueUsd: Math.max(
@@ -644,14 +650,14 @@ export function EditOrderDialog({
               orderForm.total,
             ),
             useUsdTotals,
-            usdRate: orderForm.commercialExchangeRates.USD?.rate,
+            usdRate: effectiveUsdRate,
           }),
           useUsdTotals,
           totalDueUsd: Math.max(
             0,
             orderForm.total,
           ),
-          usdRate: orderForm.commercialExchangeRates.USD?.rate,
+          usdRate: effectiveUsdRate,
           order: {
             baseCurrency: orderForm.formBaseCurrency,
             exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
@@ -676,7 +682,11 @@ export function EditOrderDialog({
       setPaymentSavedTrigger((t) => t + 1);
     } catch (error) {
       console.error("Error updating payments:", error);
-      toast.error("Error al guardar los pagos. Por favor intenta nuevamente.");
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error al guardar los pagos. Por favor intenta nuevamente.";
+      toast.error(message);
     }
   };
 
@@ -1137,6 +1147,9 @@ export function EditOrderDialog({
         const useUsdTotals = isUsdBaseOrder({
           baseCurrency: orderForm.formBaseCurrency,
         });
+        const effectiveUsdRate =
+          orderForm.commercialExchangeRates.USD?.rate ??
+          orderForm.exchangeRates?.USD?.rate;
         const casheaFullMsg = getCasheaFullPaymentBlockMessage(
           orderForm.payments,
           {
@@ -1155,7 +1168,7 @@ export function EditOrderDialog({
                 orderForm.commercialExchangeRates,
               ),
             },
-            usdRate: orderForm.commercialExchangeRates.USD?.rate,
+            usdRate: effectiveUsdRate,
           },
         );
         if (casheaFullMsg) {
@@ -1173,14 +1186,14 @@ export function EditOrderDialog({
               orderForm.total,
             ),
             useUsdTotals,
-            usdRate: orderForm.commercialExchangeRates.USD?.rate,
+            usdRate: effectiveUsdRate,
           }),
           useUsdTotals,
           totalDueUsd: Math.max(
             0,
             orderForm.total,
           ),
-          usdRate: orderForm.commercialExchangeRates.USD?.rate,
+          usdRate: effectiveUsdRate,
           order: {
             baseCurrency: orderForm.formBaseCurrency,
             exchangeRatesAtCreation: buildExchangeRatesAtCreationPayload(
@@ -1502,9 +1515,11 @@ export function EditOrderDialog({
       }
     } catch (error) {
       console.error("Error updating order:", error);
-      toast.error(
-        "Error al actualizar el pedido. Por favor intenta nuevamente.",
-      );
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Error al actualizar el pedido. Por favor intenta nuevamente.";
+      toast.error(message);
       setIsConfirmationOpen(false);
     }
   };

@@ -329,6 +329,29 @@ function alignInStorePaymentsForCasheaSave(
   });
 }
 
+function resolveEffectiveUsdRate(
+  explicitRate?: number | null,
+  order?: PaymentOrderContext | null,
+  payments?: PartialPayment[],
+): number | undefined {
+  if (explicitRate != null && explicitRate > 0) return explicitRate;
+  const live = order?.liveRates?.USD?.rate;
+  if (live != null && live > 0) return live;
+  const frozen = order?.exchangeRatesAtCreation?.USD?.rate;
+  if (frozen != null && frozen > 0) return frozen;
+  if (payments && payments.length > 0) {
+    const fromPayment = payments.find(
+      (p) =>
+        p.paymentDetails?.exchangeRate != null &&
+        Number(p.paymentDetails.exchangeRate) > 0,
+    )?.paymentDetails?.exchangeRate;
+    if (fromPayment != null && Number(fromPayment) > 0) {
+      return Number(fromPayment);
+    }
+  }
+  return undefined;
+}
+
 /**
  * Tras normalizar los cobros en tienda (una o más filas), añade si aplica la línea de saldo financiado por Cashea.
  * Ignora filas que ya sean la porción financiada (re-guardado / edición).
@@ -352,24 +375,35 @@ export function buildCasheaPaymentsForSave(
     throw new Error("Cashea: se requiere al menos un cobro en tienda.");
   }
 
+  const resolvedUsdRate = resolveEffectiveUsdRate(
+    options.usdRate,
+    options.order,
+    inStoreRaw,
+  );
+
+  const effectiveOrderContext: PaymentOrderContext | undefined =
+    options.order ??
+    (resolvedUsdRate && resolvedUsdRate > 0
+      ? { liveRates: { USD: { rate: resolvedUsdRate } } }
+      : undefined);
+
   const useUsdPath =
     options.useUsdTotals === true &&
     options.totalDueUsd != null &&
-    options.usdRate != null &&
-    options.usdRate > 0 &&
-    options.order != null;
+    resolvedUsdRate != null &&
+    resolvedUsdRate > 0;
 
   const inStore = useUsdPath
     ? alignInStorePaymentsForCasheaSave(
         inStoreRaw,
-        options.usdRate!,
-        options.order,
+        resolvedUsdRate!,
+        effectiveOrderContext,
       )
     : inStoreRaw;
 
   if (useUsdPath) {
     const totalDueUsd = Math.max(0, options.totalDueUsd!);
-    const inStoreUsd = sumPaymentsToUsd(inStore, options.order);
+    const inStoreUsd = sumPaymentsToUsd(inStore, effectiveOrderContext);
 
     if (inStoreUsd <= 0) {
       throw new Error("Cashea: el total cobrado en tienda debe ser mayor a 0.");
@@ -387,7 +421,7 @@ export function buildCasheaPaymentsForSave(
     }
 
     const stubAmount =
-      Math.round(Math.max(0, remainderUsd * options.usdRate!) * 100) / 100;
+      Math.round(Math.max(0, remainderUsd * resolvedUsdRate!) * 100) / 100;
     const dateRef = inStore[0]?.date;
 
     const stub: PartialPayment = {
@@ -400,6 +434,7 @@ export function buildCasheaPaymentsForSave(
         casheaFinancedPortion: true,
         originalAmount: stubAmount,
         originalCurrency: "Bs",
+        exchangeRate: resolvedUsdRate,
       },
     };
 
@@ -457,12 +492,18 @@ export function getCasheaTotalDueBs(options: {
   totalDueBsLegacy?: number;
   useUsdTotals: boolean;
   usdRate?: number | null;
+  order?: PaymentOrderContext | null;
+  inStorePayments?: PartialPayment[];
 }): number {
   const dueUsd = Math.max(0, options.totalDueUsd);
   if (!options.useUsdTotals) {
     return Math.max(0, options.totalDueBsLegacy ?? dueUsd);
   }
-  const rate = options.usdRate;
+  const rate = resolveEffectiveUsdRate(
+    options.usdRate,
+    options.order,
+    options.inStorePayments,
+  );
   if (rate && rate > 0) return dueUsd * rate;
   return dueUsd;
 }
@@ -479,8 +520,22 @@ export function casheaInStorePaymentsExceedTotal(
   },
 ): boolean {
   const inStore = casheaInStorePayments(payments);
+  if (inStore.length === 0) return false;
+
+  const resolvedUsdRate = resolveEffectiveUsdRate(
+    options.usdRate,
+    options.order,
+    inStore,
+  );
+
+  const effectiveOrderContext: PaymentOrderContext | undefined =
+    options.order ??
+    (resolvedUsdRate && resolvedUsdRate > 0
+      ? { liveRates: { USD: { rate: resolvedUsdRate } } }
+      : undefined);
+
   if (options.useUsdTotals) {
-    const paidUsd = sumPaymentsToUsd(inStore, options.order);
+    const paidUsd = sumPaymentsToUsd(inStore, effectiveOrderContext);
     const capUsd =
       Math.max(0, options.totalDueUsd) + PAYMENT_BALANCE_EPSILON_USD;
     return paidUsd > capUsd;
@@ -490,6 +545,9 @@ export function casheaInStorePaymentsExceedTotal(
       totalDueUsd: options.totalDueUsd,
       totalDueBsLegacy: options.totalDueBsLegacy,
       useUsdTotals: false,
+      usdRate: resolvedUsdRate,
+      order: effectiveOrderContext,
+      inStorePayments: inStore,
     }) + PAYMENT_BALANCE_EPSILON_BS;
   const paidBs = inStore.reduce((s, p) => s + (p.amount || 0), 0);
   return paidBs > capBs;
@@ -509,8 +567,20 @@ export function casheaInStorePaymentsCoverFullTotal(
   const inStore = casheaInStorePayments(payments);
   if (inStore.length === 0) return false;
 
+  const resolvedUsdRate = resolveEffectiveUsdRate(
+    options.usdRate,
+    options.order,
+    inStore,
+  );
+
+  const effectiveOrderContext: PaymentOrderContext | undefined =
+    options.order ??
+    (resolvedUsdRate && resolvedUsdRate > 0
+      ? { liveRates: { USD: { rate: resolvedUsdRate } } }
+      : undefined);
+
   if (options.useUsdTotals) {
-    const paidUsd = sumPaymentsToUsd(inStore, options.order);
+    const paidUsd = sumPaymentsToUsd(inStore, effectiveOrderContext);
     const capUsd = Math.max(0, options.totalDueUsd);
     return paidUsd >= capUsd - PAYMENT_BALANCE_EPSILON_USD;
   }
@@ -520,6 +590,9 @@ export function casheaInStorePaymentsCoverFullTotal(
       totalDueUsd: options.totalDueUsd,
       totalDueBsLegacy: options.totalDueBsLegacy,
       useUsdTotals: false,
+      usdRate: resolvedUsdRate,
+      order: effectiveOrderContext,
+      inStorePayments: inStore,
     });
   const paidBs = inStore.reduce((s, p) => s + (p.amount || 0), 0);
   return paidBs >= capBs - PAYMENT_BALANCE_EPSILON_BS;
