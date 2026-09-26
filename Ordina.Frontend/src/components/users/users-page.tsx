@@ -182,6 +182,19 @@ export function UsersPage() {
     }
   };
 
+  const isSuperAdmin = currentUser?.role === "Super Administrator";
+  const isAdmin = currentUser?.role === "Administrator" || currentUser?.role === "Administrador";
+
+  const canImpersonateUser = (target: UserDisplay) => {
+    if (!isSuperAdmin && !isAdmin) return false;
+    if (isImpersonating) return false;
+    if (target.id === currentUser?.id) return false;
+    if (target.status !== "Activo") return false;
+    // Un Administrador no puede impersonar a un Super Administrador
+    if (!isSuperAdmin && target.role === "Super Administrador") return false;
+    return true;
+  };
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -1111,7 +1124,7 @@ export function UsersPage() {
                       <TableCell>{user.createdAt}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {currentUser?.role === "Super Administrator" && !isImpersonating && user.id !== currentUser?.id && user.status === "Activo" && (
+                          {canImpersonateUser(user) && (
                             <Button
                               variant="ghost"
                               size="sm"

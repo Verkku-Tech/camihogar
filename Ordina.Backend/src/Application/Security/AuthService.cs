@@ -257,11 +257,18 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("No se puede impersonar a un usuario inactivo.");
         }
 
+        var currentUser = await _userRepository.GetByIdAsync(currentUserId, cancellationToken);
+        if (currentUser != null && currentUser.Role == UserRole.Administrator && targetUser.Role == UserRole.SuperAdministrator)
+        {
+            throw new InvalidOperationException("Un Administrador no puede impersonar a un Super Administrador.");
+        }
+
         var permissions = await GetUserPermissionsAsync(targetUser, cancellationToken);
         var token = _tokenService.GenerateToken(targetUser, permissions, currentUserId);
         var expiresAt = DateTime.UtcNow.AddMinutes(AccessTokenExpirationMinutes);
 
-        _logger.LogInformation("Superadmin {SuperAdminId} inició impersonación del usuario {TargetUserId}", currentUserId, targetUserId);
+        _logger.LogInformation("Usuario {CurrentUserId} ({CurrentUserRole}) inició impersonación del usuario {TargetUserId} ({TargetUserRole})",
+            currentUserId, currentUser?.RoleString ?? "Unknown", targetUserId, targetUser.RoleString);
 
         // ponytail: No emitimos nuevo refreshToken para preservar la sesión del superadmin intacta
         return new LoginResponse(

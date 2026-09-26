@@ -174,5 +174,71 @@ public class AuthAndSecurityTests
 
         Assert.Contains("propio usuario", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task AuthService_ImpersonateUserAsync_AllowsAdministrator_ToImpersonateNonSuperAdmin()
+    {
+        var adminUser = new User
+        {
+            Id = "admin-1",
+            Username = "admin_user",
+            RoleString = "Administrator",
+            Status = UserStatus.Active
+        };
+
+        var targetUser = new User
+        {
+            Id = "seller-1",
+            Username = "seller_user",
+            RoleString = "Store Seller",
+            Status = UserStatus.Active
+        };
+
+        _userRepoMock.Setup(r => r.GetByIdAsync("admin-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(adminUser);
+
+        _userRepoMock.Setup(r => r.GetByIdAsync("seller-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(targetUser);
+
+        _tokenServiceMock.Setup(t => t.GenerateToken(targetUser, It.IsAny<System.Collections.Generic.IEnumerable<string>>(), "admin-1"))
+            .Returns("admin_impersonated_token");
+
+        var response = await _authService.ImpersonateUserAsync("admin-1", "seller-1", CancellationToken.None);
+
+        Assert.NotNull(response);
+        Assert.Equal("admin_impersonated_token", response.Token);
+        Assert.Equal("seller_user", response.User.Username);
+    }
+
+    [Fact]
+    public async Task AuthService_ImpersonateUserAsync_Throws_WhenAdministrator_TriesToImpersonateSuperAdmin()
+    {
+        var adminUser = new User
+        {
+            Id = "admin-1",
+            Username = "admin_user",
+            RoleString = "Administrator",
+            Status = UserStatus.Active
+        };
+
+        var superAdminUser = new User
+        {
+            Id = "superadmin-1",
+            Username = "super_admin_user",
+            RoleString = "Super Administrator",
+            Status = UserStatus.Active
+        };
+
+        _userRepoMock.Setup(r => r.GetByIdAsync("admin-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(adminUser);
+
+        _userRepoMock.Setup(r => r.GetByIdAsync("superadmin-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(superAdminUser);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _authService.ImpersonateUserAsync("admin-1", "superadmin-1", CancellationToken.None));
+
+        Assert.Contains("Super Administrador", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }
 

@@ -105,7 +105,7 @@ public class AuthController : ControllerBase
         return NoContent();
     }
 
-    [Authorize(Roles = "Super Administrator")]
+    [Authorize(Roles = "Super Administrator,Administrator")]
     [HttpPost("impersonate/{userId}")]
     public async Task<ActionResult<LoginResponse>> Impersonate(string userId, CancellationToken cancellationToken)
     {
