@@ -865,9 +865,9 @@ export default function OrderDetailPage() {
   );
 
   const casheaTotalCoveredUsd = useMemo(() => {
-    if (!order || !casheaHasFinancedLine) return totalPaidUsd;
+    if (!order || !isCasheaOrder(order)) return totalPaidUsd;
     return getCommercialTotalUsd(order);
-  }, [order, casheaHasFinancedLine, totalPaidUsd]);
+  }, [order, totalPaidUsd]);
 
   const individualDiscountsSummaryLabel = useMemo(
     () =>

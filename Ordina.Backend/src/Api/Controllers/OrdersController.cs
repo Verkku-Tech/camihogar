@@ -36,6 +36,10 @@ public class OrdersController(
         [FromQuery] string? clientId = null,
         [FromQuery] DateTime? dateFrom = null,
         [FromQuery] DateTime? dateTo = null,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
         [FromQuery] bool? includeBudgets = null,
         [FromQuery] bool includeImages = false,
         [FromQuery] bool? getImage = null,
@@ -45,6 +49,8 @@ public class OrdersController(
         var querySearch = !string.IsNullOrWhiteSpace(search) ? search : searchTerm;
         var request = new PagedRequest(Page: Math.Max(1, currentPage), PageSize: Math.Clamp(pageSize, 1, 200), SearchTerm: querySearch, SortBy: sortBy, SortDescending: isDescending);
         var finalIncludeImages = getImage ?? includeImages;
+        var effectiveDateFrom = dateFrom ?? startDate ?? from;
+        var effectiveDateTo = dateTo ?? endDate ?? to;
         var filter = new OrderQueryFilter(
             Type: type,
             Status: status,
@@ -56,8 +62,8 @@ public class OrdersController(
             Vendor: vendor,
             ClientSearch: clientSearch,
             ClientId: clientId,
-            DateFrom: dateFrom,
-            DateTo: dateTo,
+            DateFrom: effectiveDateFrom,
+            DateTo: effectiveDateTo,
             IncludeBudgets: includeBudgets,
             IncludeImages: finalIncludeImages);
         var result = await orderService.GetPagedAsync(request, filter, cancellationToken);

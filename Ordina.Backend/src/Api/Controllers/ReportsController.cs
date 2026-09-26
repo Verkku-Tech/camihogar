@@ -62,10 +62,14 @@ public class ReportsController : ControllerBase
     public async Task<IActionResult> DownloadCommissionsReportExcel(
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
         [FromQuery] string? vendorId = null,
         CancellationToken cancellationToken = default)
     {
-        var bytes = await _reportService.GenerateCommissionsReportExcelAsync(from, to, vendorId, cancellationToken);
+        var fromDate = startDate ?? from;
+        var toDate = endDate ?? to;
+        var bytes = await _reportService.GenerateCommissionsReportExcelAsync(fromDate, toDate, vendorId, cancellationToken);
         return ExcelFile(bytes, $"ReporteComisiones_{DateTime.UtcNow:dd-MM-yyyy}.xlsx");
     }
 

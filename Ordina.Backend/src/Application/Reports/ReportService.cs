@@ -63,8 +63,16 @@ public class ReportService : IReportService
             o => o.TypeString == "Order" && o.StatusString != "Cancelado",
             cancellationToken);
 
-        if (from.HasValue) orders = orders.Where(o => o.CreatedAt >= from.Value).ToList();
-        if (to.HasValue) orders = orders.Where(o => o.CreatedAt <= to.Value).ToList();
+        if (from.HasValue)
+        {
+            var start = DateTime.SpecifyKind(from.Value.Date, DateTimeKind.Utc);
+            orders = orders.Where(o => o.CreatedAt >= start).ToList();
+        }
+        if (to.HasValue)
+        {
+            var end = DateTime.SpecifyKind(to.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+            orders = orders.Where(o => o.CreatedAt <= end).ToList();
+        }
         if (!string.IsNullOrWhiteSpace(vendorId)) orders = orders.Where(o => o.VendorId == vendorId).ToList();
 
         var rows = new List<CommissionReportRowDto>();

@@ -93,7 +93,7 @@ public class OrderCoreService : IOrderCoreService
 
         var products = createDto.Products.Select(p => new OrderProduct
         {
-            Id = string.IsNullOrWhiteSpace(p.Id) ? ObjectId.GenerateNewId().ToString() : p.Id,
+            Id = ResolveOrderProductLineId(p.Id),
             Name = p.Name.Trim(),
             Price = p.Price,
             Quantity = p.Quantity,
@@ -202,7 +202,7 @@ public class OrderCoreService : IOrderCoreService
         {
             order.Products = updateDto.Products.Select(p => new OrderProduct
             {
-                Id = string.IsNullOrWhiteSpace(p.Id) ? ObjectId.GenerateNewId().ToString() : p.Id,
+                Id = ResolveOrderProductLineId(p.Id),
                 Name = p.Name,
                 Price = p.Price,
                 Quantity = p.Quantity,
@@ -595,13 +595,26 @@ public class OrderCoreService : IOrderCoreService
 
     private static PartialPayment MapPartialPaymentFromDto(PartialPaymentDto dto) => new()
     {
-        Id = string.IsNullOrWhiteSpace(dto.Id) ? ObjectId.GenerateNewId().ToString() : dto.Id,
+        Id = string.IsNullOrWhiteSpace(dto.Id) || !ObjectId.TryParse(dto.Id.Trim(), out _)
+            ? ObjectId.GenerateNewId().ToString()
+            : dto.Id.Trim(),
         Amount = dto.Amount,
         Method = dto.Method,
         Date = dto.Date,
         Images = dto.Images?.Select(MapImageFromDto).ToList(),
         PaymentDetails = MapPaymentDetailsFromDto(dto.PaymentDetails)
     };
+
+    private static string ResolveOrderProductLineId(string? dtoId)
+    {
+        if (string.IsNullOrWhiteSpace(dtoId))
+            return ObjectId.GenerateNewId().ToString();
+
+        var trimmed = dtoId.Trim();
+        return ObjectId.TryParse(trimmed, out _)
+            ? trimmed
+            : ObjectId.GenerateNewId().ToString();
+    }
 
     private static PartialPaymentDto MapPartialPaymentToDto(PartialPayment p, bool includeImages = true) => new(
         p.Id,

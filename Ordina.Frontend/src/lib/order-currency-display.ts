@@ -20,6 +20,7 @@ import {
 import {
   getActivePaymentsList,
   getOrderPendingTotal,
+  isCasheaOrder,
   isCasheaCommerciallySettled,
   sumPaymentBsEquivalentsForDisplay,
   sumPaymentsToUsd,
@@ -265,7 +266,7 @@ export function getOrderPendingUsd(
     paymentMethod?: string;
   },
 ): number {
-  if (isCasheaCommerciallySettled(order)) {
+  if (isCasheaOrder(order) || isCasheaCommerciallySettled(order)) {
     return 0;
   }
   if (isUsdBaseOrder(order)) {

@@ -170,11 +170,13 @@ public class OrderRepository : MongoRepository<Order>, IOrderRepository
 
         if (queryFilter.DateFrom.HasValue)
         {
-            filters.Add(fb.Gte(o => o.CreatedAt, queryFilter.DateFrom.Value));
+            var start = DateTime.SpecifyKind(queryFilter.DateFrom.Value.Date, DateTimeKind.Utc);
+            filters.Add(fb.Gte(o => o.CreatedAt, start));
         }
         if (queryFilter.DateTo.HasValue)
         {
-            filters.Add(fb.Lte(o => o.CreatedAt, queryFilter.DateTo.Value));
+            var end = DateTime.SpecifyKind(queryFilter.DateTo.Value.Date.AddDays(1).AddTicks(-1), DateTimeKind.Utc);
+            filters.Add(fb.Lte(o => o.CreatedAt, end));
         }
 
         if (!string.IsNullOrWhiteSpace(queryFilter.SearchTerm))

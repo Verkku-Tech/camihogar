@@ -2012,12 +2012,39 @@ export class ApiClientClass {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') query.set(k, String(v))
     })
-    const res = await fetch(resolveApiUrl(`/api/reports/commissions/excel?${query.toString()}`))
+    if (params.startDate && !query.has('from')) query.set('from', params.startDate)
+    if (params.endDate && !query.has('to')) query.set('to', params.endDate)
+
+    const headers = new Headers({ 'X-Requested-With': 'XMLHttpRequest' })
+    const token = getAuthToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+
+    const res = await fetch(resolveApiUrl(`/api/reports/commissions/excel?${query.toString()}`), { headers })
+    if (!res.ok) {
+      let msg = `Error ${res.status}`
+      try {
+        const data = await res.json()
+        msg = data.message || msg
+      } catch {}
+      throw new Error(msg)
+    }
     return res.blob()
   }
 
   async downloadExpiredLayawaysReportExcel(): Promise<Blob> {
-    const res = await fetch(resolveApiUrl('/api/reports/expired-layaways/excel'))
+    const headers = new Headers({ 'X-Requested-With': 'XMLHttpRequest' })
+    const token = getAuthToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+
+    const res = await fetch(resolveApiUrl('/api/reports/expired-layaways/excel'), { headers })
+    if (!res.ok) {
+      let msg = `Error ${res.status}`
+      try {
+        const data = await res.json()
+        msg = data.message || msg
+      } catch {}
+      throw new Error(msg)
+    }
     return res.blob()
   }
 

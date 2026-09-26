@@ -25,7 +25,7 @@ import {
   type CommissionReferrerOptionDto,
   type CommissionsReportQueryParams,
 } from "@/lib/api-client"
-import { formatReportDateSuffix } from "@/lib/download-utils"
+import { formatReportDateSuffix, triggerFileDownload } from "@/lib/download-utils"
 
 interface CommissionReportRow {
   fecha: string
@@ -265,14 +265,8 @@ export function CommissionsReport() {
         ),
       )
 
-      const downloadUrl = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = downloadUrl
-      link.download = `ReporteComisiones_${formatReportDateSuffix()}.xlsx`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(downloadUrl)
+      const fallback = `ReporteComisiones_${formatReportDateSuffix()}.xlsx`
+      triggerFileDownload(blob, fallback)
 
       toast.success("Reporte descargado exitosamente")
     } catch (error) {

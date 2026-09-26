@@ -221,7 +221,7 @@ function getCasheaPendingAfterFinancing(
 
 /** Saldo pendiente vs el total: USD si baseCurrency USD, si no Bs (legacy). */
 export function getOrderPendingTotal(order: OrderPendingTotalInput): number {
-  if (isCasheaCommerciallySettled(order)) {
+  if (isCasheaOrder(order) || isCasheaCommerciallySettled(order)) {
     return 0;
   }
 

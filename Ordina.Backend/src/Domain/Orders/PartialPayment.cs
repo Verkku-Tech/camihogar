@@ -6,7 +6,7 @@ namespace Ordina.Domain.Orders;
 public class PartialPayment
 {
     [BsonId]
-    [BsonRepresentation(BsonType.ObjectId)]
+    [BsonSerializer(typeof(Ordina.Domain.Common.FlexibleObjectIdOrStringSerializer))]
     public string Id { get; set; } = string.Empty;
 
     [BsonElement("amount")]
